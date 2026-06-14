@@ -5,6 +5,11 @@ from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.types import Belief, LinearGaussianModel
 
 # Scalar linear-Gaussian setup, matching the Phase-0 spike.
+# A/C/Q/R here are just terse local scalars for the hand-math below, NOT the
+# control-theory letters the public API deliberately renames away from
+# (dynamics/sensor_model/dynamics_noise/sensor_noise). Inside one short test
+# module the letters keep the scalar Kalman recursion readable; they carry no
+# API meaning.
 A, C, Q, R = 0.9, 1.0, 0.5, 1.0
 PRIOR_MEAN, PRIOR_VAR = 0.0, 10.0
 OBSERVATIONS = [1.2, 0.8, 1.5, 2.1, 1.9, 2.4, 2.0, 1.7]
@@ -57,11 +62,25 @@ class TestKalmanBackend:
         kf = KalmanBackend(model)
         belief = model.prior
         for y, (mean_exp, var_exp) in zip(
-            OBSERVATIONS, _independent_scalar_filter(OBSERVATIONS), strict=False
+            OBSERVATIONS, _independent_scalar_filter(OBSERVATIONS), strict=True
         ):
             belief = kf.infer_states(np.array([y]), belief)
             np.testing.assert_allclose(belief.mean, [mean_exp], rtol=1e-12)
             np.testing.assert_allclose(belief.cov, [[var_exp]], rtol=1e-12)
+
+    def test_final_step_matches_rxinfer_oracle(self):
+        """Anchor the recursion against a *truly external* oracle: RxInfer.jl."""
+        rxinfer_final_mean = 1.679270599888
+        rxinfer_final_var = 0.467784044120
+
+        model = _scalar_model()
+        kf = KalmanBackend(model)
+        belief = model.prior
+        for y in OBSERVATIONS:
+            belief = kf.infer_states(np.array([y]), belief)
+
+        np.testing.assert_allclose(belief.mean, [rxinfer_final_mean], rtol=1e-11)
+        np.testing.assert_allclose(belief.cov, [[rxinfer_final_var]], rtol=1e-11)
 
     def test_filtering_reduces_uncertainty(self):
         model = _scalar_model()
