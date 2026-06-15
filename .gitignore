@@ -47,6 +47,9 @@ dmypy.json
 *.swp
 .DS_Store
 
+# Docs build output (MkDocs)
+site/
+
 # Project-local
 .remember/
 .claude/

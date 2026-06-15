@@ -41,6 +41,12 @@ dev = [
     "scipy>=1.15.3",
     "pre-commit>=4.0",
 ]
+# Documentation site (MkDocs + Material + mkdocstrings). API pages are generated
+# from the Google-style docstrings. Build with `uv run --group docs mkdocs serve`.
+docs = [
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.26",
+]
 
 [build-system]
 requires = ["hatchling"]
