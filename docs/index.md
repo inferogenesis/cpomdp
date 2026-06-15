@@ -12,7 +12,7 @@ That's the whole idea: keep the pymdp muscle memory, swap the discrete machinery
 pip install cpomdp
 ```
 
-It isn't on PyPI quite yet. Until it lands, grab it from the repo:
+Or the latest from source:
 
 ```bash
 pip install git+https://github.com/DanBoringName/cpomdp
