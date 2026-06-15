@@ -1,6 +1,7 @@
 from typing import Protocol, runtime_checkable
 
 import numpy as np
+from numpy.typing import NDArray
 
 from cpomdp.types import Belief, LinearGaussianModel
 
@@ -25,9 +26,9 @@ class InferenceBackend(Protocol):
 
     def infer_states(
         self,
-        observation: np.ndarray,
+        observation: NDArray[np.float64],
         prior: Belief,
-        action: np.ndarray | None = None,
+        action: NDArray[np.float64] | None = None,
     ) -> Belief:
         """Advance the belief by one filter step: ``prior`` in, posterior out.
 
@@ -40,10 +41,10 @@ class InferenceBackend(Protocol):
 
 def validate_step_inputs(
     model: LinearGaussianModel,
-    observation: np.ndarray,
+    observation: NDArray[np.float64],
     prior: Belief,
-    action: np.ndarray | None,
-) -> tuple[np.ndarray, np.ndarray | None]:
+    action: NDArray[np.float64] | None,
+) -> tuple[NDArray[np.float64], NDArray[np.float64] | None]:
     """Coerce and shape-check one step's inputs at the trust boundary.
 
     ``LinearGaussianModel`` validates the model once at construction; this gives

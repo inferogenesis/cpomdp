@@ -1,5 +1,5 @@
 import numpy as np
-from numpy.typing import ArrayLike
+from numpy.typing import ArrayLike, NDArray
 
 from cpomdp.backends.base import InferenceBackend
 from cpomdp.backends.kalman import KalmanBackend
@@ -93,8 +93,8 @@ class Agent:
                     "preferences need a goal to act toward."
                 )
             self._controller: LQRController | None = None
-            self._goal: np.ndarray | None = None
-            self._last_action: np.ndarray | None = None
+            self._goal: NDArray[np.float64] | None = None
+            self._last_action: NDArray[np.float64] | None = None
         else:
             # acting agent — build the front-loaded controller now.
             n, p = model.n_states, model.n_controls
@@ -143,7 +143,7 @@ class Agent:
         )
         return self.belief
 
-    def sample_action(self) -> np.ndarray:
+    def sample_action(self) -> NDArray[np.float64]:
         """The action that best drives the current belief toward the goal.
 
         Reads the current belief mean and returns the LQR-optimal action,

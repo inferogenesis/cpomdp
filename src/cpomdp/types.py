@@ -1,12 +1,12 @@
 from dataclasses import dataclass
 
 import numpy as np
-from numpy.typing import ArrayLike
+from numpy.typing import ArrayLike, NDArray
 
 __all__ = ["Belief", "LinearGaussianModel"]
 
 
-def _validate_covariance(cov: np.ndarray, name: str) -> None:
+def _validate_covariance(cov: NDArray[np.float64], name: str) -> None:
     """Square (2-D, n x n) + symmetric check.
 
     Shared by Belief.cov, dynamics_noise and sensor_noise — all three are
@@ -43,8 +43,8 @@ class Belief:
     ADR-002).
     """
 
-    mean: np.ndarray
-    cov: np.ndarray  # covariance
+    mean: NDArray[np.float64]
+    cov: NDArray[np.float64]  # covariance
 
     def __init__(self, mean: ArrayLike, cov: ArrayLike) -> None:
         object.__setattr__(self, "mean", np.asarray(mean, dtype=float))
@@ -105,12 +105,12 @@ class LinearGaussianModel:
     no ``control`` is a pure filtering (tracking) model.
     """
 
-    dynamics: np.ndarray
-    sensor_model: np.ndarray
-    dynamics_noise: np.ndarray
-    sensor_noise: np.ndarray
+    dynamics: NDArray[np.float64]
+    sensor_model: NDArray[np.float64]
+    dynamics_noise: NDArray[np.float64]
+    sensor_noise: NDArray[np.float64]
     prior: Belief
-    control: np.ndarray | None
+    control: NDArray[np.float64] | None
 
     def __init__(
         self,
@@ -202,21 +202,21 @@ class LinearGaussianModel:
 
     # --- control-theory letter aliases (for backend/maths internals) ---
     @property
-    def A(self) -> np.ndarray:
+    def A(self) -> NDArray[np.float64]:
         return self.dynamics
 
     @property
-    def B(self) -> np.ndarray | None:
+    def B(self) -> NDArray[np.float64] | None:
         return self.control
 
     @property
-    def C(self) -> np.ndarray:
+    def C(self) -> NDArray[np.float64]:
         return self.sensor_model
 
     @property
-    def Q(self) -> np.ndarray:
+    def Q(self) -> NDArray[np.float64]:
         return self.dynamics_noise
 
     @property
-    def R(self) -> np.ndarray:
+    def R(self) -> NDArray[np.float64]:
         return self.sensor_noise

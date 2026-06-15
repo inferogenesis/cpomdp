@@ -9,12 +9,14 @@ license-files = ["LICENSE"]
 authors = [{ name = "DanBoringName", email = "130509178+DanBoringName@users.noreply.github.com" }]
 keywords = ["active-inference", "pomdp", "kalman", "bayesian", "control"]
 classifiers = [
+    # No "License ::" classifier: PEP 639 forbids pairing it with the SPDX
+    # `license` expression above, and PyPI rejects the upload if both appear.
     "Development Status :: 2 - Pre-Alpha",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Typing :: Typed",
 ]

@@ -14,11 +14,16 @@ from functools import lru_cache
 from typing import Any
 
 import numpy as np
+from numpy.typing import NDArray
 
 from cpomdp.backends.base import validate_step_inputs
 from cpomdp.types import Belief, LinearGaussianModel
 
 __all__ = ["RxInferBackend"]
+
+# The juliacall `Main` handle is a runtime-constructed bridge object with no type
+# stubs.
+JuliaModule = Any
 
 # One filter step as a one-timestep model: prior on the previous state, one
 # transition, one observation; the posterior over x is the Kalman predict+update.
@@ -48,7 +53,7 @@ end
 
 
 @lru_cache(maxsize=1)
-def _julia() -> Any:
+def _julia() -> JuliaModule:
     """Load Julia + RxInfer and define the model, once per process.
 
     juliacall is imported here, not at module top, so the module imports without
@@ -83,9 +88,9 @@ class RxInferBackend:
 
     def infer_states(
         self,
-        observation: np.ndarray,
+        observation: NDArray[np.float64],
         prior: Belief,
-        action: np.ndarray | None = None,
+        action: NDArray[np.float64] | None = None,
     ) -> Belief:
         """Advance the belief one filter step: prior in, posterior out.
 
@@ -100,11 +105,13 @@ class RxInferBackend:
         """
         model = self.model
         observation, action = validate_step_inputs(model, observation, prior, action)
-        control_term = (
-            np.zeros(model.n_states)
-            if model.control is None
-            else model.control @ action
-        )
+        control = model.control
+        if control is None:
+            control_term = np.zeros(model.n_states)
+        else:
+            # validate_step_inputs guarantees a non-None action when control exists
+            assert action is not None
+            control_term = control @ action
 
         mean_post, cov_post = self._jl.cpomdp_run_step(
             observation,

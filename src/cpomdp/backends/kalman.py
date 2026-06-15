@@ -1,4 +1,5 @@
 import numpy as np
+from numpy.typing import NDArray
 
 from cpomdp.backends.base import validate_step_inputs
 from cpomdp.types import Belief, LinearGaussianModel
@@ -51,9 +52,9 @@ class KalmanBackend:
 
     def infer_states(
         self,
-        observation: np.ndarray,
+        observation: NDArray[np.float64],
         prior: Belief,
-        action: np.ndarray | None = None,
+        action: NDArray[np.float64] | None = None,
     ) -> Belief:
         """Advance the belief by one filter step.
 
@@ -81,11 +82,13 @@ class KalmanBackend:
         """
         model = self.model
         observation, action = validate_step_inputs(model, observation, prior, action)
-        control_term = (
-            np.zeros(model.n_states)
-            if model.control is None
-            else model.control @ action
-        )
+        control = model.control
+        if control is None:
+            control_term = np.zeros(model.n_states)
+        else:
+            # validate_step_inputs guarantees a non-None action when control exists
+            assert action is not None
+            control_term = control @ action
 
         if self.steady_state:
             gain, cov_post = self._steady_gain, self._steady_cov  # frozen
@@ -104,8 +107,8 @@ class KalmanBackend:
         return Belief(mean=mean_post, cov=cov_post)
 
     def _gain_and_posterior_cov(
-        self, prior_cov: np.ndarray
-    ) -> tuple[np.ndarray, np.ndarray]:
+        self, prior_cov: NDArray[np.float64]
+    ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
         """Run one covariance recursion: prior covariance in, ``(gain, cov_post)`` out.
 
         This is the covariance half of the Kalman step — predict and update
@@ -143,7 +146,7 @@ class KalmanBackend:
 
     def _converge_to_steady_state(
         self, tol: float, max_iter: int
-    ) -> tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
         """Iterate the covariance recursion to its fixed point (the steady state).
 
         Because ``_gain_and_posterior_cov`` is data-independent, feeding its

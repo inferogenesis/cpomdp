@@ -1,12 +1,14 @@
 import numpy as np
-from numpy.typing import ArrayLike
+from numpy.typing import ArrayLike, NDArray
 
 from cpomdp.types import LinearGaussianModel
 
 __all__ = ["LQRController"]
 
 
-def _validate_cost(matrix: np.ndarray, name: str, *, require_definite: bool) -> None:
+def _validate_cost(
+    matrix: NDArray[np.float64], name: str, *, require_definite: bool
+) -> None:
     """Symmetry + (semi)definiteness check for a preference cost matrix.
 
     ``goal_precision`` and ``effort_penalty`` are user input handed in once at
@@ -129,11 +131,11 @@ class LQRController:
         self._gain = self._converge_to_steady_state(tol, max_iter)
 
     @property
-    def gain(self) -> np.ndarray:
+    def gain(self) -> NDArray[np.float64]:
         """The steady-state feedback gain L∞, shape (p, n)."""
         return self._gain
 
-    def action(self, mean: np.ndarray, goal: ArrayLike) -> np.ndarray:
+    def action(self, mean: NDArray[np.float64], goal: ArrayLike) -> NDArray[np.float64]:
         """The action that drives the estimated state toward ``goal``.
 
         One matrix-vector product, ``-L∞·(mean − goal)`` — all the work was
@@ -163,7 +165,9 @@ class LQRController:
             )
         return -self._gain @ (mean - goal)
 
-    def _converge_to_steady_state(self, tol: float, max_iter: int) -> np.ndarray:
+    def _converge_to_steady_state(
+        self, tol: float, max_iter: int
+    ) -> NDArray[np.float64]:
         """Iterate the control Riccati recursion to its fixed point for ``L∞``.
 
         The exact dual of ``KalmanBackend._converge_to_steady_state``. The filter
