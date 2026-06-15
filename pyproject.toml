@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
-authors = [{ name = "DanBoringName", email = "130509178+DanBoringName@users.noreply.github.com" }]
+authors = [{ name = "DanBoringName"}]
 keywords = ["active-inference", "pomdp", "kalman", "bayesian", "control"]
 classifiers = [
     # No "License ::" classifier: PEP 639 forbids pairing it with the SPDX

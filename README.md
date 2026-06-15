@@ -74,7 +74,7 @@ If you've used pymdp, this table is basically the whole API:
 | `C`              | `goal` + `goal_precision`   | the state you prefer, how sharply |
 | `D`              | `model.prior`               | belief before you've seen anything |
 
-One honest difference. `sample_action` here is deterministic, not a sample from a policy posterior. For a linear-Gaussian sensor the action that minimises expected free energy turns out to be exactly the LQR optimum, so there's a single best action and that's what comes back. Same loop, exact answer. The reasoning is in [DECISIONS.md](DECISIONS.md) (ADR-003) if you want it.
+One honest difference. `sample_action` here is deterministic, not a sample from a policy posterior. For a linear-Gaussian sensor the action that minimises expected free energy turns out to be exactly the LQR optimum, so there's a single best action and that's what comes back. Same loop, exact answer. The reasoning is in [DECISIONS.md](https://github.com/DanBoringName/cpomdp/blob/main/DECISIONS.md) (ADR-003) if you want it.
 
 ## Just want to track, not act?
 
