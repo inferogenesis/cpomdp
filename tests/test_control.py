@@ -136,6 +136,33 @@ class TestLQRValidation:
                 control_cost=[[1.0, 0.0], [0.0, 1.0]],
             )
 
+    def test_rejects_asymmetric_state_cost(self):
+        # An off-diagonal typo: symmetric on shape, asymmetric in value. Without
+        # the check this silently yields a non-symmetric cost-to-go and a wrong
+        # gain — the hardest failure to trace in a control loop.
+        with pytest.raises(ValueError, match="symmetric"):
+            LQRController(
+                _point_mass_model(),
+                state_cost=[[1.0, 0.5], [-0.5, 1.0]],
+                control_cost=CONTROL_COST,
+            )
+
+    def test_rejects_indefinite_control_cost(self):
+        # control_cost is inverted against in the gain solve; a zero (singular)
+        # cost must fail loudly, not blow up mid-recursion.
+        with pytest.raises(ValueError, match="positive-definite"):
+            LQRController(
+                _point_mass_model(), state_cost=STATE_COST, control_cost=[[0.0]]
+            )
+
+    def test_rejects_negative_semidefinite_state_cost(self):
+        with pytest.raises(ValueError, match="positive-semi-definite"):
+            LQRController(
+                _point_mass_model(),
+                state_cost=[[-1.0, 0.0], [0.0, 1.0]],
+                control_cost=CONTROL_COST,
+            )
+
     def test_raises_when_not_converged(self):
         # max_iter too small to reach the fixed point -> a loud failure, not a
         # silently-wrong frozen gain. Mirrors the Kalman steady-state guard.

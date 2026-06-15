@@ -6,6 +6,47 @@ from cpomdp.types import LinearGaussianModel
 __all__ = ["LQRController"]
 
 
+def _validate_cost(matrix: np.ndarray, name: str, *, require_definite: bool) -> None:
+    """Symmetry + (semi)definiteness check for an LQR cost matrix.
+
+    Cost matrices are user input handed in once at construction — the trust
+    boundary — so unlike a per-step belief covariance they're checked in full
+    here. (``types._validate_covariance`` skips definiteness on purpose because
+    it runs on every filter step; this runs once, so it doesn't have to.) Both
+    failure modes this catches are the silently-wrong-in-a-loop kind that are
+    hardest to trace downstream: a non-symmetric cost (an off-diagonal typo)
+    quietly yields a non-symmetric cost-to-go and a wrong gain, and a singular or
+    indefinite ``control_cost`` — which the gain solve inverts against — blows up
+    or returns garbage.
+
+    Args:
+        matrix: The already-shape-checked cost matrix.
+        name: Field name for error messages.
+        require_definite: ``True`` for ``control_cost`` (must be positive-
+            *definite*, since it is inverted against); ``False`` for
+            ``state_cost`` (positive-*semi*-definite is enough).
+    """
+    if not np.allclose(matrix, matrix.T):
+        raise ValueError(f"{name} must be symmetric.")
+    if require_definite:
+        # Cholesky succeeds iff (symmetric) positive-definite — the standard test.
+        try:
+            np.linalg.cholesky(matrix)
+        except np.linalg.LinAlgError as exc:
+            raise ValueError(
+                f"{name} must be positive-definite — the gain solve inverts "
+                "against it — but it is singular or indefinite."
+            ) from exc
+    else:
+        eigvals = np.linalg.eigvalsh(matrix)  # symmetric ⇒ real eigenvalues
+        tol = 1e-8 * max(1.0, float(np.abs(eigvals).max()))
+        if eigvals.min() < -tol:
+            raise ValueError(
+                f"{name} must be positive-semi-definite, but its smallest "
+                f"eigenvalue is {eigvals.min():.3g}."
+            )
+
+
 class LQRController:
     """Steady-state LQR action selection — the action-side dual of the filter.
 
@@ -44,7 +85,8 @@ class LQRController:
 
     Raises:
         ValueError: If the model has no ``control`` matrix, or a cost matrix does
-            not match the state/action dimensions.
+            not match the state/action dimensions, is not symmetric, or fails its
+            definiteness requirement (``state_cost`` PSD, ``control_cost`` PD).
         RuntimeError: If the control Riccati does not converge within ``max_iter``
             — typically because ``(dynamics, control)`` is not stabilisable.
     """
@@ -78,6 +120,8 @@ class LQRController:
                 f"control_cost must be {p}x{p} to match the {p}-D action, "
                 f"got shape {self._control_cost.shape}"
             )
+        _validate_cost(self._state_cost, "state_cost", require_definite=False)
+        _validate_cost(self._control_cost, "control_cost", require_definite=True)
 
         self._gain = self._converge_to_steady_state(tol, max_iter)
 
