@@ -138,7 +138,7 @@ class LQRController:
         """The steady-state feedback gain L∞, shape (p, n)."""
         return self._gain
 
-    def action(self, mean: Float64[Array, "n"], goal: ArrayLike) -> Float64[Array, "p"]:
+    def action(self, mean: ArrayLike, goal: ArrayLike) -> Float64[Array, "p"]:
         """The action that drives the estimated state toward ``goal``.
 
         One matrix-vector product, ``-L∞·(mean − goal)`` — all the work was
@@ -160,6 +160,7 @@ class LQRController:
             ValueError: If ``goal`` is not a 1-D vector of length ``n``.
         """
         # self._gain : (p, n) L∞;  mean, goal : (n,);  returns (p,)
+        mean = jnp.asarray(mean, dtype=float)
         goal = jnp.asarray(goal, dtype=float)
         if goal.shape != (self.model.n_states,):
             raise ValueError(
