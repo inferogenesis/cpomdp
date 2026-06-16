@@ -2,8 +2,8 @@
 
 The native KalmanBackend is the default fast path; this re-derives the same
 linear-Gaussian filter step through RxInfer.jl's message passing, reached
-in-process via juliacall (ADR-001/002). Sharing no code with the NumPy path, it
-is the independent check that the fast path's matrix algebra is right.
+in-process via juliacall (ADR-001/002). Sharing no code with the JAX fast path,
+it is the independent check that the fast path's matrix algebra is right.
 
 Starting Julia is slow (import + ``using RxInfer`` + JIT warmup), so it is done
 once per process, lazily, on the first backend built — never per inference.
