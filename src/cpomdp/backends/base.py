@@ -2,8 +2,9 @@
 
 from typing import Protocol, runtime_checkable
 
-import numpy as np
-from numpy.typing import NDArray
+import jax.numpy as jnp
+from jaxtyping import Array, Float64
+from numpy.typing import ArrayLike
 
 from cpomdp.types import Belief, LinearGaussianModel
 
@@ -23,14 +24,14 @@ class InferenceBackend(Protocol):
     The Protocol is structural: any class with a matching ``infer_states`` is a
     backend, with no shared base class. This is the abstraction wall — the
     native Kalman fast path and the RxInfer oracle are interchangeable behind it,
-    and neither's implementation (NumPy, juliacall, …) leaks into this signature.
+    and neither's implementation (JAX, juliacall, …) leaks into this signature.
     """
 
     def infer_states(
         self,
-        observation: NDArray[np.float64],
+        observation: ArrayLike,
         prior: Belief,
-        action: NDArray[np.float64] | None = None,
+        action: ArrayLike | None = None,
     ) -> Belief:
         """Advance the belief by one filter step: ``prior`` in, posterior out.
 
@@ -43,10 +44,10 @@ class InferenceBackend(Protocol):
 
 def validate_step_inputs(
     model: LinearGaussianModel,
-    observation: NDArray[np.float64],
+    observation: ArrayLike,
     prior: Belief,
-    action: NDArray[np.float64] | None,
-) -> tuple[NDArray[np.float64], NDArray[np.float64] | None]:
+    action: ArrayLike | None,
+) -> tuple[Float64[Array, "m"], Float64[Array, "p"] | None]:
     """Coerce and shape-check one step's inputs at the trust boundary.
 
     ``LinearGaussianModel`` validates the model once at construction; this gives
@@ -75,7 +76,7 @@ def validate_step_inputs(
             over the ``n``-D state, the model needs an action but got ``None``,
             or ``action`` is not shape ``(p,)``.
     """
-    observation = np.asarray(observation, dtype=float)
+    observation = jnp.asarray(observation, dtype=float)
     m = model.n_observations
     if observation.shape != (m,):
         raise ValueError(
@@ -96,7 +97,7 @@ def validate_step_inputs(
         raise ValueError(
             "this model has a control matrix; infer_states requires an action"
         )
-    action = np.asarray(action, dtype=float)
+    action = jnp.asarray(action, dtype=float)
     p = model.n_controls
     if action.shape != (p,):
         raise ValueError(

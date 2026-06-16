@@ -2,6 +2,24 @@
 
 Everything worth noting lands here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [semantic versioning](https://semver.org). While we're pre-1.0, treat the minor version as the place breaking changes can show up.
 
+## [0.2.0] — 2026-06-16
+
+The array backend moves from NumPy to JAX (ADR-004). v0.1 was a proof of concept; this is the groundwork for the autodiff and batching v0.2 is aiming at.
+
+### Changed
+
+- The core runs on `jax.numpy`. `Belief` and `LinearGaussianModel` now hold `jax.Array`s, and the Kalman filter and LQR are pure `jnp`. If you were reaching past the public API and expecting `numpy.ndarray` off `belief.mean`, you'll get a `jax.Array` now — both still hand off to NumPy, so most code won't notice.
+- Importing `cpomdp` switches JAX into float64 mode (`jax_enable_x64`) process-wide. The library is validated to 1e-9 against the RxInfer oracle and JAX defaults to float32, so this keeps the numbers right — but it does change float behaviour for any other JAX code in the same process.
+
+### Added
+
+- `Belief` and `LinearGaussianModel` are registered JAX pytrees, so they flow through `jit`, `vmap`, and `grad` as data.
+- The Kalman step is split into pure, `jit`-compiled kernels — one filter step now `vmap`s over a batch of beliefs.
+
+### Dependencies
+
+- Added `jax` and `jaxtyping`. NumPy stays: JAX pulls it in anyway, and the RxInfer backend still hands real NumPy arrays across the Julia bridge.
+
 ## [0.1.1] — 2026-06-15
 
 A metadata-only re-release, functionally identical to 0.1.0. The 0.1.0 release has

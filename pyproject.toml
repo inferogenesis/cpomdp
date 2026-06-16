@@ -1,6 +1,6 @@
 [project]
 name = "cpomdp"
-version = "0.1.1"
+version = "0.2.0"
 description = "Continuous active inference for Python — the continuous-state sibling of pymdp."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -22,6 +22,8 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
+    "jax>=0.4",
+    "jaxtyping>=0.3.7",
     "numpy>=1.24",
 ]
 
@@ -91,12 +93,22 @@ ignore = [
     # Constructors are documented at the class level (the Args sections live in the
     # class docstrings), so an extra __init__ docstring would just duplicate them.
     "D107",
+    # jaxtyping shape strings (Float64[Array, "n n"]) read as forward annotations to
+    # pyflakes/pyupgrade: they can't parse the axes (F722), read a single axis as an
+    # undefined name (F821), or want to strip the "quotes" (UP037, which would break
+    # the shape). All false positives; ty catches genuine undefined-name errors.
+    "F722",
+    "F821",
+    "UP037",
 ]
 # Deliberately not enabled: PL* — magic-value / arg-count / lazy-import warnings all
 # fire on legitimate numerical code and the intentional lazy Julia import.
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
+
+[tool.ruff.lint.flake8-import-conventions.extend-aliases]
+"jax.numpy" = "jnp"
 
 [tool.ruff.lint.per-file-ignores]
 # Tests document themselves by name; don't require docstrings on them.

@@ -1,12 +1,77 @@
 """Exact Kalman-filter inference backend (per-step and steady-state modes)."""
 
-import numpy as np
-from numpy.typing import NDArray
+import jax
+import jax.numpy as jnp
+from jaxtyping import Array, Float64
+from numpy.typing import ArrayLike
 
 from cpomdp.backends.base import validate_step_inputs
 from cpomdp.types import Belief, LinearGaussianModel
 
 __all__ = ["KalmanBackend"]
+
+
+@jax.jit
+def _gain_and_posterior_cov(
+    dynamics: Float64[Array, "n n"],
+    sensor_model: Float64[Array, "m n"],
+    dynamics_noise: Float64[Array, "n n"],
+    sensor_noise: Float64[Array, "m m"],
+    prior_cov: Float64[Array, "n n"],
+) -> tuple[Float64[Array, "n m"], Float64[Array, "n n"]]:
+    """Run one covariance recursion: prior covariance in, ``(gain, cov_post)`` out.
+
+    This is the covariance half of the Kalman step — predict and update applied to
+    the *uncertainty* rather than the mean::
+
+        cov_pred = A · prior_cov · Aᵀ + Q       # predict: dynamics inflate it
+        S        = C · cov_pred · Cᵀ + R        # prediction-error covariance
+        gain     = cov_pred · Cᵀ · S⁻¹          # how far to trust the reading
+        cov_post = (I − gain · C) · cov_pred    # update: the reading shrinks it
+
+    (A=dynamics, C=sensor_model, Q=dynamics_noise, R=sensor_noise.) The gain is
+    obtained via ``jnp.linalg.solve`` against ``S`` rather than an explicit inverse,
+    for numerical stability. Crucially this depends only on the model and
+    ``prior_cov``, never on an observation — which is exactly what lets the
+    steady-state mode precompute it once and the per-step mode recompute it cheaply
+    each step. Pure and ``jit``-compiled, so it also drops into ``vmap``/``grad``.
+
+    Args:
+        dynamics: The state-transition matrix A, shape ``(n, n)``.
+        sensor_model: The observation matrix C, shape ``(m, n)``.
+        dynamics_noise: The process-noise covariance Q, shape ``(n, n)``.
+        sensor_noise: The observation-noise covariance R, shape ``(m, m)``.
+        prior_cov: The incoming belief's covariance, shape ``(n, n)``.
+
+    Returns:
+        ``(gain, cov_post)``: the Kalman gain, shape ``(n, m)``, and the posterior
+        covariance, shape ``(n, n)``, for this step.
+    """
+    cov_pred = dynamics @ prior_cov @ dynamics.T + dynamics_noise
+    prediction_error_cov = sensor_model @ cov_pred @ sensor_model.T + sensor_noise
+    gain = jnp.linalg.solve(prediction_error_cov, sensor_model @ cov_pred).T
+    cov_post = (jnp.eye(dynamics.shape[0]) - gain @ sensor_model) @ cov_pred
+    return gain, cov_post
+
+
+@jax.jit
+def _posterior_mean(
+    dynamics: Float64[Array, "n n"],
+    sensor_model: Float64[Array, "m n"],
+    prior_mean: Float64[Array, "n"],
+    control_term: Float64[Array, "n"],
+    gain: Float64[Array, "n m"],
+    observation: Float64[Array, "m"],
+) -> Float64[Array, "n"]:
+    """The mean half of the Kalman step: predict the mean, then correct it.
+
+    Steps the prior mean through the dynamics (adding the pre-computed
+    ``control_term``), then nudges it toward ``observation`` by the gain times the
+    prediction error (the "innovation"). Pure and ``jit``-compiled.
+    """
+    mean_pred = dynamics @ prior_mean + control_term
+    prediction_error = observation - sensor_model @ mean_pred
+    return mean_pred + gain @ prediction_error
 
 
 class KalmanBackend:
@@ -54,9 +119,9 @@ class KalmanBackend:
 
     def infer_states(
         self,
-        observation: NDArray[np.float64],
+        observation: ArrayLike,
         prior: Belief,
-        action: NDArray[np.float64] | None = None,
+        action: ArrayLike | None = None,
     ) -> Belief:
         """Advance the belief by one filter step.
 
@@ -65,6 +130,11 @@ class KalmanBackend:
         prediction toward ``observation`` using the Kalman gain. In steady-state
         mode the gain and covariance are the frozen fixed-point values; otherwise
         they are recomputed from ``prior.cov`` on this step.
+
+        The numeric work is delegated to the ``jit``-compiled module kernels
+        (``_gain_and_posterior_cov``, ``_posterior_mean``); this method stays the
+        eager orchestrator that validates inputs and wraps the result in a
+        ``Belief``.
 
         Args:
             observation: The latest sensor reading, shape ``(m,)``.
@@ -86,7 +156,7 @@ class KalmanBackend:
         observation, action = validate_step_inputs(model, observation, prior, action)
         control = model.control
         if control is None:
-            control_term = np.zeros(model.n_states)
+            control_term = jnp.zeros(model.n_states)
         else:
             # validate_step_inputs guarantees a non-None action when control exists
             assert action is not None
@@ -95,60 +165,28 @@ class KalmanBackend:
         if self.steady_state:
             gain, cov_post = self._steady_gain, self._steady_cov  # frozen
         else:
-            gain, cov_post = self._gain_and_posterior_cov(prior.cov)
+            gain, cov_post = _gain_and_posterior_cov(
+                model.dynamics,
+                model.sensor_model,
+                model.dynamics_noise,
+                model.sensor_noise,
+                prior.cov,
+            )
 
-        # Mean half of the Kalman predict step
-        mean_pred = model.dynamics @ prior.mean + control_term
-
-        # prediction_error: observation minus predicted observation
-        # ("innovation" in Kalman terms). Its covariance is the gain denominator.
-        prediction_error = observation - model.sensor_model @ mean_pred
-
-        mean_post = mean_pred + gain @ prediction_error
+        mean_post = _posterior_mean(
+            model.dynamics,
+            model.sensor_model,
+            prior.mean,
+            control_term,
+            gain,
+            observation,
+        )
 
         return Belief(mean=mean_post, cov=cov_post)
 
-    def _gain_and_posterior_cov(
-        self, prior_cov: NDArray[np.float64]
-    ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-        """Run one covariance recursion: prior covariance in, ``(gain, cov_post)`` out.
-
-        This is the covariance half of the Kalman step — predict and update
-        applied to the *uncertainty* rather than the mean::
-
-            cov_pred = A · prior_cov · Aᵀ + Q       # predict: dynamics inflate it
-            S        = C · cov_pred · Cᵀ + R        # prediction-error covariance
-            gain     = cov_pred · Cᵀ · S⁻¹          # how far to trust the reading
-            cov_post = (I − gain · C) · cov_pred    # update: the reading shrinks it
-
-        (Letters are the model's aliases: A=dynamics, C=sensor_model,
-        Q=dynamics_noise, R=sensor_noise.) The gain is obtained via
-        ``np.linalg.solve`` against ``S`` rather than an explicit inverse, for
-        numerical stability. Crucially this depends only on the model and
-        ``prior_cov``, never on an observation — which is exactly what lets the
-        steady-state mode precompute it once and the per-step mode recompute it
-        cheaply each step.
-
-        Args:
-            prior_cov: The incoming belief's covariance, shape ``(n, n)``.
-
-        Returns:
-            ``(gain, cov_post)``: the Kalman gain, shape ``(n, m)``, and the
-            posterior covariance, shape ``(n, n)``, for this step.
-        """
-        model = self.model
-        cov_pred = model.dynamics @ prior_cov @ model.dynamics.T + model.dynamics_noise
-        prediction_error_cov = (
-            model.sensor_model @ cov_pred @ model.sensor_model.T + model.sensor_noise
-        )
-        gain = np.linalg.solve(prediction_error_cov, model.sensor_model @ cov_pred).T
-        cov_post = (np.eye(model.n_states) - gain @ model.sensor_model) @ cov_pred
-
-        return gain, cov_post
-
     def _converge_to_steady_state(
         self, tol: float, max_iter: int
-    ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    ) -> tuple[Float64[Array, "n m"], Float64[Array, "n n"]]:
         """Iterate the covariance recursion to its fixed point (the steady state).
 
         Because ``_gain_and_posterior_cov`` is data-independent, feeding its
@@ -180,8 +218,14 @@ class KalmanBackend:
         model = self.model
         cov = model.prior.cov
         for _ in range(max_iter):
-            gain, cov_post = self._gain_and_posterior_cov(cov)
-            if np.allclose(cov, cov_post, atol=tol, rtol=0.0):
+            gain, cov_post = _gain_and_posterior_cov(
+                model.dynamics,
+                model.sensor_model,
+                model.dynamics_noise,
+                model.sensor_noise,
+                cov,
+            )
+            if jnp.allclose(cov, cov_post, atol=tol, rtol=0.0):
                 return (
                     gain,
                     cov,

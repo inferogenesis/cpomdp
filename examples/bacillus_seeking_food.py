@@ -53,7 +53,7 @@ BELIEF = "#E69F00"  # orange       -- the belief mean (mu)
 SIGMA = "#56B4E9"  # sky blue     -- the uncertainty ellipse (Sigma)
 FOOD = "#D55E00"  # vermillion   -- the food / goal
 
-VERSION_TAG = "cpomdp v0.1.1"
+VERSION_TAG = "cpomdp v0.2.0"
 
 
 def build_model(dt: float) -> tuple[LinearGaussianModel, np.ndarray, np.ndarray]:

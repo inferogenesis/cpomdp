@@ -1,7 +1,8 @@
 """Steady-state LQR action selection: the action-side dual of the Kalman filter."""
 
-import numpy as np
-from numpy.typing import ArrayLike, NDArray
+import jax.numpy as jnp
+from jaxtyping import Array, Float64
+from numpy.typing import ArrayLike
 
 from cpomdp.types import LinearGaussianModel
 
@@ -9,7 +10,7 @@ __all__ = ["LQRController"]
 
 
 def _validate_cost(
-    matrix: NDArray[np.float64], name: str, *, require_definite: bool
+    matrix: Float64[Array, "dim dim"], name: str, *, require_definite: bool
 ) -> None:
     """Symmetry + (semi)definiteness check for a preference cost matrix.
 
@@ -30,20 +31,20 @@ def _validate_cost(
             *definite*, since it is inverted against); ``False`` for
             ``goal_precision`` (positive-*semi*-definite is enough).
     """
-    if not np.allclose(matrix, matrix.T):
+    if not jnp.allclose(matrix, matrix.T):
         raise ValueError(f"{name} must be symmetric.")
     if require_definite:
         # Cholesky succeeds iff (symmetric) positive-definite — the standard test.
-        try:
-            np.linalg.cholesky(matrix)
-        except np.linalg.LinAlgError as exc:
+        # JAX fills the result with NaNs instead of raising when it fails, so the
+        # NaN check is what flags a singular or indefinite matrix.
+        if bool(jnp.isnan(jnp.linalg.cholesky(matrix)).any()):
             raise ValueError(
                 f"{name} must be positive-definite — the gain solve inverts "
                 "against it — but it is singular or indefinite."
-            ) from exc
+            )
     else:
-        eigvals = np.linalg.eigvalsh(matrix)  # symmetric ⇒ real eigenvalues
-        tol = 1e-8 * max(1.0, float(np.abs(eigvals).max()))
+        eigvals = jnp.linalg.eigvalsh(matrix)  # symmetric ⇒ real eigenvalues
+        tol = 1e-8 * max(1.0, float(jnp.abs(eigvals).max()))
         if eigvals.min() < -tol:
             raise ValueError(
                 f"{name} must be positive-semi-definite, but its smallest "
@@ -113,8 +114,8 @@ class LQRController:
                 "so there is nothing to act with."
             )
         self.model = model
-        self._goal_precision = np.asarray(goal_precision, dtype=float)
-        self._effort_penalty = np.asarray(effort_penalty, dtype=float)
+        self._goal_precision = jnp.asarray(goal_precision, dtype=float)
+        self._effort_penalty = jnp.asarray(effort_penalty, dtype=float)
 
         n, p = model.n_states, model.n_controls
         if self._goal_precision.shape != (n, n):
@@ -133,11 +134,11 @@ class LQRController:
         self._gain = self._converge_to_steady_state(tol, max_iter)
 
     @property
-    def gain(self) -> NDArray[np.float64]:
+    def gain(self) -> Float64[Array, "p n"]:
         """The steady-state feedback gain L∞, shape (p, n)."""
         return self._gain
 
-    def action(self, mean: NDArray[np.float64], goal: ArrayLike) -> NDArray[np.float64]:
+    def action(self, mean: ArrayLike, goal: ArrayLike) -> Float64[Array, "p"]:
         """The action that drives the estimated state toward ``goal``.
 
         One matrix-vector product, ``-L∞·(mean − goal)`` — all the work was
@@ -159,7 +160,8 @@ class LQRController:
             ValueError: If ``goal`` is not a 1-D vector of length ``n``.
         """
         # self._gain : (p, n) L∞;  mean, goal : (n,);  returns (p,)
-        goal = np.asarray(goal, dtype=float)
+        mean = jnp.asarray(mean, dtype=float)
+        goal = jnp.asarray(goal, dtype=float)
         if goal.shape != (self.model.n_states,):
             raise ValueError(
                 f"goal must be a 1-D vector of length {self.model.n_states} "
@@ -169,7 +171,7 @@ class LQRController:
 
     def _converge_to_steady_state(
         self, tol: float, max_iter: int
-    ) -> NDArray[np.float64]:
+    ) -> Float64[Array, "p n"]:
         """Iterate the control Riccati recursion to its fixed point for ``L∞``.
 
         The exact dual of ``KalmanBackend._converge_to_steady_state``. The filter
@@ -189,7 +191,7 @@ class LQRController:
             L∞ = (effort_penalty + Bᵀ P∞ B)⁻¹ (Bᵀ P∞ A)
 
         (A=dynamics, B=control.) The ``(effort_penalty + Bᵀ P B)`` term is solved
-        against with ``np.linalg.solve`` rather than inverted explicitly, for the
+        against with ``jnp.linalg.solve`` rather than inverted explicitly, for the
         same numerical reason the filter solves against its innovation covariance.
 
         Returns:
@@ -213,12 +215,12 @@ class LQRController:
                 self._goal_precision  # pay now
                 + dynamics.T @ cost_to_go @ dynamics  # cost the dynamics carry forward
                 - dyn_cost_ctrl
-                @ np.linalg.solve(
+                @ jnp.linalg.solve(
                     inner, dyn_cost_ctrl.T
                 )  # what optimal action buys back
             )
 
-            if np.allclose(cost_to_go, next_cost_to_go, atol=tol, rtol=0.0):
+            if jnp.allclose(cost_to_go, next_cost_to_go, atol=tol, rtol=0.0):
                 cost_to_go = next_cost_to_go
                 break
             cost_to_go = next_cost_to_go
@@ -230,4 +232,4 @@ class LQRController:
             )
 
         inner = self._effort_penalty + control.T @ cost_to_go @ control
-        return np.linalg.solve(inner, control.T @ cost_to_go @ dynamics)  # L∞  (p×n)
+        return jnp.linalg.solve(inner, control.T @ cost_to_go @ dynamics)  # L∞  (p×n)

@@ -29,7 +29,7 @@ pip install "cpomdp[rxinfer]"
 Here's an agent steering a point mass to a target. It can push the mass and it can see its position, but it never sees velocity. The filter has to work that out from how the position moves.
 
 ```python
-import numpy as np
+import jax.numpy as jnp
 from cpomdp import Agent, Belief, LinearGaussianModel
 
 # State is [position, velocity]. A push changes velocity, velocity carries
@@ -39,22 +39,22 @@ model = LinearGaussianModel(
     dynamics=[[1, dt], [0, 1]],          # velocity carries position along
     control=[[0], [dt]],                 # a push nudges velocity
     sensor_model=[[1, 0]],               # we observe position only
-    dynamics_noise=np.eye(2) * 1e-6,
+    dynamics_noise=jnp.eye(2) * 1e-6,
     sensor_noise=[[1e-2]],
-    prior=Belief(mean=[0, 0], cov=np.eye(2)),
+    prior=Belief(mean=[0, 0], cov=jnp.eye(2)),
 )
 
 # Tell it where to go: sit still at position 1.
 agent = Agent(model, goal=[1.0, 0.0])
 
-true_state = np.array([0.0, 0.0])
+true_state = jnp.array([0.0, 0.0])
 for _ in range(100):
     obs = model.sensor_model @ true_state            # what the agent gets to see
     agent.infer_states(obs)                           # perceive
     action = agent.sample_action()                    # act
     true_state = model.dynamics @ true_state + model.control @ action
 
-print(np.round(agent.belief.mean, 3))   # ≈ [1, 0]
+print(jnp.round(agent.belief.mean, 3))   # ≈ [1, 0]
 ```
 
 The belief lands on `[1, 0]`: the agent worked out it was at position 1 and sitting still, which is exactly where we asked it to go, and it did it without ever seeing the velocity it had to control.

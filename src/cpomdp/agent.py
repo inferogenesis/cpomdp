@@ -1,7 +1,8 @@
 """The ``Agent`` façade: a stateful perceive/act loop over a ``LinearGaussianModel``."""
 
-import numpy as np
-from numpy.typing import ArrayLike, NDArray
+import jax.numpy as jnp
+from jaxtyping import Array, Float64
+from numpy.typing import ArrayLike
 
 from cpomdp.backends.base import InferenceBackend
 from cpomdp.backends.kalman import KalmanBackend
@@ -95,25 +96,25 @@ class Agent:
                     "preferences need a goal to act toward."
                 )
             self._controller: LQRController | None = None
-            self._goal: NDArray[np.float64] | None = None
-            self._last_action: NDArray[np.float64] | None = None
+            self._goal: Float64[Array, "n"] | None = None
+            self._last_action: Float64[Array, "p"] | None = None
         else:
             # acting agent — build the front-loaded controller now.
             n, p = model.n_states, model.n_controls
-            self._goal = np.asarray(goal, dtype=float)
+            self._goal = jnp.asarray(goal, dtype=float)
             if self._goal.shape != (n,):
                 raise ValueError(
                     f"goal must be a 1-D vector of length {n} (the state "
                     f"dimension), got shape {self._goal.shape}"
                 )
-            goal_precision = np.eye(n) if goal_precision is None else goal_precision
-            effort_penalty = np.eye(p) if effort_penalty is None else effort_penalty
+            goal_precision = jnp.eye(n) if goal_precision is None else goal_precision
+            effort_penalty = jnp.eye(p) if effort_penalty is None else effort_penalty
             self._controller = LQRController(
                 model, goal_precision=goal_precision, effort_penalty=effort_penalty
             )
             # No action applied yet — the first predict step coasts on zero
             # control, then sample_action overwrites this each step.
-            self._last_action = np.zeros(p)
+            self._last_action = jnp.zeros(p)
 
     def infer_states(self, observation: ArrayLike) -> Belief:
         """Fold one observation into the belief and return the updated belief.
@@ -139,13 +140,13 @@ class Agent:
             ValueError: On a shape mismatch in ``observation`` (enforced by the
                 backend; see ``validate_step_inputs``).
         """
-        observation = np.asarray(observation, dtype=float)
+        observation = jnp.asarray(observation, dtype=float)
         self.belief = self._backend.infer_states(
             observation, self.belief, self._last_action
         )
         return self.belief
 
-    def sample_action(self) -> NDArray[np.float64]:
+    def sample_action(self) -> Float64[Array, "p"]:
         """The action that best drives the current belief toward the goal.
 
         Reads the current belief mean and returns the LQR-optimal action,

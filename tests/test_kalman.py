@@ -1,7 +1,13 @@
+import jax
+import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from cpomdp.backends.kalman import KalmanBackend
+from cpomdp.backends.kalman import (
+    KalmanBackend,
+    _gain_and_posterior_cov,
+    _posterior_mean,
+)
 from cpomdp.types import Belief, LinearGaussianModel
 
 # Scalar linear-Gaussian setup, matching the Phase-0 spike.
@@ -224,3 +230,50 @@ class TestKalmanSteadyState:
         # silently-wrong frozen gain.
         with pytest.raises(RuntimeError, match="converge"):
             KalmanBackend(_scalar_model(), steady_state=True, max_iter=1)
+
+
+class TestJitReady:
+    def test_kernels_jitted_step_matches_eager_backend(self):
+        # The whole step rebuilt from the jit-compiled kernels must reproduce the
+        # eager backend exactly — proving the hot path is pure and traceable.
+        model = _scalar_model()
+        eager = KalmanBackend(model).infer_states(jnp.array([1.2]), model.prior)
+
+        @jax.jit
+        def step(observation, prior_mean, prior_cov):
+            gain, cov_post = _gain_and_posterior_cov(
+                model.dynamics,
+                model.sensor_model,
+                model.dynamics_noise,
+                model.sensor_noise,
+                prior_cov,
+            )
+            mean_post = _posterior_mean(
+                model.dynamics,
+                model.sensor_model,
+                prior_mean,
+                jnp.zeros(model.n_states),
+                gain,
+                observation,
+            )
+            return mean_post, cov_post
+
+        mean_post, cov_post = step(jnp.array([1.2]), model.prior.mean, model.prior.cov)
+        np.testing.assert_allclose(mean_post, eager.mean, rtol=1e-12)
+        np.testing.assert_allclose(cov_post, eager.cov, rtol=1e-12)
+
+    def test_gain_kernel_vmaps_over_a_batch_of_covariances(self):
+        # vmap is the payoff the migration buys: one filter, many beliefs at once.
+        model = _scalar_model()
+        covs = jnp.array([[[1.0]], [[5.0]], [[10.0]]])
+        gains, cov_posts = jax.vmap(
+            lambda c: _gain_and_posterior_cov(
+                model.dynamics,
+                model.sensor_model,
+                model.dynamics_noise,
+                model.sensor_noise,
+                c,
+            )
+        )(covs)
+        assert gains.shape == (3, 1, 1)
+        assert cov_posts.shape == (3, 1, 1)

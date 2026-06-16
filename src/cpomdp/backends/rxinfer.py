@@ -2,8 +2,8 @@
 
 The native KalmanBackend is the default fast path; this re-derives the same
 linear-Gaussian filter step through RxInfer.jl's message passing, reached
-in-process via juliacall (ADR-001/002). Sharing no code with the NumPy path, it
-is the independent check that the fast path's matrix algebra is right.
+in-process via juliacall (ADR-001/002). Sharing no code with the JAX fast path,
+it is the independent check that the fast path's matrix algebra is right.
 
 Starting Julia is slow (import + ``using RxInfer`` + JIT warmup), so it is done
 once per process, lazily, on the first backend built — never per inference.
@@ -13,8 +13,9 @@ Importing this module does not touch Julia.
 from functools import lru_cache
 from typing import Any
 
+import jax.numpy as jnp
 import numpy as np
-from numpy.typing import NDArray
+from numpy.typing import ArrayLike
 
 from cpomdp.backends.base import validate_step_inputs
 from cpomdp.types import Belief, LinearGaussianModel
@@ -88,9 +89,9 @@ class RxInferBackend:
 
     def infer_states(
         self,
-        observation: NDArray[np.float64],
+        observation: ArrayLike,
         prior: Belief,
-        action: NDArray[np.float64] | None = None,
+        action: ArrayLike | None = None,
     ) -> Belief:
         """Advance the belief one filter step: prior in, posterior out.
 
@@ -107,21 +108,23 @@ class RxInferBackend:
         observation, action = validate_step_inputs(model, observation, prior, action)
         control = model.control
         if control is None:
-            control_term = np.zeros(model.n_states)
+            control_term = jnp.zeros(model.n_states)
         else:
             # validate_step_inputs guarantees a non-None action when control exists
             assert action is not None
             control_term = control @ action
 
+        # juliacall speaks numpy, not jax.Array, so coerce every array as it
+        # crosses into Julia and coerce the posteriors back on the way out.
         mean_post, cov_post = self._jl.cpomdp_run_step(
-            observation,
-            model.dynamics,
-            model.sensor_model,
-            model.dynamics_noise,
-            model.sensor_noise,
-            prior.mean,
-            prior.cov,
-            control_term,
+            np.asarray(observation),
+            np.asarray(model.dynamics),
+            np.asarray(model.sensor_model),
+            np.asarray(model.dynamics_noise),
+            np.asarray(model.sensor_noise),
+            np.asarray(prior.mean),
+            np.asarray(prior.cov),
+            np.asarray(control_term),
         )
 
         return Belief(mean=np.asarray(mean_post), cov=np.asarray(cov_post))

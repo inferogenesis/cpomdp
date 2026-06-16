@@ -17,12 +17,18 @@ import it explicitly from ``cpomdp.backends.rxinfer`` so the core stays
 Julia-free.
 """
 
+import jax
+
 from cpomdp.agent import Agent
 from cpomdp.backends.base import InferenceBackend
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.types import Belief, LinearGaussianModel
 
-__version__ = "0.1.1"
+# Float64 throughout — the oracle matches to 1e-9 and JAX defaults to float32.
+# Process-global by necessity; see ADR-004.
+jax.config.update("jax_enable_x64", True)
+
+__version__ = "0.2.0"
 
 __all__ = [
     "Agent",

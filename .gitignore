@@ -53,6 +53,4 @@ site/
 # Project-local
 .remember/
 .claude/
-
-# Tracked artifacts, remove on release.
-spike/
+rfcs/
