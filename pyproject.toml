@@ -22,6 +22,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
+    "jax>=0.4",
     "numpy>=1.24",
 ]
 
@@ -97,6 +98,9 @@ ignore = [
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
+
+[tool.ruff.lint.flake8-import-conventions.extend-aliases]
+"jax.numpy" = "jnp"
 
 [tool.ruff.lint.per-file-ignores]
 # Tests document themselves by name; don't require docstrings on them.

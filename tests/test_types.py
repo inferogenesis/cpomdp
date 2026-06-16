@@ -1,3 +1,5 @@
+import jax
+import jax.numpy as jnp
 import numpy as np
 import pytest
 
@@ -12,8 +14,8 @@ class TestBeliefs:
 
     def test_coerce_lists_to_float_arrays(self):
         b = Belief(mean=[0, 1], cov=[[1, 0], [0, 1]])
-        assert isinstance(b.mean, np.ndarray)
-        assert b.mean.dtype == np.float64
+        assert isinstance(b.mean, jax.Array)
+        assert b.mean.dtype == jnp.float64
 
     def test_rejects_mean_not_1D(self):
         with pytest.raises(ValueError, match="1-D"):
@@ -107,3 +109,52 @@ class TestLinearGaussianModels:
     def test_rejects_prior_not_a_belief(self):
         with pytest.raises(TypeError, match="Belief"):
             LinearGaussianModel(**_valid_kwargs(prior=[0.0, 0.0]))
+
+
+class TestPytreeRegistration:
+    def test_belief_flattens_to_its_two_arrays(self):
+        b = Belief(mean=[1.0, 2.0], cov=[[1.0, 0.0], [0.0, 1.0]])
+        leaves = jax.tree_util.tree_leaves(b)
+        assert len(leaves) == 2
+
+    def test_belief_survives_a_flatten_unflatten_round_trip(self):
+        b = Belief(mean=[1.0, 2.0], cov=[[2.0, 0.5], [0.5, 3.0]])
+        leaves, treedef = jax.tree_util.tree_flatten(b)
+        restored = jax.tree_util.tree_unflatten(treedef, leaves)
+        assert isinstance(restored, Belief)
+        np.testing.assert_array_equal(restored.mean, b.mean)
+        np.testing.assert_array_equal(restored.cov, b.cov)
+
+    def test_unflatten_does_not_re_validate(self):
+        # JAX rebuilds from leaves under jit/vmap/grad, where leaves are tracers;
+        # the rebuild path must not run the symmetry/shape checks. An asymmetric
+        # cov that __init__ would reject must pass straight through unflatten.
+        asymmetric = jnp.array([[1.0, 0.9], [0.2, 1.0]])
+        rebuilt = jax.tree_util.tree_unflatten(
+            jax.tree_util.tree_structure(Belief(mean=[0.0, 0.0], cov=jnp.eye(2))),
+            [jnp.zeros(2), asymmetric],
+        )
+        np.testing.assert_array_equal(rebuilt.cov, asymmetric)
+
+    def test_vmap_maps_over_a_batch_of_beliefs(self):
+        b1 = Belief(mean=[1.0, 0.0], cov=jnp.eye(2))
+        b2 = Belief(mean=[0.0, 1.0], cov=jnp.eye(2))
+        batch = jax.tree_util.tree_map(lambda *xs: jnp.stack(xs), b1, b2)
+        means = jax.vmap(lambda b: b.mean)(batch)
+        assert means.shape == (2, 2)
+        np.testing.assert_array_equal(means, [[1.0, 0.0], [0.0, 1.0]])
+
+    def test_model_round_trips_and_keeps_control_none(self):
+        m = LinearGaussianModel(**_valid_kwargs())
+        leaves, treedef = jax.tree_util.tree_flatten(m)
+        restored = jax.tree_util.tree_unflatten(treedef, leaves)
+        assert isinstance(restored, LinearGaussianModel)
+        assert restored.control is None
+        np.testing.assert_array_equal(restored.dynamics, m.dynamics)
+        np.testing.assert_array_equal(restored.prior.mean, m.prior.mean)
+
+    def test_model_round_trips_with_control(self):
+        m = LinearGaussianModel(**_valid_kwargs(control=[[0.0], [1.0]]))
+        leaves, treedef = jax.tree_util.tree_flatten(m)
+        restored = jax.tree_util.tree_unflatten(treedef, leaves)
+        np.testing.assert_array_equal(restored.control, m.control)

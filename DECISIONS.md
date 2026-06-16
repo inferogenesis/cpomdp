@@ -4,6 +4,49 @@ Decisions are append-only. Each records the choice, the evidence, and the date.
 
 ---
 
+## ADR-004 — v0.2 array backend: **JAX (`jax.numpy`), pytree-registered types, x64 on import**
+
+**Date:** 2026-06-15
+**Status:** Accepted
+**Phase:** v0.2 (array-backend migration)
+**Amends:** ADR-002 (supersedes its "JAX: not adopted reflexively … core stays NumPy-only" scope guard)
+
+### Decision
+
+The core array backend moves from NumPy to `jax.numpy`. Three concrete choices:
+
+1. **Pytree-registered types, jit-ready hot paths.** `Belief` and
+   `LinearGaussianModel` register as JAX pytrees, and the per-step filter and
+   action selection are pure functions over `jnp` arrays. This is the actual
+   payoff: `vmap` over beliefs, `grad` of a cost/EFE, and `jit`-compiled rollouts
+   become available without a second rewrite.
+2. **`jax_enable_x64` is set at import** (`cpomdp/__init__.py`). The whole library
+   is validated against the RxInfer oracle to 1e-9; JAX defaults to float32, which
+   would silently break those matches. The trade-off is a process-global side
+   effect — importing `cpomdp` flips x64 on for the user's entire JAX session.
+   Accepted because silent float32 degradation in a numerical library is the worse
+   failure.
+3. **NumPy is kept as a dependency.** JAX pulls it in transitively anyway, and the
+   RxInfer backend hands *real* numpy arrays across the juliacall boundary
+   (juliacall does not speak `jax.Array`). Core maths is `jnp`; numpy survives at
+   the Julia boundary and in test assertions.
+
+### Why now (the ADR-002 trigger has fired)
+
+ADR-002 deferred JAX until "autodiff (EFE gradients, param learning) or vmap/GPU
+actually pays." v0.2's roadmap is exactly that work — gradients of preferences and
+batched rollouts — so the trigger condition it named has arrived. v0.1 was a
+proof of concept; the migration is the first v0.2 increment, done module-by-module
+under TDD with the RxInfer oracle held fixed as the cross-check.
+
+### Validation strategy
+
+Unchanged in spirit: the native JAX filter is still checked against the RxInfer
+oracle and the per-step Kalman recursion. The oracle path stays NumPy/Julia, so
+agreement to tolerance is an independent confirmation the `jnp` algebra is right.
+
+---
+
 ## ADR-003 — v0.1 grows an acting agent: stateful `Agent` + front-loaded LQR
 
 **Date:** 2026-06-14
