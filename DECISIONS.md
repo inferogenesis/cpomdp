@@ -4,6 +4,98 @@ Decisions are append-only. Each records the choice, the evidence, and the date.
 
 ---
 
+## ADR-005 — v0.3 EFE decomposition: **observation-space cross-entropy pragmatic − state info-gain epistemic** (provisional / speculative)
+
+**Date:** 2026-06-17
+**Status:** Accepted **provisionally** — the *choice of form* is not yet validated; see "Validation obligation" (rfcs/004).
+**Phase:** v0.3, Phase 1A (the one-step EFE core, `efe.py`)
+**Extends:** ADR-003 (which argued the EFE collapse in *state* space; this commits v0.3 to *observation*-space EFE and records the resulting tension).
+
+### Decision
+
+The one-step Expected Free Energy for the linear-Gaussian regime is computed as
+**decomposition (b): cross-entropy pragmatic minus state information-gain
+epistemic**, with `G = pragmatic − epistemic` minimised. For belief `(μ, Σ)`,
+action `a`, model `(A, B, Q)` with sensor `(C, R)`, and an **observation-space**
+preference `(g, Λ)`:
+
+    μ⁺ = Aμ + Ba    Σ⁺ = AΣAᵀ + Q    o⁺ = Cμ⁺    S = CΣ⁺Cᵀ + R
+    pragmatic = ½(o⁺ − g)ᵀΛ(o⁺ − g) + ½tr(ΛS)        # cross-entropy = −E_Q[ln P(o)] + const
+    epistemic = ½(ln det S − ln det R)               # = I(state; obs), state info gain ≥ 0
+
+`S` is computed once and feeds both terms; `Σ_post`/Kalman gain are not needed for
+the one-step value (only for the H-step rollout, Phase 3). The full derivation and
+the per-line `FRAGILE(lit)` flags live in `efe.py`'s module docstring.
+
+### Why this is flagged speculative
+
+There is **no single agreed EFE formula** in the active-inference literature: the
+pragmatic term has at least three forms in circulation and sources disagree on
+signs and on whether risk is a cross-entropy or a KL. This is an area the owner is
+candidly **outside their core expertise** on. We are choosing one route and
+*committing to prove it* rather than asserting it is canonical.
+
+### The three candidate pragmatic forms (the disagreement axis)
+
+- **mean-only:** `½(o⁺ − g)ᵀΛ(o⁺ − g)` — drops the variance penalty.
+- **cross-entropy (CHOSEN):** `mean + ½tr(ΛS)` = `−E_Q[ln P(o)]` up to a constant.
+- **KL-risk:** `cross-entropy − H[Q(o)]` = `mean + ½tr(ΛS) − ½ln det S − ½ln det Λ − m/2`.
+
+**No-double-count rule (load-bearing):** cross-entropy pairs with **−info-gain**
+(decomposition b); KL-risk pairs with **+ambiguity** `½ln det(2πe R)` (decomposition
+a). Both give the *same* `G`. Pairing KL-risk with −info-gain double-counts `H[Q(o)]`.
+Our pairing (cross-entropy − info-gain) is internally consistent.
+
+**Validated correction (rfcs/004, multi-agent + numeric proof).** The framing above
+of "three candidate forms" is partly misleading: cross-entropy (−info-gain) and
+*correctly-paired* KL-risk (+ambiguity) are the **same objective** (differ only by
+the constant `c`), so they can never be discriminated. The genuinely distinct trio
+is **mean-only / full form / forbidden mix**: their S-dependent parts (scalar, Λ)
+are minimised at `S = ∞`-indifferent, `S = 1/Λ`, and `S = 2/Λ` respectively. So the
+real literature fork is **mean-only vs the full form** (whether risk includes the
+`½tr(ΛS)` predicted-observation-variance penalty); the forbidden mix is a
+double-counting *bug*, not a third option. Independent re-derivation verified the
+locked algebra to machine precision.
+
+### Open tensions (do not lose these)
+
+1. **Preference domain.** v0.3 EFE reads preferences in **observation** space
+   (canonical pymdp/Friston), but the v0.1 LQR path uses a **state**-space goal.
+   The single `Preference` type now has two consumers with different domain
+   assumptions; they coincide only when `C = I`. Reconciling them (map via `C`, or
+   a typed domain) is an **open design item**, deferred to the EFESelector/Agent
+   wiring (Phase 4–5).
+2. **Salience only.** We compute *state* information gain (salience), not
+   *parameter* information gain (novelty). Novelty is out of scope.
+
+### Validation obligation (the reason this ADR is "provisional")
+
+Because the literature disagrees, **a passing implementation is not evidence of a
+correct choice.** Critically, the **fixed-sensor collapse test does NOT
+discriminate** the three forms — they differ only by terms that are constant in
+the action under a fixed sensor, so all three pass it. A genuine discriminating
+test must (a) use a state-dependent sensor so the forms choose different actions,
+or (b) check the value against an independent oracle, or (c) verify the
+decision-theoretic limit reductions (Sajid et al. 2021: flat-preference → Bayesian
+optimal design; no-ambiguity → expected utility). **rfcs/004** now records the
+discriminating plan (produced by a multi-agent research pass): an analytic
+tied-mean / straddled-S argmin flip [*proves*], a murky-goal-corridor behavioural
+test [*hints*], and an MC convention-independent cross-check [*proves faithfulness*]
+— all requiring the Phase-2 state-dependent sensor. Until one is implemented and
+passes, treat the *form choice* (not the implementation) as unproven. Honest
+ceiling: no oracle can prove decomposition (b) is *the* correct EFE; the strongest
+earnable claim is "self-consistent and double-count-free."
+
+### Validation strategy (implementation correctness, distinct from form choice)
+
+`expected_free_energy` is checked against an **independent NumPy oracle**
+(`tests/test_efe.py::_numpy_efe`, a separate code path — no shared helpers), plus
+the collapse property and `jit`/`vmap`/`grad` agreement. That confirms the *algebra
+of the chosen form* is right; it says nothing about whether the form is the right
+one (see above).
+
+---
+
 ## ADR-004 — v0.2 array backend: **JAX (`jax.numpy`), pytree-registered types, x64 on import**
 
 **Date:** 2026-06-15
