@@ -10,11 +10,11 @@ Full documentation — API reference and guides — lives at [inferogenesis.gith
 
 ## Example
 
-A bacillus seeking food — the continuous-state answer to pymdp's mouse-seeking-cheese. The body sits at the **true** hidden state; the orange `+` is where the agent *believes* it is (`belief.mean`); the blue ellipse is its uncertainty (`belief.cov`), wide at first and shrinking as the Kalman filter locks on; the star is the food (the goal the LQR controller steers toward). It perceives, acts, and arrives.
+Four bacilli seeking food in the same world — the continuous-state answer to pymdp's mouse-seeking-cheese, now with the **epistemic** term v0.3 adds. Each body sits at its **true** hidden state; the orange `+` is where it *believes* it is (`belief.mean`); the ellipse is its uncertainty (`belief.cov`); the star is the food (the goal). A **beacon** marks where the sensor is sharp, so visiting it collapses the agent's uncertainty. The four differ in **one number only** — the weight λ on the information-seeking term of the Expected Free Energy each minimises (`G = pragmatic − λ·epistemic`): with no epistemic term, **classic LQR** beelines to the food; **too little λ** barely deflects; the **right λ** detours to the beacon to localise, *then* heads to the food; **too much λ** and it never leaves the beacon. One knob, four behaviours.
 
-![A bacillus navigating to food via continuous active inference](docs/assets/bacillus.gif)
+![Four bacilli navigating to food under different epistemic weights λ, via continuous active inference](docs/assets/bacillus.gif)
 
-Reproduce it with [`examples/bacillus_seeking_food.py`](examples/bacillus_seeking_food.py) (`pip install matplotlib pillow`).
+Reproduce it with [`examples/bacillus_seeking_food.py`](examples/bacillus_seeking_food.py) (`pip install "cpomdp[examples]"`). More — including the original v0.2 single-bacillus demo — in the [examples gallery](examples/README.md).
 
 ## Install
 

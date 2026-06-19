@@ -57,6 +57,7 @@ plugins:
 
 nav:
   - Home: index.md
+  - Examples: examples.md
   - API reference:
       - Agent: api/agent.md
       - Model & belief: api/model.md
