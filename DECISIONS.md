@@ -590,3 +590,30 @@ consistency net). The two seams are now symmetric: `R(x)` on the sensor
   inline fast path gates on `is None` only (harmless — `FixedSensor.gaussianize`
   returns the constant `R` — but an asymmetry to reconcile later).
 - The Jensen / second-order term (Phase 2.5 `NonlinearSensor`).
+
+### Shown end-to-end — the flagship demo
+
+`examples/bacillus_seeking_food.py` is the visual counterpart to the payoff above
+(and the README hero). Four bacilli share one `CallableSensor` precision-well `R(x)`
+and one `KalmanBackend` perceiving *on* that `R(x)`, differing only in how much they
+value information. It renders the regimes this ADR's "honest note" already describes:
+pragmatic-dominant (beelines, stays uncertain), balanced (detours to the beacon,
+localises, *then* reaches the goal), and epistemic-dominant (seeks and *holds* the
+beacon, never reaches the goal). The original v0.2 fixed-sensor LQR demo is kept in
+the gallery (`examples/README.md`) as the before-picture.
+
+Two framing notes, so the demo isn't mis-read back into the library:
+
+- **The "λ" knob is the demo's, not the kernel's.** `expected_free_energy` is fixed at
+  `pragmatic − epistemic` (ADR-005); there is no weight in it. The demo calls the
+  kernel directly over a 2-D action grid (its own — `EFESelector` is still p=1) and
+  *recombines* the returned `{pragmatic, epistemic}` split as `pragmatic − λ·epistemic`
+  to sweep the balance on one clean axis. It is the same balance the payoff above tips
+  via preference precision `Λ` (weak `Λ` ⇒ epistemic-dominant), reparameterised from the
+  other side for a four-panel story.
+- **One-step EFE needs one-step observability.** The demo is a single integrator
+  (`μ⁺ = μ + dt·a`; the action moves the observed position *this* step). On a double
+  integrator the action moves only velocity, so it does not touch the predicted
+  observation for one step and the H=1 kernel goes action-flat in *both* terms — a
+  concrete face of the ADR-007 myopia, and another reason the H≥2 rollout stays a
+  named seam.
