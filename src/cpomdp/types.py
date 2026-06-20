@@ -126,6 +126,13 @@ class LinearGaussianModel:
 
     Dimensions: ``n`` = state, ``m`` = observation, ``p`` = action. A model with
     no ``control`` is a pure filtering (tracking) model.
+
+    Three optional fields (all default ``None`` → the plain fixed-matrix model)
+    extend it: ``observation`` (an :class:`~cpomdp.observation.ObservationModel` for
+    state-dependent sensing ``R(x)``), ``process_noise`` (a
+    :class:`~cpomdp.dynamics.DynamicsNoise` for state-dependent process noise
+    ``Q(x)``), and ``structure`` (a :class:`~cpomdp.structure.ModelStructure`
+    declaring the factor / Markov-blanket partition).
     """
 
     dynamics: Float64[Array, "n n"]

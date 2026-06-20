@@ -22,21 +22,34 @@ import jax
 from cpomdp.agent import Agent
 from cpomdp.backends.base import InferenceBackend
 from cpomdp.backends.kalman import KalmanBackend
-from cpomdp.selection import ObservationGoal, StateGoal
+from cpomdp.dynamics import CallableProcessNoise, DynamicsNoise
+from cpomdp.efe import expected_free_energy
+from cpomdp.observation import CallableSensor, FixedSensor, ObservationModel
+from cpomdp.selection import EFESelector, ObservationGoal, Preference, StateGoal
+from cpomdp.structure import ModelStructure
 from cpomdp.types import Belief, LinearGaussianModel
 
 # Float64 throughout — the oracle matches to 1e-9 and JAX defaults to float32.
 # Process-global by necessity; see ADR-004.
 jax.config.update("jax_enable_x64", True)
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __all__ = [
     "Agent",
     "Belief",
+    "CallableProcessNoise",
+    "CallableSensor",
+    "DynamicsNoise",
+    "EFESelector",
+    "FixedSensor",
     "InferenceBackend",
     "KalmanBackend",
     "LinearGaussianModel",
+    "ModelStructure",
     "ObservationGoal",
+    "ObservationModel",
+    "Preference",
     "StateGoal",
+    "expected_free_energy",
 ]
