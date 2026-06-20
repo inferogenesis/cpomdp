@@ -22,6 +22,12 @@ class TestBeliefs:
         with pytest.raises(ValueError, match="1-D"):
             Belief(mean=[[0.0]], cov=[[1.0]])
 
+    def test_rejects_nonfinite_mean(self):
+        # A NaN/Inf mean (e.g. from a degenerate upstream step) must be rejected, not
+        # silently propagated as a NaN belief.
+        with pytest.raises(ValueError, match="finite"):
+            Belief(mean=[0.0, float("nan")], cov=[[1.0, 0.0], [0.0, 1.0]])
+
     def test_rejects_cov_not_2D(self):
         with pytest.raises(ValueError, match="2-D"):
             Belief(mean=[0.0], cov=[1.0])
@@ -33,6 +39,16 @@ class TestBeliefs:
     def test_rejects_asymmetric_cov(self):
         with pytest.raises(ValueError, match="symmetric"):
             Belief(mean=[0.0, 0.0], cov=[[1.0, 0.2], [0.9, 1.0]])
+
+    def test_rejects_indefinite_cov(self):
+        # eigenvalues (-1, 3): a plausible "correlation larger than the variances"
+        # typo. Without the PSD check the Kalman update yields a negative variance.
+        with pytest.raises(ValueError, match="positive-semi-definite"):
+            Belief(mean=[0.0, 0.0], cov=[[1.0, 2.0], [2.0, 1.0]])
+
+    def test_accepts_semidefinite_cov(self):
+        # A degenerate (zero-variance) but valid covariance must still construct.
+        Belief(mean=[0.0, 0.0], cov=[[1.0, 0.0], [0.0, 0.0]])
 
     def test_ndim_reports_state_dimension(self):
         assert Belief(mean=[0.0], cov=[[1.0]]).ndim == 1
@@ -97,6 +113,24 @@ class TestLinearGaussianModels:
     def test_rejects_sensor_noise_wrong_size(self):
         with pytest.raises(ValueError, match="sensor_noise"):
             LinearGaussianModel(**_valid_kwargs(sensor_noise=[[1.0, 0.0], [0.0, 1.0]]))
+
+    def test_rejects_indefinite_dynamics_noise(self):
+        with pytest.raises(ValueError, match="positive-semi-definite"):
+            LinearGaussianModel(
+                **_valid_kwargs(dynamics_noise=[[-1.0, 0.0], [0.0, -1.0]])
+            )
+
+    def test_rejects_negative_sensor_noise(self):
+        # sensor_noise is positive-DEFINITE (not just PSD): the epistemic term inverts
+        # it, so a negative or zero R is rejected.
+        with pytest.raises(ValueError, match="positive-definite"):
+            LinearGaussianModel(**_valid_kwargs(sensor_noise=[[-0.5]]))
+
+    def test_rejects_noiseless_sensor_noise(self):
+        # A noiseless R=0 sends the EFE information gain to +inf and silently
+        # collapses action selection — reject it as not positive-definite.
+        with pytest.raises(ValueError, match="positive-definite"):
+            LinearGaussianModel(**_valid_kwargs(sensor_noise=[[0.0]]))
 
     def test_rejects_control_wrong_rows(self):
         with pytest.raises(ValueError, match="control"):

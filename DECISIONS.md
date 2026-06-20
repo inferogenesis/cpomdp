@@ -76,7 +76,7 @@ so they cannot be re-forgotten.
 ## ADR-005 — v0.3 EFE decomposition: **observation-space cross-entropy pragmatic − state info-gain epistemic** (provisional / speculative)
 
 **Date:** 2026-06-17
-**Status:** Accepted **provisionally** — the *choice of form* is not yet validated; see "Validation obligation" (rfcs/004).
+**Status:** Accepted — the validation obligation is **discharged in v0.3** (the Phase-2 discriminators landed; see "Resolution" at the end). The residual — no oracle can prove decomposition (b) is uniquely *the* EFE — is a permanent epistemic ceiling, not a v0.3 blocker.
 **Phase:** v0.3, Phase 1A (the one-step EFE core, `efe.py`)
 **Extends:** ADR-003 (which argued the EFE collapse in *state* space; this commits v0.3 to *observation*-space EFE and records the resulting tension).
 
@@ -162,6 +162,27 @@ earnable claim is "self-consistent and double-count-free."
 the collapse property and `jit`/`vmap`/`grad` agreement. That confirms the *algebra
 of the chosen form* is right; it says nothing about whether the form is the right
 one (see above).
+
+### Resolution (v0.3 — obligation discharged)
+
+The discriminating tests this ADR demanded have landed and pass (full suite green), so
+the *form choice* is now validated to its honest ceiling:
+
+- **Not mean-only:** `test_pragmatic_carries_variance_penalty_not_mean_only` — the
+  `½tr(ΛS)` penalty moves `G` where mean-only would tie it.
+- **Faithful to the cross-entropy:** `test_pragmatic_matches_monte_carlo_cross_entropy`
+  (Phase 2b) — the pragmatic *formula* matches a Monte-Carlo estimate of
+  `E_Q[½(o−g)ᵀΛ(o−g)]`, independent of the analytic oracle.
+- **Full, not the forbidden mix:** `TestStraddledSFlip` (Phase 2d, internal-`Q` regime,
+  `R` held fixed so the flip's math is honest) — the kernel picks `S=1/Λ` while the
+  forbidden mix picks `S=2/Λ`; `test_kernel_g_is_full_not_forbidden_mix` shows the gap
+  is exactly `H[Q(o)]`.
+
+Open tension #1 (the observation- vs state-space `Preference` domain) was resolved by
+**ADR-007** (typed `StateGoal`/`ObservationGoal`). What remains is only the *permanent*
+ceiling this ADR already named — no oracle proves decomposition (b) is uniquely *the*
+EFE — which is acknowledged, not a blocker. The earnable claim ("self-consistent,
+double-count-free, and MC-faithful") is now earned.
 
 ---
 
@@ -536,7 +557,7 @@ v0.3 payoff (RFC-001): *EFE drives uncertainty below LQR*.
 
 - **Fixed sensor** (`observation is None or is_fixed`): unchanged — direct reads of
   `model.sensor_model`/`model.sensor_noise`, no `linearize`, no dispatch. The hot
-  path stays **byte-identical and lean** (CLAUDE.md / RFC-001); the whole existing
+  path stays **byte-identical and lean** (RFC-001); the whole existing
   `test_kalman.py` suite passing unmodified is the regression proof.
 - **State-dependent sensor**: compute the predicted mean `μ⁻ = A·μ + B·a`, then
   `(C, R) = observation.linearize(μ⁻)`, and feed that `(C, R)` to the (unchanged)
@@ -617,3 +638,148 @@ Two framing notes, so the demo isn't mis-read back into the library:
   observation for one step and the H=1 kernel goes action-flat in *both* terms — a
   concrete face of the ADR-007 myopia, and another reason the H≥2 rollout stays a
   named seam.
+
+---
+
+## ADR-009 — v0.3 Phase 3: the H-step rollout seam (`policy_efe`, default H=1)
+
+**Date:** 2026-06-20
+**Status:** Accepted
+**Phase:** v0.3, Phase 3 (Workstream B)
+**Extends:** ADR-005 (rolls out its one-step kernel); retires the myopia named in ADR-007 and in ADR-008's "one-step observability" note.
+
+### Decision
+
+Action selection becomes horizon-shaped, with the horizon a public knob defaulting to
+1 (so existing behaviour is unchanged).
+
+1. **`_efe_step` (Fowler Extract Function).** The predict→sense→score body of
+   `expected_free_energy` moves into a private `_efe_step` returning an `_EfeStep`
+   result — the public split (`g`, `pragmatic`, `epistemic`) **plus** the three
+   intermediates the rollout consumes: `μ⁺`, `Σ⁺`, `S`. **No `C` is returned** — the
+   rollout fetches its own `C` only where it propagates, so the one-step wrapper does
+   *zero* extra work (structurally, not by trusting dead-code elimination). The wrapper
+   is byte-identical to Phase 1A.
+
+2. **`policy_efe` (the rollout).** A `lax.scan` over the policy rows, carry = the
+   propagated belief `(μ, Σ)`, summing each step's `G`. Propagation is **predict-only**:
+   the mean carries forward as the prediction `μ⁺` (the innovation has zero expectation
+   — there is no real future observation), and the covariance contracts by the Kalman
+   update `Σ_post = Σ⁺ − Σ⁺Cᵀ S⁻¹ C Σ⁺`, computed inline from the `(Σ⁺, S)` already
+   returned plus the `C` fetched in the scan step (`model.C` fixed, else
+   `linearize(μ⁺)[0]`) — *not* via `kalman._gain_and_posterior_cov`, which re-predicts
+   and would evaluate `Q`/`R` at the wrong point. `R(x)`/`Q(x)` work for free (each step
+   linearises at its own `μ⁺`). At `H=1` the rollout reduces **exactly** to
+   `expected_free_energy`. The signature is `horizon`-free — `H` is `policy.shape[0]`,
+   so a kwarg would be a redundant second source of truth.
+
+3. **`EFESelector.horizon` (the public knob).** Default 1. At `H>1` the candidate family
+   is **constant-action policies** (each grid action held for H steps), scored by
+   `policy_efe`; `select` returns the *first* action of the best one (receding-horizon).
+   Per-cycle cost stays one attributable number, `cost_per_cycle = n_candidates ·
+   horizon` (RFC-001). `horizon` threads through `ObservationGoal` to the Agent-built
+   selector; default 1 ⇒ no behaviour change.
+
+### The honest caveat (load-bearing)
+
+`horizon` selects the best *constant* action, **not** the best *sequence*. It makes
+delayed consequences visible — retiring the double-integrator action-flatness — but a
+genuinely sequential epistemic policy (*move to sense, then exploit*) needs a varying
+sequence the constant-action family cannot express. So at `H>1` the selector can still
+look myopic-ish on such tasks; it must not be over-trusted as full lookahead.
+Varying-sequence / gradient action search is the deferred v0.4 `GradientEFESelector`
+seam.
+
+### Scope
+
+`policy_efe` stays **internal** (not exported); the public surface is
+`EFESelector(horizon=…)` / `ObservationGoal(horizon=…)`. Time-varying policy families,
+gradient search, and energy instrumentation around the rollout are deferred.
+
+### Validation
+
+- **H=1 byte-identical:** `policy_efe` at H=1 equals `expected_free_energy` bit-for-bit
+  (`assert_array_equal`) across fixed / `R(x)` / `Q(x)`; the `_efe_step` extraction is
+  guarded by a frozen-kernel snapshot (`tests/test_efe_step.py`).
+- **Independent oracle:** a plain-NumPy rollout (`tests/test_policy_efe.py`, no
+  `lax.scan`, no kernel import) matches `policy_efe` to `1e-9` at H=2,3 under fixed
+  sensor, `R(x)`, and `Q(x)`; `jit` / `vmap`-over-policies / `grad`-over-policy survive;
+  the propagated covariance stays PSD each step.
+- **The demonstration:** on a double integrator (act on velocity, observe position) the
+  H=1 `G` is action-flat to machine precision while H=2 picks a sensible action matching
+  the brute-force argmin (`tests/test_double_integrator_horizon.py`).
+- `test_efe.py` and `test_efe_selector.py` pass **unmodified** — the seam is additive.
+
+---
+
+## ADR-010 — v0.3 Workstream A: declarable model structure (`ModelStructure`) + the multi-model reframing
+
+**Date:** 2026-06-20
+**Status:** Accepted
+**Phase:** v0.3, Workstream A
+**Extends:** RFC-003 §4.5 ("metadata version ships first"); relates to ADR-006 / RFC-001 ch. 8 (the *E. coli* internal-structure motive).
+
+### Decision
+
+A model may carry optional, **static** structure metadata — `ModelStructure` — that
+declares its factorisation without the v0.3 engine yet exploiting it.
+
+1. **Structure goes on the model; the Agent stays one-model.** "Multiple models" and
+   "declarable dense structure" are the **same problem** — relational structure over
+   variables — so v0.3 ships *one* substrate: a `ModelStructure` on the
+   `LinearGaussianModel`. The array-of-models convenience and the
+   hierarchical-vs-ensemble *semantics* are deferred to a v0.4 composition layer built
+   on this. (The literature is genuinely open on the semantics; committing now is the
+   opposite of securing the API.)
+
+2. **Declare + inspect + validate.** `ModelStructure` carries three index groupings —
+   `factors` (state indices per cause/block), `roles` (Markov-blanket typing:
+   external / internal / active), `channels` (observation-row typing) — with inspection
+   (`factor` / `role_of` / `channel` / `summary`) and an opt-in `validate(model)`.
+
+3. **Rides in pytree aux_data, tuple-of-tuples.** It has no traced array leaves, so it
+   is `tree_flatten` **aux**, not a child; `jit` hashes aux for its cache key, so every
+   field is a tuple of tuples (a dict/list would be unhashable and break `jit`). Two
+   models differing only in structure have different treedefs and recompile when swapped
+   as a traced arg — correct: aux *is* static identity. Arithmetic is byte-identical with
+   or without structure.
+
+### The deliberate YAGNI break (recorded on purpose)
+
+Shipping a structure layer the v0.3 engine does not yet exploit looks like the
+speculative generality this project otherwise defers (ADR-002). It is broken
+deliberately, for two reasons: **(1) secure the API early** — a structure vocabulary
+added now is a pure, backward-compatible addition; added after users have models, it
+churns everyone; **(2) it has a concrete near-term consumer** — Mattingly's *E. coli*
+work points to an internal generative model that is **distributed and multi-variable**,
+not a monolith (the same "take the internals seriously" thread as ADR-006 / RFC-001
+ch. 8). v0.3 ships the vocabulary so a researcher can *express* that reading.
+
+**Call for input.** The right factorisation of E. coli-style distributed internals is
+itself open research; field experts with a better reading are invited to a pinned repo
+Discussion (the structure docstring points there too).
+
+### Sub-decisions
+
+- **`validate()` is EXPERIMENTAL** (flagged in its docstring + the API-stability note).
+  Its *partition* checks (bounds, disjointness, coverage) are durable; its
+  *conditional-independence / sparsity* criterion is provisional — it checks one-step
+  `A`/`Q` cross-blocks now and tightens to the rigorous precision-based (`Σ⁻¹`
+  block-diagonal) test in v0.4. A model passing `validate()` in 0.3 could validate
+  differently once the rigorous test lands; flagging it keeps the annotate-now benefit
+  without promising a semantics we intend to tighten.
+- **Strict factor/role coverage is provisional and reversible.** `validate()` currently
+  requires factors and roles to *partition* the whole state (cover every index) — a
+  deliberate, reversible choice, to be relaxed if it proves a faff that turns users off.
+  Recorded so the reversal is a known option, not a regret.
+- **API tiering.** `ModelStructure`'s data + inspection surface is stable, promised API;
+  `validate()` ships experimental. `ModelStructure` is a public export (C1).
+
+### Validation
+
+- Pytree round-trip + `jit` survival + `__hash__` (the aux-hashability proof);
+  byte-identical arithmetic with structure vs `None` (`assert_array_equal`);
+  `structure=None` leaves an unchanged 8-child / `None`-aux treedef.
+- Partition failers (out-of-bounds, overlap, non-coverage); a block-structured model
+  honouring its declaration passes, while an off-block `A` or a cross-contaminating `C`
+  fails with a message naming the offending factor pair (`tests/test_structure.py`).

@@ -216,6 +216,22 @@ class TestCallableSensorBreaksCollapse:
         )
         assert all(bool(jnp.all(jnp.isfinite(g))) for g in grads)
 
+    def test_nonpd_state_noise_gives_nan_epistemic_not_finite(self):
+        # A CallableSensor whose R(x) is non-PD at the evaluated state has no real
+        # ½ln det; the epistemic term must be NaN (caught downstream by the nan-safe
+        # argmin), NOT a plausible-but-wrong finite value — slogdet's sign is kept.
+        def neg_noise(x, params):
+            # PD at the x=0 construction probe ([[1.0]]); non-PD at the μ⁺ the rollout
+            # reaches here (velocity 0.2 ⇒ [[-1.0]]) — the runtime case the probe
+            # cannot catch, where the kept slogdet sign must yield NaN.
+            return jnp.array([[1.0 - 10.0 * x[1]]])
+
+        model = _model(observation=CallableSensor([[1.0, 0.0]], neg_noise, {}))
+        epi = expected_free_energy(
+            model, _belief(), jnp.array([0.4]), _obs_preference()
+        )[1]["epistemic"]
+        assert bool(jnp.isnan(epi))
+
 
 class TestGaussianizeDispatch:
     def test_none_fast_path_matches_equivalent_fixed_sensor(self):

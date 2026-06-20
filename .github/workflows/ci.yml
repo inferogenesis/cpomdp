@@ -75,3 +75,35 @@ jobs:
           restore-keys: julia-depot-${{ runner.os }}-
       - name: pytest (rxinfer only)
         run: uv run pytest -m rxinfer
+
+  # Regenerate the committed coverage badge (docs/assets/coverage.svg) on main and
+  # commit it back if it changed. No third-party service: the SVG lives in the repo.
+  # `[skip ci]` on the commit avoids re-triggering this workflow.
+  coverage-badge:
+    name: coverage badge
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v8.2.0
+        with:
+          enable-cache: true
+          python-version: "3.12"
+      - run: uv sync --locked
+      - name: regenerate badge
+        run: |
+          uv run pytest -m "not rxinfer" --cov=cpomdp --cov-report=xml -q
+          uvx --from "genbadge[coverage]" genbadge coverage \
+            -i coverage.xml -o docs/assets/coverage.svg
+      - name: commit if changed
+        run: |
+          if ! git diff --quiet docs/assets/coverage.svg; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add docs/assets/coverage.svg
+            git commit -m "ci: update coverage badge [skip ci]"
+            git push
+          fi

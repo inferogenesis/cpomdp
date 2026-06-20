@@ -82,4 +82,4 @@ One honest difference. `sample_action` here is deterministic, not a sample from 
 - [Control](api/control.md) — the steady-state LQR controller
 
 !!! note "Status"
-    This is pre-alpha. v0.1 handles linear-Gaussian models: Kalman filtering for perception, steady-state LQR for action. The API works and the maths is tested against an independent oracle, but expect things to move before 1.0.
+    Still pre-1.0. cpomdp handles linear-Gaussian models end to end — Kalman filtering for perception, and both LQR and Expected-Free-Energy (epistemic) action selection. v0.3 secures the public API; the maths is tested against an independent oracle, but minor versions may still carry breaking changes before 1.0.

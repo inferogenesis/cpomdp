@@ -62,6 +62,12 @@ class TestPreference:
         with pytest.raises(ValueError, match="symmetric"):
             Preference(goal=[0.0, 0.0], precision=[[1.0, 0.2], [0.9, 1.0]])
 
+    def test_rejects_negative_definite_precision(self):
+        # A negative-definite "precision" makes the EFE pragmatic cost negative and
+        # inverts the agent's behaviour — reject it as a covariance/precision.
+        with pytest.raises(ValueError, match="positive-semi-definite"):
+            Preference(goal=[0.0], precision=[[-1.0]])
+
     def test_rejects_precision_shape_mismatch(self):
         with pytest.raises(ValueError, match="match"):
             Preference(goal=[0.0, 0.0], precision=[[1.0]])

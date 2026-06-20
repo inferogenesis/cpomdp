@@ -10,7 +10,7 @@ from numpy.typing import ArrayLike
 
 from cpomdp._validation import validate_covariance
 from cpomdp.control import LQRController
-from cpomdp.efe import expected_free_energy
+from cpomdp.efe import expected_free_energy, policy_efe
 from cpomdp.types import Belief, LinearGaussianModel
 
 __all__ = [
@@ -114,11 +114,19 @@ class LQRSelector:
 
 
 class EFESelector:
-    """Greedy (H=1) EFE action selection over a front-loaded candidate grid.
+    """EFE action selection over a front-loaded candidate grid, horizon-aware.
 
-    Per-cycle cost = exactly ``n_candidates`` kernel evaluations (attributable work,
-    CLAUDE.md / RFC-001). Myopic by design: one-step EFE, not horizon-aware — the
-    H-step rollout is the deferred Phase 3 seam.
+    At ``horizon = 1`` (default) it minimises one-step ``G`` over the grid. At
+    ``horizon > 1`` it scores **constant-action** policies (each grid action held for H
+    steps) via ``policy_efe`` and returns the first action of the best one
+    (receding-horizon). Per-cycle cost is a single attributable number,
+    ``cost_per_cycle = n_candidates * horizon``.
+
+    Honest caveat: ``horizon`` selects the best *constant* action, not the best
+    *sequence*. A genuinely sequential epistemic policy — move to sense, then exploit —
+    needs a varying sequence the constant-action family cannot express, so at H > 1 the
+    selector can still look myopic-ish on such tasks. True varying-sequence search is
+    the deferred v0.4 ``GradientEFESelector`` seam.
     """
 
     def __init__(
@@ -127,34 +135,74 @@ class EFESelector:
         *,
         n_candidates: int,
         action_bounds: tuple[float, float],
+        horizon: int = 1,
     ) -> None:
         if model.control is None:
             raise ValueError(
                 "EFESelector needs a model with a control matrix; an action has no "
                 "effect on a control-free (pure-tracking) model."
             )
-        self._model = model
+        p = model.control.shape[1]
+        if p != 1:
+            raise ValueError(
+                f"EFESelector searches a 1-D action grid (p=1); got p={p}. "
+                f"Multi-dimensional action search is the deferred v0.4 "
+                f"GradientEFESelector seam — pass a custom selector for p>1."
+            )
         lo, hi = action_bounds
-        # p=1 (the tests/corridor): a column of candidate actions, front-loaded once.
-        # p>1 (the 2-D figure) is a meshgrid — WIP.
+        if not lo < hi:
+            raise ValueError(
+                f"action_bounds must be (lo, hi) with lo < hi, got {action_bounds}"
+            )
+        if n_candidates < 2:
+            raise ValueError(
+                f"n_candidates must be at least 2 to search, got {n_candidates}"
+            )
+        if horizon < 1:
+            raise ValueError(f"horizon must be >= 1, got {horizon}")
+        self._model = model
+        self._horizon = horizon
         self._candidates = jnp.linspace(lo, hi, n_candidates)[:, None]
 
-    def select(self, belief: Belief, preference: Preference) -> Float64[Array, "p"]:
-        """The candidate action minimising one-step ``G`` over the front-loaded grid.
+    @staticmethod
+    def _argmin(g: Float64[Array, "k"]) -> Array:
+        # A NaN-scoring candidate must not silently win: map NaN -> +inf so it loses
+        # the search (jnp.argmin otherwise treats NaN as the minimum).
+        return jnp.argmin(jnp.where(jnp.isnan(g), jnp.inf, g))
 
-        One ``vmap`` of the EFE kernel across the candidates, then ``argmin`` — the
-        whole per-cycle cost. At H=1 the chosen candidate *is* the action (no
-        first-of-a-sequence slicing; that is the deferred horizon seam).
+    def select(self, belief: Belief, preference: Preference) -> Float64[Array, "p"]:
+        """The grid action minimising ``G`` over the horizon (the per-cycle work).
+
+        At ``horizon = 1`` one ``vmap`` of the one-step kernel + ``argmin``. At
+        ``horizon > 1`` one ``vmap`` of ``policy_efe`` over the constant-action policies
+        + ``argmin``, returning the first (= constant) action of the best policy.
         """
-        g = jax.vmap(
-            lambda a: expected_free_energy(self._model, belief, a, preference)[0]
-        )(self._candidates)
-        return self._candidates[jnp.argmin(g)]
+        if self._horizon == 1:
+            g = jax.vmap(
+                lambda a: expected_free_energy(self._model, belief, a, preference)[0]
+            )(self._candidates)
+            return self._candidates[self._argmin(g)]
+        # H>1: each candidate becomes a constant-action policy (held for H steps).
+        policies = jnp.repeat(self._candidates[:, None, :], self._horizon, axis=1)
+        g = jax.vmap(lambda pol: policy_efe(self._model, belief, pol, preference)[0])(
+            policies
+        )
+        return self._candidates[self._argmin(g)]  # first (= constant) action
 
     @property
     def n_candidates(self) -> int:
         """The per-cycle EFE-evaluation count — attributable work (RFC-001)."""
         return self._candidates.shape[0]
+
+    @property
+    def horizon(self) -> int:
+        """The lookahead depth — constant-action steps scored per candidate."""
+        return self._horizon
+
+    @property
+    def cost_per_cycle(self) -> int:
+        """Per-cycle step-evals = n_candidates * horizon."""
+        return self.n_candidates * self._horizon
 
 
 @dataclass(frozen=True, init=False)
@@ -210,17 +258,19 @@ class ObservationGoal:
     The complete spec for the information-seeking path - the preferred observation,
     how sharply it is preferred (``precision``), and the action-search config the
     EFESelector front-loads: ``action_bounds`` is the action box, ``n_candidates``
-    its resolution. The Agent dispatches an ObservationGoal to an EFESelector. Not
-    a pytree - construction-time only; the Agent extracts a Preference.
+    its resolution, ``horizon`` its lookahead depth. The Agent dispatches an
+    ObservationGoal to an EFESelector. Not a pytree - construction-time only; the
+    Agent extracts a Preference.
     """
 
     target: Float64[Array, "m"]
     precision: Float64[Array, "m m"]
     action_bounds: tuple[float, float]
     n_candidates: int
+    horizon: int
 
     def __init__(
-        self, target, action_bounds, *, precision=None, n_candidates=21
+        self, target, action_bounds, *, precision=None, n_candidates=21, horizon=1
     ) -> None:
         target = jnp.asarray(target, dtype=float)
         object.__setattr__(self, "target", target)
@@ -232,6 +282,7 @@ class ObservationGoal:
         )
         object.__setattr__(self, "action_bounds", action_bounds)
         object.__setattr__(self, "n_candidates", n_candidates)
+        object.__setattr__(self, "horizon", horizon)
         self._validate()
 
     def _validate(self) -> None:
@@ -255,3 +306,5 @@ class ObservationGoal:
             raise ValueError(
                 f"n_candidates must be at least 2 to search, got {self.n_candidates}"
             )
+        if self.horizon < 1:
+            raise ValueError(f"horizon must be >= 1, got {self.horizon}")

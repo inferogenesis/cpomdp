@@ -7,9 +7,10 @@ import jax.numpy as jnp
 from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
-from cpomdp._validation import validate_covariance
+from cpomdp._validation import validate_covariance, validate_finite
 from cpomdp.dynamics import DynamicsNoise
 from cpomdp.observation import ObservationModel
+from cpomdp.structure import ModelStructure
 
 __all__ = ["Belief", "LinearGaussianModel"]
 
@@ -53,6 +54,7 @@ class Belief:
             raise ValueError(
                 f"belief mean must be a 1-D vector, got shape {self.mean.shape}"
             )
+        validate_finite(self.mean, "belief mean")
         validate_covariance(self.cov, "belief covariance")
         n = self.mean.shape[0]
         if self.cov.shape != (n, n):
@@ -84,6 +86,11 @@ class Belief:
         object.__setattr__(obj, "mean", mean)
         object.__setattr__(obj, "cov", cov)
         return obj
+
+
+# A pytree leaf of a LinearGaussianModel: a matrix, the prior Belief, a child
+# sensor/process-noise model, or None (an absent control/observation/process_noise).
+_ModelLeaf = Array | Belief | ObservationModel | DynamicsNoise | None
 
 
 @jax.tree_util.register_pytree_node_class
@@ -120,6 +127,13 @@ class LinearGaussianModel:
 
     Dimensions: ``n`` = state, ``m`` = observation, ``p`` = action. A model with
     no ``control`` is a pure filtering (tracking) model.
+
+    Three optional fields (all default ``None`` → the plain fixed-matrix model)
+    extend it: ``observation`` (an :class:`~cpomdp.observation.ObservationModel` for
+    state-dependent sensing ``R(x)``), ``process_noise`` (a
+    :class:`~cpomdp.dynamics.DynamicsNoise` for state-dependent process noise
+    ``Q(x)``), and ``structure`` (a :class:`~cpomdp.structure.ModelStructure`
+    declaring the factor / Markov-blanket partition).
     """
 
     dynamics: Float64[Array, "n n"]
@@ -130,6 +144,7 @@ class LinearGaussianModel:
     control: Float64[Array, "n p"] | None
     observation: ObservationModel | None
     process_noise: DynamicsNoise | None
+    structure: ModelStructure | None
 
     def __init__(
         self,
@@ -141,6 +156,7 @@ class LinearGaussianModel:
         control: ArrayLike | None = None,
         observation: ObservationModel | None = None,
         process_noise: DynamicsNoise | None = None,
+        structure: ModelStructure | None = None,
     ) -> None:
         object.__setattr__(self, "dynamics", jnp.asarray(dynamics, dtype=float))
         object.__setattr__(self, "sensor_model", jnp.asarray(sensor_model, dtype=float))
@@ -156,6 +172,7 @@ class LinearGaussianModel:
         )
         object.__setattr__(self, "observation", observation)
         object.__setattr__(self, "process_noise", process_noise)
+        object.__setattr__(self, "structure", structure)
         self._validate()
 
     def _validate(self) -> None:
@@ -184,7 +201,7 @@ class LinearGaussianModel:
             )
 
         # sensor_noise: covariance of the sensor noise, (m, m), symmetric.
-        validate_covariance(self.sensor_noise, "sensor_noise")
+        validate_covariance(self.sensor_noise, "sensor_noise", require_definite=True)
         if self.sensor_noise.shape != (m, m):
             raise ValueError(
                 f"sensor_noise must be {m}x{m} to match the {m}-D observation, "
@@ -222,6 +239,16 @@ class LinearGaussianModel:
                     f"process_noise.noise_at(x) must return an {n}x{n} covariance "
                     f"to match the {n}-D state, got shape {q_probe.shape}"
                 )
+
+        # structure (optional): declarative metadata; validated opt-in via
+        # structure.validate(model), never here (the constructor stays lean, RFC-001).
+        if self.structure is not None and not isinstance(
+            self.structure, ModelStructure
+        ):
+            raise TypeError(
+                f"structure must be a ModelStructure, "
+                f"got {type(self.structure).__name__}"
+            )
 
         # prior is a Belief over the same n-D state.
         if not isinstance(self.prior, Belief):
@@ -272,18 +299,16 @@ class LinearGaussianModel:
         """R: the observation-noise covariance (alias of ``sensor_noise``)."""
         return self.sensor_noise
 
-    def tree_flatten(
-        self,
-    ) -> tuple[
-        tuple[Array | Belief | ObservationModel | DynamicsNoise | None, ...], None
-    ]:
-        """Leaves for JAX: every matrix plus the ``prior`` belief, no static aux.
+    def tree_flatten(self) -> tuple[tuple[_ModelLeaf, ...], ModelStructure | None]:
+        """Leaves for JAX: every matrix plus the ``prior`` belief; ``structure`` is aux.
 
         ``control``, ``observation`` and ``process_noise`` are included as (possibly
         ``None``) children; an uncontrolled / fixed-sensor / fixed-Q model contributes
         no leaf there and the ``None`` is restored on rebuild. A non-``None``
-        ``observation``/``process_noise`` is itself a pytree and recurses into its
-        own leaves.
+        ``observation``/``process_noise`` is itself a pytree and recurses into its own
+        leaves. ``structure`` (declarative metadata, no array leaves) rides in the
+        static aux_data, so two models differing only in ``structure`` are different
+        pytrees and a jit keyed on the model re-specialises when it changes.
         """
         children = (
             self.dynamics,
@@ -295,15 +320,18 @@ class LinearGaussianModel:
             self.observation,
             self.process_noise,
         )
-        return children, None
+        return children, self.structure
 
     @classmethod
     def tree_unflatten(
         cls,
-        aux_data: None,
-        children: tuple[Array | Belief | ObservationModel | DynamicsNoise | None, ...],
+        aux_data: ModelStructure | None,
+        children: tuple[_ModelLeaf, ...],
     ) -> "LinearGaussianModel":
-        """Rebuild from leaves without validating — the leaves may be tracers."""
+        """Rebuild from leaves without validating — the leaves may be tracers.
+
+        ``aux_data`` is the static ``structure`` (or ``None``), restored as-is.
+        """
         obj = object.__new__(cls)
         fields = (
             "dynamics",
@@ -317,4 +345,5 @@ class LinearGaussianModel:
         )
         for name, value in zip(fields, children, strict=True):
             object.__setattr__(obj, name, value)
+        object.__setattr__(obj, "structure", aux_data)
         return obj

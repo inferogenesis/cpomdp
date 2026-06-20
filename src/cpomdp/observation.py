@@ -123,7 +123,7 @@ class FixedSensor:
                 f"sensor_model must be a 2-D (m x n) matrix, "
                 f"got shape {self.sensor_model.shape}"
             )
-        validate_covariance(self.sensor_noise, "sensor_noise")
+        validate_covariance(self.sensor_noise, "sensor_noise", require_definite=True)
         m = self.sensor_model.shape[0]
         if self.sensor_noise.shape != (m, m):
             raise ValueError(
@@ -145,6 +145,12 @@ class CallableSensor:
     covariance-plug-in*: ``o⁺ = C·μ⁺`` is exact, while ``R(μ⁺)`` is a plug-in that
     drops the ``½tr(H_R Σ⁺)`` Jensen term (a deliberate first-order choice; the
     nonlinear-mean 2nd-order case is ``NonlinearSensor``, Phase 2.5).
+
+    ``noise_fn`` must return a **positive-definite** ``R(x)`` at every reachable state
+    — it is a covariance the epistemic term inverts. A non-PD ``R(x)`` has no real
+    ½ln det, so the EFE epistemic term becomes NaN there (surfaced at action
+    selection, not silently wrong); this is the runtime analogue of the
+    construction-time positive-definite check on a fixed ``sensor_noise``.
 
     ``params`` is a pytree **leaf** (so EFE is grad-able w.r.t. it — sensor
     learning); ``noise_fn`` is **static aux** (a callable cannot be a traced leaf).
@@ -214,4 +220,4 @@ class CallableSensor:
                 f"noise_fn(x, params) must return an (m, m)=({m}, {m}) covariance, "
                 f"got shape {r0.shape}"
             )
-        validate_covariance(r0, "noise_fn(x, params)")
+        validate_covariance(r0, "noise_fn(x, params)", require_definite=True)

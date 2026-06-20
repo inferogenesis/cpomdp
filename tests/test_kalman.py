@@ -33,6 +33,22 @@ def _scalar_model():
     )
 
 
+def test_collinear_sensor_with_pd_noise_gives_finite_posterior():
+    # Two collinear sensor rows make C·Σ·Cᵀ rank-deficient, but a positive-definite R
+    # keeps the innovation S = C·Σ·Cᵀ + R nonsingular, so the gain solve stays finite
+    # (no NaN). The R-must-be-positive-definite construction check guarantees this.
+    model = LinearGaussianModel(
+        dynamics=[[1.0, 0.0], [0.0, 1.0]],
+        sensor_model=[[1.0, 0.0], [1.0, 0.0]],  # collinear rows -> rank-1 C·Σ·Cᵀ
+        dynamics_noise=[[0.1, 0.0], [0.0, 0.1]],
+        sensor_noise=[[0.2, 0.0], [0.0, 0.2]],  # PD
+        prior=Belief(mean=[0.0, 0.0], cov=[[1.0, 0.0], [0.0, 1.0]]),
+    )
+    post = KalmanBackend(model).infer_states(jnp.array([3.0, 3.0]), model.prior)
+    assert bool(jnp.all(jnp.isfinite(post.mean)))
+    assert bool(jnp.all(jnp.isfinite(post.cov)))
+
+
 def _independent_scalar_filter(ys):
     """A dead-simple scalar Kalman filter (no matrix ops) used as the oracle.
 

@@ -2,9 +2,26 @@
 
 Everything worth noting lands here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [semantic versioning](https://semver.org). While we're pre-1.0, treat the minor version as the place breaking changes can show up.
 
+## [0.3.0] — unreleased
+
+Epistemic action selection. v0.2 could perceive and pursue a goal; v0.3 lets the agent *seek information* — it minimises Expected Free Energy `G = pragmatic − epistemic`, so it will detour to where its sensor is sharp, localise, then act. Under a fixed sensor this collapses exactly to the v0.2 LQR behaviour (ADR-003), so that path is unchanged.
+
+### Added
+
+- Expected Free Energy action selection: `expected_free_energy` (the one-step kernel) and `EFESelector` (a front-loaded candidate grid, `argmin G`). Observation-space cross-entropy pragmatic minus state info-gain epistemic (ADR-005).
+- State-dependent sensing and dynamics: `CallableSensor` for `R(x)` and `CallableProcessNoise` for `Q(x)`, honoured in *both* the planner and the Kalman filter (ADR-006, ADR-008). The fixed-matrix path stays byte-identical.
+- Typed objectives: `StateGoal` (state-space → LQR) and `ObservationGoal` (observation-space → EFE). The `Agent` dispatches on the objective's type, so an illegal pairing is unrepresentable rather than a runtime check (ADR-007).
+- H-step horizon: `EFESelector(horizon=H)` scores constant-action policies over an H-step rollout (default `H=1`), making delayed consequences visible — e.g. acting on velocity to steer an observed position (ADR-009).
+- `ModelStructure`: optional, declarable factor / Markov-blanket / sensory-channel metadata on a model, with inspection and an opt-in, experimental `validate()` that checks the declaration against the matrix sparsity (ADR-010).
+- Public building blocks for the above: `ObservationModel`, `FixedSensor`, `DynamicsNoise`.
+
+### Changed
+
+- **Breaking (pre-1.0):** `Agent` takes a typed objective instead of `goal=`/`goal_precision=` keywords. `Agent(model, goal=[1.0, 0.0])` becomes `Agent(model, StateGoal([1.0, 0.0]))`; observation-seeking uses `ObservationGoal(...)` (ADR-007).
+
 ## [0.2.0] — 2026-06-16
 
-The array backend moves from NumPy to JAX (ADR-004). v0.1 was a proof of concept; this is the groundwork for the autodiff and batching v0.2 is aiming at.
+The array backend moves from NumPy to JAX (ADR-004). v0.1 was a proof of concept; this is the groundwork for the autodiff and batching v0.3 is aiming at.
 
 ### Changed
 

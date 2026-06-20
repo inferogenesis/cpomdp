@@ -259,6 +259,14 @@ class TestRegimeDispatch:
         with pytest.raises(ValueError, match=r"regulation|selector|StateGoal"):
             Agent(_corridor_model(fixed=True), _OBS_GOAL)
 
+    def test_observation_goal_wrong_obs_dim_raises(self):
+        # A 2-D obs goal on a model that observes m=1 must fail at construction, not
+        # crash cryptically deep in the EFE kernel at sample_action.
+        with pytest.raises(ValueError, match=r"observation dimension|length 1"):
+            Agent(
+                _corridor_model(fixed=False), ObservationGoal([0.0, 0.0], (-3.0, 3.0))
+            )
+
     def test_unknown_objective_type_raises(self):
         # The objective must be a StateGoal or ObservationGoal — nothing else.
         with pytest.raises(TypeError, match=r"StateGoal|ObservationGoal|objective"):
