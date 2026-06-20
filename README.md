@@ -42,7 +42,7 @@ Here's an agent steering a point mass to a target. It can push the mass and it c
 
 ```python
 import jax.numpy as jnp
-from cpomdp import Agent, Belief, LinearGaussianModel
+from cpomdp import Agent, Belief, LinearGaussianModel, StateGoal
 
 # State is [position, velocity]. A push changes velocity, velocity carries
 # position along, and we only ever observe position (through a noisy sensor).
@@ -57,7 +57,7 @@ model = LinearGaussianModel(
 )
 
 # Tell it where to go: sit still at position 1.
-agent = Agent(model, goal=[1.0, 0.0])
+agent = Agent(model, StateGoal([1.0, 0.0]))
 
 true_state = jnp.array([0.0, 0.0])
 for _ in range(100):
@@ -81,28 +81,35 @@ If you've used pymdp, this table is basically the whole API:
 | `qs`             | `belief`                    | the posterior over the state     |
 | `infer_states`   | `infer_states`              | fold in an observation           |
 | `sample_action`  | `sample_action`             | pick an action                   |
-| `C`              | `goal` + `goal_precision`   | the state you prefer, how sharply |
+| `C`              | `StateGoal` / `ObservationGoal` | the goal you pursue, and how sharply |
 | `D`              | `model.prior`               | belief before you've seen anything |
 
 One honest difference. `sample_action` here is deterministic, not a sample from a policy posterior. For a linear-Gaussian sensor the action that minimises expected free energy turns out to be exactly the LQR optimum, so there's a single best action and that's what comes back. Same loop, exact answer. The reasoning is in [DECISIONS.md](https://github.com/inferogenesis/cpomdp/blob/main/DECISIONS.md) (ADR-003) if you want it.
 
 ## Just want to track, not act?
 
-Leave the goal out and you get a pure tracker. `infer_states` still folds in observations and sharpens the belief, but `sample_action` will stop you, because there's nothing to steer toward.
+A model with no `control` matrix is a pure tracker. Drop the goal and `infer_states` still folds in observations and sharpens the belief, while `sample_action` stops you — there's nothing to steer toward, and nothing to steer with.
 
 ```python
-agent = Agent(model)                  # no goal
-belief = agent.infer_states([0.5])    # perceiving is fine
-agent.sample_action()                 # ValueError: this Agent has no goal
+tracker = LinearGaussianModel(        # no control matrix -> pure tracking
+    dynamics=[[1, dt], [0, 1]],
+    sensor_model=[[1, 0]],
+    dynamics_noise=jnp.eye(2) * 1e-6,
+    sensor_noise=[[1e-2]],
+    prior=Belief(mean=[0, 0], cov=jnp.eye(2)),
+)
+agent = Agent(tracker)                # no objective
+agent.infer_states([0.5])             # perceiving is fine
+agent.sample_action()                 # ValueError: this Agent has no objective ...
 ```
 
 ## What's in the box
 
-Right now (v0.1) cpomdp handles linear-Gaussian models: Kalman filtering for perception, steady-state LQR for action. That already covers a fair bit of ground, roughly anything you'd reach for a Kalman filter to do, but it's the foundation rather than the finished house. Nonlinear models and proper epistemic (information-seeking) action are the obvious next steps.
+cpomdp handles linear-Gaussian models end to end. Perception is Kalman filtering; for action you get both steady-state **LQR** (reach a target state) and **Expected Free Energy** selection (seek information) — the epistemic, information-seeking behaviour that arrived in v0.3, alongside state-dependent sensing `R(x)`, state-dependent process noise `Q(x)`, an H-step planning horizon, and an optional declarable model-structure layer. Nonlinear sensors are the next step.
 
 You can swap the inference engine if you want to. `KalmanBackend` is the default and does the real work; `RxInferBackend` re-derives the same answers through Julia and exists mainly so the fast path has something independent to check itself against. Both sit behind the `InferenceBackend` protocol, so you can write your own.
 
-This is pre-alpha. The API works and the maths is tested against that independent oracle, but expect things to move before 1.0.
+Still pre-1.0: v0.3 secures the public API, but until 1.0 a minor version is where breaking changes can land. The maths is tested throughout against an independent RxInfer oracle.
 
 ## Acknowledgements
 
