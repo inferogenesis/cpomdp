@@ -181,6 +181,15 @@ class Agent:
                 f"got {type(objective).__name__}."
             )
 
+    @property
+    def qs(self) -> Belief:
+        """Alias for :attr:`belief` (read-only) — pymdp muscle-memory ``agent.qs``.
+
+        The name is pymdp's, carried over for familiarity; the object is a Gaussian
+        :class:`Belief`, not a categorical posterior. Prefer ``belief``.
+        """
+        return self.belief
+
     def infer_states(self, observation: ArrayLike) -> Belief:
         """Fold one observation into the belief and return the updated belief.
 
@@ -218,10 +227,12 @@ class Agent:
         and the objective's ``Preference``. For a ``StateGoal`` under a fixed
         sensor that selection is exactly the LQR optimum, ``-L∞·(mean − goal)`` —
         one matrix-vector product, front-loaded at construction (ADR-003); for an
-        ``ObservationGoal`` it is the one-step EFE-minimising action over the
-        front-loaded candidate grid. Deterministic, not a sample (see the class
-        docstring). The chosen action is remembered so the next ``infer_states``
-        predicts with it.
+        ``ObservationGoal`` it is the EFE-minimising action over the front-loaded
+        candidate grid. Deterministic, not a sample, and it takes no ``rng_key`` (see
+        the class docstring). There is no separate ``infer_policies`` step — policy
+        evaluation is folded in here, its per-cycle cost exposed as
+        ``EFESelector.cost_per_cycle``. The chosen action is remembered so the next
+        ``infer_states`` predicts with it.
 
         Returns:
             The action, shape ``(p,)``.

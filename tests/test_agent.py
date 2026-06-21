@@ -267,6 +267,13 @@ class TestRegimeDispatch:
                 _corridor_model(fixed=False), ObservationGoal([0.0, 0.0], (-3.0, 3.0))
             )
 
+    def test_qs_aliases_belief(self):
+        # pymdp muscle-memory: agent.qs is a read-only alias of agent.belief.
+        agent = Agent(_corridor_model(fixed=False), _OBS_GOAL)
+        assert agent.qs is agent.belief
+        agent.infer_states([0.5])
+        assert agent.qs is agent.belief  # follows the reassignment
+
     def test_unknown_objective_type_raises(self):
         # The objective must be a StateGoal or ObservationGoal — nothing else.
         with pytest.raises(TypeError, match=r"StateGoal|ObservationGoal|objective"):
