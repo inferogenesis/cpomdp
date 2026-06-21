@@ -132,6 +132,12 @@ You can swap the inference engine if you want to. `KalmanBackend` is the default
 
 Still pre-1.0: v0.3 aims to secure the public API, but until 1.0 a minor version is where breaking changes can land. The maths is tested throughout against an independent RxInfer oracle.
 
+## Development
+
+I designed and built cpomdp — the architecture, the conditionally-linear-Gaussian formulation, the API, and every decision in [DECISIONS.md](DECISIONS.md) are mine. The design draws on my day-to-day work as a full-time software engineer and on hands-on experience integrating and developing large machine-learning models at scale.
+
+I used an AI coding assistant (Claude Opus4.8) as a tool under close review: to draft docstrings, probe for edge cases and candidate bugs, and expand the test suite, including adversarial ones. Everything it produced I read, checked, and approved before it landed. None of it is taken on trust — the numbers are validated independently against the RxInfer (Julia) and analytic NumPy oracles described above. Correctness rests on those checks, not on the tool that helped write the code.
+
 ## Acknowledgements
 
 Thanks to **Kevin Backhouse** (Postgraduate Researcher in Cognitive Neuroscience, Durham University) for guidance on the active-inference formulation, collaboration on related discrete generative-model projects, and for being a consistent sounding board throughout the design of this work.

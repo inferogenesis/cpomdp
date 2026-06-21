@@ -196,3 +196,17 @@ If you run this nothing will happen and that is expected. You have `built a worl
     **foundation** — curved dynamics and nastier noise are almost always
     handled by bending them *back* toward this one. Every field has its
     hydrogen atom; this is ours.
+
+## Perceiving
+
+Time to let the agent actually sense something. It's carrying a belief, a guess plus an uncertainty, and `infer_states` folds a single reading into it and hands back a sharper one. That's the whole verb.
+
+> One housekeeping note: a pure observer doesn't push on anything, so for this chapter we use the perceive-only model — same six pieces, minus the control matrix. We'll snap control back the moment it starts acting.
+
+Every call to `infer_states` does two things:
+
+1) **Predict** - before looking, roll the belief forward through the physics (that we built last time). In english this is: "given what I believed and how the world drifts, where should I be now?". This step increases uncertainty via dynamic noise. _Think of taking a step whilst wearing a blindfold_.
+
+2) **Update** - Now look (sense). Compare what you're sensing to that prediction you hold and nudge the belief toward it. Uncertainty shrinks now, you learning something.
+
+How _hard_ we update is exactly what we setup in the sensor. If it's fuzzy -> we can't trust it too well -> budge our belief slightly. If it's a sharp sensor -> trust heavily -> lean into the update. The trust ration is called the **Kalman gain**.
