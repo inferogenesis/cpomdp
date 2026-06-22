@@ -65,6 +65,11 @@ nav:
   - API reference:
       - Agent: api/agent.md
       - Model & belief: api/model.md
+      - Observation models: api/observation.md
+      - Process noise: api/dynamics.md
+      - Model structure: api/structure.md
       - Backends: api/backends.md
-      - Control: api/control.md
+      - Action selection & goals: api/selection.md
+      - Expected free energy: api/efe.md
+      - Control (internal): api/control.md
   - Changelog: changelog.md

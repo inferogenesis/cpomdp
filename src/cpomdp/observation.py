@@ -43,11 +43,15 @@ class ObservationModel(Protocol):
     ``(C, R)`` (the observation Jacobian and the noise covariance there). For a
     fixed sensor these are constant; for a state-dependent sensor they vary.
 
-    Linearise is the english spelling, but literature dictates a z.
+    Attributes:
+        is_fixed: ``True`` when ``(C, R)`` are constant in the state — the
+            fixed-sensor fast path, where EFE's epistemic term is constant and
+            collapses to LQR; ``False`` for a state-dependent sensor.
     """
 
     is_fixed: bool
 
+    # "linearize" keeps the z (literature spelling) despite the British prose elsewhere.
     def linearize(
         self, x: ArrayLike
     ) -> tuple[Float64[Array, "m n"], Float64[Array, "m m"]]:
@@ -78,6 +82,11 @@ class FixedSensor:
     linear sensor *is* its own linear approximation everywhere. This is the
     regime where EFE's epistemic term is constant and collapses to LQR
     (DECISIONS.md ADR-003).
+
+    Attributes:
+        sensor_model: the observation matrix ``C`` (shape ``m x n``), mapping
+            the ``n``-D state to the ``m``-D observation mean.
+        sensor_noise: the observation-noise covariance ``R`` (shape ``m x m``).
     """
 
     sensor_model: Float64[Array, "m n"]  # C

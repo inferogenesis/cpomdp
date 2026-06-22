@@ -2,7 +2,7 @@
 
 Everything worth noting lands here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [semantic versioning](https://semver.org). While we're pre-1.0, treat the minor version as the place breaking changes can show up.
 
-## [0.3.0] — unreleased
+## [0.3.0] — 2026-06-22
 
 Epistemic action selection. v0.2 could perceive and pursue a goal; v0.3 lets the agent *seek information* — it minimises Expected Free Energy `G = pragmatic − epistemic`, so it will detour to where its sensor is sharp, localise, then act. Under a fixed sensor this collapses exactly to the v0.2 LQR behaviour (ADR-003), so that path is unchanged.
 
