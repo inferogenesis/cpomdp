@@ -14,6 +14,6 @@ assignees: ''
 
 <!-- How should it work from the user's point of view? -->
 
-### Relevant ADR / RFC
+### Relevant ADR / RFC (Optional)
 
 <!-- Does this idea touch an existing decision record? Link it here. -->
