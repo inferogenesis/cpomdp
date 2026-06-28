@@ -101,7 +101,7 @@ lifts that restriction via the same *linearize-at-μ⁻ plug-in* Kalman already 
       296 total green (was 290; net +6 from −2 obsolete scope tests, +8 parity
       tests), `ruff`/`ty` clean.
 
-### Phase 3 — latent-goal epistemic value, linear stage — PLANNED
+### Phase 3 — latent-goal epistemic value, linear stage — IN PROGRESS (rendering/README open)
 
 Fulfils the Extras line below and a domain-expert critique (attributed to Conor
 Heins, re: epistemic value and the discrete T-Maze task): the existing
@@ -119,10 +119,10 @@ structure — a sensor channel can read one state block while its noise depends 
 a *different* block, and the EFE kernel doesn't care how many channels are
 stacked.
 
-- [ ] Augment the bacillus state to `[agent_xy, food_xy]` (4-D); food block
+- [x] Augment the bacillus state to `[agent_xy, food_xy]` (4-D); food block
       stationary with small strictly-positive Q (`ChainBackend` rejects exact
       `Q=0`).
-- [ ] One `CallableSensor`, two stacked channels: fixed-precision `o_self`
+- [x] One `CallableSensor`, two stacked channels: fixed-precision `o_self`
       (agent's own position, unchanged) + `o_disp = food_xy − agent_xy` (a
       relative displacement/bearing vector) whose noise is the **existing,
       unmodified** beacon falloff evaluated at the agent's own position block.
@@ -130,28 +130,35 @@ stacked.
       mathematically gradient ascent on a potential peaked at the food — this
       already reads as chemotaxis-shaped behaviour without a literal
       concentration-field sensor (that's Phase 5).
-- [ ] Static `Preference(goal=[*,*,0,0], precision=block_diag(0·I₂, Λ·I₂))` —
+- [x] Static `Preference(goal=[*,*,0,0], precision=block_diag(0·I₂, Λ·I₂))` —
       zero weight on self, weight Λ on "observe zero displacement from food."
       Because the predicted reading is `E[food_xy]⁺ − agent_xy⁺`, this single
       static preference algebraically chases the *current belief* of food's
-      location — no per-step preference rebuilding.
-- [ ] New demo `examples/bacillus_uncertain_food.py` (additive — the existing
+      location — no per-step preference rebuilding. Tuned by sweep:
+      `Λ_disp=0.015` gives a clean detour-then-exploit trajectory (below ~0.03
+      the agent never bothers detouring, just slowly averages the murk).
+- [x] New demo `examples/bacillus_uncertain_food.py` (additive — the existing
       flagship is unchanged, same convention as keeping `bacillus_lqr.py`
       alongside it), `simulate()` parameterized over backend
       (`KalmanBackend`/`ChainBackend`).
-- [ ] `--scan` mode: behaviour metrics plus a Kalman-vs-`ChainBackend` agreement
+- [x] `--scan` mode: behaviour metrics plus a Kalman-vs-`ChainBackend` agreement
       check (`atol=1e-7`, the bar `tests/test_ffg_chain.py` already holds) — the
       literal "use both backends" deliverable, and new territory (no existing
       test covers a sensor channel reading one state block with noise keyed on a
-      different block).
-- [ ] Optional, recommended: a parity test near `TestChainCallableSensorParity`
-      in `tests/test_ffg_chain.py` locking down that cross-block sensor topology
-      independent of the example script.
-- [ ] ADR-013 records the decision, the rejected alternative (a per-step
+      different block). Result: `max|Δmean|≈1e-10`, `max|Δcov|≈1e-10` — both
+      backends pick the identical detour-then-exploit trajectory.
+- [x] Parity test `TestChainCrossBlockSensorParity` added in
+      `tests/test_ffg_chain.py`, locking down that cross-block sensor topology
+      independent of the example script (298 total green, was 296; `ruff`/`ty`
+      clean).
+- [x] ADR-013 records the decision, the rejected alternative (a per-step
       `Preference` rebuild on absolute sensing — behaviourally equivalent, more
       legible, but doesn't scale as cleanly to multiple goal items), and the open
       multi-goal fork (shared vs. per-item beacons — a behavioural design choice,
       not a capability gap; deferred, not resolved here).
+- [ ] Rendering (GIF) once the mechanism is confirmed (it is) — reuse
+      `_draw_bacillus`/precision-field helpers from the flagship demo.
+- [ ] `examples/README.md` gallery entry under "the journey."
 
 ### Phase 4 — `NonlinearSensor`: second-order Gaussianization — PLANNED
 

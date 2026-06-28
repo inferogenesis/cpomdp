@@ -925,3 +925,119 @@ Two Phase-2 clarifications, recorded as the work landed:
    Kalman already uses (evaluate `C, R(μ⁻)` / `Q(μ⁻)` at the predicted mean each
    step; factors go per-step on that path only, the fixed path stays front-loaded).
    This is the conjugate of the Phase-3 Gaussianization machinery and reuses it.
+
+---
+
+## ADR-013 — v0.4 Phase 3: the beacon's epistemic value moves to an explicit latent (the food's position)
+
+**Date:** 2026-06-28
+**Status:** Accepted
+**Phase:** v0.4, Phase 3 (build plan)
+**Extends:** ADR-008 (the bacillus demo this redesigns); relies on ADR-012/Phase 2.5
+(`ChainBackend` R(x)/Q(x) parity, the precondition for a meaningful Kalman-vs-FFG
+comparison on this model).
+
+### The critique
+
+`examples/bacillus_seeking_food.py` (ADR-008) has agents detour to a beacon
+because visiting it sharpens the agent's *own* position belief — `R(x)` is a
+precision well keyed on the agent's own location, and the food's location is a
+known, fixed `Preference` target throughout. A domain-expert critique (quoted to
+me by the project owner, attributed to Conor Heins, in the spirit of "Epistemic
+value and active inference" and the discrete T-Maze task) names this a *trivial*
+form of state information gain: the agent gains information about itself for its
+own sake, never tied to resolving a genuine *contextual* unknown — unlike the
+T-Maze task, where visiting the cue resolves *which arm holds the reward*, a fact
+the agent could not otherwise act correctly without. The fix has to make the
+beacon's epistemic value about something the agent cannot directly act on and
+does not already know — not "visiting precise states because they're precise."
+
+### Decision
+
+Promote the food's position to an explicit latent state. The model's state grows
+from `[agent_xy]` (2-D) to `[agent_xy, food_xy]` (4-D); `food_xy` carries a wide
+Gaussian prior (loosely known a priori) and a small, strictly-positive process
+noise (stationary; `ChainBackend`'s information form rejects exact `Q = 0`, ADR-012
+Phase 2). The sensor gains a second channel alongside the existing self-position
+read: `o_disp = food_xy − agent_xy`, a relative displacement/bearing vector whose
+noise is the **existing, unmodified** beacon-falloff function (`beacon_noise`),
+evaluated at the agent's own position — the beacon mechanic itself does not
+change, only what it is wired to reveal.
+
+The `Preference` stays a single static object:
+`Preference(goal=[*, *, 0, 0], precision=block_diag(0·I₂, Λ·I₂))` — zero weight on
+the self-channel, weight `Λ` on "observe zero displacement from food" (i.e.
+"stand on the food"). Because the predicted reading is
+`E[food_xy]⁺ − agent_xy⁺`, this single static target *algebraically* chases the
+agent's current belief about where food is — confirmed by a Jacobian check
+(`∂o⁺/∂a = −B_agent`, the correct sign, no degenerate or flipped argmin): the food
+block has no actuator, so the residual moves only through the agent's own
+predicted position, and minimizing it is gradient ascent on a quadratic potential
+peaked at the food. This reads as chemotaxis-shaped *behaviour* — climbing toward
+the food — without literally simulating a concentration field (that is Phase 5's
+job, and needs a real nonlinear sensor; see below).
+
+This requires **zero changes to `src/cpomdp/`.** `LinearGaussianModel`,
+`CallableSensor`, and `expected_free_energy` are already generic over
+state/observation block structure: a sensor channel can read one state block
+while its noise depends on a different block (`CallableSensor.noise_fn(x,
+params)` already receives the *full* predicted state), and the EFE kernel's
+pragmatic/epistemic terms are plain `m`-dimensional algebra that does not care how
+many channels are stacked or what they're labelled. This is a model-construction
+exercise (`examples/bacillus_uncertain_food.py`), not a library feature — verified
+by direct reads of `efe.py`, `observation.py`, `selection.py`, `structure.py`, and
+`chain.py`, cross-checked by an independent design review before implementation.
+
+### The rejected alternative: per-step `Preference` rebuild
+
+Keep absolute position sensing (no relative channel); rebuild
+`Preference(goal=belief.mean[2:4], ...)` fresh every loop iteration from the
+current food-belief mean, hand-rolled in the demo script. This is **behaviourally
+equivalent** — the epistemic mechanism (a channel reading food's position, R(x)
+keyed on the agent's own beacon-proximity) is identical either way, since that
+part of the fix is what actually answers the critique, not the pragmatic-term
+plumbing. It is arguably *more legible* to a reviewer steeped in the discrete
+T-Maze framing: "the preference is fixed, belief about the unknown changes" reads
+more directly as the T-Maze shape than a displacement channel's algebra.
+
+Rejected for v0.4 because it does not scale as cleanly to multiple goal items —
+each additional item needs its own per-step Python rebuild rather than one more
+static `Λ_i` block in a single object — and because the relative-channel version
+is *also* the more general posture (it composes with stacking more displacement
+channels with no script-side bookkeeping). Recorded here so the choice is visible
+and not just "the cleverer one happened to get built."
+
+### Open: the multi-goal beacon topology (not resolved here)
+
+Stacking `N` food blocks (`(2+2N)`-D state, one displacement channel + one `Λ_i`
+weight per item) is mechanically just bigger block matrices — confirmed, no new
+abstraction needed. But whether **one shared beacon reveals every item's
+displacement at once, or each item needs its own (distinct) beacon**, is a real,
+undecided *behavioural* design choice, not a capability gap: a shared beacon gives
+no genuine "which uncertainty is worth resolving" tradeoff (visiting it resolves
+everything), while per-item beacons create the actually T-Maze-flavoured problem
+of choosing which cue to visit. Left open for whichever future `N > 1` demo
+exercises it; do not resolve silently by whichever is easiest to wire up first.
+
+### Staged second half: the nonlinear sensor (Phase 4/5, not this ADR)
+
+The displacement-vector channel is a *linear* proxy for "moving up a gradient" —
+true biological chemotaxis senses a *scalar* concentration via temporal sampling
+(E. coli is too small to sense a spatial gradient across its body), which is
+genuinely nonlinear in the state and needs `NonlinearSensor` + second-order
+Gaussianization — named as a deferred seam since ADR-006 but never built. That is
+real `src/cpomdp/` work, tracked separately as Phase 4/5 in `BUILD_PLAN.md`
+(spec-and-tests handed over, not authored here, per the session's mentor-mode
+split-by-stakes convention) and will get its own ADR once it lands, rather than
+being folded into this one.
+
+### Validation strategy
+
+Same discipline as the existing backends: `examples/bacillus_uncertain_food.py`'s
+`--scan` mode runs the identical model/seed/loop through both `KalmanBackend` and
+`ChainBackend` and checks agreement to `atol=1e-7` — the same bar
+`tests/test_ffg_chain.py` already holds, now exercised on a topology neither
+backend's existing tests cover (a sensor channel reading one state block with
+noise keyed on a different block). A test of that same topology, independent of
+the example script, is recommended in `tests/test_ffg_chain.py` near
+`TestChainCallableSensorParity`.

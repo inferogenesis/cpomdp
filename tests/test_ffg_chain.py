@@ -352,6 +352,70 @@ class TestChainCallableProcessNoiseParity:
         np.testing.assert_allclose(chain_belief.cov, kalman_belief.cov, atol=1e-7)
 
 
+# --- cross-block sensor topology (ADR-013): a channel reading one state block ---
+# with noise keyed on a DIFFERENT block. Neither the fixed-matrix keystone nor the
+# R(x)/Q(x) parity tests above exercise this — they all read and key noise off the
+# same block. examples/bacillus_uncertain_food.py relies on exactly this shape (a
+# "displacement" channel reading food's position, sharpened by the agent's own
+# position near a beacon), so it's locked down here independent of that script.
+
+
+def _cross_block_noise(x, params):
+    """R(x) for a 2x2 channel, keyed on x[0:2] (block A) — the SAME falloff shape
+    as `test_kalman.py`'s _quad_noise, generalized to 2-D and keyed on a block the
+    channel itself does not read (block B reads the displacement, see below)."""
+    d2 = x[0] ** 2 + x[1] ** 2
+    r = params["base"] + params["scale"] * d2
+    return r * jnp.eye(2)
+
+
+_CROSS = {"base": jnp.array(0.2), "scale": jnp.array(0.5)}
+
+
+def _cross_block_model(*, control=None):
+    """4-D state [block A (2), block B (2)]; one channel reads (B - A), noise keyed
+    on A alone — the shape ADR-013's displacement channel needs."""
+    c_disp = jnp.array([[-1.0, 0.0, 1.0, 0.0], [0.0, -1.0, 0.0, 1.0]])
+    sensor = CallableSensor(
+        sensor_model=c_disp, noise_fn=_cross_block_noise, noise_params=_CROSS
+    )
+    return LinearGaussianModel(
+        dynamics=jnp.eye(4),
+        control=control,
+        sensor_model=c_disp,
+        dynamics_noise=jnp.diag(jnp.array([0.5, 0.5, 1e-3, 1e-3])),
+        sensor_noise=jnp.eye(2),
+        prior=Belief(mean=jnp.array([0.0, 0.0, 1.0, 1.0]), cov=jnp.eye(4)),
+        observation=sensor,
+    )
+
+
+class TestChainCrossBlockSensorParity:
+    def test_matches_kalman_sequence(self):
+        model = _cross_block_model()
+        kalman, chain = KalmanBackend(model), ChainBackend(model)
+        k_belief = c_belief = model.prior
+        for y in [[1.0, 0.5], [0.8, 0.3], [1.2, 0.6], [0.9, 0.4]]:
+            k_belief = kalman.infer_states(y, k_belief)
+            c_belief = chain.infer_states(y, c_belief)
+            np.testing.assert_allclose(c_belief.mean, k_belief.mean, atol=1e-7)
+            np.testing.assert_allclose(c_belief.cov, k_belief.cov, atol=1e-7)
+
+    def test_evaluates_noise_at_predicted_block_a_not_prior(self):
+        # A control input carries μ⁻'s block-A component far from the prior,
+        # into a different noise regime — guards that the noise is keyed on the
+        # PREDICTED block A, not the channel's own (block B - block A) reading.
+        control = jnp.concatenate([jnp.eye(2), jnp.zeros((2, 2))], axis=0)  # (4, 2)
+        model = _cross_block_model(control=control)
+        action = jnp.array([3.0, 3.0])  # block-A μ⁻ moves to (3, 3), far from (0, 0)
+        kalman_belief = KalmanBackend(model).infer_states(
+            [1.0, 1.0], model.prior, action
+        )
+        chain_belief = ChainBackend(model).infer_states([1.0, 1.0], model.prior, action)
+        np.testing.assert_allclose(chain_belief.mean, kalman_belief.mean, atol=1e-7)
+        np.testing.assert_allclose(chain_belief.cov, kalman_belief.cov, atol=1e-7)
+
+
 # --- jit / grad / vmap smoke (ADR-012 gates on a new inference entry point) ----
 
 
