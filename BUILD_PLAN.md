@@ -196,42 +196,58 @@ stacked.
       states the verified explore/exploit tradeoff, not the unverified "quicker"
       claim.
 
-### Phase 4 — `NonlinearSensor`: second-order Gaussianization — PLANNED
+### Phase 4 — branching factor graph: the shared-`CheA` representation — NOT STARTED
 
-Resolves ADR-006's long-deferred item ("Deferred to Phase 2.5: NonlinearSensor +
-2nd-order Gaussianization — the nonlinear-mean case... the corrected full-2nd-order
-formula (mean **and** covariance correction together) and its dual-oracle
-definition-of-done are pinned in the build plan so they cannot be re-forgotten").
-Folded in from a detailed, never-migrated design in the gitignored
-`.claude/cpomdp_v0.4_build_plan.md` (its own Phase 3) rather than re-derived.
-**Real core-library change — high-stakes: spec + failing tests handed over, user
-implements, reviewed rather than authored** (mentor-mode split-by-stakes
-convention).
+**The actual v0.4 deliverable** (ADR-012 / ADR-014). Represent a *factorisable*
+(branching) model the chain/Kalman path cannot draw cleanly — the E. coli
+chemotaxis network where a shared `CheA` node feeds a fast (CheY-P/motor) and a slow
+(CheR/CheB methylation) branch. A chain is the degenerate FFG case (it *is* Kalman,
+the Phase 2 keystone); this is the non-chain case that justifies the whole effort.
+Today no such representation exists in `src/cpomdp/` — a factorisable model can only
+be flattened into one joint Gaussian, which is exactly what the FFG is meant to avoid.
 
-- [ ] `NonlinearSensor` implements `ObservationModel`, owning `gaussianize`
-      directly (not `linearize` + a generic fallback) — a nonlinear mean has no
-      single local `(C, R)` that's exact, which is exactly why `gaussianize` is a
-      sensor-owned seam (ADR-006 D1).
-- [ ] **Second-order** moment matching (carries the Hessian/curvature term), not
-      first-order EKF. Cite Kouw (arXiv 2409.01974): first-order linearization
-      drops the state-dependent ambiguity the epistemic term lives on.
-- [ ] Validation: a sensor with a closed-form second moment recovers it exactly;
-      a first-order (EKF-style) comparison on the same case is shown to
-      under-report ambiguity (the regression witness for the Kouw point).
-- [ ] jit/grad/vmap smoke tests, same gate discipline as every other public
-      inference entry point (ADR-012).
+- [ ] A non-chain factor-graph representation (variables-as-wires / factors-as-nodes
+      with a node of degree > 2, the shared `CheA`), built on the existing
+      `CanonicalGaussian` messages and Tier-1 factor nodes.
+- [ ] `CouplingGraph` (or equivalent) storing the graph + τ labels, with the
+      fast/slow hierarchy as a derived `.levels()` view, never the reverse (ADR-012
+      "hierarchy as a derived view").
+- [ ] A hand-authored message schedule for this fixed small graph (ADR-012 choice 4 —
+      no reactive scheduler).
+- [ ] jit/grad/vmap smoke tests on the new public inference entry point.
 
-### Phase 5 — latent-goal epistemic value, nonlinear stage — PLANNED
+### Phase 5 — the difference demo + RxInfer oracle — NOT STARTED
 
-Built on Phase 4. Swaps the linear displacement channel for a literal scalar
-concentration sensor `o = c(‖food − agent‖)` (e.g. a Gaussian bump centred on the
-food) — the biologically literal chemotaxis mechanism (E. coli senses a scalar
-via temporal sampling, not a vectorial bearing). Run through the same
-Kalman-vs-`ChainBackend` comparison as Phase 3.
+**Closes the DOD.** A demo that *shows the difference* between a normal backend and
+the factor-graph one — the branching chemotaxis model represented natively as an FFG
+vs. what a `KalmanBackend` must flatten by hand. Unlike Phase 3's `--scan` (which
+shows the two backends *agreeing* on a chain, i.e. identity by construction), this
+exhibits a topology the chain path cannot express cleanly.
 
-- [ ] Sensor-type toggle on `bacillus_uncertain_food.py`, or a second demo file
-      (decide once Phase 4's shape is known).
-- [ ] Same `--scan` agreement-check discipline as Phase 3.
+- [ ] RxInfer oracle check on the small branching graph (closes Phase 2's open box,
+      now on a non-chain topology), behind the `rxinfer` marker.
+- [ ] Demo/figure contrasting the native FFG representation with the flattened-joint
+      Kalman equivalent (what you must hand-build without the graph).
+- [ ] Numerical agreement of the FFG posterior with the flattened-joint oracle (exact
+      linear-Gaussian inference gives the same posterior; the *difference* being shown
+      is representational — that is the point).
+
+### Deferred beyond v0.4 (ADR-014 — tracked as GitHub issues)
+
+Briefly in this plan or explored this session; all outside the v0.4 DOD, now tracked
+as issues (rationale + preserved findings in ADR-014; drafts in
+`scratchpad/github_issues_draft.md` pending move to GitHub):
+
+- [ ] `NonlinearSensor` + second-order Gaussianization (was Phase 4 here — a sensor
+      feature, orthogonal to FFG factorisation). The Kouw (arXiv 2409.01974)
+      dual-oracle design lives in the gitignored old plan / `reference_old_v04_build_plan`
+      memory so it is not lost.
+- [ ] Nonlinear scalar-concentration chemotaxis demo (was Phase 5 here).
+- [ ] Multi-step EFE / planning-as-inference — the principled route to epistemics
+      genuinely beating LQR (the current one-step EFE under-credits information; see
+      ADR-014's separation-principle / dual-control finding).
+- [ ] The honest "epistemics beats LQR" demo (depends on multi-step EFE; the cue
+      shortcut explored this session was a fudge and was reverted — ADR-014).
 
 ### Extras
 

@@ -928,7 +928,7 @@ Two Phase-2 clarifications, recorded as the work landed:
 
 ---
 
-## ADR-013 — v0.4 Phase 3: the beacon's epistemic value moves to an explicit latent (the food's position)
+## ADR-013 — v0.4 Phase 3: the beacon's epistemic value moves from agent-state to the food latent
 
 **Date:** 2026-06-28
 **Status:** Accepted
@@ -1041,3 +1041,91 @@ backend's existing tests cover (a sensor channel reading one state block with
 noise keyed on a different block). A test of that same topology, independent of
 the example script, is recommended in `tests/test_ffg_chain.py` near
 `TestChainCallableSensorParity`.
+
+---
+
+## ADR-014 — v0.4 scope re-anchored on FFG factorisation; later work deferred
+
+**Date:** 2026-06-28
+**Status:** Accepted
+**Phase:** v0.4 (scope correction)
+**Extends:** ADR-012 (restates its DOD); reclassifies ADR-013's demo (kept, but it is
+not the factorisation deliverable — see below).
+
+### The decision
+
+v0.4's definition of done is, exactly and only: **build FFG message passing that
+represents an agent with a *factorisable* (branching) model, and a demo that shows
+the difference between a normal backend and the factor-graph one.** The motivating
+model is ADR-012's E. coli chemotaxis network — shared `CheA` feeding a fast
+(CheY-P/motor) and a slow (CheR/CheB methylation) branch — which "cannot be drawn
+cleanly as a model hierarchy" and needs the factor graph's native branching.
+Everything else is out of scope for v0.4 and moves to GitHub issues, with its
+rationale preserved here.
+
+### Status at the time of this ADR (honest)
+
+The FFG **substrate** is built and trusted, but the DOD is **not yet met**:
+
+- Done: `CanonicalGaussian` (Λ, h) messages (Phase 1); Tier-1 factor nodes +
+  `ChainBackend` with the chain == Kalman keystone (Phase 2); R(x)/Q(x) parity
+  (Phase 2.5).
+- Not done: there is **no branching representation** anywhere in `src/cpomdp/` — no
+  `CouplingGraph`/`.levels()`, no non-chain backend. A chain is the *degenerate* case
+  of an FFG (it *is* the Kalman filter), so the branching structure that justifies
+  the whole effort is unbuilt; a factorisable model can currently only be handled by
+  flattening it into one joint Gaussian, exactly what the FFG was meant to avoid. The
+  "shows the difference" demo does not exist — the only backend comparison
+  (`bacillus_uncertain_food.py --scan`) shows Kalman and `ChainBackend` *agreeing* on
+  a chain (identity by construction), the opposite of a difference. The RxInfer
+  oracle on a small graph is still open.
+- Reclassified: ADR-013's `bacillus_uncertain_food.py` is a valuable linear-Gaussian
+  *epistemic-value* demo, but it exercises a chain and shows backend *agreement*, so
+  it is **not** the factorisation difference demo the DOD requires. It stays as a
+  journey/epistemics demo, not the v0.4 capstone.
+
+### Findings preserved (so they are not re-derived or lost)
+
+A session exploring "make epistemics beat LQR" produced results worth keeping even
+though the work itself is deferred:
+
+1. **Separation principle / dual control.** For linear-Gaussian systems with
+   quadratic cost and *fixed* noise, the optimal controller is certainty-equivalent
+   (LQR on the mean) and assigns **zero** value to information — the estimator
+   covariance evolves independently of control (Bar-Shalom & Tse 1974). Already
+   encoded as ADR-003 ("fixed sensor → epistemic collapses → LQR"). Only a
+   state/action-dependent sensor `R(x)` (or `Q(x)`) breaks it — the *dual effect* —
+   making information-seeking provably valuable. So "a single agent can only ever do
+   LQR" is **false**, and false specifically because real sensing is action-dependent.
+2. **One-step EFE under-credits information.** The value of information is temporal.
+   The current `expected_free_energy` is greedy/one-step, so the dual-effect advantage
+   shows only as a modest *precision* edge (the honest `displacement` demo), not as
+   LQR failing. The dramatic T-Maze-style result needs **multi-step policy
+   evaluation** (planning as inference), which also dissolves the one-step "myopic
+   trap." → deferred (issue).
+3. **Why discrete is clean and continuous entangles.** In the Gaussian/continuous
+   formulation the pragmatic risk term `½tr(ΛΣ_o)` and the epistemic term
+   `½(ln|Σ_o| − ln|R|)` share the *same* observation covariance, so a single channel
+   that is both goal and information source couples them. The discrete T-Maze avoids
+   this by factorisation (separate cue/reward modalities over separate hidden
+   factors). This is itself an argument *for* the FFG factorisation work: native
+   factored structure is the principled way to express such separations.
+4. **Biology.** Epistemic foraging in a single cell is real and evolved — E. coli
+   run-and-tumble is dual control via short temporal integration (methylation memory
+   ~1–4 s). A *receding horizon* is biologically defensible as (a) a normative model
+   whose optimum evolution compiles into a reactive policy, and (b) at *short*
+   horizons, an abstraction of that memory window (cf. infotaxis, Vergassola et al.
+   2007). Long deliberative horizons are cognition, not single cells.
+
+### Deferred to post-v0.4 (now GitHub issues)
+
+- Multi-step EFE / planning-as-inference (with a receding-horizon spike as its first
+  acceptance step).
+- The honest "epistemics genuinely beats LQR" demo (depends on the above).
+- `NonlinearSensor` + second-order Gaussianization (was BUILD_PLAN Phase 4 — a sensor
+  feature, orthogonal to the factorisation DOD).
+- The nonlinear scalar-concentration chemotaxis demo (was Phase 5).
+
+ADR-012's existing "out of scope (say no on sight)" list (general `@model` frontend,
+tier-2 conjugate engine, reactive scheduling, Bethe FE, structure learning) stands
+unchanged.
