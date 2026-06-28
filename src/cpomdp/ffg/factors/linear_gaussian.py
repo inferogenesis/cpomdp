@@ -32,7 +32,7 @@ from numpy.typing import ArrayLike
 from cpomdp._validation import validate_covariance
 from cpomdp.ffg.message import CanonicalGaussian
 
-__all__ = ["GaussianObservation", "GaussianTransition"]
+__all__ = ["GaussianCoupling", "GaussianObservation", "GaussianTransition"]
 
 
 @jax.tree_util.register_pytree_node_class
@@ -223,4 +223,112 @@ class GaussianTransition:
         obj = object.__new__(cls)
         object.__setattr__(obj, "dynamics", dynamics)
         object.__setattr__(obj, "dynamics_noise", dynamics_noise)
+        return obj
+
+
+@jax.tree_util.register_pytree_node_class
+@dataclass(frozen=True, init=False)
+class GaussianCoupling:
+    """Tier-1 structural coupling factor ``N(child; W·parent, Q)`` — a graph edge.
+
+    Where ``GaussianTransition`` couples a state to its *successor in time*, this
+    couples two variables joined by an *edge of the factor graph* (e.g. the shared
+    ``CheA`` node to a branch latent). The maths is identical — a linear-Gaussian
+    coupling — but a coupling carries no time semantics and ``W`` need not be square.
+
+    - ``coupling`` — W, shape ``(c, p)``: maps the p-D parent's mean to the c-D child.
+    - ``coupling_noise`` — Q, shape ``(c, c)``, positive-definite (it is inverted).
+    """
+
+    coupling: Float64[Array, "c, p"]  # W: child-rows × parent-cols
+    coupling_noise: Float64[Array, "c, c"]  # Q: child × child, positive-definite
+
+    def __init__(self, coupling: ArrayLike, coupling_noise: ArrayLike) -> None:
+        object.__setattr__(self, "coupling", jnp.asarray(coupling, dtype=float))
+        object.__setattr__(
+            self, "coupling_noise", jnp.asarray(coupling_noise, dtype=float)
+        )
+        self._validate()
+
+    def _validate(self) -> None:
+        coupling, coupling_noise = self.coupling, self.coupling_noise  # W, Q
+        # Unlike GaussianTransition's square dynamics, the parent→child map W need
+        # NOT be square — parent and child may differ in dimension.
+        if coupling.ndim != 2:
+            raise ValueError(f"coupling must be 2-D (c, p), got shape {coupling.shape}")
+        # Q is inverted in the message, so it must be positive-definite.
+        validate_covariance(coupling_noise, "coupling_noise", require_definite=True)
+        c = coupling.shape[0]
+        if coupling_noise.shape != (c, c):
+            raise ValueError(
+                f"coupling_noise must be {c}x{c} to match the {c}-row coupling, "
+                f"got shape {coupling_noise.shape}"
+            )
+
+    def message_to_parent(self, child_message: CanonicalGaussian) -> CanonicalGaussian:
+        """Summarise what a child's belief says about the parent: eliminate the child.
+
+        The coupling is the joint Gaussian over ``z = [parent, child]``::
+
+            Λ_J = [[ WᵀQ⁻¹W, −WᵀQ⁻¹ ],     h_J = 0   (a pure coupling has no bias)
+                   [ −Q⁻¹W,    Q⁻¹   ]]
+
+        The upward message:
+
+        1. Folds ``child_message`` into the *child* block — its precision into the
+           bottom-right ``c×c`` of ``Λ_J``, its potential into the trailing ``c`` of
+           ``h_J`` (a block add during construction, *not* ``__add__``).
+        2. Marginalizes the child out, leaving the message on the p-D parent.
+
+        This is the mirror of ``GaussianTransition.predict`` (which folds into the
+        parent block and eliminates the parent, emitting downward onto the child);
+        here we fold into the child block and eliminate the child, emitting upward.
+
+        Args:
+            child_message: the incoming belief on the c-D child, as a
+                ``CanonicalGaussian``.
+
+        Returns:
+            A ``CanonicalGaussian`` over the p-D parent.
+        """
+        coupling, coupling_noise = self.coupling, self.coupling_noise  # W, Q
+        c, p = coupling.shape  # W is (child, parent)
+        noise_precision = jnp.linalg.inv(coupling_noise)  # Q⁻¹
+        noise_weighted_coupling = noise_precision @ coupling  # Q⁻¹W
+
+        # The incoming message is on the CHILD, so it folds into the child block —
+        # the mirror of predict, where the message folds into the parent (state) block.
+        parent_block = coupling.T @ noise_weighted_coupling  # WᵀQ⁻¹W
+        child_block = noise_precision + child_message.precision  # Q⁻¹ + message
+
+        precision = jnp.block(
+            [
+                [parent_block, -noise_weighted_coupling.T],
+                [-noise_weighted_coupling, child_block],
+            ]
+        )
+        # No bias and no parent message → the parent potential is zero; the child
+        # slot carries the incoming message's potential.
+        potential = jnp.concatenate([jnp.zeros(p), child_message.potential])
+
+        joint = CanonicalGaussian._unchecked(precision, potential)
+        return joint.marginalize(over=range(p, p + c))  # eliminate child, keep parent
+
+    def tree_flatten(
+        self,
+    ) -> tuple[tuple[Float64[Array, "c, p"], Float64[Array, "c, c"]], None]:
+        """Leaves for JAX: ``(coupling, coupling_noise)``, no static aux data."""
+        return (self.coupling, self.coupling_noise), None
+
+    @classmethod
+    def tree_unflatten(
+        cls,
+        aux_data: None,
+        children: tuple[Float64[Array, "c, p"], Float64[Array, "c, c"]],
+    ) -> "GaussianCoupling":
+        """Rebuild from leaves without validating — the leaves may be tracers."""
+        coupling, coupling_noise = children
+        obj = object.__new__(cls)
+        object.__setattr__(obj, "coupling", coupling)
+        object.__setattr__(obj, "coupling_noise", coupling_noise)
         return obj

@@ -21,7 +21,11 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from cpomdp.ffg.factors.linear_gaussian import GaussianObservation, GaussianTransition
+from cpomdp.ffg.factors.linear_gaussian import (
+    GaussianCoupling,
+    GaussianObservation,
+    GaussianTransition,
+)
 from cpomdp.ffg.message import CanonicalGaussian
 
 
@@ -160,4 +164,78 @@ class TestGaussianTransition:
         grad = jax.grad(lambda b: fac.predict(msg, control_term=b).potential.sum())(
             jnp.zeros(2)
         )
+        assert bool(jnp.all(jnp.isfinite(grad)))
+
+
+# --- Coupling factor: the upward (child -> parent) message ---------------------
+
+
+class TestGaussianCoupling:
+    def test_stores_coerced_arrays(self):
+        fac = GaussianCoupling([[2.0, -1.0]], [[0.3]])
+        assert isinstance(fac.coupling, jax.Array)
+        np.testing.assert_array_equal(fac.coupling, [[2.0, -1.0]])
+        np.testing.assert_array_equal(fac.coupling_noise, [[0.3]])
+
+    def test_rejects_singular_coupling_noise(self):
+        # Q is inverted in the message, so a singular Q is rejected at construction.
+        with pytest.raises(ValueError, match="positive-definite"):
+            GaussianCoupling([[1.0]], [[0.0]])
+
+    def test_rejects_coupling_noise_shape_mismatch(self):
+        # W is 1x2 (c=1) but Q is 2x2 — Q must be c x c.
+        with pytest.raises(ValueError, match="match"):
+            GaussianCoupling([[1.0, 0.0]], [[1.0, 0.0], [0.0, 1.0]])
+
+    def test_accepts_nonsquare_coupling(self):
+        # The defining difference from GaussianTransition: a structural coupling's W
+        # maps parent -> child and need NOT be square. The very shape the transition
+        # factor rejects ("square") must construct cleanly here.
+        fac = GaussianCoupling([[1.0, 0.0]], [[1.0]])
+        assert fac.coupling.shape == (1, 2)
+
+    @pytest.mark.parametrize(("p", "c"), [(1, 1), (2, 1), (1, 2), (3, 2)])
+    def test_message_to_parent_matches_moment_form(self, p, c):
+        # Oracle: build the moment-form joint over [parent, child] under the coupling,
+        # condition on a direct reading of the child, read back the parent marginal —
+        # all in NumPy, never the canonical-form math under test. Covers square and
+        # both non-square directions (parent bigger, child bigger).
+        rng = np.random.default_rng(200 + 10 * p + c)
+        W = rng.standard_normal((c, p))
+        Q = _spd(rng, c)
+        m0 = rng.standard_normal(p)
+        P0 = _spd(rng, p)
+        R = _spd(rng, c)
+        y = rng.standard_normal(c)
+
+        mean_j = np.concatenate([m0, W @ m0])
+        cov_j = np.block([[P0, P0 @ W.T], [W @ P0, W @ P0 @ W.T + Q]])
+        H = np.hstack([np.zeros((c, p)), np.eye(c)])  # the reading sees the child block
+        gain = cov_j @ H.T @ np.linalg.inv(H @ cov_j @ H.T + R)
+        mean_post = mean_j + gain @ (y - H @ mean_j)
+        cov_post = (np.eye(p + c) - gain @ H) @ cov_j
+        parent_mean, parent_cov = mean_post[:p], cov_post[:p, :p]
+
+        child_msg = GaussianObservation(np.eye(c), R).message(y)
+        up = GaussianCoupling(W, Q).message_to_parent(child_msg)
+        out_mean, out_cov = (_belief_as_canonical(m0, P0) + up).to_moment()
+
+        np.testing.assert_allclose(out_mean, parent_mean, atol=1e-8)
+        np.testing.assert_allclose(out_cov, parent_cov, atol=1e-8)
+
+    def test_jit_and_grad_through_message_to_parent(self):
+        coupling = GaussianCoupling([[1.5, -0.5]], [[0.3]])  # non-square W (1x2)
+        m = CanonicalGaussian([[2.0]], [1.0])  # a message on the 1-D child
+        eager = coupling.message_to_parent(m).potential
+        jitted = jax.jit(
+            lambda h: (
+                coupling.message_to_parent(CanonicalGaussian(m.precision, h)).potential
+            )
+        )(m.potential)
+        np.testing.assert_allclose(jitted, eager, atol=1e-10)
+        grad = jax.grad(
+            lambda h: coupling.message_to_parent(
+                CanonicalGaussian(m.precision, h)
+            ).potential.sum()
+        )(m.potential)
         assert bool(jnp.all(jnp.isfinite(grad)))
