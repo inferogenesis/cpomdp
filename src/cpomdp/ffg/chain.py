@@ -17,12 +17,14 @@ One step decomposes into the owned algebra exactly as the factor docstrings prom
                      ▼  to_moment: Σ = Λ⁻¹, μ = Λ⁻¹h
                 posterior (moment)
 
-Scope (tier-1, fixed matrices). Both factors invert their noise covariance, so this
-backend handles only the plain fixed-matrix linear-Gaussian model: state-dependent
-``R(x)``/``Q(x)`` (the ``observation``/``process_noise`` fields) are out of scope and
-rejected at construction, and a deterministic (``Q = 0``) transition has no
-information form and is rejected by the transition factor. These are the documented
-divergences from moment-form Kalman, harmless for the chain the gate exercises.
+Scope (tier-1). Both factors invert their noise covariance, so a deterministic
+(``Q = 0``) transition has no information form and is rejected by the transition
+factor regardless of fixedness — the one documented divergence from moment-form
+Kalman, harmless for the chain the gate exercises. State-dependent ``R(x)``/``Q(x)``
+(the ``observation``/``process_noise`` fields) reach parity with ``KalmanBackend``
+in Phase 2.5 (ADR-012 amendment 2026-06-26): the fixed sides keep their front-loaded
+factors; a state-dependent side is linearized at the predicted mean ``μ⁻`` and its
+factor rebuilt per step (see ``infer_states``).
 
 Energy note (RFC-001). Bridging a moment-form protocol (``Belief`` in, ``Belief``
 out) to info-form internals costs two inversions per step that the native Kalman
@@ -55,54 +57,55 @@ class ChainBackend:
     decomposition and the scope/energy notes.
 
     Args:
-        model: The linear-Gaussian generative model to filter under. Must be the
-            plain fixed-matrix kind — a model carrying a state-dependent
-            ``observation`` (``R(x)``) or ``process_noise`` (``Q(x)``) is out of
-            scope for the tier-1 chain and rejected here. ``dynamics_noise`` (Q)
-            must be positive-*definite* (the information form inverts it).
+        model: The linear-Gaussian generative model to filter under. A
+            state-dependent ``observation`` (``R(x)``) or ``process_noise``
+            (``Q(x)``) is supported (Phase 2.5) and linearized at the predicted
+            mean each step; the fixed sides are front-loaded once here. Whichever
+            covariance ends up feeding the transition factor (fixed ``dynamics_noise``
+            or a state-dependent ``Q(x)``) must be positive-*definite* (the
+            information form inverts it) — a fixed ``Q = 0`` is rejected here, a
+            state-dependent ``Q(x)`` evaluating to non-PD is rejected per step.
     """
 
     def __init__(self, model: LinearGaussianModel) -> None:
-        """Validate scope and front-load the two fixed factor nodes.
+        """Front-load the fixed factor nodes; leave state-dependent ones for later.
 
         Build the ``GaussianObservation`` (from C, R) and ``GaussianTransition``
-        (from A, Q) *once* here — they are data-independent, so constructing them
-        per step would burn compute the regime doesn't need (RFC-001). Reject the
-        out-of-scope models up front: noise that is *state-dependent* — test it with
-        the ``is_fixed`` flag, not ``is None`` (an ``observation`` can be present but
-        fixed, e.g. a ``FixedSensor``), mirroring ``KalmanBackend``::
+        (from A, Q) *once* here when they are data-independent — constructing them
+        per step would burn compute the fixed regime doesn't need (RFC-001). Test
+        fixedness with the ``is_fixed`` flag, not ``is None`` (an ``observation`` can
+        be present but fixed, e.g. a ``FixedSensor``), mirroring ``KalmanBackend``::
 
             sensor_fixed  = model.observation   is None or model.observation.is_fixed
             process_fixed = model.process_noise is None or model.process_noise.is_fixed
 
-        and raise a ``ValueError`` naming "state-dependent" if either is False. (This
-        Phase-2 rejection is temporary — Phase 2.5 lifts it via a linearize-at-μ⁻
-        plug-in, ADR-012 amendment 2026-06-26.) A singular/indefinite Q surfaces as
-        the transition factor's own "positive-definite" error when that factor is
-        built.
+        When a side is *not* fixed, the corresponding factor is left ``None`` here
+        and built per step in ``infer_states`` from ``observation.linearize(μ⁻)`` /
+        ``process_noise.noise_at(μ⁻)`` instead (Phase 2.5, ADR-012 amendment
+        2026-06-26). This is not just laziness: ``GaussianTransition`` requires Q
+        positive-*definite* (it inverts it), but a model carrying a state-dependent
+        ``process_noise`` is only required to give ``model.dynamics_noise`` itself a
+        positive-*semi*-definite placeholder (it's unused) — front-loading
+        unconditionally would reject that legitimate placeholder.
 
         Args:
             model: see the class docstring.
-
-        Raises:
-            ValueError: If the model carries state-dependent ``R(x)``/``Q(x)``, or
-                if Q is not positive-definite (raised by ``GaussianTransition``).
         """
         self.model = model
-        sensor_fixed = model.observation is None or model.observation.is_fixed
-        process_fixed = model.process_noise is None or model.process_noise.is_fixed
-        if not (sensor_fixed and process_fixed):
-            raise ValueError(
-                "ChainBackend (tier-1) needs fixed sensor and process noise; a "
-                "state-dependent R(x) or Q(x) is not yet representable on the FFG "
-                "chain (Phase 2.5) — use KalmanBackend for state-dependent noise."
-            )
-        self._transition = GaussianTransition(
-            model.dynamics, model.dynamics_noise
-        )  # A, Q
-        self._observation = GaussianObservation(
-            model.sensor_model, model.sensor_noise
-        )  # C, R
+        self._sensor_fixed = model.observation is None or model.observation.is_fixed
+        self._process_fixed = (
+            model.process_noise is None or model.process_noise.is_fixed
+        )
+        self._transition: GaussianTransition | None = (
+            GaussianTransition(model.dynamics, model.dynamics_noise)  # A, Q
+            if self._process_fixed
+            else None
+        )
+        self._observation: GaussianObservation | None = (
+            GaussianObservation(model.sensor_model, model.sensor_noise)  # C, R
+            if self._sensor_fixed
+            else None
+        )
 
     def infer_states(
         self,
@@ -119,6 +122,14 @@ class ChainBackend:
         prior into canonical form, ``predict`` through the transition factor, add the
         observation factor's ``message(y)`` (the measurement update), and
         ``to_moment`` the result back into a ``Belief``.
+
+        On a state-dependent side (Phase 2.5), the transition/observation factor for
+        *this* step is built from ``process_noise.noise_at(μ⁻)`` /
+        ``observation.linearize(μ⁻)``, where ``μ⁻ = A·prior.mean + b`` is the
+        predicted mean — pure mean-propagation, so it needs no Q and can be computed
+        before any factor exists. This is exactly ``KalmanBackend``'s linearization
+        point (ADR-008), so the two backends see the same noise each step. The fully
+        fixed path computes no extra matvec and reuses the front-loaded factors.
 
         Args:
             observation: The latest sensor reading, shape ``(m,)``.
@@ -146,13 +157,39 @@ class ChainBackend:
             assert action is not None
             control_term = control @ action
 
+        # μ⁻ is needed only to linearize a state-dependent sensor and/or process
+        # noise; the fully-fixed hot path computes no extra matvec (mirrors
+        # KalmanBackend, ADR-008).
+        mean_pred = (
+            model.dynamics @ prior.mean + control_term
+            if not (self._sensor_fixed and self._process_fixed)
+            else prior.mean  # placeholder, unused on the fixed path
+        )
+
+        if self._process_fixed:
+            assert self._transition is not None  # built in __init__ on this path
+            transition = self._transition
+        else:
+            assert model.process_noise is not None  # guaranteed by _process_fixed
+            transition = GaussianTransition(
+                model.dynamics, model.process_noise.noise_at(mean_pred)
+            )
+
+        if self._sensor_fixed:
+            assert self._observation is not None  # built in __init__ on this path
+            observation_factor = self._observation
+        else:
+            assert model.observation is not None  # guaranteed by _sensor_fixed
+            sensor_model, sensor_noise = model.observation.linearize(mean_pred)
+            observation_factor = GaussianObservation(sensor_model, sensor_noise)
+
         prior_precision = jnp.linalg.inv(prior.cov)  # Λ₀ = Σ⁻¹
         prior_msg = CanonicalGaussian._unchecked(
             prior_precision, prior_precision @ prior.mean
         )  # h₀ = Λ₀μ; invariant-preserving lift of a validated Belief — no re-validate
 
-        predicted = self._transition.predict(prior_msg, control_term)
-        posterior_msg = predicted + self._observation.message(observation)
+        predicted = transition.predict(prior_msg, control_term)
+        posterior_msg = predicted + observation_factor.message(observation)
 
         mean_post, cov_post = posterior_msg.to_moment()  # Σ = Λ⁻¹, μ = Λ⁻¹h
 

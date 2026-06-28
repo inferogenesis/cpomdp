@@ -76,19 +76,30 @@ Tolerance note: the keystone is *numerical* identity (atol 1e-7), not literal
 bit-for-bit — info-vs-moment form inverts/re-inverts. ADR-012's "byte-identity"
 wording amended accordingly (2026-06-26).
 
-### Phase 2.5 — `ChainBackend` R(x)/Q(x) parity — PLANNED
+### Phase 2.5 — `ChainBackend` R(x)/Q(x) parity — DONE (2026-06-28)
 
 Before v0.4 ships, the FFG chain path reaches feature parity with `KalmanBackend`
 on state-dependent noise (decided 2026-06-26; recorded in ADR-012). Phase 2 ships
 fixed-matrix only (rejected at construction) to keep the keystone clean; this phase
 lifts that restriction via the same *linearize-at-μ⁻ plug-in* Kalman already uses.
 
-- [ ] After `predict`, read μ⁻ from the predicted message; build the observation
-      factor from `observation.linearize(μ⁻)` and the transition's Q from
+- [x] `μ⁻ = A·prior.mean + b` is computed directly (pure mean-propagation, needs no
+      Q) *before* any factor is built; the observation factor comes from
+      `observation.linearize(μ⁻)` and the transition's Q from
       `process_noise.noise_at(μ⁻)` that step (per-step factors on this path only —
-      the fixed path keeps front-loaded factors).
-- [ ] Drop the Phase 2 scope rejection; gate against `KalmanBackend`'s R(x)/Q(x)
-      path (the existing `test_kalman.py` R(x)/Q(x) oracles, ported to the chain).
+      the fixed path keeps its construction-time front-loaded factors). `__init__`
+      front-loads each side only when fixed — unconditional front-loading would
+      reject a model whose `dynamics_noise` placeholder is merely PSD (legitimate
+      when `process_noise` is state-dependent), since `GaussianTransition` requires
+      PD.
+- [x] Dropped the Phase 2 scope rejection; gated directly against `KalmanBackend`'s
+      R(x)/Q(x) path in `tests/test_ffg_chain.py`
+      (`TestChainCallableSensorParity`/`TestChainCallableProcessNoiseParity`,
+      8 new tests — constant-callable-reduces-to-fixed, scalar/2-D sequences, and a
+      control-shifted μ⁻ discriminator, mirroring `test_kalman.py`'s ADR-008
+      fixtures). The one durable rejection (`Q=0`, no information form) stays.
+      296 total green (was 290; net +6 from −2 obsolete scope tests, +8 parity
+      tests), `ruff`/`ty` clean.
 
 ### Extras
 
