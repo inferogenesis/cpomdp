@@ -101,7 +101,7 @@ lifts that restriction via the same *linearize-at-μ⁻ plug-in* Kalman already 
       296 total green (was 290; net +6 from −2 obsolete scope tests, +8 parity
       tests), `ruff`/`ty` clean.
 
-### Phase 3 — latent-goal epistemic value, linear stage — IN PROGRESS (rendering/README open)
+### Phase 3 — latent-goal epistemic value, linear stage — DONE (2026-06-28)
 
 Fulfils the Extras line below and a domain-expert critique (attributed to Conor
 Heins, re: epistemic value and the discrete T-Maze task): the existing
@@ -156,9 +156,45 @@ stacked.
       legible, but doesn't scale as cleanly to multiple goal items), and the open
       multi-goal fork (shared vs. per-item beacons — a behavioural design choice,
       not a capability gap; deferred, not resolved here).
-- [ ] Rendering (GIF) once the mechanism is confirmed (it is) — reuse
-      `_draw_bacillus`/precision-field helpers from the flagship demo.
-- [ ] `examples/README.md` gallery entry under "the journey."
+- [x] Promoted to the new **flagship** (the v0.3 demo moves into "the journey"
+      instead): the demo grew a fourth, genuine **classic LQR** regime alongside
+      sharp/balanced/weak Λ, matching the v0.3 flagship's 2x2-grid structure
+      exactly. `LQRController` needed no change either — it only ever consumes
+      the dynamics/control matrices and cost weights, never the sensor, so it
+      runs unmodified on this state-dependent-sensor model; its per-step `goal`
+      is `belief.mean[2:4]` (the current food estimate, zero-weighted on its own
+      block), not a static target. Sweep-tuned regimes:
+      `Λ=0.10` (sharp, never detours), `Λ=0.015` (balanced, detours then
+      exploits), `Λ=0.006` (weak, parks at the beacon for 77/90 steps and never
+      reaches food).
+- [x] Rendering: a 2x2 grid GIF reusing the flagship's palette,
+      `_draw_bacillus`, and `_precision_field` helper; both belief
+      markers/ellipses (agent + food) drawn per panel. Displayed ellipse
+      diameter is capped (`_ellipse(..., max_diameter=...)`, never the
+      underlying belief) — the food prior is deliberately wide
+      (`FOOD_PRIOR_COV`), and its raw step-0 diameter exceeded the whole plot
+      before this cap. Each panel's border AND its own `t=` step counter turn
+      green/freeze once that regime first settles near the food and stays
+      (`_arrival_step`, suffix-AND over the "within `ARRIVAL_THRESHOLD`"
+      boolean array, so a transient close pass doesn't count) — confirmed
+      against the actual per-regime arrival steps (sharp 18, LQR 35, balanced
+      41, weak never), and what makes those numbers legible straight off the
+      GIF rather than only in `--scan`'s printed metrics.
+- [x] `examples/README.md`: the flagship section now points at
+      `bacillus_uncertain_food.py`; the v0.3 demo moved into "the journey" with
+      a note on what it lacks (ADR-013).
+- [x] Reframed in literature-accurate terms: epistemic value here is
+      **instrumental** (Friston et al. 2015, "Active inference and epistemic
+      value" / the T-Maze task) — the resolved uncertainty is decision-relevant,
+      changing where the agent subsequently heads — not merely salience for its
+      own sake, which is what the v0.3 beacon exhibited.
+- [x] Checked, not assumed: "is balanced quicker?" was computed directly
+      rather than asserted. It is not — balanced is the *slowest* regime that
+      arrives and travels the *farthest* (it deliberately detours), but is far
+      more precise once settled (≈7x tighter final food-covariance trace,
+      ≈4-5x smaller final position error than sharp/LQR). `examples/README.md`
+      states the verified explore/exploit tradeoff, not the unverified "quicker"
+      claim.
 
 ### Phase 4 — `NonlinearSensor`: second-order Gaussianization — PLANNED
 
