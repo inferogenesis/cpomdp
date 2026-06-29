@@ -65,7 +65,7 @@ end
     prior_mean, prior_cov,
 )
     chea    ~ MvNormal(mean = prior_mean, covariance = prior_cov)
-    chey    ~ MvNormal(mean = W_chey * chea, covariance = Q_chea)
+    chey    ~ MvNormal(mean = W_chey * chea, covariance = Q_chey)
     cheb    ~ MvNormal(mean = W_cheb * chea, covariance = Q_cheb)
     motorA  ~ MvNormal(mean = W_motorA * chey, covariance = Q_motorA)
     motorB  ~ MvNormal(mean = W_motorB * chey, covariance = Q_motorB)
@@ -86,7 +86,7 @@ function cpomdp_run_tree(
             W_chey = W_chey, W_cheb = W_cheb, W_motorA = W_motorA, W_motorB = W_motorB,
             Q_chey = Q_chey, Q_cheb = Q_cheb, Q_motorA = Q_motorA, Q_motorB = Q_motorB,
             R_motorA = R_motorA, R_motorB = R_motorB, R_cheB = R_cheB,
-            prior_mean = prior_mean, prior_cov = prior cov,
+            prior_mean = prior_mean, prior_cov = prior_cov,
         ),
         data = (y_motorA = y_motorA, y_motorB = y_motorB, y_cheB = y_cheB),
     )
@@ -214,7 +214,7 @@ def rxinfer_chemotaxis_tree_root(
         vec(y_motora),
         vec(y_motorb),
         vec(y_cheb),
-        mat(w_cheb),
+        mat(w_chey),
         mat(w_cheb),
         mat(w_motora),
         mat(w_motorb),
@@ -223,7 +223,7 @@ def rxinfer_chemotaxis_tree_root(
         mat(q_motora),
         mat(q_motorb),
         mat(r_motora),
-        mat(r_motora),
+        mat(r_motorb),
         mat(r_cheb),
         vec(prior_mean),
         mat(prior_var),

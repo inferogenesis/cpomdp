@@ -60,6 +60,7 @@
     "pymdp",
     "pyproject",
     "pytest",
+    "pytestmark",
     "pytree",
     "pytrees",
     "reparameterised",
