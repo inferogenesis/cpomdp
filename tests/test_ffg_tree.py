@@ -19,6 +19,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
+from cpomdp import KalmanBackend, LinearGaussianModel
 from cpomdp.ffg.factors.linear_gaussian import GaussianCoupling, GaussianObservation
 from cpomdp.ffg.graph import Coupling, CouplingGraph
 from cpomdp.ffg.message import CanonicalGaussian
@@ -426,3 +427,140 @@ class TestCouplingGraphValidation:
                 (Coupling(0, 1, self._w(1, 1), 1.0),),
                 {9: GaussianObservation(np.eye(1), np.eye(1))},
             )
+
+
+# --- CouplingGraph.infer vs the normal backend on the hand-flattened joint ---
+
+
+def _block_diag(blocks):
+    """Lay square blocks down the diagonal of a single zero matrix (NumPy)."""
+    total = sum(b.shape[0] for b in blocks)
+    out = np.zeros((total, total))
+    offset = 0
+    for b in blocks:
+        size = b.shape[0]
+        out[offset : offset + size, offset : offset + size] = b
+        offset += size
+    return out
+
+
+def _flattened_kalman_root(root, dims, edges, obs_specs, m0, p0, readings):
+    """Root marginal via a flattened `LinearGaussianModel` through `KalmanBackend`.
+
+    The "normal backend" route the demo contrasts against the graph: assemble the full
+    joint prior over every node (a root-outward forward pass), stack each reading's
+    `(C, R) into one tall update places at that node's block, run a single Kalman
+    step (identity dynamics, zero process noise, so predict is a no-op), and marginalise
+    the posterior back down to the root block. Independent of the message-passing under
+    test *and* of the moment-form oracle's manual conditioning.
+    """
+    offs = np.cumsum([0, *dims])
+    dim = int(offs[-1])
+
+    def blk(i):
+        return slice(int(offs[i]), int(offs[i + 1]))
+
+    mu = np.zeros(dim)
+    sig = np.zeros((dim, dim))
+    mu[blk(root)] = m0
+    sig[blk(root), blk(root)] = p0
+
+    children: dict[int, list] = {}
+    for parent, child, w, q in edges:
+        children.setdefault(parent, []).append(
+            (child, np.asarray(w, float), np.asarray(q, float))
+        )
+    placed, frontier = [root], [root]
+    while frontier:
+        parent = frontier.pop(0)
+        for child, w, q in children.get(parent, []):
+            mu[blk(child)] = w @ mu[blk(parent)]
+            sig[blk(child), blk(child)] = w @ sig[blk(parent), blk(parent)] @ w.T + q
+            for placed_node in placed:
+                cross = w @ sig[blk(parent), blk(placed_node)]
+                sig[blk(child), blk(placed_node)] = cross
+                sig[blk(placed_node), blk(child)] = cross.T
+            placed.append(child)
+            frontier.append(child)
+
+    c_rows, r_blocks, y_parts = [], [], []
+    for node, (c_mat, r_mat) in obs_specs.items():
+        if node not in readings:
+            continue
+        c_mat = np.asarray(c_mat, float)
+        full = np.zeros((c_mat.shape[0], dim))
+        full[:, blk(node)] = c_mat
+        c_rows.append(full)
+        r_blocks.append(np.asarray(r_mat, float))
+        y_parts.append(np.asarray(readings[node], float))
+
+    model = LinearGaussianModel(
+        dynamics=np.eye(dim),
+        sensor_model=np.vstack(c_rows),
+        dynamics_noise=np.zeros((dim, dim)),
+        sensor_noise=_block_diag(r_blocks),
+        prior=Belief(mean=mu, cov=sig),
+    )
+    posterior = KalmanBackend(model).infer_states(
+        np.concatenate(y_parts), Belief(mu, sig)
+    )
+    pm, pc = np.asarray(posterior.mean), np.asarray(posterior.cov)
+    return pm[blk(root)], pc[blk(root), blk(root)]
+
+
+class TestFlattenedKalmanParity:
+    """`CouplingGraph.infer` vs the normal backend on the hand-flattened joint.
+
+    The difference Phase 5 demonstrates is representational, not numerical: a branching
+    model the chain backend cannot draw still yields the *same* posterior a flattened
+    `LinearGaussianModel` does through `KalmanBackend`. These pin that identity
+    directly (graph vs the normal backend) on the demo's chemotaxis tree and a spread
+    of harder topologies.
+    """
+
+    def _check(self, root, dims, edges, obs_specs, m0, p0, readings, atol=1e-7):
+        couplings = tuple(
+            Coupling(p, c, GaussianCoupling(w, q), 1.0) for p, c, w, q in edges
+        )
+        observations = {n: GaussianObservation(c, r) for n, (c, r) in obs_specs.items()}
+        graph = CouplingGraph(
+            root=root, dims=dims, couplings=couplings, observations=observations
+        )
+        m0, p0 = np.asarray(m0, float), np.asarray(p0, float)
+        out = graph.infer(Belief(mean=m0, cov=p0), readings)
+        km, kc = _flattened_kalman_root(root, dims, edges, obs_specs, m0, p0, readings)
+        np.testing.assert_allclose(np.asarray(out.mean), km, atol=atol)
+        np.testing.assert_allclose(np.asarray(out.cov), kc, atol=atol)
+
+    def test_chemotaxis_tree(self):
+        # The depth-2 demo tree: a shared CheY-P (degree-3) feeding two motors plus a
+        # slow CheB branch; the hidden root CheA is recovered through structure alone.
+        chea, chey, cheb, motor_a, motor_b = 0, 1, 2, 3, 4
+        edges = [
+            (chea, chey, [[0.8]], [[0.05]]),
+            (chea, cheb, [[0.6]], [[0.05]]),
+            (chey, motor_a, [[1.0]], [[0.03]]),
+            (chey, motor_b, [[1.0]], [[0.03]]),
+        ]
+        obs = {n: (np.eye(1), [[0.10]]) for n in (cheb, motor_a, motor_b)}
+        readings = {motor_a: [1.25], motor_b: [1.15], cheb: [0.95]}
+        self._check(chea, (1, 1, 1, 1, 1), edges, obs, [0.0], [[4.0]], readings)
+
+    @pytest.mark.parametrize("seed", [1, 2, 3])
+    def test_varied_topologies(self, seed):
+        # Non-square couplings, multi-dim nodes, an unobserved internal node (1), and a
+        # 2-D root: the normal-backend route must agree wherever the graph does.
+        rng = np.random.default_rng(seed)
+        edges = [
+            (0, 1, rng.standard_normal((1, 2)), _spd(rng, 1)),
+            (1, 2, rng.standard_normal((2, 1)), _spd(rng, 2)),
+            (0, 3, rng.standard_normal((2, 2)), _spd(rng, 2)),
+        ]
+        obs = {
+            2: (rng.standard_normal((1, 2)), _spd(rng, 1)),
+            3: (np.eye(2), _spd(rng, 2)),
+        }
+        readings = {2: rng.standard_normal(1), 3: rng.standard_normal(2)}
+        self._check(
+            0, (2, 1, 2, 2), edges, obs, rng.standard_normal(2), _spd(rng, 2), readings
+        )
