@@ -319,9 +319,9 @@ class TestCouplingGraphInfer:
         with pytest.raises(KeyError):
             graph.infer(Belief(mean=np.zeros(1), cov=np.eye(1)), {1: np.zeros(1)})
 
-    def test_jit_and_grad_through_infer(self):
-        # The collect is static structure over traced array data, so it jits, and the
-        # root marginal is differentiable w.r.t. a reading.
+    def test_jit_grad_vmap_through_infer(self):
+        # The collect is static structure over traced array data, so it jits, vmaps over
+        # a batch of readings, and the root marginal is differentiable w.r.t. a reading.
         graph = CouplingGraph(
             0,
             (2, 1),
@@ -346,6 +346,13 @@ class TestCouplingGraphInfer:
         )
         grad = jax.grad(lambda yy: root_mean(yy).sum())(y)
         assert bool(jnp.all(jnp.isfinite(grad)))
+
+        ys = jnp.array([[0.7], [-1.2], [0.0]])  # a batch of readings
+        batched = jax.vmap(root_mean)(ys)
+        expected = jnp.stack([root_mean(one) for one in ys])
+        np.testing.assert_allclose(
+            np.asarray(batched), np.asarray(expected), atol=1e-10
+        )
 
 
 class TestCouplingGraphValidation:

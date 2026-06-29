@@ -1129,3 +1129,81 @@ though the work itself is deferred:
 ADR-012's existing "out of scope (say no on sight)" list (general `@model` frontend,
 tier-2 conjugate engine, reactive scheduling, Bethe FE, structure learning) stands
 unchanged.
+
+---
+
+## ADR-015 — FFG is a configuration-agnostic toolbox; levels() deferred
+
+**Date:** 2026-06-29
+**Status:** Accepted (the objective and the deferral); the `levels()` semantics is open
+and likely a future RFC.
+**Phase:** v0.4 and forward
+**Extends:** ADR-012 (the FFG decision), ADR-014 (v0.4 scope)
+
+### Objective: an agnostic toolbox, not a chemotaxis simulator
+
+The FFG is a general toolbox for modelling *any* coupled-Gaussian structure a user
+wants. The E. coli chemotaxis network (a shared node feeding a fast and a slow branch)
+is only a worked example — chosen because it is a well-defined target to aim at — not
+the design target. The library must support, with full and *tested* scaling:
+
+- arbitrary numbers of parallel branches off a node,
+- chains of unbounded depth,
+- whichever timescale semantics a user intends (per-edge / "gate-kept"; see below),
+- any valid configuration, with no example-domain vocabulary or assumptions baked into
+  the core (consistent with integer-index nodes and the domain-agnostic docstring rule).
+
+Realised scope today is linear-Gaussian *trees* (the chain is the degenerate case);
+fully general loopy graphs remain out of scope per ADR-012, a separate later question.
+The point of record: design and test for the general configuration and treat any one
+network as a single instance of it.
+
+### levels() (the fast/slow hierarchy projection) is deferred
+
+ADR-012 names `CouplingGraph.levels()` as the τ-cutoff projection that derives the
+fast/slow strata. It is **not built**, and is deferred past v0.4 (it is not on the
+ADR-014 definition-of-done). Reasons:
+
+- **The semantics is undecided.** Two readings of "which stratum a node is in":
+  - *per-edge* — the node's own incoming edge's τ (the intrinsic coupling rate; local);
+  - *path-gated* — the slowest edge between the node and the root (effective response
+    latency; a node inherits a slow ancestor's gate).
+- **They agree on the only model v0.4 ships.** When every node is one hop from the root
+  (parallel branches), the node's incoming edge *is* the slowest edge on its path, so
+  the two coincide. They diverge only for series chains two or more edges deep.
+- **There the physical meaning is genuinely ambiguous.** A reaction runs as fast as its
+  own chemistry regardless of neighbours (favours per-edge); a deep node's *response* to
+  the root is bottlenecked by the slowest intervening step (favours path-gated). Which
+  one "fast/slow stratum" should mean is not settled.
+- **Freezing a guess is the costly mistake.** Changing the *returned partition* later is
+  a silent behaviour break for callers — worse than a signature change. Whatever ships
+  must be the believed-correct semantics, and there is not yet grounds to pick one.
+
+So: ship the representation (τ stored on edges — done) and add the projection only when
+a real multi-level consumer pins the needed semantics and number of strata.
+
+### The crux to research first: temporal / reactive inference
+
+The `levels()` semantics cannot be settled in the abstract because **in v0.4 τ does not
+affect inference at all** — inference is exact, computed in one sweep, and τ is pure
+metadata on the modelled dynamics. "Fast/slow stratum" only gains an operational meaning
+once there is **temporal / reactive inference**: a scheme that schedules updates by
+timescale (fast variables updated more often than slow ones). That update policy is what
+makes "which stratum a node is in" a decision with consequences.
+
+Action for a future session: **research temporal / reactive inference** (how timescale
+separation drives update scheduling in message-passing / active-inference systems)
+before finalising `levels()`. The result likely warrants its own **RFC**, since it
+shapes a public API and touches scheduling, not just one method. Recorded here so it is
+not lost; deliberately not resolved now.
+
+### If/when levels() is built: API-shape caution
+
+To keep the projection from ageing badly after release:
+
+- return a **node → stratum mapping** (or a grouping that admits N bands), never a fixed
+  `(fast, slow)` two-tuple — multi-timescale models must not force a breaking change;
+- treat the cutoff as possibly plural (a sequence of band boundaries), not one scalar;
+- if forced to choose before the research lands, default to **per-edge** — it is the
+  more defensible reading of "how fast is this coupling" and matches the chemistry
+  argument above.

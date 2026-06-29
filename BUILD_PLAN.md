@@ -196,25 +196,36 @@ stacked.
       states the verified explore/exploit tradeoff, not the unverified "quicker"
       claim.
 
-### Phase 4 — branching factor graph: the shared-`CheA` representation — NOT STARTED
+### Phase 4 — branching factor graph: the `CouplingGraph` — DONE (2026-06-29; levels() deferred)
 
-**The actual v0.4 deliverable** (ADR-012 / ADR-014). Represent a *factorisable*
-(branching) model the chain/Kalman path cannot draw cleanly — the E. coli
-chemotaxis network where a shared `CheA` node feeds a fast (CheY-P/motor) and a slow
-(CheR/CheB methylation) branch. A chain is the degenerate FFG case (it *is* Kalman,
-the Phase 2 keystone); this is the non-chain case that justifies the whole effort.
-Today no such representation exists in `src/cpomdp/` — a factorisable model can only
-be flattened into one joint Gaussian, which is exactly what the FFG is meant to avoid.
+**The core v0.4 representation** (ADR-012 / ADR-014): a *factorisable* (branching) model
+the chain/Kalman path cannot draw cleanly — nodes coupled into a tree with a shared node
+of degree > 2 (the chemotaxis network is the worked example, but the toolbox is
+configuration-agnostic, ADR-015). Built on the existing `CanonicalGaussian` messages and
+Tier-1 factors; domain-agnostic, integer-indexed nodes.
 
-- [ ] A non-chain factor-graph representation (variables-as-wires / factors-as-nodes
-      with a node of degree > 2, the shared `CheA`), built on the existing
-      `CanonicalGaussian` messages and Tier-1 factor nodes.
-- [ ] `CouplingGraph` (or equivalent) storing the graph + τ labels, with the
-      fast/slow hierarchy as a derived `.levels()` view, never the reverse (ADR-012
-      "hierarchy as a derived view").
-- [ ] A hand-authored message schedule for this fixed small graph (ADR-012 choice 4 —
-      no reactive scheduler).
-- [ ] jit/grad/vmap smoke tests on the new public inference entry point.
+- [x] New message primitive — `GaussianCoupling` in `factors/linear_gaussian.py`: the
+      structural edge `N(child; W·parent, Q)` with `message_to_parent`, the upward
+      (child→parent) message that mirrors `GaussianTransition.predict`. Non-square `W`
+      allowed. Tested vs a moment-form joint oracle incl. non-square cases.
+- [x] Representation — `src/cpomdp/ffg/graph.py`: `Coupling` (a directed
+      `child = W·parent + noise` edge carrying a `GaussianCoupling` and a `tau`) and
+      `CouplingGraph` (integer-indexed nodes, per-node dims, leaf observations).
+      Construction validates a well-formed rooted tree with dimension-consistent factors.
+- [x] Inference — `CouplingGraph.infer`: collect each branch's upward message to the
+      root and combine with the prior. Hand-authored tree-collect schedule (deepest-first,
+      so children fold into a node before it is sent up; ADR-012 choice 4, not a reactive
+      scheduler). Only the root crosses moment form (lift in / read out); messages stay
+      canonical between — the per-root, not per-node, inversion cost.
+- [x] Tests (`tests/test_ffg_tree.py`): branching marginal vs an independent moment-form
+      full-joint oracle over arbitrary trees — depth-1 (incl. non-square), depth-2 through
+      an unobserved internal node, mixed trees, internal / under-determined / root
+      observations, empty readings, single node — plus jit/grad/vmap through `infer` and
+      the construction-validation cases.
+- [~] `CouplingGraph.levels()` (the τ-cutoff fast/slow view) — **deferred past v0.4**
+      (ADR-015): the per-edge vs path-gated semantics is undecided, the two agree on every
+      depth-1 model v0.4 ships, and the choice needs temporal/reactive-inference research
+      (likely a future RFC). `tau` is stored on edges; the projection is not built.
 
 ### Phase 5 — the difference demo + RxInfer oracle — NOT STARTED
 
