@@ -45,7 +45,7 @@ class CanonicalGaussian:
     ``to_moment``.
     """
 
-    precision: Float64[Array, "n, n"]
+    precision: Float64[Array, "n n"]
     potential: Float64[Array, "n"]
 
     def __init__(self, precision: ArrayLike, potential: ArrayLike):

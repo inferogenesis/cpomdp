@@ -47,8 +47,8 @@ class GaussianObservation:
     - ``sensor_noise`` — R, shape ``(m, m)``, positive-definite (it is inverted).
     """
 
-    sensor_model: Float64[Array, "m, n"]
-    sensor_noise: Float64[Array, "m, m"]
+    sensor_model: Float64[Array, "m n"]
+    sensor_noise: Float64[Array, "m m"]
 
     def __init__(self, sensor_model: ArrayLike, sensor_noise: ArrayLike) -> None:
         object.__setattr__(self, "sensor_model", jnp.asarray(sensor_model, dtype=float))
@@ -95,7 +95,7 @@ class GaussianObservation:
 
     def tree_flatten(
         self,
-    ) -> tuple[tuple[Float64[Array, "m, n"], Float64[Array, "m, m"]], None]:
+    ) -> tuple[tuple[Float64[Array, "m n"], Float64[Array, "m m"]], None]:
         """Leaves for JAX: ``(sensor_model, sensor_noise)``, no static aux data."""
         return (self.sensor_model, self.sensor_noise), None
 
@@ -103,7 +103,7 @@ class GaussianObservation:
     def tree_unflatten(
         cls,
         aux_data: None,
-        children: tuple[Float64[Array, "m, n"], Float64[Array, "m, m"]],
+        children: tuple[Float64[Array, "m n"], Float64[Array, "m m"]],
     ) -> "GaussianObservation":
         """Rebuild from leaves without validating — the leaves may be tracers."""
         sensor_model, sensor_noise = children
@@ -125,8 +125,8 @@ class GaussianTransition:
     - ``dynamics_noise`` — Q, shape ``(n, n)``, positive-definite (it is inverted).
     """
 
-    dynamics: Float64[Array, "n, n"]
-    dynamics_noise: Float64[Array, "n, n"]
+    dynamics: Float64[Array, "n n"]
+    dynamics_noise: Float64[Array, "n n"]
 
     def __init__(self, dynamics: ArrayLike, dynamics_noise: ArrayLike) -> None:
         object.__setattr__(self, "dynamics", jnp.asarray(dynamics, dtype=float))
@@ -208,7 +208,7 @@ class GaussianTransition:
 
     def tree_flatten(
         self,
-    ) -> tuple[tuple[Float64[Array, "n, n"], Float64[Array, "n, n"]], None]:
+    ) -> tuple[tuple[Float64[Array, "n n"], Float64[Array, "n n"]], None]:
         """Leaves for JAX: ``(dynamics, dynamics_noise)``, no static aux data."""
         return (self.dynamics, self.dynamics_noise), None
 
@@ -216,7 +216,7 @@ class GaussianTransition:
     def tree_unflatten(
         cls,
         aux_data: None,
-        children: tuple[Float64[Array, "n, n"], Float64[Array, "n, n"]],
+        children: tuple[Float64[Array, "n n"], Float64[Array, "n n"]],
     ) -> "GaussianTransition":
         """Rebuild from leaves without validating — the leaves may be tracers."""
         dynamics, dynamics_noise = children
@@ -240,8 +240,8 @@ class GaussianCoupling:
     - ``coupling_noise`` — Q, shape ``(c, c)``, positive-definite (it is inverted).
     """
 
-    coupling: Float64[Array, "c, p"]  # W: child-rows × parent-cols
-    coupling_noise: Float64[Array, "c, c"]  # Q: child × child, positive-definite
+    coupling: Float64[Array, "c p"]  # W: child-rows × parent-cols
+    coupling_noise: Float64[Array, "c c"]  # Q: child × child, positive-definite
 
     def __init__(self, coupling: ArrayLike, coupling_noise: ArrayLike) -> None:
         object.__setattr__(self, "coupling", jnp.asarray(coupling, dtype=float))
@@ -316,7 +316,7 @@ class GaussianCoupling:
 
     def tree_flatten(
         self,
-    ) -> tuple[tuple[Float64[Array, "c, p"], Float64[Array, "c, c"]], None]:
+    ) -> tuple[tuple[Float64[Array, "c p"], Float64[Array, "c c"]], None]:
         """Leaves for JAX: ``(coupling, coupling_noise)``, no static aux data."""
         return (self.coupling, self.coupling_noise), None
 
@@ -324,7 +324,7 @@ class GaussianCoupling:
     def tree_unflatten(
         cls,
         aux_data: None,
-        children: tuple[Float64[Array, "c, p"], Float64[Array, "c, c"]],
+        children: tuple[Float64[Array, "c p"], Float64[Array, "c c"]],
     ) -> "GaussianCoupling":
         """Rebuild from leaves without validating — the leaves may be tracers."""
         coupling, coupling_noise = children
