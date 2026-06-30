@@ -44,7 +44,7 @@ The FFG wire payload: `src/cpomdp/ffg/message.py`, spec in
 Parked open question: a `from_moment` / moment-form constructor (none in v0.4;
 moment form is readout-only via `to_moment`).
 
-### Phase 2 — factor nodes + chain = Kalman numerical-identity gate — IN PROGRESS (RxInfer oracle open)
+### Phase 2 — factor nodes + chain = Kalman numerical-identity gate — DONE (RxInfer oracle closed in Phase 4/5)
 
 Tier-1 linear-Gaussian factor nodes (`src/cpomdp/ffg/factors/linear_gaussian.py`)
 plus the chain backend (`src/cpomdp/ffg/chain.py`); specs in
@@ -68,7 +68,10 @@ pytrees. 290 tests green, `ty`/`ruff` clean.
 - [x] **KEYSTONE GATE** — `tests/test_ffg_chain.py` (18 tests): numerical identity
       (atol 1e-7) vs `KalmanBackend` over sequences, dims (1,1)→(4,3), with/without
       control; plus an independent NumPy scalar-filter oracle. (Tolerance note below.)
-- [ ] RxInfer oracle check on small graphs (behind the `rxinfer` marker).
+- [x] RxInfer oracle check on small graphs (behind the `rxinfer` marker) — deferred to
+      and closed in Phase 4/5 on the *branching* tree
+      (`test_branching_tree_matches_coupling_graph`), the more demanding non-chain case
+      that subsumes the chain check.
 - [x] jit/grad/vmap smoke tests as gates on every new public inference entry
       (`TestChainBackendTransforms`).
 
@@ -227,7 +230,7 @@ Tier-1 factors; domain-agnostic, integer-indexed nodes.
       depth-1 model v0.4 ships, and the choice needs temporal/reactive-inference research
       (likely a future RFC). `tau` is stored on edges; the projection is not built.
 
-### Phase 5 — the difference demo + RxInfer oracle — NOT STARTED
+### Phase 5 — the difference demo + RxInfer oracle — DONE (2026-06-30)
 
 **Closes the DOD.** A demo that *shows the difference* between a normal backend and
 the factor-graph one — the branching chemotaxis model represented natively as an FFG
@@ -235,19 +238,26 @@ vs. what a `KalmanBackend` must flatten by hand. Unlike Phase 3's `--scan` (whic
 shows the two backends *agreeing* on a chain, i.e. identity by construction), this
 exhibits a topology the chain path cannot express cleanly.
 
-- [ ] RxInfer oracle check on the small branching graph (closes Phase 2's open box,
-      now on a non-chain topology), behind the `rxinfer` marker.
-- [ ] Demo/figure contrasting the native FFG representation with the flattened-joint
-      Kalman equivalent (what you must hand-build without the graph).
-- [ ] Numerical agreement of the FFG posterior with the flattened-joint oracle (exact
-      linear-Gaussian inference gives the same posterior; the *difference* being shown
-      is representational — that is the point).
+- [x] RxInfer oracle check on the small branching graph (also closes Phase 2's open box,
+      now on a non-chain topology), behind the `rxinfer` marker —
+      `test_branching_tree_matches_coupling_graph` collects the same root marginal up a
+      degree-3 tree through RxInfer's machinery and `CouplingGraph.infer`.
+- [x] Demo/figure contrasting the native FFG representation with the flattened-joint
+      Kalman equivalent — `examples/coupling_graph_figure.py` (asset
+      `docs/assets/coupling_graph.png`): `CouplingGraph` (name three edges, one `infer`)
+      beside the 4x4 joint precision you otherwise assemble, invert, and marginalise.
+- [x] Numerical agreement of the FFG posterior with the flattened-joint oracle — the
+      figure asserts the gap (`≈1.7e-16`, well under `1e-7`) live before rendering, and
+      `tests/test_ffg_tree.py` gates `CouplingGraph` against an independent moment-form
+      full-joint oracle over arbitrary trees. The *difference* shown is representational,
+      which is the point.
 
 ### Deferred beyond v0.4 (ADR-014 — tracked as GitHub issues)
 
-Briefly in this plan or explored this session; all outside the v0.4 DOD, now tracked
-as issues (rationale + preserved findings in ADR-014; drafts in
-`scratchpad/github_issues_draft.md` pending move to GitHub):
+Briefly in this plan or explored this session; all outside the v0.4 DOD, now filed as
+GitHub issues #20 (multi-step EFE), #21 (`NonlinearSensor`), and #22 (nonlinear
+chemotaxis demo) — the "epistemics beats LQR" demo rides on #20's multi-step EFE
+(rationale + preserved findings in ADR-014):
 
 - [ ] `NonlinearSensor` + second-order Gaussianization (was Phase 4 here — a sensor
       feature, orthogonal to FFG factorisation). The Kouw (arXiv 2409.01974)

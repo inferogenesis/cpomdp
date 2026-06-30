@@ -83,6 +83,38 @@ Kalman-vs-ChainBackend agreement check without rendering.
 
 ---
 
+## FFG — declare the structure, skip the joint
+
+### A branching tree: name the edges, let the graph do the rest
+
+[`coupling_graph_figure.py`](coupling_graph_figure.py) · v0.4 · ADR-012, ADR-014
+
+A chain is the one shape a Kalman filter already is, so a chain backend proves
+nothing the normal path can't. The factor graph earns its keep the moment the model
+*branches*. This is the smallest model that genuinely does: a hidden root `r` feeds a
+hidden hub `h`, and `h` fans out to two observed leaves `a` and `b`. That hands `h`
+three neighbours, a degree no path (and so no chain) can hold, and the root is only
+ever seen through it.
+
+The figure sets the two ways to reach the root's posterior side by side. On the left
+is the whole job with `CouplingGraph`: name the three edges, call `infer` once. On the
+right is what a normal backend makes you assemble for the same number — the 4x4 joint
+precision over every variable, which you then invert and marginalise back down to `r`,
+and re-derive from scratch each time the wiring changes. Both routes land on the same
+belief over `r` (μ ≈ 1.234, σ² ≈ 0.137), agreeing to floating-point noise. The figure
+computes that gap live and prints it on the plot; the number is not hard-coded.
+
+So the payoff is not a different answer. It is that the branching stays declared
+instead of flattened, the difference ADR-014 asks the v0.4 capstone to show, and the
+work the factor graph spares you on every model bigger than a line.
+
+![A branching tree resolved two ways: CouplingGraph.infer against the hand-flattened joint precision](../docs/assets/coupling_graph.png)
+
+`coupling_graph_figure.py --check` prints both routes' root posteriors and their
+agreement without rendering (no plotting deps on that path).
+
+---
+
 ## The journey
 
 ### Four bacilli, one knob — the v0.3 original (beacon reveals YOUR position)
