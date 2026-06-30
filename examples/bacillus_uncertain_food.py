@@ -43,7 +43,14 @@ precision Λ), plus a genuine **classic LQR** regime (no epistemic term at all):
 weights, never the sensor, so it works unmodified on this state-dependent-sensor
 model — it just steers the agent block toward the *current* food-belief mean each
 step (zero weight on the food block of its own cost), recomputed from the belief,
-never from a static goal. The EFE agents instead use a single static
+never from a static goal. Its effort weight is set to ≈0, matched to the EFE
+selection (which carries no action cost at all), so neither controller is
+throttled and the arrival race turns on *strategy*, not tuning: with effort gone
+from both, LQR and the sharp-Λ agent coincide — both settle at step 18 on a
+near-identical beeline. That is ADR-003 made visible: a fixed/saturated sensor
+makes the epistemic term action-independent, so EFE-minimising selection reduces
+to its pragmatic quadratic, whose optimum *is* LQR. The EFE agents instead use a
+single static
 ``Preference``, weighted only on the displacement channel with target ``[0, 0]``
 ("observe zero distance from food"); because the predicted reading is
 ``E[food_xy]⁺ - agent_xy⁺``, that one static target algebraically chases the
@@ -102,7 +109,7 @@ Q_AGENT = 2e-5  # near-zero process noise on the agent block (existing idiom)
 Q_FOOD = 1e-6  # strictly positive (ChainBackend rejects Q=0) — food is stationary
 PRIOR_COV_AGENT = 2.6
 LQR_GOAL_PRECISION = 0.22  # the LQR agent's cost weight on (agent - food-belief)
-LQR_EFFORT = 0.6
+LQR_EFFORT = 1e-6
 
 ACTION_LO, ACTION_HI = -2.4, 2.4
 GRID_N = 25
@@ -121,15 +128,15 @@ REGIMES = [
         "kind": "lqr",
         "precision": 0.0,
         "title": "classic LQR · no epistemic term",
-        "note": "beelines toward its current food estimate — never detours",
+        "note": "beelines to its food estimate — near-identical to sharp Λ here",
         "accent": "#7A7A7A",
     },
     {
         "key": "sharp",
         "kind": "efe",
-        "precision": 0.10,
+        "precision": 0.05,
         "title": "sharp Λ · the goal dominates",
-        "note": "never detours — averages the murk on the way",
+        "note": "never detours — averages the murk; same beeline as LQR here",
         "accent": "#56B4E9",
     },
     {
@@ -749,13 +756,18 @@ def main():
     path = render(REGIMES, runs, out)
     for r in REGIMES:
         ts, means, covs = runs[r["key"]]
-        d_beacon, _step_min, dwell, food_err, agent_to_food, _tr = _metrics(
+        d_beacon, _step_min, dwell, _food_err, agent_to_food, _tr = _metrics(
             ts, means, covs
         )
+        # `arrival` is the step the GIF's border turns green / its `t=` counter
+        # freezes: first step settled within ARRIVAL_THRESHOLD of the food (`None`
+        # → never settled, e.g. the over-curious regime that parks at the beacon).
+        arrival = _arrival_step(ts)
+        arrival_str = "never" if arrival is None else str(arrival)
         tag = "LQR" if r["kind"] == "lqr" else f"Λ={r['precision']:g}"
         print(
             f"  {tag:>9}: minBeacon={d_beacon:4.2f}  dwell={dwell:2d}  "
-            f"foodErr={food_err:4.2f}  agentToFood={agent_to_food:4.2f}"
+            f"arrival={arrival_str:>5}  agentToFood={agent_to_food:4.2f}"
         )
     print(f"wrote {path}  ({len(runs[REGIMES[0]['key']][0])} steps × 4 panels)")
 

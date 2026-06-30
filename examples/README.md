@@ -52,22 +52,25 @@ noise_fn(x, p) = beacon_noise(x[:2], p)  # R(x): still keyed on agent_xy only
 ```
 
 Same four-regime structure as the v0.3 demo, same single real knob (the goal precision
-Λ): classic LQR beelines toward its current (weak) food estimate and never detours; a
-sharp Λ barely deflects; a balanced Λ detours to the beacon, learns where food really
-is, *then* heads there with confidence; a weak Λ is so over-curious it parks at the
-beacon and never eats. Each panel carries its own `t=` step counter and border, which
+Λ): classic LQR and a sharp Λ both beeline toward the current food estimate and never
+detour — with LQR's effort cost set to ≈0 to match the EFE selection (which has none),
+the two are the *same* controller here, ADR-003's fixed-sensor collapse (EFE reduces to
+LQR) made visible; a balanced Λ detours to the beacon, learns where food really is,
+*then* heads there with confidence; a weak Λ is so over-curious it parks at the beacon
+and never eats. Each panel carries its own `t=` step counter and border, which
 turn green and freeze the moment that regime first settles near the food, so the GIF
 shows directly *when* each one gets there, not just whether.
 
 That border cue is also what makes the detour's actual cost legible: the balanced
-regime is **not** the fastest. Sharp (Λ=0.1) settles soonest (step 18 of 90) on the
-shortest detouring path (≈9.8 units travelled); balanced (Λ=0.015) is the slowest of
-the regimes that arrive at all (step 41) and travels the farthest (≈13.8 units),
-*because* it deliberately detours. What that detour buys is precision, not speed: once
-settled, balanced's belief about the food's location is roughly 7x tighter than sharp's
-or classic LQR's (final covariance trace ≈0.004 vs ≈0.029) and its final position error
-is four to five times smaller (≈0.04 vs ≈0.15-0.18). It is an explore/exploit
-trade — time and distance traded for confidence — not a regime that wins on every axis.
+regime is **not** the fastest. The two beeliners — classic LQR and sharp Λ=0.1 — settle
+soonest, together at step 18 of 90 on near-identical shortest paths (≈9.6-9.8 units
+travelled); balanced (Λ=0.015) is the slowest of the regimes that arrive at all (step
+41) and travels the farthest (≈13.8 units), *because* it deliberately detours. What that
+detour buys is precision, not speed: once settled, balanced's belief about the food's
+location is roughly 7x tighter than the beeliners' (final covariance trace ≈0.004 vs
+≈0.029) and its final position error is four to five times smaller (≈0.04 vs
+≈0.15-0.18). It is an explore/exploit trade — time and distance traded for confidence —
+not a regime that wins on every axis.
 
 The simulation is checked, not just rendered: every agent's filter is run through
 **both inference backends**, and `--scan` checks the native `KalmanBackend` and the
