@@ -830,3 +830,380 @@ the suite so examples can't silently rot — until v1.0. Pre-1.0 it is overkill.
   (the markdownlint MD040 pass did this), so the runnable-vs-illustrative split is done.
 - Resolve the intentional-error block (skip or assert-raises) and the tutorial's
   cross-block state (shared namespace).
+
+## ADR-012 — v0.4: FFG message passing, canonical form, from-scratch JAX
+
+**Date:** 2026-06-24
+**Status:** Accepted
+**Phase:** v0.4, Phase 0
+**Extends:** ADR-004 (the JAX backend this stays inside); does not touch the v0.1-v0.3
+Kalman/EFE path, which remains the chain special case (validated against it, not
+replaced by it).
+
+### Decision
+
+v0.4 generalises the existing Kalman/EFE machinery to a Forney-style factor graph
+(FFG) — variables as wires, factors as nodes — to express the E. coli chemotaxis
+network, where the shared `CheA` node has edges into both a fast (CheY-P/motor)
+and a slow (CheR/CheB methylation) branch and so cannot be drawn cleanly as a model
+hierarchy. Four choices, settled in the build plan and recorded here as the ADR of
+record:
+
+1. **From scratch in JAX, not RxInfer.** Message passing is owned code. A Julia
+   call in the inference core would break `jax.grad`/`jax.jit`/`jax.vmap` through
+   the agent — the franchise property this library exists to deliver (ADR-002,
+   ADR-004). Non-negotiable.
+2. **RxInfer's role narrows to oracle-only.** It stays the test-time ground truth
+   (the existing `rxinfer` pytest marker) plus an optional, minimal tier-4
+   fallback held strictly off the differentiable hot path. Never imported by the
+   core; `pip install cpomdp` stays Julia-free, continuing ADR-002's wall.
+3. **Message representation is canonical/information form.** Messages carry
+   `(Λ, h)` with `Λ = Σ⁻¹` (precision) and `h = Σ⁻¹μ` (precision-mean). Factor
+   product is addition of `(Λ, h)`; marginalization is a Schur complement. This
+   matches the information-filter algebra the Kalman backend already owns and
+   avoids inversions in the product step; moment form is a readout view, not the
+   storage form.
+4. **The schedule is hand-authored, not reactive.** The chemotaxis graph is small
+   and fixed, so v0.4 writes its message order by hand rather than building a
+   general reactive/automatic-conjugacy scheduler (named out of scope below).
+
+### Why this generalises rather than replaces
+
+Gaussian belief propagation on a linear chain *is* the Kalman filter — the v0.4
+Phase 2 keystone gate is therefore byte-identity against the existing Kalman path
+on a chain topology, not mere agreement. The FFG is the more general structure;
+the chain is its degenerate case, already trusted.
+
+### Out of scope (say no on sight)
+
+General `@model`-style frontend / arbitrary user models; a full tier-2
+conjugate-exponential engine for arbitrary exponential families (the seam is
+declared and stubbed, deferred to v0.5+); reactive message scheduling /
+automatic conjugacy dispatch across arbitrary graphs; constrained Bethe Free
+Energy as a general objective (free energy is evaluated on the fixed graph, not
+minimised generally); structure *learning* (continuous coupling pruning) — v0.4
+ships representation only.
+
+### Hierarchy as a derived view
+
+Fast/slow strata are not a primitive of the graph — they are computed from a
+`CouplingGraph.levels()` projection at a τ cutoff. The graph (and its τ labels)
+is stored; the hierarchy is a view recomputed from it, never the reverse. This
+is what makes the shared-CheA node representable at all: a model hierarchy would
+force a choice of which branch CheA "belongs to," but the factor graph just gives
+it two edges.
+
+### Validation strategy
+
+Same discipline as the existing backends: a Kalman-path byte-identity gate on the
+linear-chain case (Phase 2), an RxInfer oracle check on small graphs (behind the
+`rxinfer` marker), and jit/grad/vmap smoke tests treated as gates, not
+nice-to-haves, on every new public inference entry point. Full detail, phase
+breakdown, and exit gates live in `.claude/cpomdp_v0.4_build_plan.md`.
+
+### Numbering note
+
+The v0.4 build plan originally named this "ADR-004"; that slot was already taken
+by the v0.2 JAX-backend decision (above). Renumbered to ADR-012, the next free
+slot — a clerical fix, not a reopened decision.
+
+### Amendment (2026-06-26) — keystone tolerance + R(x)/Q(x) parity
+
+Two Phase-2 clarifications, recorded as the work landed:
+
+1. **"Byte-identity" reads as tight *numerical* identity (atol 1e-7).** The keystone
+   gate runs the FFG chain in information form against the moment-form Kalman path;
+   the two invert/re-invert at different points, so literal bit-for-bit agreement is
+   impossible. The decision (chain == Kalman on a chain topology) stands; only the
+   wording softens. The validation-strategy line above should be read this way.
+
+2. **The FFG chain path gains R(x)/Q(x) parity before v0.4 ships.** Phase 2 ships
+   fixed-matrix only — `ChainBackend` rejects a state-dependent `observation`/
+   `process_noise` at construction — to keep the keystone clean. This is *not* a
+   capability regression: `KalmanBackend` keeps R(x)/Q(x) on the chain throughout.
+   A Phase 2.5 then lifts the restriction via the same *linearize-at-μ⁻ plug-in*
+   Kalman already uses (evaluate `C, R(μ⁻)` / `Q(μ⁻)` at the predicted mean each
+   step; factors go per-step on that path only, the fixed path stays front-loaded).
+   This is the conjugate of the Phase-3 Gaussianization machinery and reuses it.
+
+---
+
+## ADR-013 — v0.4 Phase 3: the beacon's epistemic value moves from agent-state to the food latent
+
+**Date:** 2026-06-28
+**Status:** Accepted
+**Phase:** v0.4, Phase 3 (build plan)
+**Extends:** ADR-008 (the bacillus demo this redesigns); relies on ADR-012/Phase 2.5
+(`ChainBackend` R(x)/Q(x) parity, the precondition for a meaningful Kalman-vs-FFG
+comparison on this model).
+
+### The critique
+
+`examples/bacillus_seeking_food.py` (ADR-008) has agents detour to a beacon
+because visiting it sharpens the agent's *own* position belief — `R(x)` is a
+precision well keyed on the agent's own location, and the food's location is a
+known, fixed `Preference` target throughout. A domain-expert critique (quoted to
+me by the project owner, attributed to Conor Heins, in the spirit of "Epistemic
+value and active inference" and the discrete T-Maze task) names this a *trivial*
+form of state information gain: the agent gains information about itself for its
+own sake, never tied to resolving a genuine *contextual* unknown — unlike the
+T-Maze task, where visiting the cue resolves *which arm holds the reward*, a fact
+the agent could not otherwise act correctly without. The fix has to make the
+beacon's epistemic value about something the agent cannot directly act on and
+does not already know — not "visiting precise states because they're precise."
+
+### Decision
+
+Promote the food's position to an explicit latent state. The model's state grows
+from `[agent_xy]` (2-D) to `[agent_xy, food_xy]` (4-D); `food_xy` carries a wide
+Gaussian prior (loosely known a priori) and a small, strictly-positive process
+noise (stationary; `ChainBackend`'s information form rejects exact `Q = 0`, ADR-012
+Phase 2). The sensor gains a second channel alongside the existing self-position
+read: `o_disp = food_xy − agent_xy`, a relative displacement/bearing vector whose
+noise is the **existing, unmodified** beacon-falloff function (`beacon_noise`),
+evaluated at the agent's own position — the beacon mechanic itself does not
+change, only what it is wired to reveal.
+
+The `Preference` stays a single static object:
+`Preference(goal=[*, *, 0, 0], precision=block_diag(0·I₂, Λ·I₂))` — zero weight on
+the self-channel, weight `Λ` on "observe zero displacement from food" (i.e.
+"stand on the food"). Because the predicted reading is
+`E[food_xy]⁺ − agent_xy⁺`, this single static target *algebraically* chases the
+agent's current belief about where food is — confirmed by a Jacobian check
+(`∂o⁺/∂a = −B_agent`, the correct sign, no degenerate or flipped argmin): the food
+block has no actuator, so the residual moves only through the agent's own
+predicted position, and minimizing it is gradient ascent on a quadratic potential
+peaked at the food. This reads as chemotaxis-shaped *behaviour* — climbing toward
+the food — without literally simulating a concentration field (that is Phase 5's
+job, and needs a real nonlinear sensor; see below).
+
+This requires **zero changes to `src/cpomdp/`.** `LinearGaussianModel`,
+`CallableSensor`, and `expected_free_energy` are already generic over
+state/observation block structure: a sensor channel can read one state block
+while its noise depends on a different block (`CallableSensor.noise_fn(x,
+params)` already receives the *full* predicted state), and the EFE kernel's
+pragmatic/epistemic terms are plain `m`-dimensional algebra that does not care how
+many channels are stacked or what they're labelled. This is a model-construction
+exercise (`examples/bacillus_uncertain_food.py`), not a library feature — verified
+by direct reads of `efe.py`, `observation.py`, `selection.py`, `structure.py`, and
+`chain.py`, cross-checked by an independent design review before implementation.
+
+### The rejected alternative: per-step `Preference` rebuild
+
+Keep absolute position sensing (no relative channel); rebuild
+`Preference(goal=belief.mean[2:4], ...)` fresh every loop iteration from the
+current food-belief mean, hand-rolled in the demo script. This is **behaviourally
+equivalent** — the epistemic mechanism (a channel reading food's position, R(x)
+keyed on the agent's own beacon-proximity) is identical either way, since that
+part of the fix is what actually answers the critique, not the pragmatic-term
+plumbing. It is arguably *more legible* to a reviewer steeped in the discrete
+T-Maze framing: "the preference is fixed, belief about the unknown changes" reads
+more directly as the T-Maze shape than a displacement channel's algebra.
+
+Rejected for v0.4 because it does not scale as cleanly to multiple goal items —
+each additional item needs its own per-step Python rebuild rather than one more
+static `Λ_i` block in a single object — and because the relative-channel version
+is *also* the more general posture (it composes with stacking more displacement
+channels with no script-side bookkeeping). Recorded here so the choice is visible
+and not just "the cleverer one happened to get built."
+
+### Open: the multi-goal beacon topology (not resolved here)
+
+Stacking `N` food blocks (`(2+2N)`-D state, one displacement channel + one `Λ_i`
+weight per item) is mechanically just bigger block matrices — confirmed, no new
+abstraction needed. But whether **one shared beacon reveals every item's
+displacement at once, or each item needs its own (distinct) beacon**, is a real,
+undecided *behavioural* design choice, not a capability gap: a shared beacon gives
+no genuine "which uncertainty is worth resolving" tradeoff (visiting it resolves
+everything), while per-item beacons create the actually T-Maze-flavoured problem
+of choosing which cue to visit. Left open for whichever future `N > 1` demo
+exercises it; do not resolve silently by whichever is easiest to wire up first.
+
+### Staged second half: the nonlinear sensor (Phase 4/5, not this ADR)
+
+The displacement-vector channel is a *linear* proxy for "moving up a gradient" —
+true biological chemotaxis senses a *scalar* concentration via temporal sampling
+(E. coli is too small to sense a spatial gradient across its body), which is
+genuinely nonlinear in the state and needs `NonlinearSensor` + second-order
+Gaussianization — named as a deferred seam since ADR-006 but never built. That is
+real `src/cpomdp/` work, tracked separately as Phase 4/5 in `BUILD_PLAN.md`
+(spec-and-tests handed over, not authored here, per the session's mentor-mode
+split-by-stakes convention) and will get its own ADR once it lands, rather than
+being folded into this one.
+
+### Validation strategy
+
+Same discipline as the existing backends: `examples/bacillus_uncertain_food.py`'s
+`--scan` mode runs the identical model/seed/loop through both `KalmanBackend` and
+`ChainBackend` and checks agreement to `atol=1e-7` — the same bar
+`tests/test_ffg_chain.py` already holds, now exercised on a topology neither
+backend's existing tests cover (a sensor channel reading one state block with
+noise keyed on a different block). A test of that same topology, independent of
+the example script, is recommended in `tests/test_ffg_chain.py` near
+`TestChainCallableSensorParity`.
+
+---
+
+## ADR-014 — v0.4 scope re-anchored on FFG factorisation; later work deferred
+
+**Date:** 2026-06-28
+**Status:** Accepted
+**Phase:** v0.4 (scope correction)
+**Extends:** ADR-012 (restates its DOD); reclassifies ADR-013's demo (kept, but it is
+not the factorisation deliverable — see below).
+
+### The decision
+
+v0.4's definition of done is, exactly and only: **build FFG message passing that
+represents an agent with a *factorisable* (branching) model, and a demo that shows
+the difference between a normal backend and the factor-graph one.** The motivating
+model is ADR-012's E. coli chemotaxis network — shared `CheA` feeding a fast
+(CheY-P/motor) and a slow (CheR/CheB methylation) branch — which "cannot be drawn
+cleanly as a model hierarchy" and needs the factor graph's native branching.
+Everything else is out of scope for v0.4 and moves to GitHub issues, with its
+rationale preserved here.
+
+### Status at the time of this ADR (honest)
+
+The FFG **substrate** is built and trusted, but the DOD is **not yet met**:
+
+- Done: `CanonicalGaussian` (Λ, h) messages (Phase 1); Tier-1 factor nodes +
+  `ChainBackend` with the chain == Kalman keystone (Phase 2); R(x)/Q(x) parity
+  (Phase 2.5).
+- Not done: there is **no branching representation** anywhere in `src/cpomdp/` — no
+  `CouplingGraph`/`.levels()`, no non-chain backend. A chain is the *degenerate* case
+  of an FFG (it *is* the Kalman filter), so the branching structure that justifies
+  the whole effort is unbuilt; a factorisable model can currently only be handled by
+  flattening it into one joint Gaussian, exactly what the FFG was meant to avoid. The
+  "shows the difference" demo does not exist — the only backend comparison
+  (`bacillus_uncertain_food.py --scan`) shows Kalman and `ChainBackend` *agreeing* on
+  a chain (identity by construction), the opposite of a difference. The RxInfer
+  oracle on a small graph is still open.
+- Reclassified: ADR-013's `bacillus_uncertain_food.py` is a valuable linear-Gaussian
+  *epistemic-value* demo, but it exercises a chain and shows backend *agreement*, so
+  it is **not** the factorisation difference demo the DOD requires. It stays as a
+  journey/epistemics demo, not the v0.4 capstone.
+
+### Findings preserved (so they are not re-derived or lost)
+
+A session exploring "make epistemics beat LQR" produced results worth keeping even
+though the work itself is deferred:
+
+1. **Separation principle / dual control.** For linear-Gaussian systems with
+   quadratic cost and *fixed* noise, the optimal controller is certainty-equivalent
+   (LQR on the mean) and assigns **zero** value to information — the estimator
+   covariance evolves independently of control (Bar-Shalom & Tse 1974). Already
+   encoded as ADR-003 ("fixed sensor → epistemic collapses → LQR"). Only a
+   state/action-dependent sensor `R(x)` (or `Q(x)`) breaks it — the *dual effect* —
+   making information-seeking provably valuable. So "a single agent can only ever do
+   LQR" is **false**, and false specifically because real sensing is action-dependent.
+2. **One-step EFE under-credits information.** The value of information is temporal.
+   The current `expected_free_energy` is greedy/one-step, so the dual-effect advantage
+   shows only as a modest *precision* edge (the honest `displacement` demo), not as
+   LQR failing. The dramatic T-Maze-style result needs **multi-step policy
+   evaluation** (planning as inference), which also dissolves the one-step "myopic
+   trap." → deferred (issue).
+3. **Why discrete is clean and continuous entangles.** In the Gaussian/continuous
+   formulation the pragmatic risk term `½tr(ΛΣ_o)` and the epistemic term
+   `½(ln|Σ_o| − ln|R|)` share the *same* observation covariance, so a single channel
+   that is both goal and information source couples them. The discrete T-Maze avoids
+   this by factorisation (separate cue/reward modalities over separate hidden
+   factors). This is itself an argument *for* the FFG factorisation work: native
+   factored structure is the principled way to express such separations.
+4. **Biology.** Epistemic foraging in a single cell is real and evolved — E. coli
+   run-and-tumble is dual control via short temporal integration (methylation memory
+   ~1–4 s). A *receding horizon* is biologically defensible as (a) a normative model
+   whose optimum evolution compiles into a reactive policy, and (b) at *short*
+   horizons, an abstraction of that memory window (cf. infotaxis, Vergassola et al.
+   2007). Long deliberative horizons are cognition, not single cells.
+
+### Deferred to post-v0.4 (now GitHub issues)
+
+- Multi-step EFE / planning-as-inference (with a receding-horizon spike as its first
+  acceptance step).
+- The honest "epistemics genuinely beats LQR" demo (depends on the above).
+- `NonlinearSensor` + second-order Gaussianization (was BUILD_PLAN Phase 4 — a sensor
+  feature, orthogonal to the factorisation DOD).
+- The nonlinear scalar-concentration chemotaxis demo (was Phase 5).
+
+ADR-012's existing "out of scope (say no on sight)" list (general `@model` frontend,
+tier-2 conjugate engine, reactive scheduling, Bethe FE, structure learning) stands
+unchanged.
+
+---
+
+## ADR-015 — FFG is a configuration-agnostic toolbox; levels() deferred
+
+**Date:** 2026-06-29
+**Status:** Accepted (the objective and the deferral); the `levels()` semantics is open
+and likely a future RFC.
+**Phase:** v0.4 and forward
+**Extends:** ADR-012 (the FFG decision), ADR-014 (v0.4 scope)
+
+### Objective: an agnostic toolbox, not a chemotaxis simulator
+
+The FFG is a general toolbox for modelling *any* coupled-Gaussian structure a user
+wants. The E. coli chemotaxis network (a shared node feeding a fast and a slow branch)
+is only a worked example — chosen because it is a well-defined target to aim at — not
+the design target. The library must support, with full and *tested* scaling:
+
+- arbitrary numbers of parallel branches off a node,
+- chains of unbounded depth,
+- whichever timescale semantics a user intends (per-edge / "gate-kept"; see below),
+- any valid configuration, with no example-domain vocabulary or assumptions baked into
+  the core (consistent with integer-index nodes and the domain-agnostic docstring rule).
+
+Realised scope today is linear-Gaussian *trees* (the chain is the degenerate case);
+fully general loopy graphs remain out of scope per ADR-012, a separate later question.
+The point of record: design and test for the general configuration and treat any one
+network as a single instance of it.
+
+### levels() (the fast/slow hierarchy projection) is deferred
+
+ADR-012 names `CouplingGraph.levels()` as the τ-cutoff projection that derives the
+fast/slow strata. It is **not built**, and is deferred past v0.4 (it is not on the
+ADR-014 definition-of-done). Reasons:
+
+- **The semantics is undecided.** Two readings of "which stratum a node is in":
+  - *per-edge* — the node's own incoming edge's τ (the intrinsic coupling rate; local);
+  - *path-gated* — the slowest edge between the node and the root (effective response
+    latency; a node inherits a slow ancestor's gate).
+- **They agree on the only model v0.4 ships.** When every node is one hop from the root
+  (parallel branches), the node's incoming edge *is* the slowest edge on its path, so
+  the two coincide. They diverge only for series chains two or more edges deep.
+- **There the physical meaning is genuinely ambiguous.** A reaction runs as fast as its
+  own chemistry regardless of neighbours (favours per-edge); a deep node's *response* to
+  the root is bottlenecked by the slowest intervening step (favours path-gated). Which
+  one "fast/slow stratum" should mean is not settled.
+- **Freezing a guess is the costly mistake.** Changing the *returned partition* later is
+  a silent behaviour break for callers — worse than a signature change. Whatever ships
+  must be the believed-correct semantics, and there is not yet grounds to pick one.
+
+So: ship the representation (τ stored on edges — done) and add the projection only when
+a real multi-level consumer pins the needed semantics and number of strata.
+
+### The crux to research first: temporal / reactive inference
+
+The `levels()` semantics cannot be settled in the abstract because **in v0.4 τ does not
+affect inference at all** — inference is exact, computed in one sweep, and τ is pure
+metadata on the modelled dynamics. "Fast/slow stratum" only gains an operational meaning
+once there is **temporal / reactive inference**: a scheme that schedules updates by
+timescale (fast variables updated more often than slow ones). That update policy is what
+makes "which stratum a node is in" a decision with consequences.
+
+Action for a future session: **research temporal / reactive inference** (how timescale
+separation drives update scheduling in message-passing / active-inference systems)
+before finalising `levels()`. The result likely warrants its own **RFC**, since it
+shapes a public API and touches scheduling, not just one method. Recorded here so it is
+not lost; deliberately not resolved now.
+
+### If/when levels() is built: API-shape caution
+
+To keep the projection from ageing badly after release:
+
+- return a **node → stratum mapping** (or a grouping that admits N bands), never a fixed
+  `(fast, slow)` two-tuple — multi-timescale models must not force a breaking change;
+- treat the cutoff as possibly plural (a sequence of band boundaries), not one scalar;
+- if forced to choose before the research lands, default to **per-edge** — it is the
+  more defensible reading of "how fast is this coupling" and matches the chemistry
+  argument above.

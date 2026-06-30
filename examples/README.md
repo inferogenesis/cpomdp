@@ -21,27 +21,116 @@ optional output path as `argv[1]`.
 
 ---
 
-## Flagship — four bacilli, one knob (the goal precision Λ)
+## Flagship — instrumental epistemics: the beacon resolves food location
 
-[`bacillus_seeking_food.py`](bacillus_seeking_food.py) · v0.3
+[`bacillus_uncertain_food.py`](bacillus_uncertain_food.py) · v0.4 · ADR-013
 
-Four bacilli in one world, differing in a single number: the **goal precision Λ** each
-is built with (`ObservationGoal(precision=…)`). They all minimise the same Expected
-Free Energy `G = pragmatic − epistemic`; Λ scales the pragmatic (goal) term but not the
-epistemic (information) one, so it alone tips the balance. A **beacon** marks where the
-sensor is sharp, so visiting it collapses the agent's uncertainty. Classic LQR beelines
-to the food; a sharp Λ barely deflects; a balanced Λ detours to the beacon to localise
-*then* heads to the food; a weak Λ never leaves. The simulation is real — every agent
-shares one Kalman filter over a `CallableSensor` whose `R(x)` dips at the beacon, and
-the EFE agents call the library's own `expected_free_energy` kernel.
+Expected Free Energy decomposes into an **epistemic** (information-seeking) value and
+a **pragmatic**/**instrumental** (goal-seeking) value. Epistemic value is genuinely
+*instrumental* — not merely curious — when the uncertainty it resolves is
+decision-relevant: the discrete T-Maze task (Friston et al. 2015, "Active inference
+and epistemic value") is the canonical case, where visiting a cue resolves which arm
+holds the reward, changing the *subsequent* action. The v0.3 demo below ties the
+beacon's epistemic value to the agent's *own* position — salience without an
+instrumental payoff, since knowing your own position more precisely doesn't change
+which action is later correct. This flagship promotes the food's position to an
+explicit latent the agent does not know a priori, and rewires the beacon to resolve
+*that* instead — now the resolved uncertainty changes where the agent then heads, the
+property the v0.3 demo's epistemic value lacked. The whole change is one rewiring, the
+beacon mechanic itself untouched:
 
-![Four bacilli navigating to food under different goal precisions Λ](../docs/assets/bacillus.gif)
+```python
+# v0.3: the channel reads the agent's OWN position, and the noise it carries is
+# keyed on that SAME position — self-revealing.
+sensor_model = I                      # C: o = agent_xy
+noise_fn(x, p) = beacon_noise(x, p)   # R(x): keyed on the channel's own block
 
-`bacillus_seeking_food.py --scan` prints the precision-Λ sweep metrics without rendering.
+# v0.4: the channel reads a DIFFERENT block (food − agent), but the noise is
+# keyed on the SAME agent-position block as before.
+sensor_model = [-I, I]                   # C: o = food_xy − agent_xy
+noise_fn(x, p) = beacon_noise(x[:2], p)  # R(x): still keyed on agent_xy only
+```
+
+Same four-regime structure as the v0.3 demo, same single real knob (the goal precision
+Λ): classic LQR and a sharp Λ both beeline toward the current food estimate and never
+detour — with LQR's effort cost set to ≈0 to match the EFE selection (which has none),
+the two are the *same* controller here, ADR-003's fixed-sensor collapse (EFE reduces to
+LQR) made visible; a balanced Λ detours to the beacon, learns where food really is,
+*then* heads there with confidence; a weak Λ is so over-curious it parks at the beacon
+and never eats. Each panel carries its own `t=` step counter and border, which
+turn green and freeze the moment that regime first settles near the food, so the GIF
+shows directly *when* each one gets there, not just whether.
+
+That border cue is also what makes the detour's actual cost legible: the balanced
+regime is **not** the fastest. The two beeliners — classic LQR and sharp Λ=0.1 — settle
+soonest, together at step 18 of 90 on near-identical shortest paths (≈9.6-9.8 units
+travelled); balanced (Λ=0.015) is the slowest of the regimes that arrive at all (step
+41) and travels the farthest (≈13.8 units), *because* it deliberately detours. What that
+detour buys is precision, not speed: once settled, balanced's belief about the food's
+location is roughly 7x tighter than the beeliners' (final covariance trace ≈0.004 vs
+≈0.029) and its final position error is four to five times smaller (≈0.04 vs
+≈0.15-0.18). It is an explore/exploit trade — time and distance traded for confidence —
+not a regime that wins on every axis.
+
+The simulation is checked, not just rendered: every agent's filter is run through
+**both inference backends**, and `--scan` checks the native `KalmanBackend` and the
+v0.4 FFG `ChainBackend` agree to `atol=1e-7`.
+
+![Four bacilli learning where the food is, under different goal precisions Λ](../docs/assets/bacillus_uncertain_food.gif)
+
+`bacillus_uncertain_food.py --scan` prints the regime metrics and the
+Kalman-vs-ChainBackend agreement check without rendering.
+
+---
+
+## FFG — declare the structure, skip the joint
+
+### A branching tree: name the edges, let the graph do the rest
+
+[`coupling_graph_figure.py`](coupling_graph_figure.py) · v0.4 · ADR-012, ADR-014
+
+A chain is the one shape a Kalman filter already is, so a chain backend proves
+nothing the normal path can't. The factor graph earns its keep the moment the model
+*branches*. This is the smallest model that genuinely does: a hidden root `r` feeds a
+hidden hub `h`, and `h` fans out to two observed leaves `a` and `b`. That hands `h`
+three neighbours, a degree no path (and so no chain) can hold, and the root is only
+ever seen through it.
+
+The figure sets the two ways to reach the root's posterior side by side. On the left
+is the whole job with `CouplingGraph`: name the three edges, call `infer` once. On the
+right is what a normal backend makes you assemble for the same number — the 4x4 joint
+precision over every variable, which you then invert and marginalise back down to `r`,
+and re-derive from scratch each time the wiring changes. Both routes land on the same
+belief over `r` (μ ≈ 1.234, σ² ≈ 0.137), agreeing to floating-point noise. The figure
+computes that gap live and prints it on the plot; the number is not hard-coded.
+
+So the payoff is not a different answer. It is that the branching stays declared
+instead of flattened, the difference ADR-014 asks the v0.4 capstone to show, and the
+work the factor graph spares you on every model bigger than a line.
+
+![A branching tree resolved two ways: CouplingGraph.infer against the hand-flattened joint precision](../docs/assets/coupling_graph.png)
+
+`coupling_graph_figure.py --check` prints both routes' root posteriors and their
+agreement without rendering (no plotting deps on that path).
 
 ---
 
 ## The journey
+
+### Four bacilli, one knob — the v0.3 original (beacon reveals YOUR position)
+
+[`bacillus_seeking_food.py`](bacillus_seeking_food.py) · v0.3
+
+The flagship's predecessor: same four-regime shape, but the beacon collapses
+uncertainty about the agent's *own* position rather than the food's — illustrative,
+but the simpler, non-instrumental form of epistemic value the flagship's ADR-013
+critique is about. The simulation is real — every agent shares one Kalman filter over
+a `CallableSensor` whose `R(x)` dips at the beacon, and the EFE agents call the
+library's own `expected_free_energy` kernel.
+
+![Four bacilli navigating to food under different goal precisions Λ](../docs/assets/bacillus.gif)
+
+`bacillus_seeking_food.py --scan` prints the precision-Λ sweep metrics without rendering.
 
 ### Bacillus seeking food — the original (pure LQR)
 
@@ -49,8 +138,8 @@ the EFE agents call the library's own `expected_free_energy` kernel.
 
 Where it started: a *single* bacillus with a fixed sensor. Here the epistemic term
 collapses to nothing (ADR-003) and active inference reduces to LQR — it simply
-perceives, acts, and arrives. The flagship above is its v0.3 successor, switching
-the epistemic term back on with a state-dependent sensor.
+perceives, acts, and arrives. The v0.3 demo above is its successor, switching the
+epistemic term back on with a state-dependent sensor.
 
 ![A bacillus navigating to food via continuous active inference](../docs/assets/bacillus_lqr.gif)
 

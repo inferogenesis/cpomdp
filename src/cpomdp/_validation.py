@@ -1,6 +1,5 @@
 """Shared construction-time validators (internal)."""
 
-import jax.numpy as jnp
 import numpy as np
 from jax.errors import ConcretizationTypeError, TracerArrayConversionError
 from jaxtyping import Array, Float64
@@ -28,16 +27,17 @@ def validate_covariance(
     """
     if cov.ndim != 2 or cov.shape[0] != cov.shape[1]:
         raise ValueError(f"{name} must be a square 2-D matrix, got shape {cov.shape}")
-    if not jnp.allclose(cov, cov.T):
-        raise ValueError(f"{name} must be symmetric.")
-    # NumPy so the check concretises (jnp.eigvalsh stays abstract under a trace). If
-    # `cov` is genuinely traced — a model rebuilt inside jit/grad — np.asarray raises
-    # and we skip: validation is a concrete-construction concern, already enforced at
-    # the eager build.
+    # Concretise once via NumPy: the symmetry and PSD checks both need concrete
+    # values (jnp stays abstract under a trace). If `cov` is genuinely traced — a
+    # model rebuilt inside jit/grad — np.asarray raises and we skip: validation is a
+    # concrete-construction concern, already enforced at the eager build.
     try:
-        eig = np.linalg.eigvalsh(np.asarray(cov, dtype=float))
+        cov_np = np.asarray(cov, dtype=float)
     except (TracerArrayConversionError, ConcretizationTypeError):
         return
+    if not np.allclose(cov_np, cov_np.T):
+        raise ValueError(f"{name} must be symmetric.")
+    eig = np.linalg.eigvalsh(cov_np)
     tol = 1e-8 * max(1.0, float(np.abs(eig).max()))
     if require_definite:
         if float(eig.min()) <= tol:

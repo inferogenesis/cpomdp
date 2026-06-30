@@ -8,10 +8,13 @@ here assert exactly that agreement rather than re-deriving numbers by hand.
 
 import numpy as np
 import pytest
+from numpy.typing import ArrayLike
 
 from cpomdp.backends.base import InferenceBackend
 from cpomdp.backends.kalman import KalmanBackend
-from cpomdp.backends.rxinfer import RxInferBackend
+from cpomdp.backends.rxinfer import RxInferBackend, rxinfer_chemotaxis_tree_root
+from cpomdp.ffg.factors.linear_gaussian import GaussianCoupling, GaussianObservation
+from cpomdp.ffg.graph import Coupling, CouplingGraph
 from cpomdp.types import Belief, LinearGaussianModel
 
 pytestmark = pytest.mark.rxinfer
@@ -113,3 +116,51 @@ def test_does_not_mutate_prior():
     RxInferBackend(model).infer_states(np.array([1.2]), prior)
     np.testing.assert_array_equal(prior.mean, mean_before)
     np.testing.assert_array_equal(prior.cov, cov_before)
+
+
+def test_branching_tree_matches_coupling_graph():
+    # The non-chain oracle box (Phase 2) closed on a real branch: the difference-demo
+    # tree has a degree-3 node (chey -> two motors), which the chain model never hits.
+    # RxInfer's message passing and CouplingGraph.infer must collect the same CheA
+    # marginal up the same tree, through entirely separate machinery.
+    chea, chey, cheb, motor_a, motor_b = 0, 1, 2, 3, 4
+    edges = [
+        (chea, chey, 0.8, 0.05),
+        (chea, cheb, 0.6, 0.05),
+        (chey, motor_a, 1.0, 0.03),
+        (chey, motor_b, 1.0, 0.03),
+    ]
+    obs_r = 0.10
+    graph = CouplingGraph(
+        root=chea,
+        dims=(1, 1, 1, 1, 1),
+        couplings=tuple(
+            Coupling(p, c, GaussianCoupling([[w]], [[q]]), 1.0) for p, c, w, q in edges
+        ),
+        observations={
+            n: GaussianObservation([[1.0]], [[obs_r]]) for n in (cheb, motor_a, motor_b)
+        },
+    )
+    readings: dict[int, ArrayLike] = {motor_a: [1.25], motor_b: [1.15], cheb: [0.95]}
+    native = graph.infer(Belief(mean=[0.0], cov=[[4.0]]), readings)
+
+    rx_mean, rx_var = rxinfer_chemotaxis_tree_root(
+        prior_mean=0.0,
+        prior_var=4.0,
+        w_chey=0.8,
+        w_cheb=0.6,
+        w_motora=1.0,
+        w_motorb=1.0,
+        q_chey=0.05,
+        q_cheb=0.05,
+        q_motora=0.03,
+        q_motorb=0.03,
+        r_motora=obs_r,
+        r_motorb=obs_r,
+        r_cheb=obs_r,
+        y_cheb=0.95,
+        y_motora=1.25,
+        y_motorb=1.15,
+    )
+    np.testing.assert_allclose(rx_mean, float(native.mean[0]), rtol=1e-9, atol=1e-12)
+    np.testing.assert_allclose(rx_var, float(native.cov[0, 0]), rtol=1e-9, atol=1e-12)

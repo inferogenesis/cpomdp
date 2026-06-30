@@ -2,6 +2,40 @@
 
 Everything worth noting lands here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [semantic versioning](https://semver.org). While we're pre-1.0, treat the minor version as the place breaking changes can show up.
 
+## [Unreleased]
+
+Forney factor-graph (FFG) message passing — the continuous-state generalisation of the
+Kalman/EFE path to a branching model the chain cannot draw cleanly (ADR-012, ADR-014).
+The chain is the degenerate case and stays validated byte-numerically against the Kalman
+filter. `__version__` stays `0.3.0` until the v0.4 release is cut.
+
+### Added
+
+- FFG message passing in canonical/information form, owned from-scratch in JAX, reachable
+  under `cpomdp.ffg.*` (not yet re-exported from the top-level namespace):
+  - `CanonicalGaussian` (`cpomdp.ffg.message`) — the `(Λ, h)` message payload; factor
+    product is addition, marginalisation a Schur complement, moment form a readout view.
+  - Tier-1 linear-Gaussian factor nodes (`cpomdp.ffg.factors.linear_gaussian`):
+    `GaussianObservation`, `GaussianTransition`, `GaussianCoupling`.
+  - `ChainBackend` (`cpomdp.ffg.chain`) — an `InferenceBackend` over a linear chain,
+    numerically identical to `KalmanBackend` (atol 1e-7, the keystone gate), including
+    state-dependent `R(x)`/`Q(x)` parity.
+  - `CouplingGraph` (`cpomdp.ffg.graph`) — the v0.4 core representation: integer-indexed
+    nodes coupled into a rooted tree with a shared node of degree > 2, inferred by a
+    hand-authored deepest-first tree-collect schedule (only the root crosses moment form,
+    so the inversion cost is per-root, not per-node). `levels()` is deferred (ADR-015).
+- Examples: `bacillus_uncertain_food.py`, the instrumental-epistemics flagship — the
+  beacon now resolves an explicit food *latent* rather than the agent's own position
+  (ADR-013), runnable on both `KalmanBackend` and `ChainBackend`; `coupling_graph_figure.py`,
+  the v0.4 difference demo — a branching tree resolved natively vs. the hand-flattened
+  joint precision a normal backend forces.
+
+### Validation
+
+- RxInfer oracle (behind the `rxinfer` marker) extended to the branching tree, alongside
+  the existing chain checks; jit/grad/vmap smoke tests gate every new public inference
+  entry point.
+
 ## [0.3.0] — 2026-06-22
 
 Epistemic action selection. v0.2 could perceive and pursue a goal; v0.3 lets the agent *seek information* — it minimises Expected Free Energy `G = pragmatic − epistemic`, so it will detour to where its sensor is sharp, localise, then act. Under a fixed sensor this collapses exactly to the v0.2 LQR behaviour (ADR-003), so that path is unchanged.
