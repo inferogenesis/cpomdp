@@ -146,13 +146,12 @@ class CouplingGraphBackend:
             cursor += width
         return tuple(layout), cursor
 
-    def _build_validation_model(self) -> LinearGaussianModel:
-        """A flat model so ``validate_step_inputs`` shape-checks inputs identically.
+    def _real_observation_blocks(self) -> tuple[list[jax.Array], list[jax.Array]]:
+        """Each observed node's sensor embedded into the joint state, and its noise.
 
-        ``infer_states`` reuses the shared per-step validator (``backends.base``) every
-        backend uses, so a caller gets the same errors here as from ``KalmanBackend``.
-        The validator reads only the model's dims, so this carries the real transition
-        and stacked observations; the prior is an unused placeholder.
+        Row-block ``k`` reads observed node ``self._obs_layout[k]`` out of the joint
+        state (its C placed at the node's columns) with that node's R. Shared by the
+        validation model and ``to_flat_model``.
         """
         rows, noise_blocks = [], []
         for node, _lo, _hi in self._obs_layout:
@@ -161,6 +160,18 @@ class CouplingGraphBackend:
             embedded = embedded.at[:, self._block(node)].set(observation.sensor_model)
             rows.append(embedded)
             noise_blocks.append(observation.sensor_noise)
+        return rows, noise_blocks
+
+    def _build_validation_model(self) -> LinearGaussianModel:
+        """A flat model so ``validate_step_inputs`` shape-checks inputs identically.
+
+        ``infer_states`` reuses the shared per-step validator (``backends.base``) every
+        backend uses, so a caller gets the same errors here as from ``KalmanBackend``.
+        The validator reads only the model's dims, so this carries the *real* stacked
+        observations (not the structural pseudo-observations ``to_flat_model`` adds);
+        the prior is an unused placeholder.
+        """
+        rows, noise_blocks = self._real_observation_blocks()
         sensor_model = jnp.vstack(rows) if rows else jnp.zeros((0, self.n_total))
         if noise_blocks:
             sensor_noise = jax.scipy.linalg.block_diag(*noise_blocks)
@@ -293,3 +304,44 @@ class CouplingGraphBackend:
     def readout(self, belief: Belief) -> Belief:
         """The marginal at ``readout_node`` (the root by default)."""
         return self.marginal(self.readout_node, belief)
+
+    def to_flat_model(self) -> LinearGaussianModel:
+        """The tree flattened into one dense ``LinearGaussianModel`` (the oracle route).
+
+        The temporal edges become the block-diagonal transition (F, Q); the real
+        observations and the structural couplings stack into one sensor, each coupling
+        an always-zero pseudo-observation ``child − W·parent ~ N(0, Q_struct)``. Running
+        ``KalmanBackend`` or ``RxInferBackend`` on this reproduces this backend's filter
+        exactly — the independent cross-check, and what the Phase-3 demo contrasts the
+        native FFG against. Pad a step's readings with ``flat_observation`` first; the
+        returned prior is an unused placeholder (pass the real prior per step).
+        """
+        rows, noise_blocks = self._real_observation_blocks()
+        for edge in self.graph.couplings:  # child − W·parent ~ N(0, Q_struct)
+            coupling = edge.factor.coupling  # W
+            child_dim = coupling.shape[0]
+            row = jnp.zeros((child_dim, self.n_total))
+            row = row.at[:, self._block(edge.child)].set(jnp.eye(child_dim))
+            row = row.at[:, self._block(edge.parent)].set(-coupling)
+            rows.append(row)
+            noise_blocks.append(edge.factor.coupling_noise)
+        return LinearGaussianModel(
+            dynamics=self._transition.dynamics,
+            sensor_model=jnp.vstack(rows),
+            dynamics_noise=self._transition.dynamics_noise,
+            sensor_noise=jax.scipy.linalg.block_diag(*noise_blocks),
+            prior=Belief(jnp.zeros(self.n_total), jnp.eye(self.n_total)),
+            control=self._control,
+        )
+
+    def flat_observation(self, observation: ArrayLike) -> jax.Array:
+        """Pad a step's readings with the structural pseudo-observations' zeros.
+
+        ``to_flat_model`` stacks the real observations then the structural couplings, so
+        a flat backend consumes ``[readings, zeros(n_structural)]``.
+        """
+        observation = jnp.asarray(observation, dtype=float)
+        n_structural = sum(
+            edge.factor.coupling.shape[0] for edge in self.graph.couplings
+        )
+        return jnp.concatenate([observation, jnp.zeros(n_structural)])

@@ -18,9 +18,12 @@ canonical-form math under test. The keystone bar is atol 1e-7 on *every* node's 
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pytest
 
 from cpomdp.backends.base import InferenceBackend
 from cpomdp.backends.coupling import CouplingGraphBackend
+from cpomdp.backends.kalman import KalmanBackend
+from cpomdp.backends.rxinfer import RxInferBackend
 from cpomdp.ffg.factors.linear_gaussian import (
     GaussianCoupling,
     GaussianObservation,
@@ -317,3 +320,69 @@ class TestTransforms:
         np.testing.assert_allclose(
             np.asarray(batched), np.asarray(expected), atol=1e-10
         )
+
+
+def _check_against_flat(backend, flat_backend, prior, obs_seq, *, action_seq=None):
+    """Drive the backend and a flat backend on ``to_flat_model`` in lockstep.
+
+    The flat backend consumes the padded observation (real readings + the structural
+    couplings' zeros); both carry the joint belief, so they must agree step for step.
+    """
+    bel_b = bel_f = prior
+    for step, y in enumerate(obs_seq):
+        action = None if action_seq is None else action_seq[step]
+        bel_b = backend.infer_states(y, bel_b, action)
+        bel_f = flat_backend.infer_states(backend.flat_observation(y), bel_f, action)
+        np.testing.assert_allclose(
+            np.asarray(bel_b.mean), np.asarray(bel_f.mean), atol=1e-7
+        )
+        np.testing.assert_allclose(
+            np.asarray(bel_b.cov), np.asarray(bel_f.cov), atol=1e-7
+        )
+
+
+class TestFlatModelCrossCheck:
+    """The filter matches KalmanBackend / RxInferBackend on ``to_flat_model``.
+
+    A structural coupling ``child = W·parent + noise`` is a within-slice
+    pseudo-observation ``child − W·parent ≈ 0``, so the branching tree flattens into one
+    ``LinearGaussianModel`` that the moment-form Kalman path and RxInfer's engine filter
+    — two independent oracles for the whole temporal recursion (ADR-016).
+    """
+
+    def test_matches_kalman_on_flat_model(self):
+        rng = np.random.default_rng(4)
+        backend = _build(
+            _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
+        )
+        flat = KalmanBackend(backend.to_flat_model())
+        prior = Belief(mean=np.zeros(5), cov=np.eye(5) * 2.0)
+        obs_seq = [rng.standard_normal(3) for _ in range(6)]
+        _check_against_flat(backend, flat, prior, obs_seq)
+
+    def test_matches_kalman_on_flat_model_with_control(self):
+        rng = np.random.default_rng(5)
+        control = np.array([[1.0], [0.0], [0.0], [0.0], [0.0]])
+        backend = _build(
+            _CHEMOTAXIS_DIMS,
+            _CHEMOTAXIS_EDGES,
+            _CHEMOTAXIS_OBS,
+            _CHEMOTAXIS_DYN,
+            control=control,
+        )
+        flat = KalmanBackend(backend.to_flat_model())
+        prior = Belief(mean=np.zeros(5), cov=np.eye(5) * 2.0)
+        obs_seq = [rng.standard_normal(3) for _ in range(6)]
+        action_seq = [rng.standard_normal(1) for _ in range(6)]
+        _check_against_flat(backend, flat, prior, obs_seq, action_seq=action_seq)
+
+    @pytest.mark.rxinfer
+    def test_matches_rxinfer_on_flat_model(self):
+        rng = np.random.default_rng(6)
+        backend = _build(
+            _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
+        )
+        flat = RxInferBackend(backend.to_flat_model())
+        prior = Belief(mean=np.zeros(5), cov=np.eye(5) * 2.0)
+        obs_seq = [rng.standard_normal(3) for _ in range(3)]
+        _check_against_flat(backend, flat, prior, obs_seq)
