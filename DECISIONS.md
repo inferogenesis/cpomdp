@@ -1207,3 +1207,182 @@ To keep the projection from ageing badly after release:
 - if forced to choose before the research lands, default to **per-edge** — it is the
   more defensible reading of "how fast is this coupling" and matches the chemistry
   argument above.
+
+---
+
+## ADR-016 — v0.4 FFG: the carry-partition backend (one backend, a node partition)
+
+**Date:** 2026-07-01
+**Status:** Accepted
+**Phase:** v0.4, FFG active-inference loop (issue #25)
+**Extends:** ADR-012 (FFG, canonical form), ADR-002 (front-loading)
+**Supersedes:** the deferred *scheduling* half of ADR-015 (`levels()` as an update
+scheduler); ADR-015's representation objective still stands.
+
+### Decision
+
+The branching FFG becomes an `InferenceBackend` as a **recursive Gaussian filter over the
+tree**, parameterised by a **partition of the node set** — a list of clusters over integer
+node indices. The partition is the off-diagonal precision (Λ) block-sparsity retained
+across the time boundary: within-cluster off-diagonals are kept, between-cluster
+off-diagonals are zeroed at the carry.
+
+- `[[all_nodes]]` = joint carry = **exact** (drops nothing).
+- singletons `[[i], [j], …]` = per-node carry = the fully-factored approximation.
+- the useful chemotaxis config lives in between.
+
+There is no separate "joint backend" and "factored backend": one `CouplingGraphBackend`,
+one `partition` argument, default = full joint, so the out-of-the-box path is exact and
+keystone-green. Exactness is a *knob*, not a type.
+
+Two orthogonal axes, and this ADR owns only the first:
+
+- **(A) partition** — which correlations survive the carry [here];
+- **(B) per-cluster tick rate** — multi-rate scheduling [deferred to v0.5, ADR-017].
+
+The partition sets the granularity at which multi-rate would even be expressible, which is
+why it lands first. It is the concrete replacement for ADR-015's deferred
+`levels()`-as-scheduler: "which stratum is a node in" becomes the operational "which
+cluster's correlations persist across a step" — a decision the user makes explicitly, not
+one the library must guess a universal semantics for.
+
+### Purity fixes what the belief is
+
+`InferenceBackend` is pure (prior in, posterior out, no hidden belief state; ADR-002) and
+`Agent` feeds the returned `Belief` back as next step's `prior`. So the belief flowing
+through `infer_states` is the **joint over all nodes** (block-sparse per the partition),
+never one node's marginal — returning a marginal would force the rest of the joint into
+hidden mutable state and break the wall. A chosen node (the agent's latent of interest,
+not always the root — issue #25) is exposed as a pure *slice* of the joint
+(`marginal`/`readout`).
+
+### Acceptance gate (two-tier)
+
+1. **Exact endpoint (non-negotiable, stays green everywhere).** The joint carry (single
+   cluster) and the branch-free chain hold atol 1e-7: chain vs `KalmanBackend` (the
+   ADR-012 keystone, already green); the branched filter vs an independent joint-precision
+   oracle, with the RxInfer tree oracle as the external cross-check.
+2. **Approximate partitions (measured, not asserted).** A **severed-mass diagnostic** —
+   the norm of the between-cluster Λ blocks dropped at each carry — surfaced as a
+   user-visible `partition_error` per step / summarised per run. The concrete v1 pass/fail
+   is that the `{fast+CheA}/{slow}` partition reproduces η and drift within the full-joint
+   run's values and Mattingly's error bars.
+
+### Consequences
+
+- The default full-joint path is exact and keystone-green out of the box.
+- The exact endpoint (Phase 1) is a *dense* joint-precision solve (ADR-017); the
+  structure-exploiting cheap solve and the factored carry + diagnostic are Phase 2. The
+  distribute-pass tree BP those need is not built in Phase 1 (it is not the exact recursive
+  filter — ADR-017).
+
+---
+
+## ADR-017 — v0.4 FFG: temporal-edge composition, driven relaxation, single clock
+
+**Date:** 2026-07-01
+**Status:** Accepted
+**Phase:** v0.4, FFG active-inference loop (issue #25)
+**Extends:** ADR-012 (FFG)
+**Depends on:** ADR-016 (the carry-partition backend)
+
+### Decision: how temporal edges compose with the structural couplings
+
+`CouplingGraph` stays **purely spatial** — one time slice. Time lives in the backend's
+recursion loop, not in the graph object: this is a recursive *filter*, not an unrolled
+two-slice graph (the closed-loop agent forces online filtering). Per global step:
+
+1. **predict** — advance each node by its own dynamics, block-diagonal `F = blkdiag(A_i)`
+   on the one `dt`, with control `b = B·action`;
+2. **update** — fold the structural couplings and the observations into the predicted
+   joint (the within-slice collect);
+3. **carry** — apply factorisation only at the temporal boundary: zero between-cluster
+   off-diagonal precision blocks (ADR-016). Never inside a slice.
+
+### Driven relaxation: each node has its own dynamics *and* a structural drive
+
+The generative model is *driven relaxation*: a non-root node evolves as
+`node_i(t) = A_i·node_i(t−1) + W·parent(t) + noise` — its own temporal memory (relaxation
+on timescale τ_i) plus the structural drive from its parent, applied **every slice**. This
+is the E. coli physics (RFC-003 section 3.1): methylation is a slow integrator (τ₂≈9.9s)
+driven by CheA, CheY-P a fast responder (τ₁≈0.05s). The structural coupling is the
+parent→child input *within* the transition, not a one-off prior — so if a partition cuts a
+CheA edge, that coupling is dropped at the carry and re-established under a stale prior at
+the next collect (exactly the error the ADR-016 diagnostic reports).
+
+### Consequence: the exact endpoint is a dense joint-precision solve
+
+Because every node carries its own temporal edge, the one-step filtering posterior over the
+node vector is a **dense** joint (the temporal prediction `Σ⁻ = FΣFᵀ + Q` inherits last
+step's correlations; marginalising the past fills in). So the exact `[[all]]` filter *must*
+carry the dense joint, and exact inference is the joint-precision assemble+solve:
+
+    predict: μ⁻ = Fμ + b,   Σ⁻ = FΣFᵀ + Q,   Λ⁻ = (Σ⁻)⁻¹
+    update:  Λ = Λ⁻ + Λ_struct + Σ_node CᵀR⁻¹C,   h = Λ⁻μ⁻ + Σ_node CᵀR⁻¹y
+    read:    Σ = Λ⁻¹,   μ = Σh
+
+`Λ_struct` is the fixed structural-coupling precision (each edge's
+`[[WᵀQ⁻¹W, −WᵀQ⁻¹], [−Q⁻¹W, Q⁻¹]]`, front-loaded). This *is* the flattened Kalman with the
+structural couplings as within-slice factors, so the exact endpoint matches the
+hand-flattened joint oracle by construction. Two-slice tree belief-propagation is **not**
+the exact recursive filter here — it represents only tree-adjacent correlations. It is
+exact only for the *static* single-slice collect (today's `CouplingGraph.infer`, checked by
+the RxInfer tree oracle), and becomes the cheap structure-exploiting solver for the
+*factored* regime in Phase 2. Phase 1 therefore ships the dense solve; the distribute-pass
+machinery arrives with partitioning.
+
+### Q2: one global clock; multi-rate deferred to v0.5
+
+One global `dt`; every cluster advances together each step. Multi-rate clocks (axis B of
+ADR-016) are deferred. Rationale: Mattingly's information rate is the continuous-time
+Gaussian-channel spectral integral — clock-agnostic, no native slow sampling — so a single
+fine clock reproduces the v1 target. Fine-stepping the stiff slow mode is numerically
+benign in exact Gaussian message passing (`A_i ≈ I + A·dt` is well-conditioned in float64;
+no stiff-integrator instability). Multi-rate is a long-horizon performance optimisation,
+not a correctness requirement.
+
+### Q5: filter vs smoother, query contract (consequences)
+
+The filter is required for the v1 closed loop; a smoother is optional and off the critical
+path. Query contract: within any single slice, after the update, all joint marginals over
+any node subset are exact regardless of partition — the partition restricts only what
+persists across a time boundary. The only unavailable queries span *both* a cluster
+boundary and a time boundary. v1 reads within-slice quantities plus the emitted trajectory,
+so nothing it needs is obstructed.
+
+---
+
+## ADR-018 — v0.4 FFG: partition admissibility under EFE
+
+**Date:** 2026-07-01
+**Status:** Accepted (the constraint); the guard's wiring lands with the EFE-on-FFG work.
+**Phase:** v0.4, FFG active-inference loop (issue #26)
+**Extends:** ADR-016 (partitions), ADR-005 (EFE decomposition), ADR-010 (`ModelStructure`)
+
+### Decision
+
+Not every partition (ADR-016) is admissible for an *epistemic* agent. The EFE epistemic
+term is the covariance-mediated coupling between the sensed state and the latent whose
+ambiguity the agent reduces (ADR-005: `½(ln|S| − ln|R|)` with `S = CΣ⁺Cᵀ + R`; the coupling
+rides in the predicted `Σ⁺`). A partition that cuts that edge sends the two independent,
+zeros the epistemic term, and silently collapses the v0.3 instrumental epistemics — a
+drift-speed eyeball would still pass while the epistemic behaviour is dead.
+
+**Rule:** a partition must not sever an EFE-load-bearing edge. Guard it — warn/error when a
+partition cuts an edge flagged EFE-relevant, tying to `ModelStructure` metadata (ADR-010's
+`factors`/`roles`/`channels`) where declared, or a per-edge flag on `Coupling` where not.
+
+### Chemotaxis specifics (checked, not assumed)
+
+The natural cut is safe on the physics: gradient information rides receptor→CheA→CheY-P
+(fast); methylation is adaptation, high-passing the DC and carrying no gradient-direction
+information, so cutting `{slow methylation}` off does not touch the epistemics. This must be
+verified with the ADR-016 severed-mass diagnostic on the EFE-relevant edges — a partition
+chosen for cost that happens to cut receptor↔food-latent would pass a drift-speed eyeball
+while quietly killing the epistemic term.
+
+### Status
+
+Recorded now because it shapes the partition API from the start. The concrete guard wiring
+lands with the factored-EFE work (issue #26); Phase 1's exact `[[all]]` endpoint severs
+nothing, so it is trivially admissible.
