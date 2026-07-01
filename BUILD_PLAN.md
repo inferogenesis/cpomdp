@@ -252,6 +252,66 @@ exhibits a topology the chain path cannot express cleanly.
       full-joint oracle over arbitrary trees. The *difference* shown is representational,
       which is the point.
 
+## v0.4 → FFG active-inference loop (issues #25–#27; ADR-016/017/018)
+
+Phases 0–5 above make a branching model *perceivable* as a static within-slice collect.
+This workstream adds the **time axis and control** so the branching FFG is a full
+`InferenceBackend` the `Agent`/EFE loop drives — the road to the v1 chemotaxis result
+(emergent drift + information efficiency vs Mattingly et al. 2021). Design crux resolved
+as a **carry-partition backend** (ADR-016) under **driven-relaxation** composition on a
+**single clock** (ADR-017); admissibility of a partition under EFE guarded per ADR-018.
+
+### Phase 1 — temporal recursion, full-joint carry, single clock — IN PROGRESS
+
+`ChainBackend` generalised to an exact recursive filter over the tree. Driven relaxation
+(each node its own dynamics + its structural parent drive every slice, ADR-017) makes the
+one-step filtering posterior a *dense* joint, so the exact `[[all]]` endpoint is the
+joint-precision solve — trivially the hand-flattened Kalman with the couplings as
+within-slice factors. The distribute-pass / factored machinery is Phase 2, not here
+(decided 2026-07-01: it is not the exact recursive filter).
+
+- [~] `CouplingGraphBackend` (`src/cpomdp/ffg/backend.py`): `infer_states` = lift joint
+      prior → predict through block-diagonal `F=blkdiag(A_i)` with control → add the
+      front-loaded structural precision `Λ_struct` + per-node observation messages →
+      `to_moment`. Carries the joint `Belief`; `marginal`/`readout` slice a chosen node
+      (issue #25 — target latent need not be the root). Front-loaded per ADR-002.
+- [ ] Keystone (`tests/test_ffg_backend.py`): all-node marginals vs an independent NumPy
+      driven-relaxation joint-precision filter over multi-step sequences, with/without
+      control, atol 1e-7. Plus `CouplingGraph.to_flat_model` + a `KalmanBackend`
+      cross-check, and the static case vs the RxInfer tree oracle (extended to non-root
+      nodes) behind the `rxinfer` marker.
+- [ ] jit/grad/vmap smoke + `isinstance(backend, InferenceBackend)` (ADR-012 gate).
+
+### Phase 2 — partition parameter + carry factorisation + severed-mass diagnostic
+
+- [ ] `partition` argument (default full joint); at the carry, zero between-cluster Λ
+      blocks; surface `partition_error` (dropped-block norm) per step / per run.
+- [ ] The structure-exploiting two-pass tree BP as the cheap exact solver for the factored
+      regime: `GaussianCoupling.message_to_child`, `CanonicalGaussian.__sub__` (belief
+      division), `CouplingGraph.infer_all` (collect + distribute → all-node marginals).
+- [ ] Gate: full-joint partition reproduces Phase-1 numbers exactly; a singleton partition
+      runs and reports non-zero severed mass (`tests/test_ffg_partition.py`).
+
+### Phase 3 — chemotaxis generative model as an FFG
+
+- [ ] Receptor → CheA (degree-3) → CheY-P (fast) and CheR/CheB methylation (slow), native
+      `CouplingGraph` + per-node transitions carrying the Mattingly timescales
+      (τ₁≈0.05s kinase, τ₂≈9.9s methylation, λ_tot≈0.86 s⁻¹); discretise on the one `dt`.
+      Gate: static inference vs RxInfer + flattened joint at atol 1e-7.
+
+### Phase 4 — close the loop (EFE on the FFG marginals, issue #26)
+
+- [ ] `info_target=<node>` on `ObservationGoal`; EFE pragmatic/epistemic from the FFG node
+      marginals, reducing to `expected_free_energy` on a chain (atol 1e-7); ADR-018
+      admissibility guard. Sign/decomposition matches ADR-005; rfcs/004 tests pass.
+
+### Phase 5 — v1 validation demo + figure (issue #27)
+
+- [ ] `{fast+CheA}/{slow}` partition reproduces η (=0.66±0.05, **dimensionless — never a
+      rate**) and drift within the full-joint run and Mattingly bounds; EFE-admissibility
+      check passes on the cut. New `examples/chemotaxis_*.py`, the closed-loop successor to
+      `coupling_graph_figure.py`.
+
 ### Deferred beyond v0.4 (ADR-014 — tracked as GitHub issues)
 
 Briefly in this plan or explored this session; all outside the v0.4 DOD, now filed as
