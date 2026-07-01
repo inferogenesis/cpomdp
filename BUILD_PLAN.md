@@ -261,26 +261,32 @@ This workstream adds the **time axis and control** so the branching FFG is a ful
 as a **carry-partition backend** (ADR-016) under **driven-relaxation** composition on a
 **single clock** (ADR-017); admissibility of a partition under EFE guarded per ADR-018.
 
-### Phase 1 — temporal recursion, full-joint carry, single clock — IN PROGRESS
+### Phase 1 — temporal recursion, full-joint carry, single clock — DONE (2026-07-01)
 
 `ChainBackend` generalised to an exact recursive filter over the tree. Driven relaxation
 (each node its own dynamics + its structural parent drive every slice, ADR-017) makes the
 one-step filtering posterior a *dense* joint, so the exact `[[all]]` endpoint is the
 joint-precision solve — trivially the hand-flattened Kalman with the couplings as
 within-slice factors. The distribute-pass / factored machinery is Phase 2, not here
-(decided 2026-07-01: it is not the exact recursive filter).
+(decided 2026-07-01: it is not the exact recursive filter). This closes issue #25.
 
-- [~] `CouplingGraphBackend` (`src/cpomdp/ffg/backend.py`): `infer_states` = lift joint
-      prior → predict through block-diagonal `F=blkdiag(A_i)` with control → add the
-      front-loaded structural precision `Λ_struct` + per-node observation messages →
-      `to_moment`. Carries the joint `Belief`; `marginal`/`readout` slice a chosen node
-      (issue #25 — target latent need not be the root). Front-loaded per ADR-002.
-- [ ] Keystone (`tests/test_ffg_backend.py`): all-node marginals vs an independent NumPy
+- [x] `CouplingGraphBackend` (`src/cpomdp/backends/coupling.py`, alongside `KalmanBackend`
+      — not under `ffg/`): `infer_states` = lift joint prior → predict through
+      block-diagonal `F=blkdiag(A_i)` with control → add the front-loaded structural
+      precision `Λ_struct` + per-node observation messages → `to_moment`. Carries the
+      joint `Belief`; `marginal`/`readout` slice a chosen node (issue #25 — target latent
+      need not be the root). `__init__` front-loads per ADR-002 via composed helpers.
+- [x] `to_flat_model` / `flat_observation` on the backend: the tree flattened into one
+      `LinearGaussianModel` with the structural couplings as within-slice
+      pseudo-observations (`child − W·parent ~ N(0, Q_struct)`) — the oracle route and the
+      Phase-3 demo's contrast.
+- [x] Keystone (`tests/test_ffg_backend.py`): all-node marginals vs an independent NumPy
       driven-relaxation joint-precision filter over multi-step sequences, with/without
-      control, atol 1e-7. Plus `CouplingGraph.to_flat_model` + a `KalmanBackend`
-      cross-check, and the static case vs the RxInfer tree oracle (extended to non-root
-      nodes) behind the `rxinfer` marker.
-- [ ] jit/grad/vmap smoke + `isinstance(backend, InferenceBackend)` (ADR-012 gate).
+      control, multi-dim/non-square couplings, and a degree-6 star (any-degree), atol 1e-7.
+- [x] Cross-checks at atol 1e-7: `KalmanBackend` on `to_flat_model` (fast) and
+      `RxInferBackend` on `to_flat_model` (behind the `rxinfer` marker) — three
+      independent engines agree to ~1e-16.
+- [x] jit/grad/vmap smoke + `isinstance(backend, InferenceBackend)` (ADR-012 gate).
 
 ### Phase 2 — partition parameter + carry factorisation + severed-mass diagnostic
 

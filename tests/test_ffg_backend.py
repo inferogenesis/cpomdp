@@ -268,6 +268,21 @@ class TestKeystoneDrivenRelaxation:
         ]
         _check_sequence(backend, dims, edges, obs, dyn, prior, obs_seq)
 
+    def test_star_topology_high_degree(self):
+        # A degree-6 hub: the root feeds six observed children. "Any node degree works"
+        # (ADR-015 / the additive information form) as a checked claim, not just the
+        # chemotaxis degree-3 hub.
+        rng = np.random.default_rng(7)
+        k = 6
+        dims = (1,) * (k + 1)
+        edges = [(0, c, [[rng.uniform(0.5, 1.0)]], [[0.05]]) for c in range(1, k + 1)]
+        obs = {c: (np.eye(1), [[0.1]]) for c in range(1, k + 1)}
+        dyn = [([[0.6]], [[0.08]])] + [([[0.4]], [[0.05]]) for _ in range(k)]
+        backend = _build(dims, edges, obs, dyn)
+        prior = Belief(mean=np.zeros(k + 1), cov=np.eye(k + 1) * 2.0)
+        obs_seq = [rng.standard_normal(k) for _ in range(5)]
+        _check_sequence(backend, dims, edges, obs, dyn, prior, obs_seq)
+
 
 class TestProtocolAndReadout:
     def test_is_inference_backend(self):

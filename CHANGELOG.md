@@ -24,6 +24,13 @@ filter. `__version__` stays `0.3.0` until the v0.4 release is cut.
     nodes coupled into a rooted tree with a shared node of degree > 2, inferred by a
     hand-authored deepest-first tree-collect schedule (only the root crosses moment form,
     so the inversion cost is per-root, not per-node). `levels()` is deferred (ADR-015).
+  - `CouplingGraphBackend` (`cpomdp.backends.coupling`) — the branching FFG as a recursive
+    Gaussian filter satisfying `InferenceBackend` (issue #25): driven-relaxation
+    composition (each node's own dynamics + its structural parent's drive every slice,
+    ADR-017), the exact full-joint carry (ADR-016), `marginal`/`readout` for any node, and
+    `to_flat_model` (structural couplings as within-slice pseudo-observations). Validated
+    at atol 1e-7 against an independent NumPy joint-precision oracle, `KalmanBackend`, and
+    `RxInferBackend` on the flattened model.
 - Examples: `bacillus_uncertain_food.py`, the instrumental-epistemics flagship — the
   beacon now resolves an explicit food *latent* rather than the agent's own position
   (ADR-013), runnable on both `KalmanBackend` and `ChainBackend`; `coupling_graph_figure.py`,
