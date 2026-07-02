@@ -59,6 +59,7 @@ class CouplingGraphBackend:
         *,
         control: ArrayLike | None = None,
         readout_node: int | None = None,
+        partition: Sequence[Sequence[int]] | None = None,
     ) -> None:
         """Validate the wiring and front-load the data-independent work (ADR-002).
 
@@ -75,12 +76,14 @@ class CouplingGraphBackend:
         self.n_total = self._offsets[-1]
         self.readout_node = self._resolve_readout_node(readout_node)
         self._control = self._coerce_control(control)
+        self._partition = self._resolve_partition(partition)
 
         # Front-loaded factor tier — built once, reused every step (ADR-002).
         self._transition = self._build_transition()
         self._structural_precision = self._assemble_structural_precision()
         self._obs_layout, self.n_observations = self._build_observation_layout()
         self._flat_model = self._build_validation_model()
+        self._partition_mask = self._build_partition_mask()
 
     @staticmethod
     def _validate_transitions(
@@ -109,6 +112,35 @@ class CouplingGraphBackend:
                 f"readout_node {node} out of range for {len(self.dims)} nodes"
             )
         return node
+
+    def _resolve_partition(
+        self, partition: Sequence[Sequence[int]] | None
+    ) -> tuple[tuple[int, ...], ...]:
+        """Default and validate the carry partition (ADR-016).
+
+        ``None`` means the trivial single cluster over every node (the exact full-joint
+        carry). Otherwise ``partition`` must be a true partition of the node set: every
+        node in exactly one cluster, no node repeated, no node missing.
+        """
+        node_count = len(self.dims)
+        if partition is None:
+            return (tuple(range(node_count)),)
+        clusters = tuple(tuple(int(node) for node in cluster) for cluster in partition)
+        seen: set[int] = set()
+        for node in (n for cluster in clusters for n in cluster):
+            if not 0 <= node < node_count:
+                raise ValueError(
+                    f"partition node {node} out of range for {node_count} nodes"
+                )
+            if node in seen:
+                raise ValueError(
+                    f"partition node {node} appears in more than one cluster"
+                )
+            seen.add(node)
+        missing = set(range(node_count)) - seen
+        if missing:
+            raise ValueError(f"partition does not cover node(s) {sorted(missing)}")
+        return clusters
 
     def _coerce_control(self, control: ArrayLike | None) -> jax.Array | None:
         """Coerce the control matrix B to a float array and shape-check it."""
@@ -235,6 +267,25 @@ class CouplingGraphBackend:
             potential = potential.at[block].add(message.potential)
         return precision, potential
 
+    def _build_partition_mask(self) -> jax.Array:
+        """The carry mask: 1 on within-cluster precision blocks, 0 between clusters.
+
+        A partition (ADR-016) keeps the joint *within* a cluster and severs the
+        correlation *between* clusters at the time boundary only. This static mask is
+        that block-sparsity; ``infer_states`` multiplies the carried joint precision by
+        it before ``to_moment``. The trivial ``[[all nodes]]`` partition is all ones, so
+        nothing is severed and the carry stays exact.
+
+        Built in NumPy (mutable slice-assignment) then frozen — front-loaded, never in
+        the hot path.
+        """
+        mask = np.zeros((self.n_total, self.n_total))
+        for cluster in self._partition:
+            for a in cluster:
+                for b in cluster:
+                    mask[self._block(a), self._block(b)] = 1.0
+        return jnp.asarray(mask)
+
     def infer_states(
         self,
         observation: ArrayLike,
@@ -285,6 +336,11 @@ class CouplingGraphBackend:
             predicted.precision + self._structural_precision + obs_precision
         )
         posterior_potential = predicted.potential + obs_potential
+
+        # Carry factorisation (ADR-016): sever between-cluster precision at the time
+        # boundary. The full-joint partition keeps every block (mask all ones), so the
+        # exact endpoint is byte-identical.
+        posterior_precision = posterior_precision * self._partition_mask
 
         mean, cov = CanonicalGaussian._unchecked(
             posterior_precision, posterior_potential

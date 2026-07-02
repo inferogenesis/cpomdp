@@ -121,7 +121,9 @@ def _driven_relaxation_oracle(
     return states, offs
 
 
-def _build(dims, edges, obs_specs, dyn, *, control=None, readout_node=None):
+def _build(
+    dims, edges, obs_specs, dyn, *, control=None, readout_node=None, partition=None
+):
     """Build a ``CouplingGraphBackend`` (graph + per-node transitions) for a spec."""
     couplings = tuple(
         Coupling(parent, child, GaussianCoupling(w, q), 1.0)
@@ -132,9 +134,10 @@ def _build(dims, edges, obs_specs, dyn, *, control=None, readout_node=None):
         root=0, dims=dims, couplings=couplings, observations=observations
     )
     transitions = tuple(GaussianTransition(a, q) for a, q in dyn)
-    return CouplingGraphBackend(
-        graph, transitions, control=control, readout_node=readout_node
-    )
+    kwargs = {"control": control, "readout_node": readout_node}
+    if partition is not None:
+        kwargs["partition"] = partition
+    return CouplingGraphBackend(graph, transitions, **kwargs)
 
 
 # The Phase-5 demo tree, now dynamic: shared CheA (root, 0) feeds fast CheY-P (1, the
@@ -282,6 +285,41 @@ class TestKeystoneDrivenRelaxation:
         prior = Belief(mean=np.zeros(k + 1), cov=np.eye(k + 1) * 2.0)
         obs_seq = [rng.standard_normal(k) for _ in range(5)]
         _check_sequence(backend, dims, edges, obs, dyn, prior, obs_seq)
+
+
+class TestCarryPartition:
+    """The carry partition (ADR-016): the off-diagonal precision block-sparsity kept
+    across the time boundary. The safety-net gate first — the trivial single-cluster
+    partition ``[[all nodes]]`` must reproduce the exact #25 path byte-for-byte, so
+    adding the ``partition`` axis cannot perturb the exact endpoint.
+    """
+
+    def test_full_joint_partition_matches_unpartitioned(self):
+        # [[all nodes]] zeros no between-cluster blocks -> identical to no partition.
+        all_nodes = [list(range(len(_CHEMOTAXIS_DIMS)))]
+        partitioned = _build(
+            _CHEMOTAXIS_DIMS,
+            _CHEMOTAXIS_EDGES,
+            _CHEMOTAXIS_OBS,
+            _CHEMOTAXIS_DYN,
+            partition=all_nodes,
+        )
+        exact = _build(
+            _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
+        )
+        rng = np.random.default_rng(0)
+        prior = Belief(mean=np.zeros(5), cov=np.eye(5))
+        obs_seq = [rng.standard_normal(3) for _ in range(4)]
+        belief_p, belief_e = prior, prior
+        for y in obs_seq:
+            belief_p = partitioned.infer_states(y, belief_p)
+            belief_e = exact.infer_states(y, belief_e)
+            np.testing.assert_array_equal(
+                np.asarray(belief_p.mean), np.asarray(belief_e.mean)
+            )
+            np.testing.assert_array_equal(
+                np.asarray(belief_p.cov), np.asarray(belief_e.cov)
+            )
 
 
 class TestProtocolAndReadout:
