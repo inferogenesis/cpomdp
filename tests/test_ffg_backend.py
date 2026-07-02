@@ -321,6 +321,66 @@ class TestCarryPartition:
                 np.asarray(belief_p.cov), np.asarray(belief_e.cov)
             )
 
+    def test_partition_error_zero_for_full_joint_positive_for_cut(self):
+        # The severed-mass diagnostic (ADR-016): the full-joint carry drops no coupling
+        # (0.0), a singleton carry severs every between-node block (positive mass).
+        full = _build(
+            _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
+        )
+        singletons = [[n] for n in range(len(_CHEMOTAXIS_DIMS))]
+        cut = _build(
+            _CHEMOTAXIS_DIMS,
+            _CHEMOTAXIS_EDGES,
+            _CHEMOTAXIS_OBS,
+            _CHEMOTAXIS_DYN,
+            partition=singletons,
+        )
+        rng = np.random.default_rng(1)
+        prior = Belief(mean=np.zeros(5), cov=np.eye(5))
+        y = rng.standard_normal(3)
+        assert full.partition_error(y, prior) == pytest.approx(0.0)
+        assert cut.partition_error(y, prior) > 0.0
+
+    def test_rollout_profiles_severed_mass_over_a_run(self):
+        # The per-run severed-mass profile (ADR-016): one traced pass over a sequence
+        # returns the stacked posteriors and a length-T severed-mass profile. The
+        # full-joint run severs nothing at every step; a singleton cut severs at each.
+        full = _build(
+            _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
+        )
+        singletons = [[n] for n in range(len(_CHEMOTAXIS_DIMS))]
+        cut = _build(
+            _CHEMOTAXIS_DIMS,
+            _CHEMOTAXIS_EDGES,
+            _CHEMOTAXIS_OBS,
+            _CHEMOTAXIS_DYN,
+            partition=singletons,
+        )
+        rng = np.random.default_rng(2)
+        prior = Belief(mean=np.zeros(5), cov=np.eye(5))
+        obs_seq = np.stack([rng.standard_normal(3) for _ in range(4)])  # (T=4, 3)
+
+        beliefs, severed = cut.rollout(prior, obs_seq)
+        assert np.asarray(severed).shape == (4,)
+        assert np.asarray(beliefs.mean).shape == (4, 5)
+        assert np.asarray(beliefs.cov).shape == (4, 5, 5)
+        assert np.all(np.asarray(severed) > 0.0)
+
+        _beliefs_full, severed_full = full.rollout(prior, obs_seq)
+        np.testing.assert_allclose(np.asarray(severed_full), 0.0, atol=1e-12)
+
+        # The trajectory must equal iterating infer_states by hand — the rollout can't
+        # compute anything the single-step path doesn't.
+        belief = prior
+        for step, y in enumerate(obs_seq):
+            belief = cut.infer_states(y, belief)
+            np.testing.assert_allclose(
+                np.asarray(beliefs.mean[step]), np.asarray(belief.mean), atol=1e-10
+            )
+            np.testing.assert_allclose(
+                np.asarray(beliefs.cov[step]), np.asarray(belief.cov), atol=1e-10
+            )
+
 
 class TestProtocolAndReadout:
     def test_is_inference_backend(self):

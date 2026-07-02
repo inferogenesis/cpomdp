@@ -311,16 +311,138 @@ class CouplingGraphBackend:
             The posterior *joint* belief over all nodes; slice one node out with
             ``marginal`` / ``readout``.
         """
+        precision, potential = self._assemble_posterior(observation, prior, action)
+        factored_precision, _severed = self._carry(precision)
+        mean, cov = CanonicalGaussian._unchecked(
+            factored_precision, potential
+        ).to_moment()  # Σ = Λ⁻¹, μ = Λ⁻¹h
+        return Belief(mean=mean, cov=cov)
+
+    def partition_error(
+        self,
+        observation: ArrayLike,
+        prior: Belief,
+        action: ArrayLike | None = None,
+    ) -> float:
+        """The severed mass a step under this partition drops (ADR-016 diagnostic).
+
+        The norm of the between-cluster precision blocks the carry zeros — how much
+        coupling information the partition throws away at the time boundary, the
+        approximation cost of the cut. An *information-form magnitude*, not bits and not
+        a rate. ``0.0`` for the full-joint ``[[all]]`` partition (exact), growing as the
+        cut severs more coupling.
+
+        This is the eager convenience surface: it forces a host ``float`` and so is not
+        itself jit-able. For a per-run profile with no host syncs, stack the
+        ``_carry`` scalar inside a traced rollout instead.
+        """
+        precision, _potential = self._assemble_posterior(observation, prior, action)
+        _factored, severed = self._carry(precision)
+        return float(severed)
+
+    def rollout(
+        self,
+        prior: Belief,
+        observations: ArrayLike,
+        actions: ArrayLike | None = None,
+    ) -> tuple[Belief, jax.Array]:
+        """Filter a whole sequence, profiling the severed mass at each step (ADR-016).
+
+        One traced ``lax.scan`` pass with no per-step host syncs: the joint belief is
+        the scan carry, and each step emits its posterior and the severed mass its carry
+        drops. This is the per-run diagnostic a mutable per-step field could not give —
+        the profile is produced *inside* the traced rollout, not read off ``self``.
+
+        Args:
+            prior: the joint belief the run starts from.
+            observations: the stacked readings per step, shape ``(T, n_observations)``.
+            actions: the per-step actions, shape ``(T, p)``, required iff the model has
+                a control matrix; ``None`` for pure filtering.
+
+        Returns:
+            ``(beliefs, severed_masses)`` — the time-stacked posteriors (a ``Belief``
+            with a leading time axis: ``mean`` ``(T, n_total)``, ``cov``
+            ``(T, n_total, n_total)``) and the length-``T`` severed-mass profile. The
+            full-joint ``[[all]]`` partition profiles all-zero.
+        """
+        observations = jnp.asarray(observations, dtype=float)
+        if observations.ndim != 2 or observations.shape[1] != self.n_observations:
+            raise ValueError(
+                f"observations must have shape (T, {self.n_observations}), "
+                f"got {observations.shape}"
+            )
+
+        if self._control is None:
+            if actions is not None:
+                raise ValueError("actions given, but this model has no control matrix")
+
+            def step(belief: Belief, observation: jax.Array):
+                return self._instrumented_step(belief, observation, None)
+
+            _final, outputs = jax.lax.scan(step, prior, observations)
+            return outputs
+
+        if actions is None:
+            raise ValueError("this model has a control matrix; actions are required")
+        actions = jnp.asarray(actions, dtype=float)
+        if actions.shape[0] != observations.shape[0]:
+            raise ValueError(
+                f"actions has {actions.shape[0]} steps, but observations "
+                f"has {observations.shape[0]}"
+            )
+
+        def controlled_step(belief: Belief, step_inputs: tuple[jax.Array, jax.Array]):
+            observation, action = step_inputs
+            return self._instrumented_step(belief, observation, action)
+
+        _final, outputs = jax.lax.scan(controlled_step, prior, (observations, actions))
+        return outputs
+
+    def _instrumented_step(
+        self, belief: Belief, observation: jax.Array, action: jax.Array | None
+    ) -> tuple[Belief, tuple[Belief, jax.Array]]:
+        """One traced filter step for ``rollout``: the ``lax.scan`` body.
+
+        The pure numerical step (``_assemble_unchecked`` → ``_carry`` → ``to_moment``)
+        packaged as ``(carry, output)`` for ``lax.scan``: the joint posterior is both
+        the next carry and, with the severed scalar, the emitted per-step output.
+        """
+        precision, potential = self._assemble_unchecked(observation, belief, action)
+        factored_precision, severed = self._carry(precision)
+        mean, cov = CanonicalGaussian._unchecked(
+            factored_precision, potential
+        ).to_moment()
+        posterior = Belief(mean=mean, cov=cov)
+        return posterior, (posterior, severed)
+
+    def _assemble_posterior(
+        self, observation: ArrayLike, prior: Belief, action: ArrayLike | None
+    ) -> tuple[jax.Array, jax.Array]:
+        """The within-slice joint posterior in information form (Λ, h), *pre-carry*.
+
+        The driven-relaxation update (ADR-017): validate the inputs, then delegate to
+        ``_assemble_unchecked``. Shared by ``infer_states`` (which factorises +
+        moment-forms it) and ``partition_error`` (which measures the mass a partition
+        would sever), so the two can never drift.
+        """
         observation, action = validate_step_inputs(
             self._flat_model, observation, prior, action
         )
-        control = self._control
-        if control is None:
-            control_term = jnp.zeros(self.n_total)
-        else:
-            assert action is not None  # validate_step_inputs guarantees this
-            control_term = control @ action  # b = B·action
+        return self._assemble_unchecked(observation, prior, action)
 
+    def _assemble_unchecked(
+        self, observation: jax.Array, prior: Belief, action: jax.Array | None
+    ) -> tuple[jax.Array, jax.Array]:
+        """The within-slice joint posterior (Λ, h) without input validation.
+
+        The pure numerical core, so a traced rollout (``rollout``) can call it inside a
+        ``lax.scan`` body where the host-side ``validate_step_inputs`` cannot run. Lift
+        the joint prior to canonical, ``predict`` through the block-diagonal per-node
+        dynamics (the temporal edges), then add the structural coupling precision and
+        the per-node observation messages (the within-slice update). ChainBackend sums
+        two terms; the tree's within-slice couplings are the third.
+        """
+        control_term = self._control_shift(action)
         prior_precision = jnp.linalg.inv(prior.cov)  # Λ₀ = Σ⁻¹
         prior_msg = CanonicalGaussian._unchecked(
             prior_precision,
@@ -328,24 +450,31 @@ class CouplingGraphBackend:
         )
         predicted = self._transition.predict(prior_msg, control_term)  # → Λ⁻, h⁻
         obs_precision, obs_potential = self._observation_messages(observation)
+        precision = predicted.precision + self._structural_precision + obs_precision
+        potential = predicted.potential + obs_potential
+        return precision, potential
 
-        # The driven-relaxation update, summed in information form (ADR-017):
-        # predict (temporal) + structural couplings + observations. ChainBackend adds
-        # two terms; the tree's within-slice couplings are the third.
-        posterior_precision = (
-            predicted.precision + self._structural_precision + obs_precision
-        )
-        posterior_potential = predicted.potential + obs_potential
+    def _carry(self, precision: jax.Array) -> tuple[jax.Array, jax.Array]:
+        """Factor the carried joint precision and measure what it severs (ADR-016).
 
-        # Carry factorisation (ADR-016): sever between-cluster precision at the time
-        # boundary. The full-joint partition keeps every block (mask all ones), so the
-        # exact endpoint is byte-identical.
-        posterior_precision = posterior_precision * self._partition_mask
+        The pure primitive behind both surfaces: zero the between-cluster precision
+        blocks (keep the mask's within-cluster ones) at the time boundary, and return
+        the factored precision alongside the severed mass as a jnp scalar (jit / grad /
+        vmap / scan safe — no host sync here). The full-joint ``[[all]]`` mask keeps
+        every block, so the factored precision is unchanged and the severed mass is
+        exactly zero (the exact endpoint stays byte-identical).
+        """
+        severed = precision * (1.0 - self._partition_mask)
+        factored = precision - severed
+        return factored, jnp.linalg.norm(severed)
 
-        mean, cov = CanonicalGaussian._unchecked(
-            posterior_precision, posterior_potential
-        ).to_moment()  # Σ = Λ⁻¹, μ = Λ⁻¹h
-        return Belief(mean=mean, cov=cov)
+    def _control_shift(self, action: jax.Array | None) -> jax.Array:
+        """The control shift ``b = B·action`` (zero when the model has no control)."""
+        control = self._control
+        if control is None:
+            return jnp.zeros(self.n_total)
+        assert action is not None  # validate_step_inputs guarantees this
+        return control @ action  # b = B·action
 
     def marginal(self, node: int, belief: Belief) -> Belief:
         """The marginal belief at a single ``node`` — a pure slice of the joint belief.
