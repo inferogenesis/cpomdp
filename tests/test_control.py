@@ -2,7 +2,11 @@ import numpy as np
 import pytest
 import scipy.linalg
 
-from cpomdp.control import LQRController, finite_horizon_lqr
+from cpomdp.control import (
+    LQRController,
+    finite_horizon_lqr,
+    full_information_cost,
+)
 from cpomdp.types import Belief, LinearGaussianModel
 
 # Inside this module the terse letters a/b/qc/rc are local scalars for the
@@ -307,4 +311,129 @@ class TestFiniteHorizonSchedule:
                 goal_precision=GOAL_PRECISION,
                 effort_penalty=EFFORT_PENALTY,
                 horizon=3,
+            )
+
+
+# --- the full-information floor -------------------------------------------------------
+
+
+GOAL = np.array([1.0, 0.0])  # an equilibrium: zero velocity holds the position
+PROCESS_NOISE = np.array([[1e-4, 0.0], [0.0, 1e-4]])
+
+
+def _sampled_full_information_cost(schedule, goal, prior_mean, prior_cov, draws):
+    """The H-step cost with the state known, averaged over sampled trajectories.
+
+    Rolls the dynamics forward under the schedule with a numpy generator, charging
+    the stage cost on every arrived-at state and every action. Nothing here reads
+    ``cost_to_go``, so agreement is evidence about the closed form.
+    """
+    rng = np.random.default_rng(0)
+    a, b = np.asarray(DYNAMICS), np.asarray(CONTROL)
+    qc, rc = np.asarray(GOAL_PRECISION), np.asarray(EFFORT_PENALTY)
+    state = rng.multivariate_normal(prior_mean, prior_cov, size=draws)
+    cost = np.zeros(draws)
+    for gain in np.asarray(schedule.gains):
+        action = -(state - goal) @ gain.T
+        state = state @ a.T + action @ b.T
+        state += rng.multivariate_normal(np.zeros(2), PROCESS_NOISE, size=draws)
+        deviation = state - goal
+        cost += np.einsum("bi,ij,bj->b", deviation, qc, deviation)
+        cost += np.einsum("bi,ij,bj->b", action, rc, action)
+    return cost.mean(), cost.std(ddof=1) / np.sqrt(draws)
+
+
+class TestFullInformationCost:
+    def test_the_schedule_carries_what_it_was_built_from(self):
+        model = _point_mass_model()
+        schedule = finite_horizon_lqr(
+            model,
+            goal_precision=GOAL_PRECISION,
+            effort_penalty=EFFORT_PENALTY,
+            horizon=3,
+        )
+        assert schedule.model is model
+        np.testing.assert_array_equal(schedule.goal_precision, GOAL_PRECISION)
+        np.testing.assert_array_equal(schedule.effort_penalty, EFFORT_PENALTY)
+
+    def test_matches_a_sampled_rollout_with_the_state_known(self):
+        schedule = _schedule(6)
+        prior = Belief(mean=[0.0, 0.0], cov=[[1.0, 0.0], [0.0, 1.0]])
+        sampled, standard_error = _sampled_full_information_cost(
+            schedule, GOAL, np.zeros(2), np.eye(2), draws=20_000
+        )
+        closed = full_information_cost(schedule, goal=GOAL, prior=prior)
+        assert abs(closed - sampled) < 4 * standard_error
+
+    def test_without_noise_it_is_the_terminal_quadratic_alone(self):
+        # A known start and no process noise: the whole cost is x0ᵀ P_H x0, which the
+        # brute-force plan already pins.
+        model = LinearGaussianModel(
+            dynamics_matrix=DYNAMICS,
+            observation_matrix=[[1.0, 0.0]],
+            dynamics_noise=[[0.0, 0.0], [0.0, 0.0]],
+            observation_noise=[[1e-2]],
+            prior=Belief(mean=[0.0, 0.0], cov=[[1.0, 0.0], [0.0, 1.0]]),
+            control_matrix=CONTROL,
+        )
+        schedule = finite_horizon_lqr(
+            model,
+            goal_precision=GOAL_PRECISION,
+            effort_penalty=EFFORT_PENALTY,
+            horizon=5,
+        )
+        x0 = np.array([0.8, -0.3])
+        _, expected = _brute_force_plan(
+            DYNAMICS, CONTROL, GOAL_PRECISION, EFFORT_PENALTY, 5, x0
+        )
+        known = Belief(mean=x0, cov=np.zeros((2, 2)))
+        assert full_information_cost(
+            schedule, goal=np.zeros(2), prior=known
+        ) == pytest.approx(expected, rel=1e-12)
+
+    def test_the_prior_covariance_adds_its_trace_against_the_terminal_cost(self):
+        schedule = _schedule(4)
+        cov = np.array([[0.5, 0.1], [0.1, 0.2]])
+        spread = full_information_cost(
+            schedule, goal=GOAL, prior=Belief(mean=[0.0, 0.0], cov=cov)
+        )
+        known = full_information_cost(
+            schedule, goal=GOAL, prior=Belief(mean=[0.0, 0.0], cov=np.zeros((2, 2)))
+        )
+        assert spread - known == pytest.approx(
+            np.trace(np.asarray(schedule.cost_to_go[4]) @ cov), rel=1e-12
+        )
+
+    def test_the_goal_is_a_shift_of_the_prior_mean(self):
+        schedule = _schedule(4)
+        at_goal = full_information_cost(
+            schedule, goal=GOAL, prior=Belief(mean=[0.3, 0.2], cov=np.eye(2))
+        )
+        regulated = full_information_cost(
+            schedule,
+            goal=np.zeros(2),
+            prior=Belief(mean=np.array([0.3, 0.2]) - GOAL, cov=np.eye(2)),
+        )
+        assert at_goal == pytest.approx(regulated, rel=1e-14)
+
+    def test_the_prior_defaults_to_the_models(self):
+        schedule = _schedule(4)
+        assert full_information_cost(schedule, goal=GOAL) == full_information_cost(
+            schedule, goal=GOAL, prior=schedule.model.prior
+        )
+
+    def test_a_goal_the_dynamics_cannot_hold_is_refused(self):
+        # A moving target: a nonzero velocity is not an equilibrium, so the shifted
+        # problem is not a regulator and the closed form does not describe it.
+        with pytest.raises(ValueError, match="equilibrium"):
+            full_information_cost(_schedule(3), goal=[1.0, 0.5])
+
+    def test_a_goal_of_the_wrong_shape_is_refused(self):
+        with pytest.raises(ValueError, match="goal"):
+            full_information_cost(_schedule(3), goal=[1.0])
+
+    def test_a_prior_over_another_state_is_refused(self):
+        with pytest.raises(ValueError, match="prior"):
+            full_information_cost(
+                _schedule(3), goal=GOAL, prior=Belief(mean=[0.0], cov=[[1.0]])
             )

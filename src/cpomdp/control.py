@@ -13,9 +13,14 @@ import jax.numpy as jnp
 from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
-from cpomdp.types import LinearGaussianModel
+from cpomdp.types import Belief, LinearGaussianModel
 
-__all__ = ["FiniteHorizonLQR", "LQRController", "finite_horizon_lqr"]
+__all__ = [
+    "FiniteHorizonLQR",
+    "LQRController",
+    "finite_horizon_lqr",
+    "full_information_cost",
+]
 
 
 def _validate_cost(
@@ -133,7 +138,13 @@ class FiniteHorizonLQR:
     at every finite ``H``, by an amount that shrinks with ``H`` and reads as an error
     when the horizons are not matched.
 
+    The schedule carries the model and the two costs it was built from, so anything
+    priced against it reads the same ``Q``, ``R`` and noise the recursion did.
+
     Args:
+        model: The model the schedule regulates.
+        goal_precision: The stage cost on the state it was built with, ``Q``.
+        effort_penalty: The stage cost on the action it was built with, ``R``.
         gains: ``gains[k]`` is the gain applied at step ``k`` of the plan, with
             ``H − k`` steps remaining, shape ``(H, p, n)``. The action is
             ``−gains[k] · state``.
@@ -142,6 +153,9 @@ class FiniteHorizonLQR:
             ``(H + 1, n, n)``. ``cost_to_go[0]`` is zero.
     """
 
+    model: LinearGaussianModel
+    goal_precision: Float64[Array, "n n"]
+    effort_penalty: Float64[Array, "p p"]
     gains: Float64[Array, "H p n"]
     cost_to_go: Float64[Array, "H+1 n n"]
 
@@ -211,7 +225,84 @@ def finite_horizon_lqr(
         gains.append(gain)
     # Built with the fewest steps remaining first; the plan applies them the other
     # way round.
-    return FiniteHorizonLQR(gains=jnp.stack(gains[::-1]), cost_to_go=jnp.stack(costs))
+    return FiniteHorizonLQR(
+        model=model,
+        goal_precision=goal_precision,
+        effort_penalty=effort_penalty,
+        gains=jnp.stack(gains[::-1]),
+        cost_to_go=jnp.stack(costs),
+    )
+
+
+def full_information_cost(
+    schedule: FiniteHorizonLQR, *, goal: ArrayLike, prior: Belief | None = None
+) -> float:
+    """``J_lower``: the expected cost of the plan when the state is observed exactly.
+
+    The floor of the control bracket. No controller that has to infer the state from
+    readings can do better, since the state itself is the most it could know. With
+    ``d`` the prior mean's offset from the goal, ``Σ₀`` the prior covariance and
+    ``Q_w`` the process noise::
+
+        J_lower = dᵀ P_H d + tr(P_H Σ₀) + Σ_{j=0}^{H−1} tr((Q + P_j) Q_w)
+
+    The first two terms are the terminal quadratic averaged over where the state
+    starts. The sum is what the process noise adds at each step, priced at the cost
+    of everything that remains from there.
+
+    The goal has to be a state the dynamics hold at zero action, ``A · goal = goal``,
+    since the plan regulates the offset from it and the offset only obeys the same
+    dynamics when the goal does not drift.
+
+    Args:
+        schedule: The plan, with the model and costs it was built from.
+        goal: The state the plan steers toward, shape ``(n,)``.
+        prior: Where the state starts, as a Gaussian. Defaults to the model's prior.
+
+    Returns:
+        The expected cost in the units of ``goal_precision`` and ``effort_penalty``.
+
+    Raises:
+        ValueError: If the model's process noise depends on the state, if ``goal`` is
+            not a vector of length ``n`` the dynamics hold, or if ``prior`` is not
+            over the model's state.
+    """
+    model = schedule.model
+    process = model.dynamics_noise_model
+    if process is not None and not process.is_fixed:
+        raise ValueError(
+            "the model's dynamics_noise_model is state-dependent; the closed form "
+            "prices a fixed process noise"
+        )
+    n = model.n_states
+    goal = jnp.asarray(goal, dtype=float)
+    if goal.shape != (n,):
+        raise ValueError(
+            f"goal must be a 1-D vector of length {n} (the state dimension), got "
+            f"shape {goal.shape}"
+        )
+    held = model.dynamics_matrix @ goal
+    if not jnp.allclose(
+        held, goal, rtol=0.0, atol=1e-12 * max(1.0, float(jnp.abs(goal).max()))
+    ):
+        raise ValueError(
+            "goal is not an equilibrium of the dynamics: at zero action it moves to "
+            f"{held}. The plan regulates the offset from the goal, and the offset only "
+            "obeys the same dynamics when the goal holds still."
+        )
+    prior = model.prior if prior is None else prior
+    if prior.mean.shape != (n,):
+        raise ValueError(
+            f"prior is over {prior.mean.shape[0]} states and the model has {n}"
+        )
+
+    offset = prior.mean - goal  # d
+    terminal = schedule.cost_to_go[schedule.horizon]  # P_H
+    from_start = offset @ terminal @ offset + jnp.trace(terminal @ prior.cov)
+    # W_j = Q + P_j for j = 0..H−1: what remains after the step whose noise it prices
+    remaining = schedule.goal_precision + schedule.cost_to_go[:-1]
+    from_noise = jnp.einsum("jab,ba->", remaining, model.dynamics_noise)
+    return float(from_start + from_noise)
 
 
 class LQRController:
