@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from scipy.special import erf
 
-from cpomdp.reference.quadrature import GridDensity, QuadratureGrid
+from cpomdp.reference.quadrature import GridDensity, QuadratureGrid, gaussian_on
 
 SQRT2 = np.sqrt(2.0)
 
@@ -385,3 +385,53 @@ class TestPytree:
 
         gradient = jax.grad(divergence)(_gaussian_on(grid, 0.3, 1.0).log_density)
         assert bool(jnp.isfinite(gradient).all())
+
+
+# --- a Gaussian on the lattice --------------------------------------------------------
+
+
+class TestGaussianOn:
+    def test_a_scalar_mean_and_variance_render_the_one_dimensional_gaussian(self):
+        grid = QuadratureGrid(lower=[-6.0], upper=[6.0], counts=[241])
+        density = gaussian_on(grid, 0.7, 1.9)
+        np.testing.assert_allclose(
+            density.log_density,
+            _log_normal(np.asarray(grid.nodes)[:, 0], 0.7, 1.9),
+            rtol=1e-14,
+        )
+        assert float(density.log_normaliser) == 0.0
+
+    def test_a_correlated_gaussian_has_unit_mass_and_the_declared_moments(self):
+        grid = QuadratureGrid(lower=[-9.0, -9.0], upper=[9.0, 9.0], counts=[181, 181])
+        mean = np.array([0.4, -1.1])
+        cov = np.array([[2.0, 0.9], [0.9, 1.5]])
+        density = gaussian_on(grid, mean, cov)
+        np.testing.assert_allclose(float(jnp.exp(density.log_mass)), 1.0, atol=1e-9)
+        np.testing.assert_allclose(density.mean, mean, atol=1e-9)
+        np.testing.assert_allclose(density.cov, cov, atol=1e-9)
+
+    def test_it_traces(self):
+        grid = QuadratureGrid(lower=[-6.0], upper=[6.0], counts=[121])
+
+        @jax.jit
+        def render(mean, var):
+            return gaussian_on(grid, mean, var).log_density
+
+        np.testing.assert_allclose(
+            render(0.3, 1.2), gaussian_on(grid, 0.3, 1.2).log_density
+        )
+
+    def test_a_mean_of_the_wrong_length_is_refused(self):
+        grid = QuadratureGrid(lower=[-1.0, -1.0], upper=[1.0, 1.0], counts=[3, 3])
+        with pytest.raises(ValueError, match="mean"):
+            gaussian_on(grid, [0.0], [[1.0, 0.0], [0.0, 1.0]])
+
+    def test_a_covariance_of_the_wrong_shape_is_refused(self):
+        grid = QuadratureGrid(lower=[-1.0, -1.0], upper=[1.0, 1.0], counts=[3, 3])
+        with pytest.raises(ValueError, match="cov"):
+            gaussian_on(grid, [0.0, 0.0], [[1.0]])
+
+    def test_an_indefinite_covariance_is_refused(self):
+        grid = QuadratureGrid(lower=[-1.0, -1.0], upper=[1.0, 1.0], counts=[3, 3])
+        with pytest.raises(ValueError, match="definite"):
+            gaussian_on(grid, [0.0, 0.0], [[1.0, 2.0], [2.0, 1.0]])
