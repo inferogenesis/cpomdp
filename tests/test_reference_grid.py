@@ -21,11 +21,6 @@ def _gaussian_kl(mu_p, var_p, mu_q, var_q):
     )
 
 
-def _gaussian_on(grid, mu, var):
-    """A 1-D Gaussian evaluated on a 1-D grid, unnormalised by the grid."""
-    return GridDensity(grid, _log_normal(np.asarray(grid.nodes)[:, 0], mu, var))
-
-
 # --- the lattice --------------------------------------------------------------------
 
 
@@ -138,7 +133,7 @@ class TestNormalisation:
 
     def test_normalising_twice_adds_nothing_the_second_time(self):
         grid = QuadratureGrid(lower=[-6.0], upper=[6.0], counts=[601])
-        once = _gaussian_on(grid, 0.0, 1.0).normalise()
+        once = gaussian_on(grid, 0.0, 1.0).normalise()
         twice = once.normalise()
         np.testing.assert_allclose(
             float(twice.log_normaliser), float(once.log_normaliser), atol=1e-12
@@ -152,7 +147,7 @@ class TestNormalisation:
         # the density's slope at the box edge sets and which no widening removes.
         # It sits five orders below the deficit being measured.
         grid = QuadratureGrid(lower=[-2.0], upper=[2.0], counts=[4001])
-        clipped = _gaussian_on(grid, 0.0, 1.0)
+        clipped = gaussian_on(grid, 0.0, 1.0)
         np.testing.assert_allclose(
             float(jnp.exp(clipped.log_mass)), erf(2.0 / SQRT2), atol=1e-7
         )
@@ -169,7 +164,7 @@ class TestNormalisation:
 class TestMoments:
     def test_gaussian_moments_match_the_closed_form(self):
         grid = QuadratureGrid(lower=[-8.0], upper=[10.0], counts=[901])
-        density = _gaussian_on(grid, 1.0, 2.0)
+        density = gaussian_on(grid, 1.0, 2.0)
         np.testing.assert_allclose(density.mean, [1.0], atol=1e-10)
         np.testing.assert_allclose(density.cov, [[2.0]], atol=1e-10)
 
@@ -221,7 +216,7 @@ class TestMoments:
 
     def test_expectation_carries_a_matrix_integrand(self):
         grid = QuadratureGrid(lower=[-6.0], upper=[6.0], counts=[601])
-        density = _gaussian_on(grid, 0.0, 1.0)
+        density = gaussian_on(grid, 0.0, 1.0)
         got = density.expectation(jnp.ones((grid.size, 2, 3)))
         assert got.shape == (2, 3)
         np.testing.assert_allclose(got, np.ones((2, 3)), atol=1e-9)
@@ -231,7 +226,7 @@ class TestMoments:
         # constant one gives the box's volume; expecting it gives one. Anything that
         # collapsed the two would have to break one of these.
         grid = QuadratureGrid(lower=[-6.0], upper=[6.0], counts=[601])
-        density = _gaussian_on(grid, 0.0, 1.0)
+        density = gaussian_on(grid, 0.0, 1.0)
         ones = jnp.ones(grid.size)
         np.testing.assert_allclose(float(grid.integrate(ones)), 12.0, rtol=1e-12)
         np.testing.assert_allclose(float(density.expectation(ones)), 1.0, atol=1e-12)
@@ -241,11 +236,11 @@ class TestMoments:
         # remember. On a clipped box the mass is not one, so forgetting it is a
         # scaled answer rather than an error.
         grid = QuadratureGrid(lower=[-1.5], upper=[1.5], counts=[1201])
-        clipped = _gaussian_on(grid, 0.0, 1.0)
+        clipped = gaussian_on(grid, 0.0, 1.0)
         squares = np.asarray(grid.nodes)[:, 0] ** 2
         by_hand = float(grid.integrate(np.exp(clipped.log_density) * squares))
         np.testing.assert_allclose(
-            float(clipped.expectation(squares)),
+            float(clipped.expectation(jnp.asarray(squares))),
             by_hand / float(jnp.exp(clipped.log_mass)),
             rtol=1e-12,
         )
@@ -257,27 +252,27 @@ class TestMoments:
 class TestKullbackLeibler:
     def test_matches_the_closed_form_gaussian_divergence(self):
         grid = QuadratureGrid(lower=[-12.0], upper=[12.0], counts=[2401])
-        p = _gaussian_on(grid, 0.5, 1.0)
-        q = _gaussian_on(grid, -0.4, 2.5)
+        p = gaussian_on(grid, 0.5, 1.0)
+        q = gaussian_on(grid, -0.4, 2.5)
         np.testing.assert_allclose(
             float(p.kl_to(q)), _gaussian_kl(0.5, 1.0, -0.4, 2.5), atol=1e-9
         )
 
     def test_is_not_symmetric(self):
         grid = QuadratureGrid(lower=[-12.0], upper=[12.0], counts=[2401])
-        p = _gaussian_on(grid, 0.5, 1.0)
-        q = _gaussian_on(grid, -0.4, 2.5)
+        p = gaussian_on(grid, 0.5, 1.0)
+        q = gaussian_on(grid, -0.4, 2.5)
         assert not np.isclose(float(p.kl_to(q)), float(q.kl_to(p)))
 
     def test_a_density_against_itself_is_zero(self):
         grid = QuadratureGrid(lower=[-10.0], upper=[10.0], counts=[801])
-        p = _gaussian_on(grid, 0.2, 1.3)
+        p = gaussian_on(grid, 0.2, 1.3)
         np.testing.assert_allclose(float(p.kl_to(p)), 0.0, atol=1e-12)
 
     def test_scaling_either_argument_changes_nothing(self):
         grid = QuadratureGrid(lower=[-10.0], upper=[10.0], counts=[801])
-        p = _gaussian_on(grid, 0.2, 1.3)
-        q = _gaussian_on(grid, 0.0, 1.0)
+        p = gaussian_on(grid, 0.2, 1.3)
+        q = gaussian_on(grid, 0.0, 1.0)
         scaled_p = GridDensity(grid, p.log_density + 2.0)
         scaled_q = GridDensity(grid, q.log_density - 5.0)
         np.testing.assert_allclose(
@@ -291,7 +286,7 @@ class TestKullbackLeibler:
         x = np.asarray(grid.nodes)[:, 0]
         log_p = np.where(np.abs(x) <= 1.0, 0.0, -np.inf)
         p = GridDensity(grid, log_p)
-        q = _gaussian_on(grid, 0.0, 1.0)
+        q = gaussian_on(grid, 0.0, 1.0)
         value = float(p.kl_to(q))
         assert np.isfinite(value)
         assert value > 0.0
@@ -299,13 +294,13 @@ class TestKullbackLeibler:
     def test_a_node_where_q_vanishes_and_p_does_not_is_infinite(self):
         grid = QuadratureGrid(lower=[-4.0], upper=[4.0], counts=[801])
         x = np.asarray(grid.nodes)[:, 0]
-        p = _gaussian_on(grid, 0.0, 1.0)
+        p = gaussian_on(grid, 0.0, 1.0)
         q = GridDensity(grid, np.where(np.abs(x) <= 1.0, 0.0, -np.inf))
         assert float(p.kl_to(q)) == np.inf
 
     def test_refuses_a_density_on_another_lattice(self):
-        p = _gaussian_on(QuadratureGrid([-5.0], [5.0], [201]), 0.0, 1.0)
-        q = _gaussian_on(QuadratureGrid([-5.0], [5.0], [401]), 0.0, 1.0)
+        p = gaussian_on(QuadratureGrid([-5.0], [5.0], [201]), 0.0, 1.0)
+        q = gaussian_on(QuadratureGrid([-5.0], [5.0], [401]), 0.0, 1.0)
         with pytest.raises(ValueError, match="same lattice"):
             p.kl_to(q)
 
@@ -356,7 +351,7 @@ class TestPytree:
 
     def test_a_density_round_trips_through_flatten(self):
         grid = QuadratureGrid(lower=[-6.0], upper=[6.0], counts=[201])
-        density = _gaussian_on(grid, 0.0, 1.0).normalise()
+        density = gaussian_on(grid, 0.0, 1.0).normalise()
         rebuilt = jax.tree_util.tree_unflatten(
             jax.tree_util.tree_structure(density),
             jax.tree_util.tree_leaves(density),
@@ -367,7 +362,7 @@ class TestPytree:
 
     def test_moments_survive_a_jit_boundary(self):
         grid = QuadratureGrid(lower=[-8.0], upper=[8.0], counts=[801])
-        density = _gaussian_on(grid, 0.5, 1.4)
+        density = gaussian_on(grid, 0.5, 1.4)
         jitted = jax.jit(lambda d: (d.mean, d.cov))
         mean, cov = jitted(density)
         np.testing.assert_allclose(mean, density.mean, atol=1e-12)
@@ -378,12 +373,12 @@ class TestPytree:
         # the guard against vanishing nodes has to be a `where` rather than a mask
         # applied after the fact, which would leak a NaN through the gradient.
         grid = QuadratureGrid(lower=[-6.0], upper=[6.0], counts=[401])
-        q = _gaussian_on(grid, 0.0, 1.0)
+        q = gaussian_on(grid, 0.0, 1.0)
 
         def divergence(log_density):
             return GridDensity(grid, log_density).kl_to(q)
 
-        gradient = jax.grad(divergence)(_gaussian_on(grid, 0.3, 1.0).log_density)
+        gradient = jax.grad(divergence)(gaussian_on(grid, 0.3, 1.0).log_density)
         assert bool(jnp.isfinite(gradient).all())
 
 

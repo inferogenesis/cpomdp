@@ -13,14 +13,9 @@ from cpomdp.reference.likelihood import (
     FixedNoiseLikelihood,
     StateDependentNoiseLikelihood,
 )
-from cpomdp.reference.quadrature import GridDensity, QuadratureGrid
+from cpomdp.reference.quadrature import GridDensity, QuadratureGrid, gaussian_on
 
 PRIOR_MEAN, PRIOR_VAR = 0.3, 0.8
-
-
-def gaussian_on(grid, mean, var):
-    x = np.asarray(grid.nodes)[:, 0]
-    return GridDensity(grid, -0.5 * (np.log(2 * np.pi * var) + (x - mean) ** 2 / var))
 
 
 def kalman_rule(noise, prior_mean=PRIOR_MEAN, prior_var=PRIOR_VAR):
