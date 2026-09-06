@@ -1,10 +1,17 @@
 """Shared construction-time validators (internal)."""
 
+from collections.abc import Callable
+from typing import Protocol, TypeVar
+
 import numpy as np
 from jax.errors import ConcretizationTypeError, TracerArrayConversionError
 from jaxtyping import Array, Float64
 
-__all__ = ["validate_covariance", "validate_finite"]
+__all__ = ["UNVERSIONED", "validate_covariance", "validate_declared", "validate_finite"]
+
+UNVERSIONED = (
+    "version must be a non-empty string — the {subject} is declared and versioned"
+)
 
 
 def validate_covariance(
@@ -65,3 +72,35 @@ def validate_finite(arr: Float64[Array, "n"], name: str) -> None:
         return
     if not finite:
         raise ValueError(f"{name} must be finite (no NaN/Inf).")
+
+
+class _Named(Protocol):
+    """Anything a declared set holds: it has a name, and that name identifies it."""
+
+    name: str
+
+
+_Member = TypeVar("_Member", bound=_Named)
+
+
+def validate_declared(
+    members: tuple[_Member, ...],
+    version: str,
+    *,
+    subject: str,
+    contains: Callable[[_Member], bool],
+    requirement: str,
+) -> None:
+    """The checks every declared set shares: versioned, non-empty, unique, complete."""
+    if not isinstance(version, str) or not version:
+        raise ValueError(UNVERSIONED.format(subject=subject))
+    if not members:
+        raise ValueError(f"a declared {subject} needs at least one member")
+    names = [member.name for member in members]
+    duplicates = sorted({name for name in names if names.count(name) > 1})
+    if duplicates:
+        raise ValueError(
+            f"duplicate name(s) {duplicates}; a cell is identified by its name alone"
+        )
+    if not [member for member in members if contains(member)]:
+        raise ValueError(requirement)

@@ -16,15 +16,14 @@ backend over a model without altering the model.
 to either is a change to a line of source.
 """
 
-from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Protocol, TypeVar
 
 import jax.numpy as jnp
 import numpy as np
 from numpy.typing import ArrayLike
 
+from cpomdp._validation import UNVERSIONED, validate_declared
 from cpomdp.backends.base import InferenceBackend
 from cpomdp.backends.degraded import DiagonalCovarianceBackend, WrongFixedRBackend
 from cpomdp.backends.kalman import KalmanBackend
@@ -44,9 +43,6 @@ __all__ = [
     "Perturbation",
 ]
 
-_UNVERSIONED = (
-    "version must be a non-empty string — the {subject} is declared and versioned"
-)
 
 # The parameters a perturbation may scale. The prior is not among them: it is a
 # ``Belief`` rather than a matrix, and scaling a mean of zeros changes nothing while
@@ -182,7 +178,7 @@ class ModelSpec:
         object.__setattr__(self, "structure", structure)
         object.__setattr__(self, "version", version)
         if not isinstance(version, str) or not version:
-            raise ValueError(_UNVERSIONED.format(subject="spec"))
+            raise ValueError(UNVERSIONED.format(subject="spec"))
 
     def _reject_shadowed(self, perturbation: Perturbation) -> None:
         """Refuse a scale the filter would not read, given what this spec carries.
@@ -292,7 +288,7 @@ class ConstructorSet:
 
     def __post_init__(self) -> None:
         """Reject an unversioned, empty, duplicated or wholly perturbed set."""
-        _validate_declared(
+        validate_declared(
             self.perturbations,
             self.version,
             subject="set",
@@ -417,7 +413,7 @@ class InferenceSet:
 
     def __post_init__(self) -> None:
         """Reject an unversioned, empty, duplicated or wholly degraded set."""
-        _validate_declared(
+        validate_declared(
             self.rules,
             self.version,
             subject="set",
@@ -451,38 +447,6 @@ class InferenceSet:
             reports ``model`` as its own.
         """
         return tuple((rule.name, rule.build(model)) for rule in self.rules)
-
-
-class _Named(Protocol):
-    """Anything a declared set holds: it has a name, and that name identifies it."""
-
-    name: str
-
-
-_Member = TypeVar("_Member", bound=_Named)
-
-
-def _validate_declared(
-    members: tuple[_Member, ...],
-    version: str,
-    *,
-    subject: str,
-    contains: Callable[[_Member], bool],
-    requirement: str,
-) -> None:
-    """The checks both declared sets share: versioned, non-empty, unique, complete."""
-    if not isinstance(version, str) or not version:
-        raise ValueError(_UNVERSIONED.format(subject=subject))
-    if not members:
-        raise ValueError(f"a declared {subject} needs at least one member")
-    names = [member.name for member in members]
-    duplicates = sorted({name for name in names if names.count(name) > 1})
-    if duplicates:
-        raise ValueError(
-            f"duplicate name(s) {duplicates}; a cell is identified by its name alone"
-        )
-    if not [member for member in members if contains(member)]:
-        raise ValueError(requirement)
 
 
 def _frozen(value: ArrayLike) -> np.ndarray:
