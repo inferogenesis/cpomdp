@@ -13,13 +13,18 @@ import jax.numpy as jnp
 from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
+from cpomdp.backends.kalman import _gain_and_posterior_cov
 from cpomdp.types import Belief, LinearGaussianModel
 
 __all__ = [
+    "CertaintyEquivalentController",
     "FiniteHorizonLQR",
+    "KalmanSchedule",
     "LQRController",
+    "closed_loop_cost",
     "finite_horizon_lqr",
     "full_information_cost",
+    "kalman_schedule",
 ]
 
 
@@ -234,6 +239,274 @@ def finite_horizon_lqr(
     )
 
 
+def _require_fixed(model: LinearGaussianModel, slot: str) -> None:
+    """Refuse a noise model that varies with the state; the closed forms price fixed."""
+    carried = getattr(model, slot)
+    if carried is not None and not carried.is_fixed:
+        raise ValueError(
+            f"the model's {slot} is state-dependent; the closed form prices a fixed "
+            f"noise"
+        )
+
+
+def _held_goal(model: LinearGaussianModel, goal: ArrayLike) -> Float64[Array, "n"]:
+    """``goal`` as an array, refused unless the dynamics hold it at zero action.
+
+    The plan regulates the offset from the goal, and the offset obeys the model's
+    dynamics only when ``A · goal = goal``.
+    """
+    n = model.n_states
+    goal = jnp.asarray(goal, dtype=float)
+    if goal.shape != (n,):
+        raise ValueError(
+            f"goal must be a 1-D vector of length {n} (the state dimension), got "
+            f"shape {goal.shape}"
+        )
+    held = model.dynamics_matrix @ goal
+    if not jnp.allclose(
+        held, goal, rtol=0.0, atol=1e-12 * max(1.0, float(jnp.abs(goal).max()))
+    ):
+        raise ValueError(
+            "goal is not an equilibrium of the dynamics: at zero action it moves to "
+            f"{held}. The plan regulates the offset from the goal, and the offset only "
+            "obeys the same dynamics when the goal holds still."
+        )
+    return goal
+
+
+def _prior_over(model: LinearGaussianModel, prior: Belief | None) -> Belief:
+    """``prior``, or the model's, refused unless it is over the model's state."""
+    prior = model.prior if prior is None else prior
+    if prior.mean.shape != (model.n_states,):
+        raise ValueError(
+            f"prior is over {prior.mean.shape[0]} states and the model has "
+            f"{model.n_states}"
+        )
+    return prior
+
+
+@dataclass(frozen=True)
+class KalmanSchedule:
+    """The exact filter's gains and error covariances over ``H`` readings.
+
+    Both are data-independent, so they can be written down before a reading exists.
+    The indexing follows the plan's: action ``k`` is chosen from the belief after
+    ``k`` readings, and reading ``k + 1`` arrives after it.
+
+    Args:
+        gains: ``gains[k]`` folds reading ``k + 1`` into the estimate, shape
+            ``(H, n, m)``.
+        covariances: ``covariances[k]`` is the error covariance of the estimate action
+            ``k`` is chosen from, shape ``(H + 1, n, n)``. ``covariances[0]`` is the
+            prior's.
+    """
+
+    gains: Float64[Array, "H n m"]
+    covariances: Float64[Array, "H+1 n n"]
+
+
+def kalman_schedule(
+    model: LinearGaussianModel, horizon: int, prior: Belief | None = None
+) -> KalmanSchedule:
+    """The exact filter's gain and covariance at each of ``horizon`` readings.
+
+    The covariance recursion the per-step ``KalmanBackend`` runs, run ahead of time
+    and kept, since under fixed noise it never sees a reading.
+
+    Args:
+        model: The model the filter runs under, with fixed noise.
+        horizon: How many readings, at least one.
+        prior: The belief before the first reading. Defaults to the model's prior.
+
+    Returns:
+        The gains and covariances, indexed as the plan indexes its steps.
+
+    Raises:
+        ValueError: If ``horizon`` is below one, if either noise depends on the state,
+            or if ``prior`` is not over the model's state.
+    """
+    if horizon < 1:
+        raise ValueError(f"horizon must be at least 1, got {horizon}")
+    _require_fixed(model, "observation_model")
+    _require_fixed(model, "dynamics_noise_model")
+    prior = _prior_over(model, prior)
+    gains, covariances = [], [prior.cov]
+    for _ in range(horizon):
+        gain, cov_post = _gain_and_posterior_cov(
+            model.dynamics_matrix,
+            model.observation_matrix,
+            model.dynamics_noise,
+            model.observation_noise,
+            covariances[-1],
+        )
+        gains.append(gain)
+        covariances.append(cov_post)
+    return KalmanSchedule(gains=jnp.stack(gains), covariances=jnp.stack(covariances))
+
+
+def closed_loop_cost(
+    schedule: FiniteHorizonLQR,
+    filter_gains: ArrayLike,
+    *,
+    goal: ArrayLike,
+    controller_gains: ArrayLike | None = None,
+    prior: Belief | None = None,
+) -> float:
+    """The expected cost of acting on a linear estimate, in closed form.
+
+    Action ``k`` is ``−L_k · (estimate − goal)``, chosen from the estimate after ``k``
+    readings; the first is chosen from the prior mean. The state then moves, is
+    charged where it lands, and is read, and the estimate folds the reading in with
+    ``K_{k+1}``. Every map is linear and every disturbance Gaussian, so the joint
+    second moment of ``(state, estimate)`` about the goal propagates exactly and the
+    cost is a sum of traces against it. Nothing is sampled.
+
+    Any data-independent gain sequence prices this way: the exact filter's, a frozen
+    one's, or a degraded one's. ``L_k`` defaults to the plan's own schedule, and can be
+    replaced to price a gain the plan did not choose, as the steady-state gain applied
+    at every step of a short plan.
+
+    Args:
+        schedule: The plan, with the model and costs it was built from.
+        filter_gains: ``K_{k+1}`` for each step, shape ``(H, n, m)``.
+        goal: The state steered toward, shape ``(n,)``, held by the dynamics.
+        controller_gains: ``L_k`` for each step, shape ``(H, p, n)``. Defaults to
+            ``schedule.gains``.
+        prior: Where the state starts and what the estimate starts as. Defaults to the
+            model's prior.
+
+    Returns:
+        The expected cost in the units of ``goal_precision`` and ``effort_penalty``.
+
+    Raises:
+        ValueError: If either noise depends on the state, if ``goal`` is not a vector
+            of length ``n`` the dynamics hold, if ``prior`` is not over the model's
+            state, or if either gain sequence is not one per step of the plan.
+    """
+    model = schedule.model
+    _require_fixed(model, "observation_model")
+    _require_fixed(model, "dynamics_noise_model")
+    goal = _held_goal(model, goal)
+    prior = _prior_over(model, prior)
+    n, m, p, horizon = (
+        model.n_states,
+        model.n_observations,
+        model.n_controls,
+        (schedule.horizon),
+    )
+    filter_gains = jnp.asarray(filter_gains, dtype=float)
+    if filter_gains.shape != (horizon, n, m):
+        raise ValueError(
+            f"filter_gains must be one (n, m) gain per step, shape "
+            f"{(horizon, n, m)}, got {filter_gains.shape}"
+        )
+    controller_gains = (
+        schedule.gains
+        if controller_gains is None
+        else jnp.asarray(controller_gains, dtype=float)
+    )
+    if controller_gains.shape != (horizon, p, n):
+        raise ValueError(
+            f"controller_gains must be one (p, n) gain per step, shape "
+            f"{(horizon, p, n)}, got {controller_gains.shape}"
+        )
+    dynamics_matrix = model.dynamics_matrix  # A
+    assert model.control_matrix is not None  # the schedule was built on it
+    control_matrix = model.control_matrix  # B
+    observation_matrix = model.observation_matrix  # C
+    goal_precision, effort_penalty = schedule.goal_precision, schedule.effort_penalty
+
+    # Second moment of (state − goal, estimate − goal). The estimate starts at the
+    # prior mean with no spread of its own; the state starts spread around it.
+    offset = prior.mean - goal  # d
+    certain = jnp.outer(offset, offset)
+    moment = jnp.block([[prior.cov + certain, certain], [certain, certain]])
+    disturbance = jnp.block(
+        [
+            [model.dynamics_noise, jnp.zeros((n, m))],
+            [jnp.zeros((m, n)), model.observation_noise],
+        ]
+    )
+    identity = jnp.eye(n)
+    cost = 0.0
+    for controller_gain, filter_gain in zip(
+        controller_gains, filter_gains, strict=True
+    ):
+        # uᵀ R u with u = −L · (estimate − goal)
+        cost += jnp.trace(
+            controller_gain.T @ effort_penalty @ controller_gain @ moment[n:, n:]
+        )
+        pushed = dynamics_matrix - control_matrix @ controller_gain  # A − B L
+        # state ← A·state − B L·estimate + w
+        # estimate ← K C A·state + (A − B L − K C A)·estimate + K C·w + K·v
+        corrected = filter_gain @ observation_matrix @ dynamics_matrix  # K C A
+        transition = jnp.block(
+            [
+                [dynamics_matrix, -control_matrix @ controller_gain],
+                [corrected, pushed - corrected],
+            ]
+        )
+        entry = jnp.block(
+            [
+                [identity, jnp.zeros((n, m))],
+                [filter_gain @ observation_matrix, filter_gain],
+            ]
+        )
+        moment = transition @ moment @ transition.T + entry @ disturbance @ entry.T
+        cost += jnp.trace(goal_precision @ moment[:n, :n])
+    return float(cost)
+
+
+@dataclass(frozen=True)
+class CertaintyEquivalentController:
+    """Acts on the estimate as if it were the state: ``−L_k · (mean − goal)``.
+
+    The plan's gains are the ones a controller that saw the state would use. Applying
+    them to a filtered mean instead is certainty equivalence, and under fixed noise
+    it is optimal: the separation principle says no controller that has to infer the
+    state does better. ``expected_cost`` is ``J_CE``, priced by ``closed_loop_cost``
+    with the exact filter's gains.
+
+    Args:
+        schedule: The plan, with the model and costs it was built from.
+        goal: The state steered toward, shape ``(n,)``, held by the dynamics.
+
+    Raises:
+        ValueError: If ``goal`` is not a vector of length ``n`` the dynamics hold.
+    """
+
+    schedule: FiniteHorizonLQR
+    goal: Float64[Array, "n"]
+
+    def __init__(self, schedule: FiniteHorizonLQR, *, goal: ArrayLike) -> None:
+        object.__setattr__(self, "schedule", schedule)
+        object.__setattr__(self, "goal", _held_goal(schedule.model, goal))
+
+    def action(self, step: int, mean: ArrayLike) -> Float64[Array, "p"]:
+        """The action at ``step`` of the plan from the current estimate.
+
+        Args:
+            step: Which step of the plan this is, from ``0``.
+            mean: The belief mean after ``step`` readings, shape ``(n,)``.
+
+        Returns:
+            ``−gains[step] · (mean − goal)``, shape ``(p,)``.
+        """
+        return -self.schedule.gains[step] @ (jnp.asarray(mean, dtype=float) - self.goal)
+
+    def expected_cost(self, prior: Belief | None = None) -> float:
+        """``J_CE``: this controller's expected cost with the exact filter.
+
+        Args:
+            prior: Where the state starts and what the filter starts from. Defaults
+                to the model's prior.
+        """
+        gains = kalman_schedule(
+            self.schedule.model, self.schedule.horizon, prior=prior
+        ).gains
+        return closed_loop_cost(self.schedule, gains, goal=self.goal, prior=prior)
+
+
 def full_information_cost(
     schedule: FiniteHorizonLQR, *, goal: ArrayLike, prior: Belief | None = None
 ) -> float:
@@ -268,33 +541,9 @@ def full_information_cost(
             over the model's state.
     """
     model = schedule.model
-    process = model.dynamics_noise_model
-    if process is not None and not process.is_fixed:
-        raise ValueError(
-            "the model's dynamics_noise_model is state-dependent; the closed form "
-            "prices a fixed process noise"
-        )
-    n = model.n_states
-    goal = jnp.asarray(goal, dtype=float)
-    if goal.shape != (n,):
-        raise ValueError(
-            f"goal must be a 1-D vector of length {n} (the state dimension), got "
-            f"shape {goal.shape}"
-        )
-    held = model.dynamics_matrix @ goal
-    if not jnp.allclose(
-        held, goal, rtol=0.0, atol=1e-12 * max(1.0, float(jnp.abs(goal).max()))
-    ):
-        raise ValueError(
-            "goal is not an equilibrium of the dynamics: at zero action it moves to "
-            f"{held}. The plan regulates the offset from the goal, and the offset only "
-            "obeys the same dynamics when the goal holds still."
-        )
-    prior = model.prior if prior is None else prior
-    if prior.mean.shape != (n,):
-        raise ValueError(
-            f"prior is over {prior.mean.shape[0]} states and the model has {n}"
-        )
+    _require_fixed(model, "dynamics_noise_model")
+    goal = _held_goal(model, goal)
+    prior = _prior_over(model, prior)
 
     offset = prior.mean - goal  # d
     terminal = schedule.cost_to_go[schedule.horizon]  # P_H

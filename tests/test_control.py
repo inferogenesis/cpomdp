@@ -1,12 +1,18 @@
+import jax
 import numpy as np
 import pytest
 import scipy.linalg
 
+from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.control import (
+    CertaintyEquivalentController,
     LQRController,
+    closed_loop_cost,
     finite_horizon_lqr,
     full_information_cost,
+    kalman_schedule,
 )
+from cpomdp.harness import World
 from cpomdp.types import Belief, LinearGaussianModel
 
 # Inside this module the terse letters a/b/qc/rc are local scalars for the
@@ -437,3 +443,191 @@ class TestFullInformationCost:
             full_information_cost(
                 _schedule(3), goal=GOAL, prior=Belief(mean=[0.0], cov=[[1.0]])
             )
+
+
+# --- the certainty-equivalent controller and its closed-loop cost ---------------------
+
+
+OBSERVATION = np.array([[1.0, 0.0]])
+OBSERVATION_NOISE = np.array([[1e-2]])
+
+
+def _numpy_kalman_covariances(prior_cov, horizon):
+    """The textbook covariance recursion, kept apart from the library's kernel."""
+    a, c = np.asarray(DYNAMICS), OBSERVATION
+    gains, covs = [], [np.asarray(prior_cov, dtype=float)]
+    for _ in range(horizon):
+        pred = a @ covs[-1] @ a.T + PROCESS_NOISE
+        innovation = c @ pred @ c.T + OBSERVATION_NOISE
+        gain = pred @ c.T @ np.linalg.inv(innovation)
+        gains.append(gain)
+        covs.append((np.eye(2) - gain @ c) @ pred)
+    return np.stack(gains), np.stack(covs)
+
+
+def _sampled_closed_loop_cost(controller_gains, filter_gains, goal, draws):
+    """The cost of acting on a filtered estimate, averaged over sampled runs.
+
+    The first action is chosen from the prior mean, each reading arrives after the
+    action that preceded it, and the estimate folds it in with the supplied gain.
+    Nothing here propagates a second moment.
+    """
+    rng = np.random.default_rng(1)
+    a, b, c = np.asarray(DYNAMICS), np.asarray(CONTROL), OBSERVATION
+    qc, rc = np.asarray(GOAL_PRECISION), np.asarray(EFFORT_PENALTY)
+    state = rng.multivariate_normal(np.zeros(2), np.eye(2), size=draws)
+    estimate = np.zeros((draws, 2))
+    cost = np.zeros(draws)
+    for gain, filter_gain in zip(controller_gains, filter_gains, strict=True):
+        action = -(estimate - goal) @ np.asarray(gain).T
+        state = state @ a.T + action @ b.T
+        state += rng.multivariate_normal(np.zeros(2), PROCESS_NOISE, size=draws)
+        deviation = state - goal
+        cost += np.einsum("bi,ij,bj->b", deviation, qc, deviation)
+        cost += np.einsum("bi,ij,bj->b", action, rc, action)
+        reading = state @ c.T + rng.normal(
+            0.0, np.sqrt(OBSERVATION_NOISE[0, 0]), (draws, 1)
+        )
+        predicted = estimate @ a.T + action @ b.T
+        estimate = predicted + (reading - predicted @ c.T) @ np.asarray(filter_gain).T
+    return cost.mean(), cost.std(ddof=1) / np.sqrt(draws)
+
+
+class TestKalmanSchedule:
+    def test_matches_the_textbook_recursion(self):
+        schedule = kalman_schedule(_point_mass_model(), horizon=5)
+        gains, covs = _numpy_kalman_covariances(np.eye(2), 5)
+        np.testing.assert_allclose(schedule.gains, gains, rtol=1e-12)
+        np.testing.assert_allclose(schedule.covariances, covs, rtol=1e-12)
+
+    def test_matches_the_backend_step_by_step(self):
+        # The backend's posterior covariance after k readings, and its gain read off
+        # the mean's response to a unit change in the reading.
+        model = _point_mass_model()
+        backend = KalmanBackend(model)
+        schedule = kalman_schedule(model, horizon=4)
+        belief, action = model.prior, np.array([0.3])
+        for k in range(4):
+            reading = np.array([0.5 * k])
+            folded = backend.infer_states(reading, belief, action)
+            nudged = backend.infer_states(reading + 1.0, belief, action)
+            np.testing.assert_allclose(
+                schedule.gains[k][:, 0], nudged.mean - folded.mean, atol=1e-12
+            )
+            np.testing.assert_allclose(
+                schedule.covariances[k + 1], folded.cov, rtol=1e-12
+            )
+            belief = folded
+
+    def test_starts_from_the_prior_given_or_the_models(self):
+        model = _point_mass_model()
+        assert np.array_equal(
+            kalman_schedule(model, horizon=2).covariances[0], model.prior.cov
+        )
+        sharper = Belief(mean=[0.0, 0.0], cov=[[0.1, 0.0], [0.0, 0.1]])
+        assert np.array_equal(
+            kalman_schedule(model, horizon=2, prior=sharper).covariances[0],
+            sharper.cov,
+        )
+
+
+class TestClosedLoopCost:
+    def test_one_step_by_hand(self):
+        # With one step the filter never acts: the action comes from the prior mean,
+        # the state is charged where it lands, and the noise adds its trace.
+        plan = _schedule(1)
+        a, b = np.asarray(DYNAMICS), np.asarray(CONTROL)
+        qc, rc = np.asarray(GOAL_PRECISION), np.asarray(EFFORT_PENALTY)
+        gain = np.asarray(plan.first_gain)
+        offset = np.array([0.0, 0.0]) - GOAL
+        landed = (a - b @ gain) @ offset
+        expected = (
+            landed @ qc @ landed
+            + np.trace(qc @ (a @ np.eye(2) @ a.T + PROCESS_NOISE))
+            + offset @ gain.T @ rc @ gain @ offset
+        )
+        cost = closed_loop_cost(
+            plan, kalman_schedule(plan.model, horizon=1).gains, goal=GOAL
+        )
+        assert cost == pytest.approx(expected, rel=1e-12)
+
+    def test_matches_a_sampled_run_of_the_same_information_pattern(self):
+        plan = _schedule(6)
+        filter_gains, _ = _numpy_kalman_covariances(np.eye(2), 6)
+        sampled, standard_error = _sampled_closed_loop_cost(
+            np.asarray(plan.gains), filter_gains, GOAL, draws=20_000
+        )
+        closed = closed_loop_cost(plan, filter_gains, goal=GOAL)
+        assert abs(closed - sampled) < 4 * standard_error
+
+    def test_the_certainty_equivalent_cost_sits_above_the_floor(self):
+        plan = _schedule(6)
+        controller = CertaintyEquivalentController(plan, goal=GOAL)
+        assert controller.expected_cost() > full_information_cost(plan, goal=GOAL)
+
+    def test_the_steady_state_gain_costs_more_than_the_matched_schedule(self):
+        # The mismatch from unit one, priced: applying the forever gain at every
+        # step of a short plan is not optimal for that plan.
+        plan = _schedule(3)
+        steady = LQRController(
+            plan.model, goal_precision=GOAL_PRECISION, effort_penalty=EFFORT_PENALTY
+        ).gain
+        gains = kalman_schedule(plan.model, horizon=3).gains
+        matched = closed_loop_cost(plan, gains, goal=GOAL)
+        unmatched = closed_loop_cost(
+            plan, gains, goal=GOAL, controller_gains=np.repeat(steady[None], 3, 0)
+        )
+        assert unmatched > matched > full_information_cost(plan, goal=GOAL)
+
+    def test_a_filter_gain_per_reading_is_required(self):
+        plan = _schedule(3)
+        with pytest.raises(ValueError, match="filter_gains"):
+            closed_loop_cost(plan, np.zeros((2, 2, 1)), goal=GOAL)
+        with pytest.raises(ValueError, match="controller_gains"):
+            closed_loop_cost(
+                plan,
+                np.zeros((3, 2, 1)),
+                goal=GOAL,
+                controller_gains=np.zeros((2, 1, 2)),
+            )
+
+
+class TestCertaintyEquivalentController:
+    def test_acts_on_the_estimate_with_the_steps_gain(self):
+        plan = _schedule(4)
+        controller = CertaintyEquivalentController(plan, goal=GOAL)
+        mean = np.array([0.4, -0.1])
+        for step in range(4):
+            np.testing.assert_array_equal(
+                controller.action(step, mean), -plan.gains[step] @ (mean - GOAL)
+            )
+
+    def test_refuses_a_goal_the_dynamics_cannot_hold(self):
+        with pytest.raises(ValueError, match="equilibrium"):
+            CertaintyEquivalentController(_schedule(2), goal=[1.0, 0.5])
+
+    def test_its_sampled_cost_through_the_harness_matches_its_expected_cost(self):
+        # The world emits a reading after each action and the filter folds it before
+        # the next: the pattern the closed form assumes, driven for real.
+        plan = _schedule(5)
+        model = plan.model
+        controller = CertaintyEquivalentController(plan, goal=GOAL)
+        qc, rc = np.asarray(GOAL_PRECISION), np.asarray(EFFORT_PENALTY)
+        rng = np.random.default_rng(2)
+        keys = jax.random.split(jax.random.PRNGKey(3), 150)
+        costs = []
+        for key in keys:
+            world = World(
+                model, initial_state=rng.multivariate_normal(np.zeros(2), np.eye(2))
+            )
+            backend, belief, cost = KalmanBackend(model), model.prior, 0.0
+            for step, step_key in enumerate(jax.random.split(key, 5)):
+                action = controller.action(step, belief.mean)
+                reading = world.step(action, step_key)
+                deviation = np.asarray(world.state) - GOAL
+                cost += deviation @ qc @ deviation + float(action @ rc @ action)
+                belief = backend.infer_states(reading, belief, action)
+            costs.append(cost)
+        costs = np.asarray(costs)
+        standard_error = costs.std(ddof=1) / np.sqrt(len(costs))
+        assert abs(controller.expected_cost() - costs.mean()) < 4 * standard_error
