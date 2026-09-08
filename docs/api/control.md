@@ -36,3 +36,48 @@ Steady-state LQR action selection: the action-side dual of the Kalman filter. Th
 ::: cpomdp.control.finite_horizon_lqr
 
 ::: cpomdp.control.FiniteHorizonLQR
+
+## The control bracket
+
+??? note "In plain terms"
+    Two costs bound every controller that follows a plan. The lower one is what the
+    plan costs when the state is known exactly at every step. The upper one is the
+    best any controller can do when it has to work the state out from readings. The
+    gap between them is the price of not knowing: what the sensor fails to deliver.
+    That gap is the number to report. Either end on its own is a cost in units nothing
+    calibrates.
+
+    Under fixed noise the upper end is settled. Take the gains the full-information
+    plan would use and apply them to the filtered estimate instead of the state. That
+    is the certainty-equivalent controller, and the separation principle says nothing
+    that infers the state does better. Its cost is written down two ways that share
+    nothing but the two Riccati recursions: once by propagating how the state and the
+    estimate spread together, once as the floor plus what the estimate's error costs at
+    each step. The two agreeing to machine precision is the signature of the
+    fixed-noise regime, and it is what makes the upper end a closed form rather than a
+    measurement.
+
+    An agent's cost is then read as a position inside the bracket. Zero means it did
+    exactly as well as certainty equivalence. One means it did as well as knowing the
+    state. An agent that can move its own sensor to where the readings are sharper can
+    sit above zero, and that is the effect the bracket exists to measure. The bar on
+    the agent's cost, divided by the width, is the floor below which its position
+    cannot be told from zero.
+
+::: cpomdp.control.full_information_cost
+
+::: cpomdp.control.kalman_schedule
+
+::: cpomdp.control.KalmanSchedule
+
+::: cpomdp.control.closed_loop_cost
+
+::: cpomdp.control.CertaintyEquivalentController
+
+::: cpomdp.control.optimal_cost
+
+::: cpomdp.control.ControlBracket
+
+::: cpomdp.control.control_bracket
+
+::: cpomdp.control.control_efficiency
