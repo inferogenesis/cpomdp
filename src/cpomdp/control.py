@@ -14,17 +14,22 @@ from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
 from cpomdp.backends.kalman import _gain_and_posterior_cov
+from cpomdp.resolution import Bar, Bounded
 from cpomdp.types import Belief, LinearGaussianModel
 
 __all__ = [
     "CertaintyEquivalentController",
+    "ControlBracket",
     "FiniteHorizonLQR",
     "KalmanSchedule",
     "LQRController",
     "closed_loop_cost",
+    "control_bracket",
+    "control_efficiency",
     "finite_horizon_lqr",
     "full_information_cost",
     "kalman_schedule",
+    "optimal_cost",
 ]
 
 
@@ -552,6 +557,141 @@ def full_information_cost(
     remaining = schedule.goal_precision + schedule.cost_to_go[:-1]
     from_noise = jnp.einsum("jab,ba->", remaining, model.dynamics_noise)
     return float(from_start + from_noise)
+
+
+def optimal_cost(
+    schedule: FiniteHorizonLQR, *, goal: ArrayLike, prior: Belief | None = None
+) -> float:
+    """``J*``: the least any controller that infers the state from readings can pay.
+
+    The separation principle prices it without propagating a state. The plan's gains
+    are optimal whatever the estimate, and acting on an estimate instead of the state
+    costs, at each step, the estimate's error charged at what an action error costs
+    from there. With ``Σ_k`` the exact filter's error covariance of the estimate action
+    ``k`` is chosen from, and ``W_k = Q + P_{H−k−1}`` what remains after the step::
+
+        J* = J_lower + Σ_{k=0}^{H−1} tr(L_kᵀ (R + Bᵀ W_k B) L_k Σ_k)
+
+    ``closed_loop_cost`` with the exact filter's gains reaches the same number by
+    propagating the joint second moment of state and estimate. The two share no
+    arithmetic past the two Riccati recursions, so their agreement to machine
+    precision is the fixed-noise signature: certainty equivalence is optimal, and no
+    use of the readings beats it.
+
+    Args:
+        schedule: The plan, with the model and costs it was built from.
+        goal: The state the plan steers toward, shape ``(n,)``, held by the dynamics.
+        prior: Where the state starts and what the filter starts from. Defaults to the
+            model's prior.
+
+    Returns:
+        The expected cost in the units of ``goal_precision`` and ``effort_penalty``.
+
+    Raises:
+        ValueError: If either noise depends on the state, if ``goal`` is not a vector
+            of length ``n`` the dynamics hold, or if ``prior`` is not over the model's
+            state.
+    """
+    model = schedule.model
+    floor = full_information_cost(schedule, goal=goal, prior=prior)
+    covariances = kalman_schedule(model, schedule.horizon, prior=prior).covariances
+    assert model.control_matrix is not None  # the schedule was built on it
+    control_matrix, effort_penalty = model.control_matrix, schedule.effort_penalty
+    # W_k = Q + P_{H−k−1}: what remains after step k, read in step order
+    remaining = schedule.goal_precision + schedule.cost_to_go[-2::-1]
+    penalty = 0.0
+    for gain, after, error in zip(
+        schedule.gains, remaining, covariances[:-1], strict=True
+    ):
+        action_cost = effort_penalty + control_matrix.T @ after @ control_matrix
+        penalty += jnp.trace(gain.T @ action_cost @ gain @ error)
+    return float(floor + penalty)
+
+
+@dataclass(frozen=True)
+class ControlBracket:
+    """The two costs every controller under one plan sits between.
+
+    The floor is the plan with the state observed exactly. The ceiling is the best
+    any controller that has to infer the state from readings can do, which under fixed
+    noise is the certainty-equivalent controller with the exact filter. Their
+    difference is what the readings fail to deliver: the price of inference under this
+    plan. That width is the object to report. Either end alone is a number in cost
+    units that nothing calibrates.
+
+    Args:
+        floor: ``J_lower``, from ``full_information_cost``.
+        ceiling: ``J_CE``, from ``closed_loop_cost`` with the exact filter's gains.
+    """
+
+    floor: float
+    ceiling: float
+
+    @property
+    def width(self) -> float:
+        """``ceiling − floor``, the price of inference under the plan."""
+        return self.ceiling - self.floor
+
+
+def control_bracket(
+    schedule: FiniteHorizonLQR, *, goal: ArrayLike, prior: Belief | None = None
+) -> ControlBracket:
+    """The floor and ceiling of a plan, both in closed form.
+
+    Args:
+        schedule: The plan, with the model and costs it was built from.
+        goal: The state the plan steers toward, shape ``(n,)``, held by the dynamics.
+        prior: Where the state starts and what the filter starts from. Defaults to the
+            model's prior.
+
+    Raises:
+        ValueError: Whatever ``full_information_cost`` and ``closed_loop_cost`` refuse.
+    """
+    floor = full_information_cost(schedule, goal=goal, prior=prior)
+    gains = kalman_schedule(schedule.model, schedule.horizon, prior=prior).gains
+    ceiling = closed_loop_cost(schedule, gains, goal=goal, prior=prior)
+    return ControlBracket(floor=floor, ceiling=ceiling)
+
+
+def control_efficiency(bracket: ControlBracket, agent_cost: Bounded) -> Bounded:
+    """``η_ctrl``: how much of the price of inference an agent recovers.
+
+    ``(ceiling − agent_cost) / width``, with the agent's bar scaled by the width. Zero
+    for a certainty-equivalent controller under fixed noise. Positive when an agent
+    knows more than the fixed-noise filter can, as one that steers its own sensor
+    does. Negative when it pays more than certainty equivalence would. Every term is
+    scored under the plan's own model, so the number is within-model and needs no
+    reference.
+
+    Both ends of the bracket are closed forms, so the result's bar is the agent's
+    alone, divided by the width. That bar is the floor below which ``η_ctrl`` cannot
+    be told from zero, and a claim of zero is a claim to it.
+
+    Args:
+        bracket: The plan's floor and ceiling.
+        agent_cost: The agent's expected cost under the same plan, with its bar.
+
+    Returns:
+        ``η_ctrl`` with its bar: ``common_mode`` is the agent's negated and divided by
+        the width, since the agent's cost enters negated; ``own`` is the agent's
+        divided by the width.
+
+    Raises:
+        ValueError: If the bracket's width is not positive, since there is then no
+            price of inference to normalise by.
+    """
+    width = bracket.width
+    if width <= 0.0:
+        raise ValueError(
+            f"the bracket's width must be positive to normalise by, got {width!r}"
+        )
+    return Bounded(
+        value=(bracket.ceiling - agent_cost.value) / width,
+        bar=Bar(
+            common_mode=-agent_cost.bar.common_mode / width,
+            own=agent_cost.bar.own / width,
+        ),
+    )
 
 
 class LQRController:

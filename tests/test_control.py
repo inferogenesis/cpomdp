@@ -6,13 +6,18 @@ import scipy.linalg
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.control import (
     CertaintyEquivalentController,
+    ControlBracket,
     LQRController,
     closed_loop_cost,
+    control_bracket,
+    control_efficiency,
     finite_horizon_lqr,
     full_information_cost,
     kalman_schedule,
+    optimal_cost,
 )
 from cpomdp.harness import World
+from cpomdp.resolution import EXACT, Bar, Bounded
 from cpomdp.types import Belief, LinearGaussianModel
 
 # Inside this module the terse letters a/b/qc/rc are local scalars for the
@@ -631,3 +636,163 @@ class TestCertaintyEquivalentController:
         costs = np.asarray(costs)
         standard_error = costs.std(ddof=1) / np.sqrt(len(costs))
         assert abs(controller.expected_cost() - costs.mean()) < 4 * standard_error
+
+
+# --- the optimum by separation, and the bracket it closes -----------------------------
+
+
+EPS = np.finfo(float).eps
+
+
+def _point_mass_schedule(horizon, *, observation_noise=1e-2, prior_cov=None):
+    model = LinearGaussianModel(
+        dynamics_matrix=DYNAMICS,
+        observation_matrix=OBSERVATION,
+        dynamics_noise=PROCESS_NOISE,
+        observation_noise=[[observation_noise]],
+        prior=Belief(
+            mean=[0.0, 0.0], cov=np.eye(2) if prior_cov is None else prior_cov
+        ),
+        control_matrix=CONTROL,
+    )
+    return finite_horizon_lqr(
+        model,
+        goal_precision=GOAL_PRECISION,
+        effort_penalty=EFFORT_PENALTY,
+        horizon=horizon,
+    )
+
+
+def _exact_filter_cost(plan, prior=None):
+    gains = kalman_schedule(plan.model, plan.horizon, prior=prior).gains
+    return closed_loop_cost(plan, gains, goal=GOAL, prior=prior)
+
+
+class TestOptimalCost:
+    @pytest.mark.parametrize("horizon", [1, 2, 5, 12])
+    def test_agrees_with_the_moment_propagated_cost_to_machine_precision(self, horizon):
+        # Two closed forms that share nothing past the Riccati recursions. Their
+        # agreement is the whole of the fixed-noise signature.
+        plan = _schedule(horizon)
+        by_separation = optimal_cost(plan, goal=GOAL)
+        by_moments = _exact_filter_cost(plan)
+        assert abs(by_separation - by_moments) <= 64 * EPS * by_moments
+
+    def test_is_the_floor_plus_the_estimate_penalty_by_hand(self):
+        horizon = 4
+        plan = _schedule(horizon)
+        b, rc = np.asarray(CONTROL), np.asarray(EFFORT_PENALTY)
+        _, covs = _numpy_kalman_covariances(np.eye(2), horizon)
+        penalty = 0.0
+        for k in range(horizon):
+            remaining = np.asarray(GOAL_PRECISION) + np.asarray(
+                plan.cost_to_go[horizon - k - 1]
+            )
+            gain = np.asarray(plan.gains[k])
+            penalty += np.trace(gain.T @ (rc + b.T @ remaining @ b) @ gain @ covs[k])
+        expected = full_information_cost(plan, goal=GOAL) + penalty
+        assert optimal_cost(plan, goal=GOAL) == pytest.approx(expected, rel=1e-13)
+
+    def test_a_worse_sensor_costs_more_and_a_known_state_costs_the_floor(self):
+        sharp = _point_mass_schedule(5, observation_noise=1e-4)
+        blunt = _point_mass_schedule(5, observation_noise=1.0)
+        floor = full_information_cost(sharp, goal=GOAL)
+        assert floor < optimal_cost(sharp, goal=GOAL) < optimal_cost(blunt, goal=GOAL)
+
+    def test_reads_the_prior_it_is_given(self):
+        plan = _schedule(3)
+        prior = Belief(mean=[0.3, -0.2], cov=[[2.0, 0.1], [0.1, 0.5]])
+        by_moments = _exact_filter_cost(plan, prior=prior)
+        assert optimal_cost(plan, goal=GOAL, prior=prior) == pytest.approx(
+            by_moments, rel=1e-13
+        )
+        assert optimal_cost(plan, goal=GOAL) != pytest.approx(by_moments, rel=1e-6)
+
+
+class TestControlBracket:
+    def test_its_ends_are_the_two_closed_forms(self):
+        plan = _schedule(5)
+        bracket = control_bracket(plan, goal=GOAL)
+        assert bracket.floor == full_information_cost(plan, goal=GOAL)
+        assert bracket.ceiling == _exact_filter_cost(plan)
+
+    def test_its_width_is_the_price_of_inference(self):
+        plan = _schedule(5)
+        bracket = control_bracket(plan, goal=GOAL)
+        assert bracket.width == bracket.ceiling - bracket.floor
+        assert bracket.width > 0.0
+        penalty = optimal_cost(plan, goal=GOAL) - full_information_cost(plan, goal=GOAL)
+        assert bracket.width == pytest.approx(penalty, abs=64 * EPS * bracket.ceiling)
+
+    def test_its_width_does_not_move_with_where_the_state_starts(self):
+        # The offset from the goal is charged at both ends and cancels: only the
+        # spread, which the filter has to work down, sets the price of inference.
+        plan = _schedule(5)
+        near = control_bracket(plan, goal=GOAL)
+        far = control_bracket(
+            plan, goal=GOAL, prior=Belief(mean=[5.0, -3.0], cov=np.eye(2))
+        )
+        assert far.ceiling > near.ceiling
+        assert far.width == pytest.approx(near.width, abs=64 * EPS * far.ceiling)
+
+    def test_its_width_grows_with_the_prior_spread(self):
+        plan = _schedule(5)
+        tight = control_bracket(plan, goal=GOAL)
+        loose = control_bracket(
+            plan, goal=GOAL, prior=Belief(mean=[0.0, 0.0], cov=4.0 * np.eye(2))
+        )
+        assert loose.width > tight.width
+
+    def test_refuses_what_its_two_closed_forms_refuse(self):
+        with pytest.raises(ValueError, match="equilibrium"):
+            control_bracket(_schedule(2), goal=[1.0, 0.5])
+        with pytest.raises(ValueError, match="prior"):
+            control_bracket(
+                _schedule(2), goal=GOAL, prior=Belief(mean=[0.0], cov=[[1.0]])
+            )
+
+
+class TestControlEfficiency:
+    def test_a_certainty_equivalent_agent_reads_zero_exactly(self):
+        bracket = control_bracket(_schedule(5), goal=GOAL)
+        eta = control_efficiency(bracket, Bounded(value=bracket.ceiling, bar=EXACT))
+        assert eta.value == 0.0
+        assert eta.bar == EXACT
+
+    def test_an_agent_that_knows_the_state_reads_one(self):
+        bracket = control_bracket(_schedule(5), goal=GOAL)
+        eta = control_efficiency(bracket, Bounded(value=bracket.floor, bar=EXACT))
+        assert eta.value == pytest.approx(1.0, abs=64 * EPS)
+
+    def test_positions_the_agent_within_the_bracket_and_scales_its_bar(self):
+        bracket = control_bracket(_schedule(5), goal=GOAL)
+        agent = Bounded(
+            value=bracket.ceiling - 0.3 * bracket.width,
+            bar=Bar(common_mode=0.02, own=0.05),
+        )
+        eta = control_efficiency(bracket, agent)
+        assert eta.value == pytest.approx(0.3, abs=1e-12)
+        assert eta.bar.common_mode == pytest.approx(-0.02 / bracket.width)
+        assert eta.bar.own == pytest.approx(0.05 / bracket.width)
+
+    def test_a_sampled_certainty_equivalent_run_reads_zero_within_its_floor(self):
+        # The stated floor is the sampled bar over the width; zero is claimed to it.
+        plan = _schedule(5)
+        bracket = control_bracket(plan, goal=GOAL)
+        gains = kalman_schedule(plan.model, 5).gains
+        mean, standard_error = _sampled_closed_loop_cost(
+            plan.gains, gains, GOAL, draws=20_000
+        )
+        eta = control_efficiency(
+            bracket,
+            Bounded(value=mean, bar=Bar(common_mode=0.0, own=4 * standard_error)),
+        )
+        assert abs(eta.value) <= eta.bar.total
+        assert eta.bar.total < 0.5  # a floor the sampled bar cannot make vacuous
+
+    def test_refuses_a_bracket_of_no_width(self):
+        with pytest.raises(ValueError, match="width"):
+            control_efficiency(
+                ControlBracket(floor=1.0, ceiling=1.0),
+                Bounded(value=1.0, bar=EXACT),
+            )
