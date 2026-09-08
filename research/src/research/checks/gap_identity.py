@@ -333,7 +333,7 @@ def check_the_two_engines_agree() -> CheckReport:
     """
     from cpomdp.reference.gap import averaged_inference_gap
     from cpomdp.reference.likelihood import StateDependentNoiseLikelihood
-    from cpomdp.reference.quadrature import GridDensity, QuadratureGrid
+    from cpomdp.reference.quadrature import QuadratureGrid, gaussian_on
 
     centre = _CROSS_CHECK_FAMILY.prior_mean
     plugin = float(_CROSS_CHECK_FAMILY.noise(np.asarray(centre)))
@@ -348,26 +348,13 @@ def check_the_two_engines_agree() -> CheckReport:
 
         states = QuadratureGrid([centre - 14.0], [centre + 14.0], [12001])
         observations = QuadratureGrid([centre - 26.0], [centre + 26.0], [2001])
-        nodes = np.asarray(states.nodes)[:, 0]
-        prior = GridDensity(
-            states,
-            -0.5
-            * (
-                np.log(2 * np.pi * prior_variance)
-                + (nodes - centre) ** 2 / prior_variance
-            ),
-        )
+        prior = gaussian_on(states, centre, prior_variance)
         gain = prior_variance / (prior_variance + plugin)
 
         def rule(belief, observation, gain=gain, prior_variance=prior_variance):
             mean = centre + gain * (float(np.asarray(observation)[0]) - centre)
-            grid_nodes = np.asarray(belief.grid.nodes)[:, 0]
             variance = (1.0 - gain) * prior_variance
-            return GridDensity(
-                belief.grid,
-                -0.5
-                * (np.log(2 * np.pi * variance) + (grid_nodes - mean) ** 2 / variance),
-            )
+            return gaussian_on(belief.grid, mean, variance)
 
         measured = averaged_inference_gap(
             prior,
