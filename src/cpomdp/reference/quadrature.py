@@ -396,6 +396,8 @@ class GridDensity:
         """``D_KL[self ‖ other]`` by quadrature, with both normalised first.
 
         A KL divergence is an expectation of a log-ratio, and is computed as one.
+        Each mass is taken once. Normalising and then calling ``expectation`` would
+        take this density's twice, and the sweep pays this per observation node.
 
         Nodes where this density vanishes are already weighted to zero by the
         measure. The guard is on the subtraction, where ``-inf - -inf`` is NaN and
@@ -419,12 +421,10 @@ class GridDensity:
                 "kl_to needs both densities on the same lattice, got "
                 f"{self.grid!r} and {other.grid!r}"
             )
-        normalised = self.normalise()
-        log_p = normalised.log_density
-        log_q = other.normalise().log_density
-        return normalised.expectation(
-            jnp.where(jnp.isneginf(log_p), 0.0, log_p - log_q)
-        )
+        log_p = self.log_density - self.log_mass
+        log_q = other.log_density - other.log_mass
+        integrand = jnp.where(jnp.isneginf(log_p), 0.0, log_p - log_q)
+        return _contract(self.grid.weights * jnp.exp(log_p), integrand)
 
     def tree_flatten(
         self,
