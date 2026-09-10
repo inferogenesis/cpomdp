@@ -426,6 +426,18 @@ class TestGaussianOn:
         with pytest.raises(ValueError, match="cov"):
             gaussian_on(grid, [0.0, 0.0], [[1.0]])
 
+    def test_a_sharp_gaussian_is_a_gaussian_and_not_a_degenerate_sensor(self):
+        # The sensor validator floors definiteness at 1e-8 because something inverts
+        # the noise. Nothing inverts a belief, so a variance below that floor renders.
+        grid = QuadratureGrid(lower=[-1e-3], upper=[1e-3], counts=[2001])
+        density = gaussian_on(grid, 0.0, 1e-9)
+        np.testing.assert_allclose(float(jnp.exp(density.log_mass)), 1.0, atol=1e-9)
+
+    def test_a_zero_variance_direction_is_refused(self):
+        grid = QuadratureGrid(lower=[-1.0, -1.0], upper=[1.0, 1.0], counts=[3, 3])
+        with pytest.raises(ValueError, match="no density on the lattice"):
+            gaussian_on(grid, [0.0, 0.0], [[1.0, 0.0], [0.0, 0.0]])
+
     def test_an_indefinite_covariance_is_refused(self):
         grid = QuadratureGrid(lower=[-1.0, -1.0], upper=[1.0, 1.0], counts=[3, 3])
         with pytest.raises(ValueError, match="definite"):

@@ -31,7 +31,7 @@ from jax.scipy.special import logsumexp
 from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
-from cpomdp._validation import validate_covariance
+from cpomdp._validation import concrete, validate_covariance
 
 __all__ = ["GridDensity", "QuadratureGrid", "gaussian_on"]
 
@@ -469,7 +469,9 @@ def gaussian_on(grid: QuadratureGrid, mean: ArrayLike, cov: ArrayLike) -> GridDe
 
     Raises:
         ValueError: if ``mean`` or ``cov`` does not match the grid's dimension, or
-            ``cov`` is not a positive-definite covariance.
+            ``cov`` is not a positive-definite covariance. Any positive variance is
+            a Gaussian, however sharp. There is no floor: the floor a sensor noise
+            carries is about inverting it, and nothing here inverts.
     """
     mean_vector = jnp.atleast_1d(jnp.asarray(mean, dtype=float))
     covariance = jnp.atleast_2d(jnp.asarray(cov, dtype=float))
@@ -483,7 +485,13 @@ def gaussian_on(grid: QuadratureGrid, mean: ArrayLike, cov: ArrayLike) -> GridDe
             f"cov must be {grid.ndim} x {grid.ndim} to match the grid, got shape "
             f"{covariance.shape}"
         )
-    validate_covariance(covariance, "cov", require_definite=True)
+    validate_covariance(covariance, "cov")
+    concrete_cov = concrete(covariance)
+    if concrete_cov is not None and float(np.linalg.eigvalsh(concrete_cov).min()) <= 0:
+        raise ValueError(
+            "cov must be positive-definite: a Gaussian with a zero-variance "
+            "direction has no density on the lattice"
+        )
     centred = grid.nodes - mean_vector
     _, log_det = jnp.linalg.slogdet(covariance)
     quadratic = jnp.einsum(
