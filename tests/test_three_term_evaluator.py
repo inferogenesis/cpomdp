@@ -24,7 +24,7 @@ from cpomdp.harness import DrivenRun, ExogenousActionSequence, World, drive
 from cpomdp.observation import CallableSensor
 from cpomdp.reference.gap import averaged_inference_gap
 from cpomdp.reference.likelihood import FixedNoiseLikelihood
-from cpomdp.reference.quadrature import GridDensity, QuadratureGrid
+from cpomdp.reference.quadrature import QuadratureGrid, gaussian_on
 from cpomdp.scoring import (
     _SERIES_BELOW,
     ConstructorCross,
@@ -310,12 +310,6 @@ def test_the_closed_form_agrees_with_the_grid_engine():
     agent = WrongFixedRBackend(model, magnitude=magnitude)
     states = QuadratureGrid(lower=[-14.0], upper=[14.0], counts=[2801])
     observations = QuadratureGrid(lower=[-16.0], upper=[16.0], counts=[401])
-
-    def gaussian_on(grid, mean, var):
-        x = np.asarray(grid.nodes)[:, 0]
-        return GridDensity(
-            grid, -0.5 * (np.log(2 * np.pi * var) + (x - mean) ** 2 / var)
-        )
 
     def rule(prior, observation):
         belief = agent.infer_states(np.asarray(observation), model.prior, None)
