@@ -31,7 +31,9 @@ from jax.scipy.special import logsumexp
 from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
-__all__ = ["GridDensity", "QuadratureGrid"]
+from cpomdp._validation import concrete, validate_covariance
+
+__all__ = ["GridDensity", "QuadratureGrid", "gaussian_on"]
 
 
 def _validate_log_values(values: Float64[Array, "N"], name: str) -> None:
@@ -394,6 +396,8 @@ class GridDensity:
         """``D_KL[self ‖ other]`` by quadrature, with both normalised first.
 
         A KL divergence is an expectation of a log-ratio, and is computed as one.
+        Each mass is taken once. Normalising and then calling ``expectation`` would
+        take this density's twice, and the sweep pays this per observation node.
 
         Nodes where this density vanishes are already weighted to zero by the
         measure. The guard is on the subtraction, where ``-inf - -inf`` is NaN and
@@ -417,12 +421,10 @@ class GridDensity:
                 "kl_to needs both densities on the same lattice, got "
                 f"{self.grid!r} and {other.grid!r}"
             )
-        normalised = self.normalise()
-        log_p = normalised.log_density
-        log_q = other.normalise().log_density
-        return normalised.expectation(
-            jnp.where(jnp.isneginf(log_p), 0.0, log_p - log_q)
-        )
+        log_p = self.log_density - self.log_mass
+        log_q = other.log_density - other.log_mass
+        integrand = jnp.where(jnp.isneginf(log_p), 0.0, log_p - log_q)
+        return _contract(self.grid.weights * jnp.exp(log_p), integrand)
 
     def tree_flatten(
         self,
@@ -446,3 +448,55 @@ class GridDensity:
         object.__setattr__(density, "log_density", log_density)
         object.__setattr__(density, "log_normaliser", log_normaliser)
         return density
+
+
+def gaussian_on(grid: QuadratureGrid, mean: ArrayLike, cov: ArrayLike) -> GridDensity:
+    """``log N(x; mean, cov)`` at every node of ``grid``.
+
+    The one place a Gaussian is put on a lattice. Every rung of the rule ladder ends
+    by rendering its belief this way, and the exact filter's oracles start from it.
+
+    Args:
+        grid: the lattice to evaluate on.
+        mean: the Gaussian's mean, length ``grid.ndim``. A scalar on a 1-D grid.
+        cov: its covariance, ``grid.ndim`` square and positive definite. A scalar
+            variance on a 1-D grid.
+
+    Returns:
+        The log-density at each node, not normalised by the grid. Its ``log_mass`` is
+        zero to within quadrature error when the box holds the Gaussian, and below it
+        when the box clips it.
+
+    Raises:
+        ValueError: if ``mean`` or ``cov`` does not match the grid's dimension, or
+            ``cov`` is not a positive-definite covariance. Any positive variance is
+            a Gaussian, however sharp. There is no floor: the floor a sensor noise
+            carries is about inverting it, and nothing here inverts.
+    """
+    mean_vector = jnp.atleast_1d(jnp.asarray(mean, dtype=float))
+    covariance = jnp.atleast_2d(jnp.asarray(cov, dtype=float))
+    if mean_vector.shape != (grid.ndim,):
+        raise ValueError(
+            f"mean must have {grid.ndim} entries to match the grid, got shape "
+            f"{mean_vector.shape}"
+        )
+    if covariance.shape != (grid.ndim, grid.ndim):
+        raise ValueError(
+            f"cov must be {grid.ndim} x {grid.ndim} to match the grid, got shape "
+            f"{covariance.shape}"
+        )
+    validate_covariance(covariance, "cov")
+    concrete_cov = concrete(covariance)
+    if concrete_cov is not None and float(np.linalg.eigvalsh(concrete_cov).min()) <= 0:
+        raise ValueError(
+            "cov must be positive-definite: a Gaussian with a zero-variance "
+            "direction has no density on the lattice"
+        )
+    centred = grid.nodes - mean_vector
+    _, log_det = jnp.linalg.slogdet(covariance)
+    quadratic = jnp.einsum(
+        "ni,ni->n", centred, jnp.linalg.solve(covariance, centred.T).T
+    )
+    return GridDensity(
+        grid, -0.5 * (grid.ndim * math.log(2.0 * math.pi) + log_det + quadratic)
+    )

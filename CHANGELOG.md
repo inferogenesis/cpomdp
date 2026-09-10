@@ -92,6 +92,16 @@ reference makes far smaller than the sum of the two bars.
   `BELOW`, `ABOVE` or `NOT_RESOLVED`, the measured tie that is neither confirmation nor
   refutation. The module imports nothing first-party, asserted in the boundary test, so
   the seam and the reference filter reach it without reaching the evaluator.
+- `cpomdp.reference` — the exact reference filter's substrate, reached by module path
+  and not re-exported at the package top. `QuadratureGrid` and `GridDensity` are a
+  declared lattice and log-values on it, and `gaussian_on` is the one place a Gaussian
+  is put on that lattice. `averaged_inference_gap` sweeps an observation box and returns
+  an `InferenceGap`: the rule's expected divergence from the exact posterior under
+  `p*`, beside the predictive mass the box caught and the worst edge ratio. A rule may
+  answer `Void` for a reading it could not converge on. The sweep then reports that
+  node as NaN, sums its weight into `voided_mass`, and averages the answered readings
+  normalised to their own mass, the conditional reading a clipped box already gets
+  (ADR-060).
 
 - `warrantlib.CompletenessEvidence` (warrantlib 0.3.0) — the two predicates a `PROVED`
   completeness claim rests on, held once in a base, with a leaf per domain shape under

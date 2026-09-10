@@ -5,22 +5,20 @@ construction: nothing here decides a declared claim. The engine carries no warra
 arrival (ADR-052), and R6 is where a claim about this quantity gets registered.
 """
 
+import math
+
+import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from cpomdp.reference.gap import averaged_inference_gap
+from cpomdp.reference.gap import Void, averaged_inference_gap
 from cpomdp.reference.likelihood import (
     FixedNoiseLikelihood,
     StateDependentNoiseLikelihood,
 )
-from cpomdp.reference.quadrature import GridDensity, QuadratureGrid
+from cpomdp.reference.quadrature import GridDensity, QuadratureGrid, gaussian_on
 
 PRIOR_MEAN, PRIOR_VAR = 0.3, 0.8
-
-
-def gaussian_on(grid, mean, var):
-    x = np.asarray(grid.nodes)[:, 0]
-    return GridDensity(grid, -0.5 * (np.log(2 * np.pi * var) + (x - mean) ** 2 / var))
 
 
 def kalman_rule(noise, prior_mean=PRIOR_MEAN, prior_var=PRIOR_VAR):
@@ -290,3 +288,89 @@ def test_state_dependent_noise_opens_a_gap_no_constant_closes():
         for plugin in (0.4, 0.6, 0.8, 1.0, 1.4)
     ]
     assert min(gaps) > 1e-4
+
+
+# --- a rung that declines a reading -------------------------------------------------
+
+
+def voiding_rule(noise, reach):
+    """`kalman_rule(noise)` that reports VOID on any reading past `reach` of the prior.
+
+    Stands in for an iterating rung out of budget. Which readings it declines is
+    chosen so the oracle can weigh them: the far ones, whose predictive mass under a
+    fixed R is a Gaussian tail.
+    """
+    converged = kalman_rule(noise)
+
+    def rule(prior, observation):
+        if abs(float(np.asarray(observation)[0]) - PRIOR_MEAN) > reach:
+            return Void(iterations=64, detail="budget exhausted")
+        return converged(prior, observation)
+
+    return rule
+
+
+def test_a_voided_reading_is_reported_and_left_out_of_the_average():
+    states = QuadratureGrid(lower=[-14.0], upper=[14.0], counts=[1601])
+    observations = QuadratureGrid(lower=[-12.0], upper=[12.0], counts=[401])
+    true_noise, reach = 0.5, 3.0
+    likelihood = FixedNoiseLikelihood([[1.0]], observation_noise=[[true_noise]])
+    prior = gaussian_on(states, PRIOR_MEAN, PRIOR_VAR)
+
+    full = averaged_inference_gap(prior, likelihood, kalman_rule(2.0), observations)
+    partial = averaged_inference_gap(
+        prior, likelihood, voiding_rule(2.0, reach), observations
+    )
+
+    readings = np.asarray(observations.nodes)[:, 0]
+    declined = np.abs(readings - PRIOR_MEAN) > reach
+    np.testing.assert_array_equal(np.asarray(partial.voided_nodes), declined)
+    assert not np.asarray(full.voided_nodes).any()
+
+    # The predictive is the model's, not the rule's, so it is measured at every node
+    # and the declined share is N(mu, S) integrated over the declined nodes.
+    predictive = gaussian_on(observations, PRIOR_MEAN, PRIOR_VAR + true_noise)
+    tail = GridDensity(
+        observations, jnp.where(declined, predictive.log_density, -jnp.inf)
+    )
+    np.testing.assert_allclose(partial.voided_mass, float(jnp.exp(tail.log_mass)))
+    assert full.voided_mass == 0.0
+    np.testing.assert_allclose(partial.predictive_mass, full.predictive_mass)
+
+    # A declined node has no divergence. The others read exactly as before.
+    assert np.isnan(np.asarray(partial.divergences)[declined]).all()
+    np.testing.assert_allclose(
+        np.asarray(partial.divergences)[~declined],
+        np.asarray(full.divergences)[~declined],
+    )
+
+    # The value averages over the measured nodes only, normalised to their mass. The
+    # far readings carry the largest divergences, so leaving them out lowers it.
+    measured = GridDensity(
+        observations, jnp.where(declined, -jnp.inf, predictive.log_density)
+    )
+    expected = measured.expectation(jnp.where(declined, 0.0, full.divergences))
+    np.testing.assert_allclose(partial.value, float(expected), rtol=1e-6)
+    assert partial.value < full.value
+
+
+def test_a_rule_that_declines_every_reading_leaves_no_value():
+    states = QuadratureGrid(lower=[-14.0], upper=[14.0], counts=[401])
+    observations = QuadratureGrid(lower=[-10.0], upper=[10.0], counts=[51])
+
+    def always_void(prior, observation):
+        return Void(iterations=64, detail="budget exhausted")
+
+    measured = averaged_inference_gap(
+        gaussian_on(states, PRIOR_MEAN, PRIOR_VAR),
+        FixedNoiseLikelihood([[1.0]], observation_noise=[[0.5]]),
+        always_void,
+        observations,
+    )
+    assert math.isnan(measured.value)
+    assert np.asarray(measured.voided_nodes).all()
+    assert np.isnan(np.asarray(measured.divergences)).all()
+    np.testing.assert_allclose(measured.voided_mass, measured.predictive_mass)
+    # What the rule never touched is still reported.
+    np.testing.assert_allclose(measured.predictive_mass, 1.0, atol=1e-9)
+    assert measured.worst_edge_ratio < 1e-9

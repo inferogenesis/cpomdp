@@ -12,21 +12,9 @@ import pytest
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.reference.filtering import condition, filter_sequence, predict
 from cpomdp.reference.likelihood import FixedNoiseLikelihood
-from cpomdp.reference.quadrature import GridDensity, QuadratureGrid
+from cpomdp.reference.quadrature import QuadratureGrid, gaussian_on
 from cpomdp.reference.transition import LinearGaussianKernel
 from cpomdp.types import Belief, LinearGaussianModel
-
-
-def gaussian_on(grid, mean, cov):
-    """A Gaussian evaluated on every node of `grid`."""
-    mean, cov = np.atleast_1d(mean), np.atleast_2d(cov)
-    centred = np.asarray(grid.nodes) - mean
-    _, log_det = np.linalg.slogdet(cov)
-    quadratic = np.einsum("ni,ij,nj->n", centred, np.linalg.inv(cov), centred)
-    return GridDensity(
-        grid, -0.5 * (len(mean) * np.log(2 * np.pi) + log_det + quadratic)
-    )
-
 
 A, C, Q, R = [[0.9]], [[1.0]], [[0.15]], [[0.3]]
 PRIOR = Belief(mean=[0.0], cov=[[1.0]])
