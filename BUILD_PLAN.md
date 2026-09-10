@@ -677,7 +677,8 @@ Nothing here acquires a warrant, and no module gains a `run_checks`.
 **Left open for PR-7**, from ADR-058's consequences: two nodes at the box edge exhaust
 the budget, `1.5 + 0.5 sin(x)` at spread `0.30` and `κ = 100`, each carrying `2.6e-18` of
 the centre's predictive weight. Whether a voided node drops out, voids the gap, or widens
-the budget is the ladder's decision.
+the budget was the ladder's decision. ADR-060 took it: the node drops out by weight, and
+the report carries the weight.
 
 ## PR-7 — Exact reference filter and the rule ladder
 
@@ -715,12 +716,17 @@ ladder is what is missing. Nothing in `src/cpomdp` implements that callable.
       `(prior, observation)`, so the matrices, the noise function and the budget are closed
       over at construction. This is the front-loading the energy constraint asks for: the
       fixed-sensor rung stays one matrix-vector product per reading.
-- [ ] **One public way to put a Gaussian on a lattice.** Every rung ends by rendering its
-      belief on the prior's grid, and that step is written twice already, in
-      `tests/test_reference_gap.py` and inside `research.checks.gap_identity`. It becomes
-      one function before a third copy exists.
-- [ ] **`VOID` on a non-convergent step**, per ADR-056 and route 5's measurement. The rung
-      reports it and `averaged_inference_gap` does not average over it silently.
+- [x] **One public way to put a Gaussian on a lattice.** `gaussian_on` in
+      `cpomdp.reference.quadrature`. The copies in `tests/test_reference_gap.py` and
+      `research.checks.gap_identity` now call it.
+- [x] **`VOID` on a non-convergent step**, per ADR-056 and route 5's measurement. A rule
+      returns `Void` in place of a belief. `averaged_inference_gap` reports the node
+      as NaN, adds its predictive weight to `voided_mass`, and averages over the
+      measured readings normalised to their own mass, the same conditional reading a
+      clipped box already gets through `predictive_mass`. A check that wants the strict
+      figure asserts `voided_mass` is zero. This answers the question PR-7a left open:
+      a voided node drops out by weight and the report says how much weight
+      (ADR-060).
 - [ ] **Iteration work is labeled and isolable.** RFC-001 has to attribute the
       per-decision cost of an iterating rung without reading the loop body.
 - [ ] **`R'` comes from automatic differentiation**, per ADR-058. The declared `1e-12`

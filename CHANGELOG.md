@@ -123,6 +123,16 @@ no use of the readings beats it.
   dynamics do not hold, a noise that depends on the state, and a bracket of zero width
   are all refused. The Control page of the API reference opens the schedule and the
   bracket in plain terms.
+- `cpomdp.reference` — the exact reference filter's substrate, reached by module path
+  and not re-exported at the package top. `QuadratureGrid` and `GridDensity` are a
+  declared lattice and log-values on it, and `gaussian_on` is the one place a Gaussian
+  is put on that lattice. `averaged_inference_gap` sweeps an observation box and returns
+  an `InferenceGap`: the rule's expected divergence from the exact posterior under
+  `p*`, beside the predictive mass the box caught and the worst edge ratio. A rule may
+  answer `Void` for a reading it could not converge on. The sweep then reports that
+  node as NaN, sums its weight into `voided_mass`, and averages the answered readings
+  normalised to their own mass, the conditional reading a clipped box already gets
+  (ADR-060).
 
 - `warrantlib.CompletenessEvidence` (warrantlib 0.3.0) — the two predicates a `PROVED`
   completeness claim rests on, held once in a base, with a leaf per domain shape under

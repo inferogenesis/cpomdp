@@ -16,7 +16,7 @@ import pytest
 
 from cpomdp.reference.filtering import filter_sequence, predict
 from cpomdp.reference.likelihood import FixedNoiseLikelihood
-from cpomdp.reference.quadrature import GridDensity, QuadratureGrid
+from cpomdp.reference.quadrature import QuadratureGrid, gaussian_on
 from cpomdp.reference.transition import LinearGaussianKernel, TransitionKernel
 
 
@@ -47,11 +47,6 @@ class QuadraticProcessNoiseKernel:
         )
         residual = destination - self.dynamics * origin
         return -0.5 * (np.log(2 * np.pi * variance) + residual**2 / variance)
-
-
-def gaussian_on(grid, mean, var):
-    x = np.asarray(grid.nodes)[:, 0]
-    return GridDensity(grid, -0.5 * (np.log(2 * np.pi * var) + (x - mean) ** 2 / var))
 
 
 def central_moment(density, order):

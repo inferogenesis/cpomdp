@@ -4051,3 +4051,64 @@ rather than part of `cpomdp.diagnostics` because it is not a diagnostic of a mod
 Which magnitudes the perturbation axis runs at, which seed set a stable reading is
 declared across, and what any cell is registered as measuring. Those are PR-5's, and
 nothing printed by this change is a result until it declares them.
+
+## ADR-060 — a voided reading leaves the gap by weight, and the report carries the weight
+
+**Date:** 2026-09-10
+**Status:** Accepted
+**Extends:** ADR-056, which routes an exhausted budget to `VOID`, and ADR-058, which
+declared the budget and left open what a voided node does to the reported gap
+
+ADR-058 found two nodes at the observation box's edge that exhaust the declared budget
+and named three ways the sweep could treat them: drop the node, void the gap, or widen
+the budget. This entry takes the first and says what the report carries so a reader can
+tell it happened.
+
+### Decision
+
+A rule may answer `Void` in place of a belief. `ApproximatePosterior` returns
+`GridDensity | Void`, and `Void` carries the iterations spent and one line of detail.
+
+`averaged_inference_gap` treats a voided node as unmeasured. Its divergence is NaN in
+`divergences`, its index is set in `voided_nodes`, and its predictive weight is summed
+into `voided_mass`. `value` is the expectation over the readings the rule answered,
+normalised to their own mass. When the rule answers nothing, `value` is NaN.
+
+`voided_mass` is reported beside `predictive_mass` and on the same terms. A check that
+wants the strict figure asserts it is zero.
+
+### Why by weight
+
+A clipped observation box already leaves part of `p*` unmeasured, and the report
+handles it by normalising to the captured mass and printing what was captured. A
+voided node is the same shape of gap in the same average. One convention for both
+means one reading of `value`: the conditional expectation over what was measured,
+with the unmeasured weight printed next to it. The strict figure is recoverable from
+the report, and a caller that needs it says so in one assertion.
+
+The weighing does not need the rule. `log p*(y)` and the edge ratio come off the prior
+and the likelihood alone, so a voided node still counts toward `predictive_mass` and
+`worst_edge_ratio`. Only the divergence is missing, and that is the only thing the
+rule was asked for.
+
+### Why not the other two
+
+**Voiding the gap** would let a node carrying `2.6e-18` of the centre's weight erase
+a sweep's reading of the rule where its weight lies. The reported figure would then
+depend on where the box edge fell rather than on the rule.
+
+**Widening the budget** was rejected in ADR-058 on the trade. Route 5 also found the
+bounded family stops converging at all past the box edge, so no budget closes the
+case. The routing has to exist whatever the budget is.
+
+### Consequences
+
+- `InferenceGap` gains `voided_mass` and `voided_nodes`. `value` changes meaning by
+  exactly the mass those report, and not at all for a rule that always answers.
+- The hot path is unchanged. Weighing a node costs what it did, plus one type check
+  per node outside the compiled functions.
+- A rung's `VOID` is observable end to end: the rung reports it, the sweep counts it,
+  and the report prints its weight. That closes the question PR-7a left for PR-7 and
+  is recorded under Q7 of `research/spinello_stilwell_rung.md`.
+- `tests/test_reference_gap.py` pins both cases: a single voided node leaves the
+  average by its weight, and a rule that declines every reading leaves no value.
