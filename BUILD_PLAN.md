@@ -677,7 +677,8 @@ Nothing here acquires a warrant, and no module gains a `run_checks`.
 **Left open for PR-7**, from ADR-058's consequences: two nodes at the box edge exhaust
 the budget, `1.5 + 0.5 sin(x)` at spread `0.30` and `κ = 100`, each carrying `2.6e-18` of
 the centre's predictive weight. Whether a voided node drops out, voids the gap, or widens
-the budget is the ladder's decision.
+the budget was the ladder's decision. ADR-060 took it: the node drops out by weight, and
+the report carries the weight.
 
 ## PR-7 — Exact reference filter and the rule ladder
 

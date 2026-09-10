@@ -91,8 +91,8 @@ class TestTheBudget:
         ), worst
 
     def test_the_bounded_family_stops_converging_past_the_box_edge(self):
-        # A stable two-cycle, not a slow run. Widening a budget is one of the three
-        # options ADR-058 leaves open for a voided node, and this is what it cannot do.
+        # A stable two-cycle, not a slow run. ADR-060 rejects widening the budget for
+        # a voided node, and this is why: no budget converges it.
         settled, alternate, back = budget.three_iterates_at(
             FAMILIES["sin"], 0.30, budget.OUTSIDE_THE_BOX, 400
         )
