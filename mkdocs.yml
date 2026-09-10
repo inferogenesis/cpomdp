@@ -29,7 +29,6 @@ theme:
 
 markdown_extensions:
   - admonition
-  - pymdownx.details
   - footnotes
   - md_in_html
   - toc:
