@@ -376,6 +376,22 @@ alternating by `2.83` for as long as it is run. That is outside the registered b
 it is why the budget comes with a routing instead of being chosen large enough to be
 safe.
 
+### RESOLVED 2026-09-10: a voided node leaves the average by weight
+
+ADR-060 takes the decision ADR-058 left open. A rule answers `Void` in place of a
+belief, and `averaged_inference_gap` records the node as unmeasured: NaN in
+`divergences`, its predictive weight in `voided_mass`, and `value` taken over the
+readings the rule answered, normalised to their own mass. That is the conditional
+reading a clipped box already gets through `predictive_mass`, reported on the same
+terms. Route 5's two edge nodes carry `2.6e-18` each, so under this routing they reach
+`voided_mass` and move `value` by nothing at the precision anything here is read at.
+A check that wants the strict figure asserts `voided_mass` is zero. Widening the budget
+stays rejected on ADR-058's trade, and voiding the whole sweep for a node at that weight
+would erase the reading of the rule where its weight lies.
+
+Landed in `src/cpomdp/reference/gap.py`, pinned by two tests in
+`tests/test_reference_gap.py`.
+
 ## Q8. Rung two has no published numerical validation
 
 Every figure in §IV uses (36), the single-step filter. The iterated scheme (35) is
