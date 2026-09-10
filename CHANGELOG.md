@@ -34,6 +34,17 @@ object, the one place an entropy is estimated. And a difference between two numb
 scored against one reference is read at the error on the difference, which the shared
 reference makes far smaller than the sum of the two bars.
 
+The control bracket. `cpomdp.control` grows a finite-horizon regulator beside the
+steady-state one, and with it the two costs every controller under one plan sits between:
+the plan with the state observed exactly, and the best any controller that has to infer
+the state from readings can do. Their difference is the price of inference under that
+plan, and the width is the object reported, since either end alone is a number in cost
+units that nothing calibrates. Both ends are closed forms. The ceiling is reached twice,
+by the separation principle and by propagating the joint second moment of state and
+estimate, and the two share no arithmetic past the Riccati recursions, so their agreement
+to machine precision is the fixed-noise signature: certainty equivalence is optimal, and
+no use of the readings beats it.
+
 ### Added
 
 - `cpomdp.harness` — a world and an agent held apart, so what an agent's model gets wrong
@@ -92,6 +103,26 @@ reference makes far smaller than the sum of the two bars.
   `BELOW`, `ABOVE` or `NOT_RESOLVED`, the measured tie that is neither confirmation nor
   refutation. The module imports nothing first-party, asserted in the boundary test, so
   the seam and the reference filter reach it without reaching the evaluator.
+- `cpomdp.control` — the finite-horizon schedule and the control bracket.
+  `finite_horizon_lqr` runs the control Riccati recursion backward a declared number of
+  steps from a zero terminal cost and keeps every gain, where `LQRController` iterates to
+  a fixed point and keeps one. `FiniteHorizonLQR.first_gain` is the gain a
+  receding-horizon planner at horizon `H` applies at every step; the steady-state gain is
+  its limit and differs from it at every finite `H`, by an amount that shrinks with `H`
+  and reads as an error when the horizons are not matched. `kalman_schedule` writes the
+  exact filter's gains and covariances down before a reading exists, since under fixed
+  noise they never see one. `full_information_cost` is `J_lower`, the plan priced with
+  the state observed. `CertaintyEquivalentController` acts on the estimate as if it were
+  the state, and `closed_loop_cost` prices it, or any data-independent gain sequence, by
+  propagating the joint second moment of state and estimate; nothing is sampled.
+  `optimal_cost` is `J*` by the separation principle, and the two reach one number by
+  different arithmetic. `control_bracket` returns the floor and ceiling as a
+  `ControlBracket`, and `control_efficiency` reads `η_ctrl` from it: the share of the
+  width an agent recovers, within-model, with a bar that is the agent's own divided by
+  the width, the floor below which `η_ctrl` cannot be told from zero. A goal the
+  dynamics do not hold, a noise that depends on the state, and a bracket of zero width
+  are all refused. The Control page of the API reference opens the schedule and the
+  bracket in plain terms.
 
 - `warrantlib.CompletenessEvidence` (warrantlib 0.3.0) — the two predicates a `PROVED`
   completeness claim rests on, held once in a base, with a leaf per domain shape under
