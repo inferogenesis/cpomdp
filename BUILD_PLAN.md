@@ -563,16 +563,16 @@ at the top level, so no `docs/api/` page is owed yet.
 Gate-independent. It banks R1–R5 and C5 before the gate is even attempted, which is half
 of what survives a failure.
 
-- [ ] Finite-horizon backward Riccati recursion, needed twice: the full-information floor
+- [x] Finite-horizon backward Riccati recursion, needed twice: the full-information floor
       `J_lower`, and matched-horizon comparison against the EFE planner. Extend
       `cpomdp/control.py`, which already carries `LQRController`.
-- [ ] **Match the horizon.** A receding-horizon planner at horizon H implies the
+- [x] **Match the horizon.** A receding-horizon planner at horizon H implies the
       finite-horizon gain with zero terminal cost, which converges to but does not equal
       the steady-state gain. An unmatched comparison produces a mismatch that shrinks with
       H and looks exactly like a bug. About twenty lines, and it must exist before any
       control comparison runs.
-- [ ] Certainty-equivalent controller for `J_CE`.
-- [ ] Bracket width as the primary reported object. `η_ctrl` is derived, within-model,
+- [x] Certainty-equivalent controller for `J_CE`.
+- [x] Bracket width as the primary reported object. `η_ctrl` is derived, within-model,
       with a stated resolution floor.
 - [ ] **R1** correct + exact: both terms below 1e-12, with the ratio and conditioning.
 - [ ] **R2** wrong + exact: misspecification positive and stable across a **declared**
