@@ -99,36 +99,37 @@ def _boundary_mask(grid: QuadratureGrid) -> Float64[Array, "N"]:
 @jax.jit
 def _weigh_one_observation(
     prior: GridDensity,
+    approximation: GridDensity | None,
     log_likelihood: Float64[Array, "N"],
     boundary: Float64[Array, "N"],
-) -> tuple[GridDensity, Float64[Array, ""], Float64[Array, ""]]:
-    """The unnormalised posterior, ``log p*(y)`` and the edge ratio for one reading.
+) -> tuple[Float64[Array, ""], Float64[Array, ""], Float64[Array, ""]]:
+    """``log p*(y)``, ``KL(q ‖ p(x|y))`` and the edge ratio for one reading.
 
-    All three come off the same product ``p(x)·p(y|x)``, so the predictive and the
-    posterior cannot disagree about what the model says. None of them needs the rule,
-    which is what lets a voided reading still be weighed.
+    The first two come off the same unnormalised product, so the predictive and the
+    posterior cannot disagree about what the model says. ``approximation`` is
+    ``None`` for a reading the rule declined. The divergence is then NaN, and the
+    other two are still measured, since neither needs the rule.
 
-    The edge ratio is the posterior's largest density on the box's surface against its
+    The third is the posterior's largest density on the box's surface against its
     largest anywhere. Near zero when the density has decayed before the edge. Near one
     when the mode itself is at or beyond the edge, which is the state box being too
     small for this reading and is invisible in the predictive mass.
 
-    Compiled, as is the divergence below, because the sweep calls each once per
-    observation node and every operation in them is a small array op. Unjitted, the
-    dispatch dominates: the divergence alone is three separate passes over the state
-    grid, and the loop spends its time launching them rather than computing. The
-    shapes and the lattice are constant across the sweep, so each traces once.
+    Compiled because the sweep calls it once per observation node and every operation
+    in it is a small array op. Unjitted, the dispatch dominates: the divergence alone
+    is two passes over the state grid, and the loop spends its time launching them
+    rather than computing. The shapes and the lattice are constant across the sweep,
+    so this traces once per case. ``None`` is a pytree with no leaves, so the declined
+    case is a second trace that builds no divergence, and still one dispatch.
     """
     joint = GridDensity(prior.grid, prior.log_density + log_likelihood)
     log_density = joint.log_density
     edge = jnp.max(jnp.where(boundary, log_density, -jnp.inf)) - jnp.max(log_density)
-    return joint, joint.log_mass, jnp.exp(edge)
-
-
-@jax.jit
-def _divergence(approximation: GridDensity, joint: GridDensity) -> Float64[Array, ""]:
-    """``KL(q ‖ p(x|y))``, the approximation against the unnormalised posterior."""
-    return approximation.kl_to(joint)
+    if approximation is None:
+        divergence = jnp.asarray(jnp.nan)
+    else:
+        divergence = approximation.kl_to(joint)
+    return joint.log_mass, divergence, jnp.exp(edge)
 
 
 @dataclass(frozen=True)
@@ -214,22 +215,24 @@ def averaged_inference_gap(
     voided = []
     edge_ratios = []
     for observation in observation_grid.nodes:
-        joint, log_mass, edge_ratio = _weigh_one_observation(
-            prior, likelihood.log_likelihood(observation, states), boundary
+        belief = approximate_posterior(prior, observation)
+        approximation = None if isinstance(belief, Void) else belief
+        if approximation is not None and not approximation.grid.same_lattice_as(
+            prior.grid
+        ):
+            raise ValueError(
+                "approximate_posterior must return a belief on the prior's lattice, "
+                f"got {approximation.grid!r} against {prior.grid!r}"
+            )
+        log_mass, divergence, edge_ratio = _weigh_one_observation(
+            prior,
+            approximation,
+            likelihood.log_likelihood(observation, states),
+            boundary,
         )
-        approximation = approximate_posterior(prior, observation)
-        if isinstance(approximation, Void):
-            divergence = jnp.asarray(jnp.nan)
-        else:
-            if not approximation.grid.same_lattice_as(prior.grid):
-                raise ValueError(
-                    "approximate_posterior must return a belief on the prior's "
-                    f"lattice, got {approximation.grid!r} against {prior.grid!r}"
-                )
-            divergence = _divergence(approximation, joint)
         log_predictive.append(log_mass)
         divergences.append(divergence)
-        voided.append(isinstance(approximation, Void))
+        voided.append(approximation is None)
         edge_ratios.append(edge_ratio)
 
     voided_nodes = jnp.asarray(voided)
