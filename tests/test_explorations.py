@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 
 import research.explorations.averaged_gap_identity as gap_identity
@@ -5,6 +6,7 @@ import research.explorations.c6_window as window
 import research.explorations.noise_model as noise
 import research.explorations.operating_point as point
 import research.explorations.sigma_max_edge as edge
+import research.explorations.threshold as threshold
 
 
 def test_the_window_exploration_runs_and_its_assertions_hold(capsys):
@@ -16,7 +18,9 @@ def test_the_window_exploration_runs_and_its_assertions_hold(capsys):
     assert "D moves by a factor of 0.895" in printed
 
 
-@pytest.mark.parametrize("module", [window, noise, edge, point, gap_identity])
+@pytest.mark.parametrize(
+    "module", [window, noise, edge, point, gap_identity, threshold]
+)
 def test_no_exploration_reports_a_warrant(module):
     # The invariant is the package's, stated in explorations/__init__.py, so it is
     # checked over the package rather than over whichever module was written first.
@@ -121,3 +125,109 @@ def test_a_correct_rule_has_exactly_zero_gap():
     # Not merely small. The expression cancels, which is why the calibration test in
     # tests/test_reference_gap.py is entitled to assert a hard zero.
     assert gap_identity.averaged_gap(0.7, 0.7, 1.3) == 0.0
+
+
+# --- the threshold: everything short of the field itself ----------------------------
+#
+# The field at the binding cell is what the registration's RESULT reads, and it is not
+# read here. These build fields by hand and check the machinery that turns one into T.
+
+
+def field_from(errors, spreads):
+    """A field with the given relative errors at the given spreads."""
+    return threshold.ErrorField(
+        tuple(
+            threshold.FieldPoint(
+                spread=s,
+                declared=1.0 + e,
+                fine=1.0,
+                finer=None,
+                predictive_mass=1.0,
+                worst_edge_ratio=0.0,
+            )
+            for s, e in zip(spreads, errors, strict=True)
+        )
+    )
+
+
+def test_the_roundoff_floor_reads_a_tiny_error_as_zero():
+    one = threshold.FieldPoint(0.1, 1.0 + 1e-15, 1.0, None, 1.0, 0.0)
+    assert one.raw_error != 0.0
+    assert one.error == 0.0
+    big = threshold.FieldPoint(0.1, 1.0 + 1e-9, 1.0, None, 1.0, 0.0)
+    assert big.error == pytest.approx(1e-9)
+
+
+def test_the_estimate_is_converged_when_the_third_lattice_barely_moves_it():
+    steady = threshold.FieldPoint(0.1, 1.0 + 1e-9, 1.0, 1.0 + 0.05e-9, 1.0, 0.0)
+    assert steady.converged
+    moving = threshold.FieldPoint(0.1, 1.0 + 1e-9, 1.0, 1.0 - 1e-9, 1.0, 0.0)
+    assert not moving.converged
+    unchecked = threshold.FieldPoint(0.1, 1.0 + 1e-9, 1.0, None, 1.0, 0.0)
+    assert unchecked.converged is None
+
+
+def test_a_zero_field_shifts_nothing_and_puts_the_optimum_on_the_floor():
+    spreads = threshold.SPREADS
+    field = field_from([0.0] * len(spreads), spreads)
+    assert threshold.shift(field, 0.4, 0.5) == 0.0
+    found = threshold.optimise(field)
+    assert found.at_floor
+    assert found.decades == threshold.DECADES_FLOOR
+    assert not found.fraction_capped
+    assert found.field_shift == 0.0
+    # The budget is spent entirely on the sextic truncation.
+    assert found.truncation == pytest.approx(point.BETA, rel=1e-6)
+    # T is the leading-order gap at the window's lower edge.
+    assert found.value == pytest.approx(edge.c2(threshold.KAPPA) * found.sigma_min**2)
+
+
+def test_the_truncation_bias_matches_the_window_exploration_at_its_sign():
+    for fraction, decades in ((0.02, 1.0), (0.05, 0.5), (0.2, 2.0)):
+        assert threshold.truncation_bias(fraction, decades, sign=-1.0) == pytest.approx(
+            window.ols_bias(fraction, decades, 4), abs=1e-12
+        )
+    # At the registered sign the residual bends the curve up and the bias is positive.
+    assert threshold.truncation_bias(0.05, 0.5) > 0 > window.ols_bias(0.05, 0.5, 4)
+
+
+def test_a_constant_offset_field_reproduces_the_noise_model_reading():
+    # The noise model's constant offset: one bound everywhere, so the relative error is
+    # (1/k)·e^{-2v} from the window's bottom. Placed on a window and read through the
+    # threshold's shift, it must give the noise model's number back, sign negative.
+    k, decades, sigma_max = point.K_MIN, point.DECADES, 0.4
+    sigma_min = sigma_max / 10.0**decades
+    spreads = np.geomspace(sigma_min, sigma_max, 41)
+    errors = np.exp(-2.0 * np.log(spreads / sigma_min)) / k
+    field = field_from(errors, spreads)
+    by_threshold = threshold.shift(field, sigma_max, decades)
+    assert by_threshold < 0
+    assert abs(by_threshold) == pytest.approx(
+        noise.systematic_offset(k, decades), rel=0.05
+    )
+    by_fit = threshold.fitted_shift(field, sigma_max, decades)
+    assert by_fit == pytest.approx(by_threshold, rel=0.05)
+
+
+def test_the_engine_is_wired_to_the_family_on_a_small_lattice():
+    # Plumbing only: one gap on a coarse lattice, against the registered expansion.
+    # The field the RESULT reads is the difference between two lattices at the declared
+    # resolution, which this does not compute.
+    gap, mass, edge_ratio = threshold.measure_gap(
+        0.1, threshold.Lattice(12.0, 201, 9.0, 101)
+    )
+    assert np.isfinite(gap)
+    assert gap > 0
+    assert mass == pytest.approx(1.0, abs=1e-6)
+    assert edge_ratio < 1e-6
+    assert gap == pytest.approx(threshold.series_gap(0.1), rel=0.05)
+
+
+def test_the_registered_threshold_is_reproduced_from_its_registered_inputs():
+    # T is c2^(3/2)·sqrt(f/|c6|)·10^(-2D) at kappa_min, and the RESULT of 2026-09-11
+    # registers f* and D* alongside it. A drift in any of the three shows up here.
+    value = threshold.threshold(point.F_STAR_SEXTIC, point.DECADES_FLOOR)
+    assert value == pytest.approx(point.THRESHOLD, rel=1e-5)
+    # The budget is spent on the truncation alone at the registered f*.
+    bias = threshold.truncation_bias(point.F_STAR_SEXTIC, point.DECADES_FLOOR)
+    assert bias == pytest.approx(point.BETA, rel=1e-4)

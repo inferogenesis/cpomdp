@@ -30,6 +30,7 @@ from cpomdp._validation import validate_covariance
 
 __all__ = [
     "FixedNoiseLikelihood",
+    "GaussianChannel",
     "ObservationLikelihood",
     "StateDependentNoiseLikelihood",
 ]
@@ -58,6 +59,26 @@ class ObservationLikelihood(Protocol):
         self, observation: ArrayLike, states: ArrayLike
     ) -> Float64[Array, "N"]:
         """``log p(observation | x)`` for each row of ``states``, an ``N x n`` array."""
+        ...
+
+
+@runtime_checkable
+class GaussianChannel(ObservationLikelihood, Protocol):
+    """A linear-mean Gaussian sensor, read in the parts a Gaussian rung needs.
+
+    The exact filter conditions on ``log_likelihood`` alone. The rule ladder's
+    Gaussian rungs build a Kalman-shaped update, and that needs the observation
+    matrix and the noise at a state rather than a density. This is the seam that
+    asks for them, kept apart so the exact rung is not asked.
+
+    Attributes:
+        observation_matrix: the observation matrix ``C`` (shape ``m x n``).
+    """
+
+    observation_matrix: Float64[Array, "m n"]
+
+    def observation_noise_at(self, states: ArrayLike) -> Float64[Array, "N m m"]:
+        """``R(x)`` at each row of ``states``, one ``m x m`` covariance per state."""
         ...
 
 
@@ -193,6 +214,24 @@ class FixedNoiseLikelihood:
         ).T
         return _gaussian_log_density(self.log_det_noise, whitened_residuals)
 
+    def observation_noise_at(self, states: ArrayLike) -> Float64[Array, "N m m"]:
+        """``R`` once per row of ``states``, since it does not vary with the state.
+
+        Raises:
+            ValueError: if ``states`` is not an ``N x n`` array, the check the
+                state-dependent channel makes through its residuals.
+        """
+        states = jnp.asarray(states, dtype=float)
+        n = self.observation_matrix.shape[1]
+        if states.ndim != 2 or states.shape[1] != n:
+            raise ValueError(
+                f"states must be a 2-D array of shape (N, {n}), got shape "
+                f"{states.shape}"
+            )
+        return jnp.broadcast_to(
+            self.observation_noise, (states.shape[0], *self.observation_noise.shape)
+        )
+
     def tree_flatten(
         self,
     ) -> tuple[tuple[Float64[Array, "..."], ...], None]:
@@ -293,21 +332,10 @@ class StateDependentNoiseLikelihood:
 
         Raises:
             ValueError: if the noise function does not return one ``m x m`` matrix
-                per state. A wrong shape here broadcasts rather than failing, and
-                would give a plausible density built on the wrong noise.
+                per state, from ``observation_noise_at``.
         """
         residuals, states = _residuals(observation, states, self.observation_matrix)
-        noise = jnp.asarray(
-            self.observation_noise_fn(states, self.observation_noise_params),
-            dtype=float,
-        )
-        expected = (states.shape[0], residuals.shape[-1], residuals.shape[-1])
-        if noise.shape != expected:
-            raise ValueError(
-                "observation_noise_fn must return one covariance per state, shape "
-                f"{expected}, got shape {noise.shape}"
-            )
-        cholesky = jnp.linalg.cholesky(noise)
+        cholesky = jnp.linalg.cholesky(self.observation_noise_at(states))
         whitened_residuals = jnp.squeeze(
             solve_triangular(cholesky, residuals[..., None], lower=True), axis=-1
         )
@@ -315,6 +343,28 @@ class StateDependentNoiseLikelihood:
             jnp.log(jnp.diagonal(cholesky, axis1=-2, axis2=-1)), axis=-1
         )
         return _gaussian_log_density(log_det, whitened_residuals)
+
+    def observation_noise_at(self, states: ArrayLike) -> Float64[Array, "N m m"]:
+        """``R(x)`` at each row of ``states``, from the noise function.
+
+        Raises:
+            ValueError: if the noise function does not return one ``m x m`` matrix
+                per state. A wrong shape here broadcasts rather than failing, and
+                would give a plausible density built on the wrong noise.
+        """
+        states = jnp.asarray(states, dtype=float)
+        noise = jnp.asarray(
+            self.observation_noise_fn(states, self.observation_noise_params),
+            dtype=float,
+        )
+        m = self.observation_matrix.shape[0]
+        expected = (states.shape[0], m, m)
+        if noise.shape != expected:
+            raise ValueError(
+                "observation_noise_fn must return one covariance per state, shape "
+                f"{expected}, got shape {noise.shape}"
+            )
+        return noise
 
     def tree_flatten(self) -> tuple[tuple[Float64[Array, "m n"], PyTree], Callable]:
         """Children (traced): ``(C, params)``. Aux (static): the noise function."""

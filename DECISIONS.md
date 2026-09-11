@@ -4112,3 +4112,154 @@ case. The routing has to exist whatever the budget is.
   is recorded under Q7 of `research/spinello_stilwell_rung.md`.
 - `tests/test_reference_gap.py` pins both cases: a single voided node leaves the
   average by its weight, and a rule that declines every reading leaves no value.
+
+## ADR-061 — the belief-smoothed rung averages the noise under the prior it is handed
+
+**Date:** 2026-09-11
+**Status:** Accepted
+**Extends:** ADR-056, which declares the rung as `E[R(x)]`
+
+ADR-056 names the fourth rung as belief-smoothed `E[R(x)]` and the paper's Remark 3
+defines that expectation under the Gaussian with the predicted moments, `N(μ⁻, Σ⁻)`. The
+rung is handed the prior as a density on a grid. This entry says which of the two the
+rung averages under.
+
+### Decision
+
+The rung averages `R(x)` under the density it is handed, at that density's nodes with
+that density's weights. The Gaussian with the density's moments is not rendered and
+not used for the average. The moments are read for the Kalman update alone, as the
+plug-in rung reads them.
+
+Everything after the noise is the plug-in rung: one solve of the innovation covariance,
+one gain, one Gaussian on the lattice.
+
+### Why the density and not its moments
+
+The two agree when the prior is Gaussian, which it is in every gap measurement run so
+far, so nothing already reported can tell them apart. They part on a non-Gaussian prior,
+and only the density's own average stays defined there. A rung that renders a Gaussian
+from the moments first would be reading the paper's letter at the cost of a second
+render per reading and a rule that quietly fits a Gaussian to whatever it is given.
+
+The name says which one it is. Smoothed under the belief is the belief, not a Gaussian
+fitted to it.
+
+### What the rung costs
+
+The plug-in rung evaluates `R` once per reading. This rung evaluates it at every node
+of the prior and contracts against the grid's weights, and that cannot be moved to
+construction because the prior changes every step. RFC-001 attributes it as one
+evaluation of the sensor model per node per reading.
+
+### What is left open
+
+H1 gives `R` positivity and continuity and no growth bound, so `E[R(x)]` under a Gaussian
+on an unbounded state need not exist. The box quadrature is finite whether it does or
+not, which is a divergence hidden rather than reported. The rung returns a number in
+that case today. The criterion under which it answers `Void` instead is a declaration
+this entry does not make, and it is owed before PR-9 reads the rung as one of its
+closure modes.
+
+### Consequences
+
+- `RungKind.BELIEF_SMOOTHED` in `cpomdp.reference.ladder`, built by `Rung.build` over a
+  `GaussianChannel` like the plug-in rung.
+- All three of the per-rung merge gates hold by construction: at a fixed `R` the average
+  is `R` and the rung is the Kalman posterior; there is no log-determinant term, so the
+  gap is invariant under `o → λo`; there is no derivative, so nothing is differenced.
+- `tests/test_reference_ladder.py` pins the choice with a bimodal prior and a quartic
+  noise, where the density's average and the moments-Gaussian's average differ and the
+  rung follows the first.
+
+## ADR-062 — the iterating rungs take one observation channel, and stop in the prior's metric
+
+**Date:** 2026-09-11
+**Status:** Accepted
+**Extends:** ADR-056, which declares the two rungs; ADR-057, whose modification they
+run; ADR-058, whose budget and tolerance they run at
+
+The single-step and iterated rungs exist in `cpomdp.reference.ladder`. Three things
+about them were left to the build, and this entry records what was taken.
+
+### One observation channel, any state dimension
+
+The scheme in the tree is the paper's scalar-observation case, §III-D-2, with the
+gradients as row vectors over the state: `∇h` is the one row of `C`, `∇σ` is the
+gradient of the scalar noise, and (35c) to (35e) read as written in
+`research/spinello_stilwell_hand_derivation.md` with `bᵀb` and `∇σᵀ∇σ` as outer
+products. The paper's form for several channels is not transcribed anywhere in the
+tree, so a channel with more than one is refused at build time rather than run
+through algebra that does not cover it. ADR-056's `p ≤ n` is met by `p = 1`. The
+general form is issue #115, a derivation before it is a code change.
+
+### The stopping rule in more than one dimension
+
+ADR-058 declares the tolerance relative to the prior standard deviation. In one
+dimension that is `|δ| / √P` for a step `δ`. The rungs measure a step as `√(δᵀP⁻¹δ)`,
+which is that number when `n = 1` and the step's length in the prior's own metric
+otherwise. It is unit-free in the state, as the scalar rule is.
+
+### The single-step rung never answers `Void`
+
+One step is the rung's definition, so there is nothing for it to fail to reach. It
+runs the loop at a budget of one with the tolerance at zero, and reports what one step
+gave. The iterated rung answers `Void` with the count when the budget is spent above
+the tolerance, and the covariance of a truncated run is never rendered.
+
+### The iteration is one function, and its count is on its result
+
+`iterated_update` is the only place the scheme iterates. It takes the budget and the
+tolerance as arguments, so a probe can measure what a budget has to cover at another
+one, and its result carries the steps taken and whether the run settled. The rungs
+call it with the declared constants and read the count off the result. The count of a
+reading that converged does not yet reach the gap's report, since the seam passes a
+density and no number; that is the open half of the labelling item in PR-7.
+
+### The names
+
+The two rungs are named `modified-single-step` and `modified-iterated` in the ladder,
+so the word ADR-057 requires appears wherever a report names them.
+
+### Consequences
+
+- `RungKind.SINGLE_STEP` and `RungKind.ITERATED`, built by `Rung.build` over a
+  one-channel `GaussianChannel`. The noise and its slope come from one forward-mode
+  pass through the channel per iterate, so no finite difference is anywhere in the
+  rung.
+- `LADDER` is declared at `v1` with the five rungs in the order the battery's D1 leg
+  is registered over.
+- `tests/test_reference_ladder.py` pins the scalar transcription of the modified
+  scheme against the vector code at budgets one and 64, the fixed point against the
+  exact posterior's own gradient, and ADR-058's declared cell: the bounded periodic
+  family at spread `0.30`, read nine predictive spreads out, takes 124 steps at the
+  tolerance, so the rung answers `Void` at 64.
+
+## ADR-063 — the iterating rungs differentiate the noise in reverse mode
+
+**Date:** 2026-09-11
+**Status:** Accepted
+**Extends:** ADR-062, which records how the rungs are built
+**Supersedes:** one sentence of ADR-062's Consequences, "The noise and its slope come
+from one forward-mode pass through the channel per iterate", and nothing else in it
+
+The rungs obtain the noise and its gradient at an iterate with `jax.value_and_grad`
+over a scalar function of the state. That is reverse-mode differentiation. For a
+scalar of an `n`-dimensional state one reverse pass returns the whole gradient;
+forward mode returns one directional derivative per pass and would need `n` of them.
+ADR-062 wrote "forward-mode" for this and the code's docstring and the build plan
+repeated it. The code was right and the word was wrong.
+
+### Decision
+
+The word is reverse-mode, wherever the rung's derivative is described. The cost RFC-001
+attributes per iterate is one reverse pass through `observation_noise_at`, which is a
+small constant times one evaluation of the noise and does not grow with the state
+dimension. Nothing the rungs compute or report changes.
+
+### Consequences
+
+- The docstring of the function that evaluates (35c) to (35e) says reverse-mode, and
+  the build plan's item on `R'` cites this entry.
+- ADR-062's sentence stands as written, superseded here, since `DECISIONS.md` is
+  append-only.

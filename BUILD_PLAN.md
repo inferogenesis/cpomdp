@@ -687,21 +687,32 @@ the report carries the weight.
 
 The hard item, and it is shared. P2-7 (D) moved to PR-7b with the ordering work.
 
-- [ ] Grid or quadrature filter over a low-dimensional latent, accepting an **arbitrary
+- [x] Grid or quadrature filter over a low-dimensional latent, accepting an **arbitrary
       pointwise-evaluable likelihood** rather than an R(x)-specific one. The generality is
       nearly free for a grid filter and is what lets later model classes reuse the engine.
-- [ ] Returns `E_p*[D_KL[q ‖ p(x|y)]]` directly.
-- [ ] Written against a **general transition kernel**, not a hard-coded linear-Gaussian
+      `cpomdp.reference.filtering.condition` over the `ObservationLikelihood` protocol.
+- [x] Returns `E_p*[D_KL[q ‖ p(x|y)]]` directly. `averaged_inference_gap`.
+- [x] Written against a **general transition kernel**, not a hard-coded linear-Gaussian
       one. If Q(x) falls out of the internal interfaces at no cost, let it. Do not
       document it, write examples against it, or claim it in release notes (issue #56).
-- [ ] Rule ladder, common interface, **five rungs** (ADR-056): plug-in `R(μ⁻)`,
+      `TransitionKernel` is the protocol and `LinearGaussianKernel` the one instance.
+- [x] Rule ladder, common interface, **five rungs** (ADR-056): plug-in `R(μ⁻)`,
       Spinello–Stilwell single-step (36) and iterated (35), both with the documented
       modification of ADR-057, belief-smoothed `E[R(x)]`, exact reference at the top.
       Swappable in one line. (36) is (35) at a budget of one, so declaring it separately
       costs almost nothing and buys two adjacent differences that isolate distinct
-      mechanisms.
-- [ ] The rule list is **declared and versioned**, like `FiniteActionSet`. A rung added
-      after results are seen shows up in the diff.
+      mechanisms. **All five built**, in `cpomdp.reference.ladder`, one `RungKind`
+      each. The smoothed rung averages `R` under the prior on its own grid, not under
+      the Gaussian with its moments (ADR-061). The two Spinello–Stilwell rungs run the
+      paper's scalar-observation scheme over a vector state and refuse a second
+      channel (ADR-062, #115). Left open on the smoothed rung: `E[R(x)]` need not exist under H1,
+      and the box quadrature is finite whether it does or not. The rung has no test
+      that returns `Void` when the average leans on the box edge, and the criterion
+      is a declaration owed before PR-9's closure modes read the rung.
+- [x] The rule list is **declared and versioned**, like `FiniteActionSet`. A rung added
+      after results are seen shows up in the diff. `RuleLadder` is the type, validated
+      as `InferenceSet` is. `LADDER` is the declared constant at `v1`, written once the
+      fifth rung existed, so no version ever names a ladder with a rung missing.
 The completeness certificate and the R6 gap move to PR-7b, which is where the numbers
 they rest on get measured.
 
@@ -710,12 +721,18 @@ they rest on get measured.
 The substrate is built. `QuadratureGrid` and `GridDensity` carry `mean`, `cov` and
 `kl_to`, `FixedNoiseLikelihood` and `StateDependentNoiseLikelihood` evaluate the channel,
 and `averaged_inference_gap` takes the rule under test as `approximate_posterior`. The
-ladder is what is missing. Nothing in `src/cpomdp` implements that callable.
+ladder is `cpomdp.reference.ladder`, five implementations of that callable behind
+`Rung.build`, under the contract below.
 
-- [ ] **A rung is a factory.** Model in, `ApproximatePosterior` out. The seam passes only
+- [x] **A rung is a factory.** Model in, `ApproximatePosterior` out. The seam passes only
       `(prior, observation)`, so the matrices, the noise function and the budget are closed
       over at construction. This is the front-loading the energy constraint asks for: the
-      fixed-sensor rung stays one matrix-vector product per reading.
+      fixed-sensor rung stays one matrix-vector product per reading. `Rung.build` takes
+      the likelihood and not `LinearGaussianModel`: the reference may reach no first-party
+      type beyond the validator (`tests/test_module_boundary.py`), and the likelihood
+      already carries the matrix and the noise. The Gaussian rungs read those through
+      `GaussianChannel`. Per reading the plug-in rung pays one solve of the innovation
+      covariance plus the render onto the lattice, and the render is every rung's.
 - [x] **One public way to put a Gaussian on a lattice.** `gaussian_on` in
       `cpomdp.reference.quadrature`. The copies in `tests/test_reference_gap.py` and
       `research.checks.gap_identity` now call it.
@@ -727,13 +744,20 @@ ladder is what is missing. Nothing in `src/cpomdp` implements that callable.
       figure asserts `voided_mass` is zero. This answers the question PR-7a left open:
       a voided node drops out by weight and the report says how much weight
       (ADR-060).
-- [ ] **Iteration work is labeled and isolable.** RFC-001 has to attribute the
+- [~] **Iteration work is labeled and isolable.** RFC-001 has to attribute the
       per-decision cost of an iterating rung without reading the loop body.
-- [ ] **`R'` comes from automatic differentiation**, per ADR-058. The declared `1e-12`
+      `iterated_update` is the one function that iterates, and its result carries the
+      count and whether the run settled. What the seam does not yet carry is the count
+      of a reading that converged: `averaged_inference_gap` sees a density and no
+      number, so a sweep's total iteration cost is not on its report. That slot is the
+      remaining half of this item.
+- [x] **`R'` comes from automatic differentiation**, per ADR-058. The declared `1e-12`
       is only reachable with an exact derivative: a central difference carries about
       `1e-11` into the iterate and floors convergence above the tolerance, so a rung
-      that differences cannot hold the declaration. `jax.grad` over
-      `observation_noise_fn` is the whole of it.
+      that differences cannot hold the declaration. Done: `jax.value_and_grad` over
+      the channel's `observation_noise_at`, one reverse-mode pass per iterate that
+      gives the noise and its gradient together (ADR-063 corrects ADR-062's word for
+      it).
 
 **Per-rung merge gate, all three required:**
 
@@ -857,14 +881,16 @@ what makes the timing checkable.
       of a small rational. Section 7 of the registration holds it, the disclosure that the
       run preceded its registration, and the out-of-sample runs on the other families,
       where `tanh` fires.
-- [~] **`T` has a registered form and no value, and is parked until PR-7.** `k_min` was
+- [x] **`T` has a registered form and no value, and is parked until PR-7.** `k_min` was
       never outstanding and this line said otherwise: the AMENDMENT of 2026-08-07
       registers `k_min = 10`, `β = 0.05`, D2's interval at `2 ± 0.5` and `X = 0.1`, and
       registers `D` as an expression in `k` evaluated at `k_min`. What remains is `f*`,
       re-derived under the sextic edge, which needs a statistical term that two findings
       put in question. Both turn on the reference filter's error *shape*, which is a
       property of a filter PR-7 builds. The DECISION of 2026-08-23 records what unparks
-      it and what does not.
+      it and what does not. No longer parked: the RESULT of 2026-09-11 measures the
+      filter's error field at the binding cell, finds it benign, and registers
+      `T = 5.962e−4` nats at `D = 0.5`, `f = 0.078157`, under the declared lattice.
 - [x] **The sweep's lower bound.** Declared at `κ_min = 0.1`, rationalised rather than
       derived, with its revision condition bounded in advance (ADR-049). The argument is
       D2's second leg, registered before `c₆` existed.
@@ -928,9 +954,11 @@ prose survived them, which is a failure mode worth not repeating.
       before it. That is what makes the agreement with the earlier fit evidence rather than
       circularity, and it is checkable by reading the module.
 
-- [ ] Write down the **pre-agreed factor** before this PR is opened. A factor agreed after
+- [x] Write down the **pre-agreed factor** before this PR is opened. A factor agreed after
       seeing the bound is not a gate. The registration is where it goes, and `T` is an
-      expression there rather than a value, so this closes when `T` does.
+      expression there rather than a value, so this closes when `T` does. Closed by the
+      RESULT of 2026-09-11: `T = 5.962e−4` nats, so D1 and D2 are tests iff
+      `δ_ref ≤ 5.96e−5` nats.
 - [ ] A **certified** bound, not a fine grid with a convergence plot. Interval arithmetic
       or a proved quadrature error bound, the device licensing *for all x in the domain,
       |p_grid − p_exact| ≤ δ*.
@@ -1001,11 +1029,12 @@ and assert at their stated tiers.
 With one bound and two tags, the gate is a blocking condition on **PR-8** and an explicit
 merge block on **PR-9 and PR-10**.
 
-- [~] Write down the pre-agreed factor before PR-8 is opened.
+- [x] Write down the pre-agreed factor before PR-8 is opened.
       `research/gate_d4_registration.md` carries it. The family, the stop branches and the
       gate's form as `gap > T` are all dated 2026-08-07, before any coefficient existed.
-      `c₂` and `c₄` have since landed, both in closed form. `T` is still an expression, so
-      the item closes when `T` takes a value, and that has to happen before PR-7 merges.
+      `c₂` and `c₄` have since landed, both in closed form. `T` took its value on
+      2026-09-11, `5.962e−4` nats, with the PRE-REGISTRATION committed ahead of the RESULT
+      and before PR-7 merges.
 - [ ] Mark PR-9 and PR-10 blocked in the tracker, not by convention. A gate honoured by
       memory is not honoured.
 - [ ] Tag v0.4.5 at PR-8's merge regardless of outcome.
