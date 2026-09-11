@@ -879,14 +879,16 @@ what makes the timing checkable.
       of a small rational. Section 7 of the registration holds it, the disclosure that the
       run preceded its registration, and the out-of-sample runs on the other families,
       where `tanh` fires.
-- [~] **`T` has a registered form and no value, and is parked until PR-7.** `k_min` was
+- [x] **`T` has a registered form and no value, and is parked until PR-7.** `k_min` was
       never outstanding and this line said otherwise: the AMENDMENT of 2026-08-07
       registers `k_min = 10`, `β = 0.05`, D2's interval at `2 ± 0.5` and `X = 0.1`, and
       registers `D` as an expression in `k` evaluated at `k_min`. What remains is `f*`,
       re-derived under the sextic edge, which needs a statistical term that two findings
       put in question. Both turn on the reference filter's error *shape*, which is a
       property of a filter PR-7 builds. The DECISION of 2026-08-23 records what unparks
-      it and what does not.
+      it and what does not. No longer parked: the RESULT of 2026-09-11 measures the
+      filter's error field at the binding cell, finds it benign, and registers
+      `T = 5.962e−4` nats at `D = 0.5`, `f = 0.078157`, under the declared lattice.
 - [x] **The sweep's lower bound.** Declared at `κ_min = 0.1`, rationalised rather than
       derived, with its revision condition bounded in advance (ADR-049). The argument is
       D2's second leg, registered before `c₆` existed.
@@ -950,9 +952,11 @@ prose survived them, which is a failure mode worth not repeating.
       before it. That is what makes the agreement with the earlier fit evidence rather than
       circularity, and it is checkable by reading the module.
 
-- [ ] Write down the **pre-agreed factor** before this PR is opened. A factor agreed after
+- [x] Write down the **pre-agreed factor** before this PR is opened. A factor agreed after
       seeing the bound is not a gate. The registration is where it goes, and `T` is an
-      expression there rather than a value, so this closes when `T` does.
+      expression there rather than a value, so this closes when `T` does. Closed by the
+      RESULT of 2026-09-11: `T = 5.962e−4` nats, so D1 and D2 are tests iff
+      `δ_ref ≤ 5.96e−5` nats.
 - [ ] A **certified** bound, not a fine grid with a convergence plot. Interval arithmetic
       or a proved quadrature error bound, the device licensing *for all x in the domain,
       |p_grid − p_exact| ≤ δ*.
@@ -1023,11 +1027,12 @@ and assert at their stated tiers.
 With one bound and two tags, the gate is a blocking condition on **PR-8** and an explicit
 merge block on **PR-9 and PR-10**.
 
-- [~] Write down the pre-agreed factor before PR-8 is opened.
+- [x] Write down the pre-agreed factor before PR-8 is opened.
       `research/gate_d4_registration.md` carries it. The family, the stop branches and the
       gate's form as `gap > T` are all dated 2026-08-07, before any coefficient existed.
-      `c₂` and `c₄` have since landed, both in closed form. `T` is still an expression, so
-      the item closes when `T` takes a value, and that has to happen before PR-7 merges.
+      `c₂` and `c₄` have since landed, both in closed form. `T` took its value on
+      2026-09-11, `5.962e−4` nats, with the PRE-REGISTRATION committed ahead of the RESULT
+      and before PR-7 merges.
 - [ ] Mark PR-9 and PR-10 blocked in the tracker, not by convention. A gate honoured by
       memory is not honoured.
 - [ ] Tag v0.4.5 at PR-8's merge regardless of outcome.

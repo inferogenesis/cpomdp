@@ -11,12 +11,15 @@ import numpy as np
 __all__ = [
     "BETA",
     "DECADES",
+    "DECADES_FLOOR",
     "F_STAR",
+    "F_STAR_SEXTIC",
     "KAPPA_MIN",
     "K_MIN",
     "LN10",
     "PUBLISHED_SIGMA_P",
     "SIGMA_P",
+    "THRESHOLD",
 ]
 
 LN10 = float(np.log(10.0))
@@ -41,6 +44,18 @@ SIGMA_P = 0.0359
 
 KAPPA_MIN = 0.1
 """The declared floor of the `κ` sweep, rationalised rather than derived."""
+
+DECADES_FLOOR = 0.5
+"""The floor on the window width, declared blind in the PRE-REGISTRATION of 2026-09-11,
+and where `D*` landed."""
+
+F_STAR_SEXTIC = 0.078157
+"""`f*` under the sextic edge at `D = 0.5`, the RESULT of 2026-09-11. Not the quartic
+`F_STAR` above, which does not carry across."""
+
+THRESHOLD = 5.962165e-4
+"""`T` in nats at `κ_min`, registered by the RESULT of 2026-09-11 under the declared
+lattice. `c₂σ_min²` at the window's lower edge."""
 
 PUBLISHED_SIGMA_P = (
     (5.0, 0.4343, 0.089),

@@ -151,6 +151,12 @@ no use of the readings beats it.
   rungs read the channel through `GaussianChannel`, a second small protocol beside
   `ObservationLikelihood` that adds the observation matrix and `observation_noise_at`,
   so the exact rung is not asked for either.
+- `research.explorations.threshold` — GATE-D4's threshold `T` takes a value. The
+  reference engine's error field is measured across the fit window at the binding
+  cell, its shift on the fitted exponent replaces the registered `σ_p`, and
+  `T = 5.962e−4` nats is registered at `D = 0.5`, `f = 0.078157` under a declared
+  lattice (`research/gate_d4_registration.md`, PRE-REGISTRATION and RESULT of
+  2026-09-11).
 
 - `warrantlib.CompletenessEvidence` (warrantlib 0.3.0) — the two predicates a `PROVED`
   completeness claim rests on, held once in a base, with a leaf per domain shape under

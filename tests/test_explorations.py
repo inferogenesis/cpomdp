@@ -221,3 +221,13 @@ def test_the_engine_is_wired_to_the_family_on_a_small_lattice():
     assert mass == pytest.approx(1.0, abs=1e-6)
     assert edge_ratio < 1e-6
     assert gap == pytest.approx(threshold.series_gap(0.1), rel=0.05)
+
+
+def test_the_registered_threshold_is_reproduced_from_its_registered_inputs():
+    # T is c2^(3/2)·sqrt(f/|c6|)·10^(-2D) at kappa_min, and the RESULT of 2026-09-11
+    # registers f* and D* alongside it. A drift in any of the three shows up here.
+    value = threshold.threshold(point.F_STAR_SEXTIC, point.DECADES_FLOOR)
+    assert value == pytest.approx(point.THRESHOLD, rel=1e-5)
+    # The budget is spent on the truncation alone at the registered f*.
+    bias = threshold.truncation_bias(point.F_STAR_SEXTIC, point.DECADES_FLOOR)
+    assert bias == pytest.approx(point.BETA, rel=1e-4)

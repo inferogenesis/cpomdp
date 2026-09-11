@@ -202,6 +202,18 @@ class FieldPoint:
         return (self.declared - self.fine) / self.fine
 
     @property
+    def absolute_error(self) -> float:
+        """`declared − fine`, in nats."""
+        return self.declared - self.fine
+
+    @property
+    def finer_error(self) -> float | None:
+        """`(declared − finer)/finer`, where the finer lattice ran."""
+        if self.finer is None:
+            return None
+        return (self.declared - self.finer) / self.finer
+
+    @property
     def error(self) -> float:
         """The field's value: `raw_error`, or zero under the roundoff floor."""
         return 0.0 if abs(self.raw_error) < ROUNDOFF_FLOOR else self.raw_error
@@ -213,9 +225,9 @@ class FieldPoint:
         `None` where the finer lattice was not run. Two estimates both under the
         roundoff floor are converged on zero.
         """
-        if self.finer is None:
+        against_finer = self.finer_error
+        if against_finer is None:
             return None
-        against_finer = (self.declared - self.finer) / self.finer
         if abs(self.raw_error) < ROUNDOFF_FLOOR and abs(against_finer) < ROUNDOFF_FLOOR:
             return True
         return abs(self.raw_error - against_finer) <= CONVERGENCE_TOLERANCE * abs(
@@ -247,6 +259,42 @@ class ErrorField:
     def largest(self) -> float:
         """The largest `|ε|` after the roundoff floor."""
         return max(abs(p.error) for p in self.points)
+
+    def read_against_finer(self) -> "ErrorField":
+        """The same field with every checked point read against the finer lattice.
+
+        What the field looks like if the fine lattice's own error is charged to the
+        declared one wherever a third lattice ran.
+        """
+        return ErrorField(
+            tuple(
+                FieldPoint(
+                    p.spread,
+                    p.declared,
+                    p.finer if p.finer is not None else p.fine,
+                    None,
+                    p.predictive_mass,
+                    p.worst_edge_ratio,
+                )
+                for p in self.points
+            )
+        )
+
+    def scaled(self, factor: float) -> "ErrorField":
+        """The same field with every error multiplied by `factor`, sign kept."""
+        return ErrorField(
+            tuple(
+                FieldPoint(
+                    p.spread,
+                    p.fine * (1.0 + factor * p.raw_error),
+                    p.fine,
+                    None,
+                    p.predictive_mass,
+                    p.worst_edge_ratio,
+                )
+                for p in self.points
+            )
+        )
 
 
 def measure_field(
@@ -525,17 +573,28 @@ def main() -> None:
         )
         assert abs(point.fine / series - 1.0) < 1e-3, (point.spread, point.fine, series)
 
+    print("\nthe field in nats, beside the gap, at every point")
+    for point in field.points:
+        print(
+            f"  sigma={point.spread:.4f}  gap {point.fine:.3e}  "
+            f"error {point.absolute_error:+.3e}  "
+            f"error / (eps_mach * gap) = {point.raw_error / 2.0**-52:+.2e}"
+        )
+
     print("\nconvergence of the error estimate where the third lattice ran")
+    unconverged = []
     for index in CONVERGENCE_POINTS:
         point = field.points[index]
-        assert point.finer is not None
-        against_finer = (point.declared - point.finer) / point.finer
         print(
             f"  sigma={point.spread:.4f}  vs fine {point.raw_error:+.3e}  "
-            f"vs finer {against_finer:+.3e}  "
+            f"vs finer {point.finer_error:+.3e}  "
             f"{'converged' if point.converged else 'NOT converged'}"
         )
-        assert point.converged, point
+        if not point.converged:
+            unconverged.append(point.spread)
+    if unconverged:
+        print(f"  NOT converged at sigma = {unconverged}: carried as not converged,")
+        print("  and T is read under every reading of those points below")
     floored = sum(1 for p in field.points if p.error == 0.0 and p.raw_error != 0.0)
     print(f"  largest |eps| after the floor: {field.largest:.3e}")
     print(
@@ -562,6 +621,7 @@ def main() -> None:
         abs(shift(field, upper_edge(f), d))
         for f in np.geomspace(1e-3, _fraction_cap(), 40)
         for d in np.linspace(DECADES_FLOOR, DECADES_CEILING, 15)
+        if upper_edge(f) / 10.0**d >= SPREADS[0]
     )
     share = largest_shift / BETA
     print(
@@ -586,6 +646,25 @@ def main() -> None:
     gap_at_edge = c2(KAPPA) * found.sigma_min**2
     print(f"  T equals c2 sigma_min^2 = {gap_at_edge:.6e}")
     assert abs(gap_at_edge / found.value - 1.0) < 1e-12
+
+    print("\nT under other readings of the field, at D*")
+    print("  the measured field, the checked points read against the finer lattice,")
+    print("  and the whole field at ten and a hundred times its size")
+    readings = (
+        ("as measured", field),
+        ("against finer", field.read_against_finer()),
+        ("x10", field.scaled(10.0)),
+        ("x100", field.scaled(100.0)),
+    )
+    values = []
+    for label, reading in readings:
+        fraction, _ = _largest_fraction(reading, found.decades)
+        value = threshold(fraction, found.decades)
+        values.append(value)
+        print(f"  {label:<14} f* = {fraction:.9f}  T = {value:.9e}")
+    spread_of_t = (max(values) - min(values)) / found.value
+    print(f"  spread across readings: {spread_of_t:.1e} relative")
+    assert spread_of_t < 1e-6, spread_of_t
 
 
 if __name__ == "__main__":
