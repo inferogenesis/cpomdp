@@ -35,7 +35,12 @@ import numpy as np
 from scipy.integrate import quad
 from scipy.optimize import brentq, minimize_scalar
 
-from research.explorations.operating_point import BETA, KAPPA_MIN, LN10
+from research.explorations.operating_point import (
+    BETA,
+    DECADES_FLOOR,
+    KAPPA_MIN,
+    LN10,
+)
 from research.explorations.sigma_max_edge import c2, c4, c6
 
 __all__ = [
@@ -80,9 +85,6 @@ ROUNDOFF_FLOOR = 100.0 * 2.0**-52
 
 CONVERGENCE_TOLERANCE = 0.10
 """The estimate is converged where replacing fine by finer moves it by under this."""
-
-DECADES_FLOOR = 0.5
-"""The declared floor on the window width, one decade in `σ²`."""
 
 DECADES_CEILING = 1.9
 """Where the window's lower edge would leave the measured spreads."""
@@ -638,10 +640,11 @@ def main() -> None:
     print("\nT, in nats, at the binding cell")
     for step in (0.0, 0.5, 1.0):
         decades = found.decades + step
-        fraction, _ = _largest_fraction(field, decades)
+        fraction, capped = _largest_fraction(field, decades)
+        note = "  (capped by the measured spreads, not the budget)" if capped else ""
         print(
             f"  D = {decades:.4f}:  f* = {fraction:.6f}  "
-            f"T = {threshold(fraction, decades):.6e}"
+            f"T = {threshold(fraction, decades):.6e}{note}"
         )
     gap_at_edge = c2(KAPPA) * found.sigma_min**2
     print(f"  T equals c2 sigma_min^2 = {gap_at_edge:.6e}")

@@ -721,7 +721,8 @@ they rest on get measured.
 The substrate is built. `QuadratureGrid` and `GridDensity` carry `mean`, `cov` and
 `kl_to`, `FixedNoiseLikelihood` and `StateDependentNoiseLikelihood` evaluate the channel,
 and `averaged_inference_gap` takes the rule under test as `approximate_posterior`. The
-ladder is what is missing. Nothing in `src/cpomdp` implements that callable.
+ladder is `cpomdp.reference.ladder`, five implementations of that callable behind
+`Rung.build`, under the contract below.
 
 - [x] **A rung is a factory.** Model in, `ApproximatePosterior` out. The seam passes only
       `(prior, observation)`, so the matrices, the noise function and the budget are closed
@@ -754,8 +755,9 @@ ladder is what is missing. Nothing in `src/cpomdp` implements that callable.
       is only reachable with an exact derivative: a central difference carries about
       `1e-11` into the iterate and floors convergence above the tolerance, so a rung
       that differences cannot hold the declaration. `jax.grad` over
-      `observation_noise_fn` is the whole of it. Done as one forward-mode pass through
-      the channel's `observation_noise_at` per iterate, which also gives the noise.
+      `observation_noise_fn` is the whole of it. Done as one reverse-mode pass through
+      the channel's `observation_noise_at` per iterate, which also gives the noise
+      (ADR-063 corrects ADR-062's word for it).
 
 **Per-rung merge gate, all three required:**
 

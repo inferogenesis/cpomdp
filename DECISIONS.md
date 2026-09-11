@@ -4234,3 +4234,32 @@ so the word ADR-057 requires appears wherever a report names them.
   exact posterior's own gradient, and ADR-058's declared cell: the bounded periodic
   family at spread `0.30`, read nine predictive spreads out, takes 124 steps at the
   tolerance, so the rung answers `Void` at 64.
+
+## ADR-063 — the iterating rungs differentiate the noise in reverse mode
+
+**Date:** 2026-09-11
+**Status:** Accepted
+**Extends:** ADR-062, which records how the rungs are built
+**Supersedes:** one sentence of ADR-062's Consequences, "The noise and its slope come
+from one forward-mode pass through the channel per iterate", and nothing else in it
+
+The rungs obtain the noise and its gradient at an iterate with `jax.value_and_grad`
+over a scalar function of the state. That is reverse-mode differentiation. For a
+scalar of an `n`-dimensional state one reverse pass returns the whole gradient;
+forward mode returns one directional derivative per pass and would need `n` of them.
+ADR-062 wrote "forward-mode" for this and the code's docstring and the build plan
+repeated it. The code was right and the word was wrong.
+
+### Decision
+
+The word is reverse-mode, wherever the rung's derivative is described. The cost RFC-001
+attributes per iterate is one reverse pass through `observation_noise_at`, which is a
+small constant times one evaluation of the noise and does not grow with the state
+dimension. Nothing the rungs compute or report changes.
+
+### Consequences
+
+- The docstring of the function that evaluates (35c) to (35e) says reverse-mode, and
+  the build plan's item on `R'` cites this entry.
+- ADR-062's sentence stands as written, superseded here, since `DECISIONS.md` is
+  append-only.

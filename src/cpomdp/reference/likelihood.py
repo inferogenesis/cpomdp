@@ -215,10 +215,21 @@ class FixedNoiseLikelihood:
         return _gaussian_log_density(self.log_det_noise, whitened_residuals)
 
     def observation_noise_at(self, states: ArrayLike) -> Float64[Array, "N m m"]:
-        """``R`` once per row of ``states``, since it does not vary with the state."""
-        count = jnp.asarray(states).shape[0]
+        """``R`` once per row of ``states``, since it does not vary with the state.
+
+        Raises:
+            ValueError: if ``states`` is not an ``N x n`` array, the check the
+                state-dependent channel makes through its residuals.
+        """
+        states = jnp.asarray(states, dtype=float)
+        n = self.observation_matrix.shape[1]
+        if states.ndim != 2 or states.shape[1] != n:
+            raise ValueError(
+                f"states must be a 2-D array of shape (N, {n}), got shape "
+                f"{states.shape}"
+            )
         return jnp.broadcast_to(
-            self.observation_noise, (count, *self.observation_noise.shape)
+            self.observation_noise, (states.shape[0], *self.observation_noise.shape)
         )
 
     def tree_flatten(

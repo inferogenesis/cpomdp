@@ -5,6 +5,7 @@ import pytest
 
 from cpomdp.reference.likelihood import (
     FixedNoiseLikelihood,
+    GaussianChannel,
     ObservationLikelihood,
     StateDependentNoiseLikelihood,
 )
@@ -76,6 +77,7 @@ class TestFixedNoiseLikelihood:
         likelihood = FixedNoiseLikelihood([[1.0]], observation_noise=[[1.0]])
         assert likelihood.is_fixed
         assert isinstance(likelihood, ObservationLikelihood)
+        assert isinstance(likelihood, GaussianChannel)
 
     def test_refuses_a_singular_noise(self):
         # The density inverts R, so a noiseless sensor is +inf, not a sharp reading.
@@ -147,6 +149,7 @@ class TestStateDependentNoiseLikelihood:
         )
         assert not likelihood.is_fixed
         assert isinstance(likelihood, ObservationLikelihood)
+        assert isinstance(likelihood, GaussianChannel)
 
     def test_refuses_a_noise_function_returning_the_wrong_shape(self):
         def one_matrix_for_everyone(states, params):
@@ -209,3 +212,12 @@ class TestPytree:
         np.testing.assert_allclose(
             jitted(likelihood), likelihood.log_likelihood([0.7], states), rtol=1e-12
         )
+
+
+def test_a_fixed_likelihood_refuses_states_of_the_wrong_shape():
+    likelihood = FixedNoiseLikelihood([[1.0, 0.0]], observation_noise=[[0.5]])
+    with pytest.raises(ValueError, match=r"states must be a 2-D array"):
+        likelihood.observation_noise_at(jnp.zeros(5))
+    with pytest.raises(ValueError, match=r"states must be a 2-D array"):
+        likelihood.observation_noise_at(jnp.zeros((5, 3)))
+    assert likelihood.observation_noise_at(jnp.zeros((5, 2))).shape == (5, 1, 1)

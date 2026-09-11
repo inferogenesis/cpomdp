@@ -475,6 +475,56 @@ def test_the_reported_gap_is_invariant_to_the_observation_units(rung, scale):
     assert at_scale.value == pytest.approx(at_native.value, abs=1e-12)
 
 
+# --- what a rung asks of the likelihood it is handed --------------------------------
+
+
+class LaplaceLikelihood:
+    """A pointwise-evaluable likelihood that is not a Gaussian channel."""
+
+    is_fixed = True
+
+    def __init__(self, scale):
+        self.scale = scale
+
+    def log_likelihood(self, observation, states):
+        residual = jnp.asarray(observation, dtype=float)[0] - states[:, 0]
+        return -jnp.abs(residual) / self.scale - jnp.log(2.0 * self.scale)
+
+
+def test_the_exact_rung_takes_any_pointwise_likelihood():
+    likelihood = LaplaceLikelihood(0.7)
+    prior = gaussian_on(STATES, PRIOR_MEAN, PRIOR_VAR)
+    belief = EXACT_RUNG.build(likelihood)(prior, [1.7])
+    exact = GridDensity(
+        STATES, prior.log_density + likelihood.log_likelihood([1.7], STATES.nodes)
+    )
+    assert isinstance(belief, GridDensity)
+    assert float(exact.kl_to(belief)) < 1e-12
+
+
+@pytest.mark.parametrize("rung", GAUSSIAN_RUNGS, ids=GAUSSIAN_IDS)
+def test_a_gaussian_rung_refuses_a_likelihood_that_is_not_a_channel(rung):
+    with pytest.raises(TypeError, match="reads a GaussianChannel"):
+        rung.build(LaplaceLikelihood(0.7))
+
+
+def undefined_noise(states, params):
+    """A noise the scheme cannot take a step against."""
+    return jnp.full((states.shape[0], 1, 1), jnp.nan)
+
+
+def test_the_iterated_rung_says_when_a_step_was_not_finite():
+    likelihood = StateDependentNoiseLikelihood(
+        [[1.0]], observation_noise_fn=undefined_noise
+    )
+    prior = gaussian_on(STATES, PRIOR_MEAN, PRIOR_VAR)
+    answer = ITERATED_RUNG.build(likelihood)(prior, [1.7])
+    assert isinstance(answer, Void)
+    assert answer.iterations == 1
+    assert "not finite after 1 iterations" in answer.detail
+    assert "budget" not in answer.detail
+
+
 # --- the ladder is a declared set ---------------------------------------------------
 
 

@@ -212,8 +212,8 @@ def _newton_terms(
     """The measurement's score, its modified curvature, and its Fisher information.
 
     Equations (35c), (35d) without its fourth term, and (35e) of the paper, at one
-    state. The noise and its derivative come from one forward-mode pass through the
-    channel, so the derivative is exact.
+    state. The noise and its gradient come from one reverse-mode pass through the
+    channel, which is what a scalar of the state costs, so the derivative is exact.
     """
 
     def noise_at(x: Float64[Array, "n"]) -> Float64[Array, ""]:
@@ -354,10 +354,11 @@ def _iterated(channel: GaussianChannel) -> ApproximatePosterior:
             tolerance=CONVERGENCE_TOLERANCE,
         )
         if not update.converged:
-            return Void(
-                iterations=update.iterations,
-                detail=f"budget of {ITERATION_BUDGET} spent above the tolerance",
-            )
+            if update.iterations < ITERATION_BUDGET:
+                detail = f"the step was not finite after {update.iterations} iterations"
+            else:
+                detail = f"budget of {ITERATION_BUDGET} spent above the tolerance"
+            return Void(iterations=update.iterations, detail=detail)
         return gaussian_on(prior.grid, update.mean, update.cov)
 
     return rule
@@ -389,24 +390,34 @@ class Rung:
         if not isinstance(self.name, str) or not self.name:
             raise ValueError("a Rung needs a name, so a row of the ladder can be read")
 
-    def build(self, channel: GaussianChannel) -> ApproximatePosterior:
+    def build(self, channel: ObservationLikelihood) -> ApproximatePosterior:
         """The rule this rung runs over ``channel``.
 
         Args:
-            channel: the likelihood the reading is conditioned on. The plug-in rung
-                reads its matrix and its noise at the prior mean, the belief-smoothed
-                rung its matrix and its noise at every node of the prior. The
-                single-step and iterated rungs read its matrix and differentiate its
-                noise at each iterate, and take one observation channel only. The
-                exact rung reads its density and nothing else.
+            channel: the likelihood the reading is conditioned on. The exact rung
+                reads its density and nothing else, so any ``ObservationLikelihood``
+                serves it. The Gaussian rungs read a ``GaussianChannel``: the plug-in
+                rung its matrix and its noise at the prior mean, the belief-smoothed
+                rung its matrix and its noise at every node of the prior, the
+                single-step and iterated rungs its matrix and its noise's gradient at
+                each iterate, over one observation channel only.
 
         Returns:
             ``rule(prior, observation)``, the callable ``averaged_inference_gap``
             takes as the rule under test.
 
         Raises:
+            TypeError: if a Gaussian rung is handed a likelihood that is not a
+                ``GaussianChannel``.
             ValueError: if the kind names no way of building a rule.
         """
+        if self.kind is RungKind.EXACT:
+            return _exact(channel)
+        if not isinstance(channel, GaussianChannel):
+            raise TypeError(
+                f"the {self.kind.value} rung reads a GaussianChannel, and "
+                f"{type(channel).__name__} is not one"
+            )
         if self.kind is RungKind.PLUG_IN:
             return _plug_in(channel)
         if self.kind is RungKind.SINGLE_STEP:
@@ -415,8 +426,6 @@ class Rung:
             return _iterated(channel)
         if self.kind is RungKind.BELIEF_SMOOTHED:
             return _belief_smoothed(channel)
-        if self.kind is RungKind.EXACT:
-            return _exact(channel)
         # Not a fallthrough: a kind added without a branch here would otherwise be
         # built as whichever branch came last, and report a rung it never ran.
         raise ValueError(f"{self.kind} names no way of building a rule")
@@ -476,7 +485,7 @@ class RuleLadder:
         return len(self.rungs)
 
     def build_all(
-        self, channel: GaussianChannel
+        self, channel: ObservationLikelihood
     ) -> tuple[tuple[str, ApproximatePosterior], ...]:
         """Every rung built over ``channel``, paired with the name that produced it.
 

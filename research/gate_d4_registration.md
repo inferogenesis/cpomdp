@@ -1774,3 +1774,27 @@ statistical term, at a size that does not bind. `D*`, `f*` and `T` are registere
 values from here. A change to the declared lattice re-registers `T`; an outcome
 obtained under this one stands. The roundoff floor's shape is recorded as a defect of
 the PRE-REGISTRATION and not corrected in it.
+
+### AMENDMENT 2026-09-11: a ratio in the RESULT was typed wrong, and the run's reporting changed between its two runs
+
+Two corrections to the RESULT above, neither of which moves a number that enters `T`.
+
+**The ratio to `β`.** The RESULT says the largest shift on any window, `1.96e−10`, is
+`0.0000039` of `β`. With `β = 0.05` it is `3.9e−9`. The figure was typed by hand against
+`0.001·β`; the module's own line prints `0.00%`. The verdict is unchanged, both readings
+sitting three or more decades under the registered `0.01·β`.
+
+**What the module asserts.** The PRE-REGISTRATION says the module "asserts the
+convergence read and the roundoff floor". As committed at `953681b` it asserted the
+convergence read and applied the floor without asserting it. Its first run aborted on
+that assertion at `σ = 0.005`, the unconverged roundoff-regime point the RESULT
+describes. Before the run the RESULT quotes, at `0fd7eca`, the assertion was replaced
+by a report that carries an unconverged point as such, and the four alternative
+readings of the field were added so the RESULT could show `T` does not depend on the
+verdict. The field itself is identical between the two runs, the engine being
+deterministic, and every number in the RESULT comes from the second. So the module as
+run reports the convergence read rather than asserting it, and applies the floor in
+`FieldPoint.error` rather than asserting it. Recorded as a departure from the
+PRE-REGISTRATION's description of the code; the registered rules were applied as
+written, and the change was to how a failed read is reported, made after seeing which
+point failed and before seeing `T`.
