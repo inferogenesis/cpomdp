@@ -705,7 +705,7 @@ The hard item, and it is shared. P2-7 (D) moved to PR-7b with the ordering work.
       each. The smoothed rung averages `R` under the prior on its own grid, not under
       the Gaussian with its moments (ADR-061). The two Spinello–Stilwell rungs run the
       paper's scalar-observation scheme over a vector state and refuse a second
-      channel (ADR-062). Left open on the smoothed rung: `E[R(x)]` need not exist under H1,
+      channel (ADR-062, #115). Left open on the smoothed rung: `E[R(x)]` need not exist under H1,
       and the box quadrature is finite whether it does or not. The rung has no test
       that returns `Void` when the average leans on the box edge, and the criterion
       is a declaration owed before PR-9's closure modes read the rung.

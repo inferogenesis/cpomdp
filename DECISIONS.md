@@ -4190,7 +4190,8 @@ gradient of the scalar noise, and (35c) to (35e) read as written in
 `research/spinello_stilwell_hand_derivation.md` with `bᵀb` and `∇σᵀ∇σ` as outer
 products. The paper's form for several channels is not transcribed anywhere in the
 tree, so a channel with more than one is refused at build time rather than run
-through algebra that does not cover it. ADR-056's `p ≤ n` is met by `p = 1`.
+through algebra that does not cover it. ADR-056's `p ≤ n` is met by `p = 1`. The
+general form is issue #115, a derivation before it is a code change.
 
 ### The stopping rule in more than one dimension
 
