@@ -754,10 +754,10 @@ ladder is `cpomdp.reference.ladder`, five implementations of that callable behin
 - [x] **`R'` comes from automatic differentiation**, per ADR-058. The declared `1e-12`
       is only reachable with an exact derivative: a central difference carries about
       `1e-11` into the iterate and floors convergence above the tolerance, so a rung
-      that differences cannot hold the declaration. `jax.grad` over
-      `observation_noise_fn` is the whole of it. Done as one reverse-mode pass through
-      the channel's `observation_noise_at` per iterate, which also gives the noise
-      (ADR-063 corrects ADR-062's word for it).
+      that differences cannot hold the declaration. Done: `jax.value_and_grad` over
+      the channel's `observation_noise_at`, one reverse-mode pass per iterate that
+      gives the noise and its gradient together (ADR-063 corrects ADR-062's word for
+      it).
 
 **Per-rung merge gate, all three required:**
 
