@@ -1527,3 +1527,128 @@ is that a slip in any of them would now fail a check rather than survive the sui
 carry that ref. `c₆` was not registered anywhere ahead of it, so its row registers and
 measures at one commit and says so rather than borrowing `018ccc7`, which is the error
 the AMENDMENT above corrects.
+
+### PRE-REGISTRATION 2026-09-11: `T` unparks, and what is fixed before the field is looked at
+
+The DECISION of 2026-08-23 parks `T` until the reference filter exists and names what
+unparks it: the filter's error measured across the window rather than bounded at a
+point. The filter exists, in `cpomdp.reference`, and its gap evaluator is the engine
+PR-8 certifies. This entry fixes everything that has to be fixed before that field is
+measured, so that no choice is made with its consequence for `T` in view. The
+measurement and the value follow in a RESULT entry, in a later commit.
+
+**What is measured.** The relative error field of the tree's reference engine on
+`d4-family-v1` at the binding cell, `κ_min = 0.1`, `R₀ = 1`, `μ* = √10`, evaluating the
+plug-in gap that `c₂`, `c₄` and `c₆` expand:
+
+```text
+ε(σ) = ( gap_declared(σ) − gap_fine(σ) ) / gap_fine(σ)
+```
+
+over fifteen values of `σ` spaced evenly in `ln σ` on `[0.005, 0.7]`, which covers every
+window the optimisation below can reach. `gap_declared` runs on the declared lattice
+and `gap_fine` on a lattice with twice the nodes and boxes half again as wide, so the
+difference is the declared lattice's error. At three of the fifteen, the two ends and
+the middle, a third lattice with twice the nodes and boxes wider again is run, and the
+estimate is read as converged only where replacing fine by finer moves it by under 10%.
+Where `|ε|` sits under `100 × 2⁻⁵²`, the field is read as zero: that is roundoff, not a
+discretisation error, and its shape is not a property of the filter.
+
+**The declared lattice**, which is what PR-8's bound certifies and what `T` is
+registered against. A change to it re-registers `T`, and an outcome obtained under this
+one stands as obtained.
+
+| grid | box | nodes |
+| --- | --- | --- |
+| state | `μ* ± 12σ` | 1601 |
+| observation | `μ* ± 9·√(σ² + R(μ*))` | 401 |
+
+The observation half-width is the truncation study's, so its measured truncations
+apply. The state half-width is in prior spreads, since the plug-in posterior's spread
+is under the prior's and the exact posterior's mode moves by at most a few prior
+spreads across the observation box on this family.
+
+**The estimator.** Unweighted ordinary least squares of `ln(gap − c₄σ⁴)` on `ln σ`,
+uniform in `ln σ` across the window. The published `σ_p` figures were shown on
+2026-08-23 to come from this estimator and not from the weighted one the prose
+described, so this corrects the prose to the numbers rather than changing the fit.
+`N` is not declared, because under a deterministic error field it does not enter: the
+shift in the fitted exponent is `Cov(v, ε)/Var(v)` with `v = ln σ`, a functional of the
+field and not of a sample count.
+
+**How the two errors combine.** The truncation bias and the filter's shift are both
+biases, so they add in magnitude:
+
+```text
+|b_trunc(f, D)| + |b_ref(f, D)| ≤ β        β = 0.05, registered 2026-08-07
+```
+
+This supersedes the quadrature sum `√(bias² + σ_p²) ≤ β` for the case the noise-model
+exploration found operative, a deterministic error, and it is the conservative
+reading: adding in quadrature would let two biases partly hide each other. `b_ref` is
+evaluated on the measured field over the window `[σ_max/10^D, σ_max]`, so it depends
+on `f` and `D` through where the window sits, and the optimisation below sees that.
+
+**The sign of the residual.** Under subtraction the term left in the fit is the sextic,
+and `c₆ > 0` at `κ_min` (`c₆ = −κ(7κ + 9)(13κ − 3)/48`, positive below `κ = 3/13`). The
+correction is `+f·e^{4u}`, bending the curve above a power law, so the truncation bias
+is positive and the integral is taken with that sign rather than the negative one the
+window exploration used. The two differ at second order in `f`.
+
+**A floor on `D`, declared blind.** The AMENDMENT of 2026-08-07 that retired the
+bias-only closed form found the bias-only problem ill-posed: `T` is maximised by
+shrinking the window to nothing, and only the noise term bounded `D` from below. If the
+field turns out benign, that term is gone and nothing in the algebra sets `D`. So:
+
+```text
+D ≥ 0.5 decades
+```
+
+Half a decade in `σ` is one decade in `σ²`, the variable the fitted quantity is
+quadratic in, so a reader sees the exponent read across a full order of magnitude of
+the ordinate. It is the smallest round width that gives that, and it sits within 4% of
+the registered `D* = 0.520`, which was the noise-set optimum. The incentive is stated:
+`T ∝ 10^(−2D)`, so a lower floor raises `T` and makes the gate harder, and this floor is
+the severity-maximising choice among round ones, on the same footing as every other
+rule here. Nothing measured can move it; only a reader's judgement about what a fit
+over half a decade is worth, and that judgement is being made now, with no number in
+view.
+
+**The optimisation, stated so it can be run and not steered.** For each `D ≥ 0.5`, `f*(D)`
+is the largest `f` satisfying the combined budget, and
+
+```text
+T(D) = c₂^(3/2) · √(f*(D) / |c₆|) · 10^(−2D)        at κ_min, per the AMENDMENT of 2026-08-23
+D*   = argmax T(D)
+```
+
+Under the benign reading `T(D)` is decreasing and `D* = 0.5`. `T` is printed at `D*`,
+`D* + 0.5` and `D* + 1`. Section 4 promised `D − 1`, `D` and `D + 1`; `D* − 1` is below
+the floor and is not a window, so the half-decade step replaces it.
+
+**Predictions, written before the run.**
+
+- The field is benign: `|b_ref| < 0.01·β` on every window the optimisation visits.
+  The lattice integrates smooth, decaying densities by the trapezoid rule, whose error
+  is exponentially small in the node spacing, and the state lattice scales with `σ`
+  while the observation lattice does not, so the error that remains is set by the
+  observation box's truncation and is far below the gap on this family.
+- `D* = 0.5`, `f*` within a factor of two of the window exploration's stand-in
+  `0.034`, and `T` of order `10⁻⁴` nats.
+
+If `|b_ref|` exceeds `0.1·β` anywhere, the registered `σ_p` is superseded rather than
+recalibrated, `b_ref` is carried as the statistical term in its own right, and the
+RESULT says which window it bit on. Between `0.01·β` and `0.1·β` the term is carried in
+the constraint and the prediction is recorded as missed.
+
+**Status of the numbers.** The field is `COMPUTED`: a refinement difference on a
+declared lattice, with no warrant claimed. Certifying the bound is PR-8's. `T` is a
+declaration derived from registered constants and that field, and the exploration that
+prints it reports no warrant, on the terms `research.explorations` states. What makes it
+a registration rather than a fit is this entry's date against the RESULT's.
+
+**The code.** `research.explorations.threshold`, run with
+`uv run --no-sync python -m research.explorations.threshold`. It prints every number the
+RESULT quotes, asserts the convergence read and the roundoff floor, checks the shift
+integral against a fit that shares no code with it, and evaluates no `T` until the field
+has been read.

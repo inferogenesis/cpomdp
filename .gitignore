@@ -55,3 +55,6 @@ site/
 .claude/
 CLAUDE.md
 rfcs/
+
+# JAX
+.jax_cache/
