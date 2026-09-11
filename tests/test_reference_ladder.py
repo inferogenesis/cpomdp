@@ -1,26 +1,46 @@
-"""The rule ladder: three rungs and the declared set they sit in.
+"""The rule ladder: five rungs and the declared set they sit in.
 
 Every rung is checked against the closed-form Kalman posterior where that is the exact
-filter, and against the averaged gap where it is not. The ladder itself is checked the
-way the other declared sets are: versioned, non-empty, unique, and holding its top.
+filter, and against the averaged gap where it is not. The two iterating rungs are also
+read against a scalar transcription of the scheme and against the exact posterior's
+own gradient at their fixed point. The ladder itself is checked the way the other
+declared sets are: versioned, non-empty, unique, and holding its top.
 """
 
+import math
+
+import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from cpomdp.reference.gap import averaged_inference_gap
-from cpomdp.reference.ladder import EXACT_RUNG, RuleLadder, Rung, RungKind
+from cpomdp.reference.gap import Void, averaged_inference_gap
+from cpomdp.reference.ladder import (
+    BELIEF_SMOOTHED_RUNG,
+    CONVERGENCE_TOLERANCE,
+    EXACT_RUNG,
+    ITERATED_RUNG,
+    ITERATION_BUDGET,
+    LADDER,
+    PLUG_IN_RUNG,
+    SINGLE_STEP_RUNG,
+    RuleLadder,
+    Rung,
+    RungKind,
+    iterated_update,
+)
 from cpomdp.reference.likelihood import (
     FixedNoiseLikelihood,
     StateDependentNoiseLikelihood,
 )
 from cpomdp.reference.quadrature import GridDensity, QuadratureGrid, gaussian_on
 
-PLUG_IN = Rung(name="plug-in", kind=RungKind.PLUG_IN)
-BELIEF_SMOOTHED = Rung(name="belief-smoothed", kind=RungKind.BELIEF_SMOOTHED)
-GAUSSIAN_RUNGS = [PLUG_IN, BELIEF_SMOOTHED]
-GAUSSIAN_IDS = ["plug-in", "belief-smoothed"]
+PLUG_IN = PLUG_IN_RUNG
+BELIEF_SMOOTHED = BELIEF_SMOOTHED_RUNG
+GAUSSIAN_RUNGS = [PLUG_IN_RUNG, SINGLE_STEP_RUNG, ITERATED_RUNG, BELIEF_SMOOTHED_RUNG]
+GAUSSIAN_IDS = [rung.name for rung in GAUSSIAN_RUNGS]
+ITERATING_RUNGS = [SINGLE_STEP_RUNG, ITERATED_RUNG]
+ITERATING_IDS = [rung.name for rung in ITERATING_RUNGS]
 
 PRIOR_MEAN, PRIOR_VAR = 0.3, 0.8
 STATES = QuadratureGrid(lower=[-14.0], upper=[14.0], counts=[1601])
@@ -39,11 +59,43 @@ def quartic_noise(states, params):
     return (r0 + kappa * states[:, :1] ** 4)[:, :, None]
 
 
+def sine_noise(states, params):
+    """R(x) = 1.5 + 0.5 sin(x1), the declared family that can exhaust the budget."""
+    return (1.5 + 0.5 * jnp.sin(states[:, :1]))[:, :, None]
+
+
 def bimodal_prior():
     """An equal mixture of two unit-variance Gaussians at ±2, on the state grid."""
     x = STATES.nodes[:, 0]
     log_density = jnp.logaddexp(-0.5 * (x - 2.0) ** 2, -0.5 * (x + 2.0) ** 2)
     return GridDensity(STATES, log_density).normalise()
+
+
+def scalar_scheme(observation, prior_mean, prior_var, r0, kappa, budget, tolerance):
+    """(35) with the r3 block removed, scalar, for R = r0 + kappa x^2 and h = x.
+
+    The oracle the vector code is read against in one dimension: the same equations
+    written out by hand with the analytic slope 2 kappa x, so an inexact derivative in
+    the rung would show up here as a different iterate.
+    """
+    estimate, taken = prior_mean, 0
+    while taken < budget:
+        taken += 1
+        noise, slope = r0 + kappa * estimate**2, 2.0 * kappa * estimate
+        residual = observation - estimate
+        score = (
+            -(residual / noise) + (1.0 - residual**2 / noise) / (2.0 * noise) * slope
+        )
+        steered = 1.0 + residual / (2.0 * noise) * slope
+        step = ((estimate - prior_mean) / prior_var + score) / (
+            1.0 / prior_var + steered**2 / noise
+        )
+        estimate -= step
+        if abs(step) < tolerance * math.sqrt(prior_var):
+            break
+    noise, slope = r0 + kappa * estimate**2, 2.0 * kappa * estimate
+    fisher = 1.0 / noise + slope**2 / (2.0 * noise**2)
+    return estimate, 1.0 / (1.0 / prior_var + fisher), taken
 
 
 def kalman_update(mean, cov, c, r, y):
@@ -74,10 +126,11 @@ def kalman_rule(noise):
 # --- the merge gate, part one: agreement with the closed-form Kalman posterior ------
 
 
-def test_the_plug_in_rung_is_the_kalman_update_under_a_fixed_noise():
+@pytest.mark.parametrize("rung", GAUSSIAN_RUNGS, ids=GAUSSIAN_IDS)
+def test_a_gaussian_rung_is_the_kalman_update_under_a_fixed_noise(rung):
     likelihood = FixedNoiseLikelihood([[1.0]], observation_noise=[[0.5]])
     prior = gaussian_on(STATES, PRIOR_MEAN, PRIOR_VAR)
-    belief = PLUG_IN.build(likelihood)(prior, [1.7])
+    belief = rung.build(likelihood)(prior, [1.7])
     mean, cov = kalman_update(PRIOR_MEAN, PRIOR_VAR, 1.0, 0.5, 1.7)
 
     assert isinstance(belief, GridDensity)
@@ -86,7 +139,8 @@ def test_the_plug_in_rung_is_the_kalman_update_under_a_fixed_noise():
     np.testing.assert_allclose(np.asarray(belief.cov), cov, atol=1e-12)
 
 
-def test_the_plug_in_rung_agrees_with_kalman_on_a_two_dimensional_state():
+@pytest.mark.parametrize("rung", GAUSSIAN_RUNGS, ids=GAUSSIAN_IDS)
+def test_a_gaussian_rung_agrees_with_kalman_on_a_two_dimensional_state(rung):
     c = np.array([[1.0, 0.5]])
     r = np.array([[0.4]])
     prior_mean = np.array([0.2, -0.3])
@@ -95,7 +149,7 @@ def test_the_plug_in_rung_agrees_with_kalman_on_a_two_dimensional_state():
     likelihood = FixedNoiseLikelihood(c, observation_noise=r)
     prior = gaussian_on(states, prior_mean, prior_cov)
 
-    belief = PLUG_IN.build(likelihood)(prior, [0.9])
+    belief = rung.build(likelihood)(prior, [0.9])
     mean, cov = kalman_update(prior_mean, prior_cov, c, r, 0.9)
 
     assert isinstance(belief, GridDensity)
@@ -117,18 +171,6 @@ def test_the_plug_in_rung_reads_the_noise_at_the_prior_mean():
     )
 
     assert isinstance(belief, GridDensity)
-    np.testing.assert_allclose(np.asarray(belief.mean), mean, atol=1e-12)
-    np.testing.assert_allclose(np.asarray(belief.cov), cov, atol=1e-12)
-
-
-def test_the_belief_smoothed_rung_is_the_kalman_update_under_a_fixed_noise():
-    likelihood = FixedNoiseLikelihood([[1.0]], observation_noise=[[0.5]])
-    prior = gaussian_on(STATES, PRIOR_MEAN, PRIOR_VAR)
-    belief = BELIEF_SMOOTHED.build(likelihood)(prior, [1.7])
-    mean, cov = kalman_update(PRIOR_MEAN, PRIOR_VAR, 1.0, 0.5, 1.7)
-
-    assert isinstance(belief, GridDensity)
-    assert belief.grid.same_lattice_as(prior.grid)
     np.testing.assert_allclose(np.asarray(belief.mean), mean, atol=1e-12)
     np.testing.assert_allclose(np.asarray(belief.cov), cov, atol=1e-12)
 
@@ -174,6 +216,121 @@ def test_the_belief_smoothed_rung_averages_under_the_density_it_is_handed():
     assert isinstance(belief, GridDensity)
     np.testing.assert_allclose(np.asarray(belief.mean), mean, atol=1e-10)
     np.testing.assert_allclose(np.asarray(belief.cov), cov, atol=1e-10)
+
+
+# --- the two iterating rungs, read against a scalar transcription of the scheme -----
+
+
+@pytest.mark.parametrize(
+    ("budget", "tolerance"), [(1, 0.0), (ITERATION_BUDGET, CONVERGENCE_TOLERANCE)]
+)
+def test_the_scheme_matches_its_scalar_transcription_at_either_budget(
+    budget, tolerance
+):
+    r0, kappa = 0.5, 1.0
+    likelihood = StateDependentNoiseLikelihood(
+        [[1.0]],
+        observation_noise_fn=quadratic_noise,
+        observation_noise_params=(r0, kappa),
+    )
+    update = iterated_update(
+        likelihood,
+        [PRIOR_MEAN],
+        [[PRIOR_VAR]],
+        [1.7],
+        budget=budget,
+        tolerance=tolerance,
+    )
+    mean, var, taken = scalar_scheme(
+        1.7, PRIOR_MEAN, PRIOR_VAR, r0, kappa, budget, tolerance
+    )
+
+    assert update.iterations == taken
+    assert update.converged is (budget > 1)
+    np.testing.assert_allclose(np.asarray(update.mean), [mean], atol=1e-13)
+    np.testing.assert_allclose(np.asarray(update.cov), [[var]], atol=1e-13)
+
+
+def test_the_single_step_rung_is_one_step_of_the_scheme():
+    r0, kappa = 0.5, 1.0
+    likelihood = StateDependentNoiseLikelihood(
+        [[1.0]],
+        observation_noise_fn=quadratic_noise,
+        observation_noise_params=(r0, kappa),
+    )
+    prior = gaussian_on(STATES, PRIOR_MEAN, PRIOR_VAR)
+    belief = SINGLE_STEP_RUNG.build(likelihood)(prior, [1.7])
+    mean, var, _ = scalar_scheme(1.7, PRIOR_MEAN, PRIOR_VAR, r0, kappa, 1, 0.0)
+
+    assert isinstance(belief, GridDensity)
+    np.testing.assert_allclose(np.asarray(belief.mean), [mean], atol=1e-10)
+    np.testing.assert_allclose(np.asarray(belief.cov), [[var]], atol=1e-10)
+
+
+def test_the_iterated_rung_settles_where_the_exact_posterior_is_flat():
+    likelihood = StateDependentNoiseLikelihood(
+        [[1.0]],
+        observation_noise_fn=quadratic_noise,
+        observation_noise_params=(0.5, 1.0),
+    )
+    update = iterated_update(
+        likelihood,
+        [PRIOR_MEAN],
+        [[PRIOR_VAR]],
+        [1.7],
+        budget=ITERATION_BUDGET,
+        tolerance=CONVERGENCE_TOLERANCE,
+    )
+
+    def log_posterior(x):
+        prior = -0.5 * (x[0] - PRIOR_MEAN) ** 2 / PRIOR_VAR
+        return prior + likelihood.log_likelihood([1.7], x[None, :])[0]
+
+    assert update.converged
+    assert 1 < update.iterations < ITERATION_BUDGET
+    assert abs(float(jax.grad(log_posterior)(update.mean)[0])) < 1e-9
+    assert abs(float(update.mean[0]) - PRIOR_MEAN) > 0.1
+
+
+def test_the_iterated_rung_answers_void_when_the_budget_is_spent():
+    # ADR-058's declared cell: the bounded periodic family at spread 0.30, read nine
+    # predictive spreads off its prior mean, needs 124 steps at the tolerance.
+    likelihood = StateDependentNoiseLikelihood([[1.0]], observation_noise_fn=sine_noise)
+    prior_mean, prior_var = 1.0, 0.30**2
+    predictive = math.sqrt(prior_var + 1.5 + 0.5 * math.sin(prior_mean))
+    reading = [prior_mean + 9.0 * predictive]
+    prior = gaussian_on(STATES, prior_mean, prior_var)
+
+    answer = ITERATED_RUNG.build(likelihood)(prior, reading)
+    assert answer == Void(
+        iterations=ITERATION_BUDGET,
+        detail=f"budget of {ITERATION_BUDGET} spent above the tolerance",
+    )
+
+    settled = iterated_update(
+        likelihood, [prior_mean], [[prior_var]], reading, budget=200, tolerance=1e-12
+    )
+    assert settled.converged
+    assert settled.iterations == 124
+
+
+def test_the_single_step_rung_never_answers_void():
+    likelihood = StateDependentNoiseLikelihood([[1.0]], observation_noise_fn=sine_noise)
+    prior_mean, prior_var = 1.0, 0.30**2
+    predictive = math.sqrt(prior_var + 1.5 + 0.5 * math.sin(prior_mean))
+    prior = gaussian_on(STATES, prior_mean, prior_var)
+
+    belief = SINGLE_STEP_RUNG.build(likelihood)(prior, [prior_mean + 9.0 * predictive])
+    assert isinstance(belief, GridDensity)
+
+
+@pytest.mark.parametrize("rung", ITERATING_RUNGS, ids=ITERATING_IDS)
+def test_an_iterating_rung_refuses_a_second_observation_channel(rung):
+    likelihood = FixedNoiseLikelihood(
+        [[1.0, 0.0], [0.0, 1.0]], observation_noise=[[0.5, 0.0], [0.0, 0.5]]
+    )
+    with pytest.raises(ValueError, match="one observation channel"):
+        rung.build(likelihood)
 
 
 def test_the_exact_rung_is_the_exact_posterior():
@@ -256,6 +413,7 @@ def test_the_belief_smoothed_rung_reproduces_the_hand_rolled_rule_at_its_own_noi
     assert by_rung.value == pytest.approx(by_hand.value, rel=1e-9)
 
 
+@pytest.mark.slow
 def test_the_exact_rung_closes_the_gap_where_no_gaussian_rung_can():
     likelihood = StateDependentNoiseLikelihood(
         [[1.0]],
@@ -272,10 +430,10 @@ def test_the_exact_rung_closes_the_gap_where_no_gaussian_rung_can():
     ]
     assert exact.value < 1e-10
     assert all(gap.value > 1e-3 for gap in gaussian)
-    # The two rungs read different noise, so they report different gaps. Which is
-    # smaller is R7's question and is not asserted here.
-    plug_in, smoothed = (gap.value for gap in gaussian)
-    assert plug_in != pytest.approx(smoothed, rel=1e-3)
+    # The plug-in and smoothed rungs read different noise, so they report different
+    # gaps. Which is smaller is R7's question and is not asserted here.
+    by_name = dict(zip(GAUSSIAN_IDS, (gap.value for gap in gaussian), strict=True))
+    assert by_name["plug-in"] != pytest.approx(by_name["belief-smoothed"], rel=1e-3)
 
 
 # --- the merge gate, part two: the reported gap does not move under o -> λo ---------
@@ -361,6 +519,27 @@ def test_build_all_pairs_every_rung_with_its_name_in_order():
 
     assert tuple(name for name, _ in built) == ("exact", "belief-smoothed", "plug-in")
     for _, rule in built:
+        belief = rule(prior, [1.7])
+        assert isinstance(belief, GridDensity)
+        assert belief.grid.same_lattice_as(prior.grid)
+
+
+def test_the_declared_ladder_is_the_five_rungs_in_order():
+    assert LADDER.version == "v1"
+    assert LADDER.names == (
+        "plug-in",
+        "modified-single-step",
+        "modified-iterated",
+        "belief-smoothed",
+        "exact",
+    )
+    assert tuple(rung.kind for rung in LADDER.rungs) == tuple(RungKind)
+
+
+def test_every_declared_rung_answers_a_fixed_channel():
+    likelihood = FixedNoiseLikelihood([[1.0]], observation_noise=[[0.5]])
+    prior = gaussian_on(STATES, PRIOR_MEAN, PRIOR_VAR)
+    for _, rule in LADDER.build_all(likelihood):
         belief = rule(prior, [1.7])
         assert isinstance(belief, GridDensity)
         assert belief.grid.same_lattice_as(prior.grid)

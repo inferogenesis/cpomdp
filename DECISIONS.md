@@ -4171,3 +4171,65 @@ closure modes.
 - `tests/test_reference_ladder.py` pins the choice with a bimodal prior and a quartic
   noise, where the density's average and the moments-Gaussian's average differ and the
   rung follows the first.
+
+## ADR-062 — the iterating rungs take one observation channel, and stop in the prior's metric
+
+**Date:** 2026-09-11
+**Status:** Accepted
+**Extends:** ADR-056, which declares the two rungs; ADR-057, whose modification they
+run; ADR-058, whose budget and tolerance they run at
+
+The single-step and iterated rungs exist in `cpomdp.reference.ladder`. Three things
+about them were left to the build, and this entry records what was taken.
+
+### One observation channel, any state dimension
+
+The scheme in the tree is the paper's scalar-observation case, §III-D-2, with the
+gradients as row vectors over the state: `∇h` is the one row of `C`, `∇σ` is the
+gradient of the scalar noise, and (35c) to (35e) read as written in
+`research/spinello_stilwell_hand_derivation.md` with `bᵀb` and `∇σᵀ∇σ` as outer
+products. The paper's form for several channels is not transcribed anywhere in the
+tree, so a channel with more than one is refused at build time rather than run
+through algebra that does not cover it. ADR-056's `p ≤ n` is met by `p = 1`.
+
+### The stopping rule in more than one dimension
+
+ADR-058 declares the tolerance relative to the prior standard deviation. In one
+dimension that is `|δ| / √P` for a step `δ`. The rungs measure a step as `√(δᵀP⁻¹δ)`,
+which is that number when `n = 1` and the step's length in the prior's own metric
+otherwise. It is unit-free in the state, as the scalar rule is.
+
+### The single-step rung never answers `Void`
+
+One step is the rung's definition, so there is nothing for it to fail to reach. It
+runs the loop at a budget of one with the tolerance at zero, and reports what one step
+gave. The iterated rung answers `Void` with the count when the budget is spent above
+the tolerance, and the covariance of a truncated run is never rendered.
+
+### The iteration is one function, and its count is on its result
+
+`iterated_update` is the only place the scheme iterates. It takes the budget and the
+tolerance as arguments, so a probe can measure what a budget has to cover at another
+one, and its result carries the steps taken and whether the run settled. The rungs
+call it with the declared constants and read the count off the result. The count of a
+reading that converged does not yet reach the gap's report, since the seam passes a
+density and no number; that is the open half of the labelling item in PR-7.
+
+### The names
+
+The two rungs are named `modified-single-step` and `modified-iterated` in the ladder,
+so the word ADR-057 requires appears wherever a report names them.
+
+### Consequences
+
+- `RungKind.SINGLE_STEP` and `RungKind.ITERATED`, built by `Rung.build` over a
+  one-channel `GaussianChannel`. The noise and its slope come from one forward-mode
+  pass through the channel per iterate, so no finite difference is anywhere in the
+  rung.
+- `LADDER` is declared at `v1` with the five rungs in the order the battery's D1 leg
+  is registered over.
+- `tests/test_reference_ladder.py` pins the scalar transcription of the modified
+  scheme against the vector code at budgets one and 64, the fixed point against the
+  exact posterior's own gradient, and ADR-058's declared cell: the bounded periodic
+  family at spread `0.30`, read nine predictive spreads out, takes 124 steps at the
+  tolerance, so the rung answers `Void` at 64.

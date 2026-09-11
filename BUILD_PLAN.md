@@ -696,23 +696,23 @@ The hard item, and it is shared. P2-7 (D) moved to PR-7b with the ordering work.
       one. If Q(x) falls out of the internal interfaces at no cost, let it. Do not
       document it, write examples against it, or claim it in release notes (issue #56).
       `TransitionKernel` is the protocol and `LinearGaussianKernel` the one instance.
-- [~] Rule ladder, common interface, **five rungs** (ADR-056): plug-in `R(μ⁻)`,
+- [x] Rule ladder, common interface, **five rungs** (ADR-056): plug-in `R(μ⁻)`,
       Spinello–Stilwell single-step (36) and iterated (35), both with the documented
       modification of ADR-057, belief-smoothed `E[R(x)]`, exact reference at the top.
       Swappable in one line. (36) is (35) at a budget of one, so declaring it separately
       costs almost nothing and buys two adjacent differences that isolate distinct
-      mechanisms. **Three of five built**, in `cpomdp.reference.ladder`:
-      `RungKind.PLUG_IN`, `RungKind.BELIEF_SMOOTHED` and `RungKind.EXACT`. The smoothed
-      rung averages `R` under the prior on its own grid, not under the Gaussian with
-      its moments (ADR-061). The two Spinello–Stilwell rungs land behind the same
-      `Rung` type. Left open on the smoothed rung: `E[R(x)]` need not exist under H1,
+      mechanisms. **All five built**, in `cpomdp.reference.ladder`, one `RungKind`
+      each. The smoothed rung averages `R` under the prior on its own grid, not under
+      the Gaussian with its moments (ADR-061). The two Spinello–Stilwell rungs run the
+      paper's scalar-observation scheme over a vector state and refuse a second
+      channel (ADR-062). Left open on the smoothed rung: `E[R(x)]` need not exist under H1,
       and the box quadrature is finite whether it does or not. The rung has no test
       that returns `Void` when the average leans on the box edge, and the criterion
       is a declaration owed before PR-9's closure modes read the rung.
-- [~] The rule list is **declared and versioned**, like `FiniteActionSet`. A rung added
+- [x] The rule list is **declared and versioned**, like `FiniteActionSet`. A rung added
       after results are seen shows up in the diff. `RuleLadder` is the type, validated
-      as `InferenceSet` is. The declared constant is written once the fifth rung exists,
-      so no version ever names a ladder with a rung missing.
+      as `InferenceSet` is. `LADDER` is the declared constant at `v1`, written once the
+      fifth rung existed, so no version ever names a ladder with a rung missing.
 The completeness certificate and the R6 gap move to PR-7b, which is where the numbers
 they rest on get measured.
 
@@ -743,13 +743,19 @@ ladder is what is missing. Nothing in `src/cpomdp` implements that callable.
       figure asserts `voided_mass` is zero. This answers the question PR-7a left open:
       a voided node drops out by weight and the report says how much weight
       (ADR-060).
-- [ ] **Iteration work is labeled and isolable.** RFC-001 has to attribute the
+- [~] **Iteration work is labeled and isolable.** RFC-001 has to attribute the
       per-decision cost of an iterating rung without reading the loop body.
-- [ ] **`R'` comes from automatic differentiation**, per ADR-058. The declared `1e-12`
+      `iterated_update` is the one function that iterates, and its result carries the
+      count and whether the run settled. What the seam does not yet carry is the count
+      of a reading that converged: `averaged_inference_gap` sees a density and no
+      number, so a sweep's total iteration cost is not on its report. That slot is the
+      remaining half of this item.
+- [x] **`R'` comes from automatic differentiation**, per ADR-058. The declared `1e-12`
       is only reachable with an exact derivative: a central difference carries about
       `1e-11` into the iterate and floors convergence above the tolerance, so a rung
       that differences cannot hold the declaration. `jax.grad` over
-      `observation_noise_fn` is the whole of it.
+      `observation_noise_fn` is the whole of it. Done as one forward-mode pass through
+      the channel's `observation_noise_at` per iterate, which also gives the noise.
 
 **Per-rung merge gate, all three required:**
 

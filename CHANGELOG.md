@@ -136,12 +136,18 @@ no use of the readings beats it.
 - `cpomdp.reference.ladder` — the rule ladder. A `Rung` is a factory: the likelihood a
   reading is conditioned on goes in, and the `rule(prior, observation)` callable the
   gap measures comes out, with everything the rung reads from the model closed over at
-  construction. Three of ADR-056's five rungs are built: `PLUG_IN`, the Kalman update
-  with the noise read once at the prior mean; `BELIEF_SMOOTHED`, the same update with
-  the noise averaged under the prior on its own grid (ADR-061); and `EXACT_RUNG`, the
-  reference at the top. `RuleLadder` is the declared, versioned set they sit in,
-  refused without an exact rung the same way an `InferenceSet` is refused without an
-  exact cell. The Gaussian
+  construction. All five of ADR-056's rungs are built: `PLUG_IN`, the Kalman update
+  with the noise read once at the prior mean; `SINGLE_STEP` and `ITERATED`, the
+  Spinello–Stilwell scheme under ADR-057's modification at a budget of one and at
+  ADR-058's budget and tolerance, with the noise's slope taken by automatic
+  differentiation and one observation channel only (ADR-062); `BELIEF_SMOOTHED`, the
+  Kalman update with the noise averaged under the prior on its own grid (ADR-061); and
+  `EXACT_RUNG`, the reference at the top. `LADDER` is the declared `v1` set of the
+  five, in the order the battery's D1 leg is registered over. `iterated_update` runs
+  the scheme on one reading at any budget and returns its count, so the cost of an
+  iterating rung is read off a result and not a loop body. `RuleLadder` is the
+  declared, versioned set the rungs sit in, refused without an exact rung the same
+  way an `InferenceSet` is refused without an exact cell. The Gaussian
   rungs read the channel through `GaussianChannel`, a second small protocol beside
   `ObservationLikelihood` that adds the observation matrix and `observation_noise_at`,
   so the exact rung is not asked for either.
