@@ -126,6 +126,7 @@
     "lgssm",
     "linalg",
     "linearizations",
+    "logaddexp",
     "logdet",
     "logreport",
     "logsumexp",

@@ -4112,3 +4112,62 @@ case. The routing has to exist whatever the budget is.
   is recorded under Q7 of `research/spinello_stilwell_rung.md`.
 - `tests/test_reference_gap.py` pins both cases: a single voided node leaves the
   average by its weight, and a rule that declines every reading leaves no value.
+
+## ADR-061 — the belief-smoothed rung averages the noise under the prior it is handed
+
+**Date:** 2026-09-11
+**Status:** Accepted
+**Extends:** ADR-056, which declares the rung as `E[R(x)]`
+
+ADR-056 names the fourth rung as belief-smoothed `E[R(x)]` and the paper's Remark 3
+defines that expectation under the Gaussian with the predicted moments, `N(μ⁻, Σ⁻)`. The
+rung is handed the prior as a density on a grid. This entry says which of the two the
+rung averages under.
+
+### Decision
+
+The rung averages `R(x)` under the density it is handed, at that density's nodes with
+that density's weights. The Gaussian with the density's moments is not rendered and
+not used for the average. The moments are read for the Kalman update alone, as the
+plug-in rung reads them.
+
+Everything after the noise is the plug-in rung: one solve of the innovation covariance,
+one gain, one Gaussian on the lattice.
+
+### Why the density and not its moments
+
+The two agree when the prior is Gaussian, which it is in every gap measurement run so
+far, so nothing already reported can tell them apart. They part on a non-Gaussian prior,
+and only the density's own average stays defined there. A rung that renders a Gaussian
+from the moments first would be reading the paper's letter at the cost of a second
+render per reading and a rule that quietly fits a Gaussian to whatever it is given.
+
+The name says which one it is. Smoothed under the belief is the belief, not a Gaussian
+fitted to it.
+
+### What the rung costs
+
+The plug-in rung evaluates `R` once per reading. This rung evaluates it at every node
+of the prior and contracts against the grid's weights, and that cannot be moved to
+construction because the prior changes every step. RFC-001 attributes it as one
+evaluation of the sensor model per node per reading.
+
+### What is left open
+
+H1 gives `R` positivity and continuity and no growth bound, so `E[R(x)]` under a Gaussian
+on an unbounded state need not exist. The box quadrature is finite whether it does or
+not, which is a divergence hidden rather than reported. The rung returns a number in
+that case today. The criterion under which it answers `Void` instead is a declaration
+this entry does not make, and it is owed before PR-9 reads the rung as one of its
+closure modes.
+
+### Consequences
+
+- `RungKind.BELIEF_SMOOTHED` in `cpomdp.reference.ladder`, built by `Rung.build` over a
+  `GaussianChannel` like the plug-in rung.
+- All three of the per-rung merge gates hold by construction: at a fixed `R` the average
+  is `R` and the rung is the Kalman posterior; there is no log-determinant term, so the
+  gap is invariant under `o → λo`; there is no derivative, so nothing is differenced.
+- `tests/test_reference_ladder.py` pins the choice with a bimodal prior and a quartic
+  noise, where the density's average and the moments-Gaussian's average differ and the
+  rung follows the first.

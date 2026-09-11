@@ -701,9 +701,14 @@ The hard item, and it is shared. P2-7 (D) moved to PR-7b with the ordering work.
       modification of ADR-057, belief-smoothed `E[R(x)]`, exact reference at the top.
       Swappable in one line. (36) is (35) at a budget of one, so declaring it separately
       costs almost nothing and buys two adjacent differences that isolate distinct
-      mechanisms. **Two of five built**, in `cpomdp.reference.ladder`: `RungKind.PLUG_IN`
-      and `RungKind.EXACT`. The three between them land behind the same `Rung` type,
-      belief-smoothed next and the two Spinello–Stilwell rungs after it.
+      mechanisms. **Three of five built**, in `cpomdp.reference.ladder`:
+      `RungKind.PLUG_IN`, `RungKind.BELIEF_SMOOTHED` and `RungKind.EXACT`. The smoothed
+      rung averages `R` under the prior on its own grid, not under the Gaussian with
+      its moments (ADR-061). The two Spinello–Stilwell rungs land behind the same
+      `Rung` type. Left open on the smoothed rung: `E[R(x)]` need not exist under H1,
+      and the box quadrature is finite whether it does or not. The rung has no test
+      that returns `Void` when the average leans on the box edge, and the criterion
+      is a declaration owed before PR-9's closure modes read the rung.
 - [~] The rule list is **declared and versioned**, like `FiniteActionSet`. A rung added
       after results are seen shows up in the diff. `RuleLadder` is the type, validated
       as `InferenceSet` is. The declared constant is written once the fifth rung exists,

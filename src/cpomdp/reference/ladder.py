@@ -6,10 +6,11 @@ rung reads from the model is closed over at construction, so the seam passes onl
 ``(prior, observation)``. The per-reading cost is then the update itself plus the
 render onto the prior's lattice, and every rung pays the render alike.
 
-ADR-056 declares five rungs. Two are here: the plug-in rung, the Kalman update with
-the noise read once at the prior mean, and the exact reference at the top. The three
-between them arrive behind the same ``Rung`` type as they are built, and the
-versioned ladder is declared once all five exist.
+ADR-056 declares five rungs. Three are here: the plug-in rung, the Kalman update with
+the noise read once at the prior mean; the belief-smoothed rung, the same update with
+the noise averaged under the prior; and the exact reference at the top. The two
+Spinello–Stilwell rungs arrive behind the same ``Rung`` type as they are built, and
+the versioned ladder is declared once all five exist.
 
 The Kalman algebra in the plug-in rung is written here and not imported from
 ``cpomdp.backends.kalman``. The reference is evidence about that filter, and a rung
@@ -39,11 +40,14 @@ class RungKind(Enum):
 
     ``PLUG_IN`` is the Kalman update with the observation noise read once, at the
     prior mean. It is the first rung of ADR-056's ladder and what a Gaussian filter
-    does under a state-dependent sensor. ``EXACT`` conditions on the grid and is the
-    top, the reference every other rung's gap is measured against.
+    does under a state-dependent sensor. ``BELIEF_SMOOTHED`` is the same update with
+    the noise averaged under the prior, the ``E[R(x)]`` rule of the paper's Remark 3.
+    ``EXACT`` conditions on the grid and is the top, the reference every other rung's
+    gap is measured against.
     """
 
     PLUG_IN = "PlugIn"
+    BELIEF_SMOOTHED = "BeliefSmoothed"
     EXACT = "Exact"
 
 
@@ -103,6 +107,32 @@ def _plug_in(channel: GaussianChannel) -> ApproximatePosterior:
     return rule
 
 
+def _belief_smoothed(channel: GaussianChannel) -> ApproximatePosterior:
+    """Rung four: ``E[R(x)]`` under the prior, plugged into the Kalman update.
+
+    The average is taken under the density the rung is handed, on its own grid and
+    with its own weights, and not under the Gaussian with that density's moments.
+    The two agree when the prior is Gaussian, which is the paper's case, and only the
+    first stays defined when it is not. Per reading this rung evaluates the noise at
+    every node of the prior where the plug-in rung evaluates it once.
+    """
+    observation_matrix = channel.observation_matrix
+
+    def rule(prior: GridDensity, observation: ArrayLike) -> GridDensity:
+        prior_mean, prior_cov = prior.moments
+        noise = prior.expectation(channel.observation_noise_at(prior.grid.nodes))
+        mean, cov = _kalman_update(
+            observation_matrix,
+            noise,
+            prior_mean,
+            prior_cov,
+            _as_observation(observation, observation_matrix.shape[0]),
+        )
+        return gaussian_on(prior.grid, mean, cov)
+
+    return rule
+
+
 def _exact(likelihood: ObservationLikelihood) -> ApproximatePosterior:
     """The top rung: the exact posterior on the prior's grid."""
 
@@ -134,8 +164,9 @@ class Rung:
 
         Args:
             channel: the likelihood the reading is conditioned on. The plug-in rung
-                reads its matrix and its noise at the prior mean. The exact rung
-                reads its density and nothing else.
+                reads its matrix and its noise at the prior mean, the belief-smoothed
+                rung its matrix and its noise at every node of the prior. The exact
+                rung reads its density and nothing else.
 
         Returns:
             ``rule(prior, observation)``, the callable ``averaged_inference_gap``
@@ -146,6 +177,8 @@ class Rung:
         """
         if self.kind is RungKind.PLUG_IN:
             return _plug_in(channel)
+        if self.kind is RungKind.BELIEF_SMOOTHED:
+            return _belief_smoothed(channel)
         if self.kind is RungKind.EXACT:
             return _exact(channel)
         # Not a fallthrough: a kind added without a branch here would otherwise be

@@ -1,4 +1,4 @@
-"""The rule ladder: two rungs and the declared set they sit in.
+"""The rule ladder: three rungs and the declared set they sit in.
 
 Every rung is checked against the closed-form Kalman posterior where that is the exact
 filter, and against the averaged gap where it is not. The ladder itself is checked the
@@ -18,6 +18,9 @@ from cpomdp.reference.likelihood import (
 from cpomdp.reference.quadrature import GridDensity, QuadratureGrid, gaussian_on
 
 PLUG_IN = Rung(name="plug-in", kind=RungKind.PLUG_IN)
+BELIEF_SMOOTHED = Rung(name="belief-smoothed", kind=RungKind.BELIEF_SMOOTHED)
+GAUSSIAN_RUNGS = [PLUG_IN, BELIEF_SMOOTHED]
+GAUSSIAN_IDS = ["plug-in", "belief-smoothed"]
 
 PRIOR_MEAN, PRIOR_VAR = 0.3, 0.8
 STATES = QuadratureGrid(lower=[-14.0], upper=[14.0], counts=[1601])
@@ -28,6 +31,19 @@ def quadratic_noise(states, params):
     """R(x) = R0 + kappa * x1^2, one 1x1 covariance per state."""
     r0, kappa = params
     return (r0 + kappa * states[:, :1] ** 2)[:, :, None]
+
+
+def quartic_noise(states, params):
+    """R(x) = R0 + kappa * x1^4, whose average is not fixed by a density's moments."""
+    r0, kappa = params
+    return (r0 + kappa * states[:, :1] ** 4)[:, :, None]
+
+
+def bimodal_prior():
+    """An equal mixture of two unit-variance Gaussians at ±2, on the state grid."""
+    x = STATES.nodes[:, 0]
+    log_density = jnp.logaddexp(-0.5 * (x - 2.0) ** 2, -0.5 * (x + 2.0) ** 2)
+    return GridDensity(STATES, log_density).normalise()
 
 
 def kalman_update(mean, cov, c, r, y):
@@ -105,6 +121,61 @@ def test_the_plug_in_rung_reads_the_noise_at_the_prior_mean():
     np.testing.assert_allclose(np.asarray(belief.cov), cov, atol=1e-12)
 
 
+def test_the_belief_smoothed_rung_is_the_kalman_update_under_a_fixed_noise():
+    likelihood = FixedNoiseLikelihood([[1.0]], observation_noise=[[0.5]])
+    prior = gaussian_on(STATES, PRIOR_MEAN, PRIOR_VAR)
+    belief = BELIEF_SMOOTHED.build(likelihood)(prior, [1.7])
+    mean, cov = kalman_update(PRIOR_MEAN, PRIOR_VAR, 1.0, 0.5, 1.7)
+
+    assert isinstance(belief, GridDensity)
+    assert belief.grid.same_lattice_as(prior.grid)
+    np.testing.assert_allclose(np.asarray(belief.mean), mean, atol=1e-12)
+    np.testing.assert_allclose(np.asarray(belief.cov), cov, atol=1e-12)
+
+
+def test_the_belief_smoothed_rung_reads_the_noise_averaged_under_the_prior():
+    r0, kappa = 0.5, 1.0
+    likelihood = StateDependentNoiseLikelihood(
+        [[1.0]],
+        observation_noise_fn=quadratic_noise,
+        observation_noise_params=(r0, kappa),
+    )
+    prior = gaussian_on(STATES, PRIOR_MEAN, PRIOR_VAR)
+    belief = BELIEF_SMOOTHED.build(likelihood)(prior, [1.7])
+    # E[R0 + kappa x^2] under N(mu, var) in closed form.
+    mean, cov = kalman_update(
+        PRIOR_MEAN, PRIOR_VAR, 1.0, r0 + kappa * (PRIOR_MEAN**2 + PRIOR_VAR), 1.7
+    )
+
+    assert isinstance(belief, GridDensity)
+    np.testing.assert_allclose(np.asarray(belief.mean), mean, atol=1e-10)
+    np.testing.assert_allclose(np.asarray(belief.cov), cov, atol=1e-10)
+
+
+def test_the_belief_smoothed_rung_averages_under_the_density_it_is_handed():
+    r0, kappa = 0.5, 0.05
+    likelihood = StateDependentNoiseLikelihood(
+        [[1.0]],
+        observation_noise_fn=quartic_noise,
+        observation_noise_params=(r0, kappa),
+    )
+    prior = bimodal_prior()
+    prior_mean, prior_cov = (np.asarray(m) for m in prior.moments)
+    belief = BELIEF_SMOOTHED.build(likelihood)(prior, [1.7])
+
+    noise_at_nodes = likelihood.observation_noise_at(STATES.nodes)
+    under_prior = float(prior.expectation(noise_at_nodes)[0, 0])
+    under_moments = float(
+        gaussian_on(STATES, prior_mean, prior_cov).expectation(noise_at_nodes)[0, 0]
+    )
+    assert under_prior != pytest.approx(under_moments, rel=1e-2)
+
+    mean, cov = kalman_update(prior_mean, prior_cov, 1.0, under_prior, 1.7)
+    assert isinstance(belief, GridDensity)
+    np.testing.assert_allclose(np.asarray(belief.mean), mean, atol=1e-10)
+    np.testing.assert_allclose(np.asarray(belief.cov), cov, atol=1e-10)
+
+
 def test_the_exact_rung_is_the_exact_posterior():
     likelihood = StateDependentNoiseLikelihood(
         [[1.0]],
@@ -133,12 +204,13 @@ def test_a_rung_refuses_an_observation_of_the_wrong_length():
 # --- what each rung reports through the gap ----------------------------------------
 
 
-def test_the_plug_in_rung_closes_the_gap_under_a_fixed_noise():
+@pytest.mark.parametrize("rung", GAUSSIAN_RUNGS, ids=GAUSSIAN_IDS)
+def test_a_gaussian_rung_closes_the_gap_under_a_fixed_noise(rung):
     likelihood = FixedNoiseLikelihood([[1.0]], observation_noise=[[0.5]])
     gap = averaged_inference_gap(
         gaussian_on(STATES, PRIOR_MEAN, PRIOR_VAR),
         likelihood,
-        PLUG_IN.build(likelihood),
+        rung.build(likelihood),
         OBSERVATIONS,
     )
     assert gap.value < 1e-10
@@ -163,6 +235,27 @@ def test_the_plug_in_rung_reproduces_the_hand_rolled_rule_under_a_varying_noise(
     assert by_rung.value == pytest.approx(by_hand.value, rel=1e-9)
 
 
+def test_the_belief_smoothed_rung_reproduces_the_hand_rolled_rule_at_its_own_noise():
+    r0, kappa = 0.5, 1.0
+    likelihood = StateDependentNoiseLikelihood(
+        [[1.0]],
+        observation_noise_fn=quadratic_noise,
+        observation_noise_params=(r0, kappa),
+    )
+    prior = gaussian_on(STATES, PRIOR_MEAN, PRIOR_VAR)
+    by_rung = averaged_inference_gap(
+        prior, likelihood, BELIEF_SMOOTHED.build(likelihood), OBSERVATIONS
+    )
+    by_hand = averaged_inference_gap(
+        prior,
+        likelihood,
+        kalman_rule(r0 + kappa * (PRIOR_MEAN**2 + PRIOR_VAR)),
+        OBSERVATIONS,
+    )
+    assert by_rung.value > 1e-3
+    assert by_rung.value == pytest.approx(by_hand.value, rel=1e-9)
+
+
 def test_the_exact_rung_closes_the_gap_where_no_gaussian_rung_can():
     likelihood = StateDependentNoiseLikelihood(
         [[1.0]],
@@ -173,11 +266,16 @@ def test_the_exact_rung_closes_the_gap_where_no_gaussian_rung_can():
     exact = averaged_inference_gap(
         prior, likelihood, EXACT_RUNG.build(likelihood), OBSERVATIONS
     )
-    plug_in = averaged_inference_gap(
-        prior, likelihood, PLUG_IN.build(likelihood), OBSERVATIONS
-    )
+    gaussian = [
+        averaged_inference_gap(prior, likelihood, rung.build(likelihood), OBSERVATIONS)
+        for rung in GAUSSIAN_RUNGS
+    ]
     assert exact.value < 1e-10
-    assert plug_in.value > 1e-3
+    assert all(gap.value > 1e-3 for gap in gaussian)
+    # The two rungs read different noise, so they report different gaps. Which is
+    # smaller is R7's question and is not asserted here.
+    plug_in, smoothed = (gap.value for gap in gaussian)
+    assert plug_in != pytest.approx(smoothed, rel=1e-3)
 
 
 # --- the merge gate, part two: the reported gap does not move under o -> λo ---------
@@ -192,7 +290,9 @@ def scaled_observations(scale):
     )
 
 
-@pytest.mark.parametrize("rung", [PLUG_IN, EXACT_RUNG], ids=["plug-in", "exact"])
+@pytest.mark.parametrize(
+    "rung", [*GAUSSIAN_RUNGS, EXACT_RUNG], ids=[*GAUSSIAN_IDS, "exact"]
+)
 @pytest.mark.parametrize("scale", [0.25, 4.0])
 def test_the_reported_gap_is_invariant_to_the_observation_units(rung, scale):
     r0, kappa = 0.5, 1.0
@@ -255,11 +355,11 @@ def test_the_ladder_refuses_a_set_with_no_exact_reference():
 def test_build_all_pairs_every_rung_with_its_name_in_order():
     likelihood = FixedNoiseLikelihood([[1.0]], observation_noise=[[0.5]])
     prior = gaussian_on(STATES, PRIOR_MEAN, PRIOR_VAR)
-    ladder = RuleLadder(rungs=(EXACT_RUNG, PLUG_IN), version="test-1")
+    ladder = RuleLadder(rungs=(EXACT_RUNG, BELIEF_SMOOTHED, PLUG_IN), version="test-1")
 
     built = ladder.build_all(likelihood)
 
-    assert tuple(name for name, _ in built) == ("exact", "plug-in")
+    assert tuple(name for name, _ in built) == ("exact", "belief-smoothed", "plug-in")
     for _, rule in built:
         belief = rule(prior, [1.7])
         assert isinstance(belief, GridDensity)
