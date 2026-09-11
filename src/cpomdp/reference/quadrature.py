@@ -381,16 +381,22 @@ class GridDensity:
         return self.expectation(self.grid.nodes)
 
     @property
-    def cov(self) -> Float64[Array, "d d"]:
-        """Central second moment under the density, ``grid.ndim`` square.
+    def moments(self) -> tuple[Float64[Array, "d"], Float64[Array, "d d"]]:
+        """``(mean, cov)`` under the density, off one binding of the measure.
 
-        Contracts against the measure twice off one binding of it, rather than going
-        back through ``mean`` and paying for the normalisation a second time.
+        What a Gaussian rung reads from its prior. Contracts twice against one
+        measure rather than going back through ``mean`` and paying for the
+        normalisation a second time.
         """
         measure = self._node_measure()
         mean = _contract(measure, self.grid.nodes)
         centred = self.grid.nodes - mean
-        return _contract(measure, centred[:, :, None] * centred[:, None, :])
+        return mean, _contract(measure, centred[:, :, None] * centred[:, None, :])
+
+    @property
+    def cov(self) -> Float64[Array, "d d"]:
+        """Central second moment under the density, ``grid.ndim`` square."""
+        return self.moments[1]
 
     def kl_to(self, other: "GridDensity") -> Float64[Array, ""]:
         """``D_KL[self ‖ other]`` by quadrature, with both normalised first.

@@ -77,9 +77,9 @@ class Void:
     detail: str
 
 
-# What an approximate filter does with one reading: prior in, Gaussian belief out, on
-# the prior's own grid, or ``Void`` where it has none to give. The rule ladder's rungs
-# are the implementations of this.
+# What an approximate filter does with one reading: prior in, belief out, on the
+# prior's own grid, or ``Void`` where it has none to give. The rule ladder's rungs are
+# the implementations of this.
 ApproximatePosterior = Callable[[GridDensity, ArrayLike], GridDensity | Void]
 
 
@@ -194,8 +194,8 @@ def averaged_inference_gap(
         likelihood: the true observation likelihood. The same one produces ``p*`` and
             the exact posterior, since the gap is about the approximation only.
         approximate_posterior: the rule under test, called as
-            ``rule(prior, observation)`` and returning its Gaussian belief on the
-            prior's grid, or ``Void`` for a reading it could not converge on.
+            ``rule(prior, observation)`` and returning its belief on the prior's
+            grid, or ``Void`` for a reading it could not converge on.
         observation_grid: the box and resolution the average is taken over. Its
             dimension is the observation's, not the state's.
 

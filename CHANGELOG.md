@@ -133,6 +133,16 @@ no use of the readings beats it.
   node as NaN, sums its weight into `voided_mass`, and averages the answered readings
   normalised to their own mass, the conditional reading a clipped box already gets
   (ADR-060).
+- `cpomdp.reference.ladder` — the rule ladder. A `Rung` is a factory: the likelihood a
+  reading is conditioned on goes in, and the `rule(prior, observation)` callable the
+  gap measures comes out, with everything the rung reads from the model closed over at
+  construction. Two of ADR-056's five rungs are built: `PLUG_IN`, the Kalman update
+  with the noise read once at the prior mean, and `EXACT_RUNG`, the reference at the
+  top. `RuleLadder` is the declared, versioned set they sit in, refused without an exact
+  rung the same way an `InferenceSet` is refused without an exact cell. The Gaussian
+  rungs read the channel through `GaussianChannel`, a second small protocol beside
+  `ObservationLikelihood` that adds the observation matrix and `observation_noise_at`,
+  so the exact rung is not asked for either.
 
 - `warrantlib.CompletenessEvidence` (warrantlib 0.3.0) — the two predicates a `PROVED`
   completeness claim rests on, held once in a base, with a leaf per domain shape under

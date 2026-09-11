@@ -687,21 +687,27 @@ the report carries the weight.
 
 The hard item, and it is shared. P2-7 (D) moved to PR-7b with the ordering work.
 
-- [ ] Grid or quadrature filter over a low-dimensional latent, accepting an **arbitrary
+- [x] Grid or quadrature filter over a low-dimensional latent, accepting an **arbitrary
       pointwise-evaluable likelihood** rather than an R(x)-specific one. The generality is
       nearly free for a grid filter and is what lets later model classes reuse the engine.
-- [ ] Returns `E_p*[D_KL[q ‖ p(x|y)]]` directly.
-- [ ] Written against a **general transition kernel**, not a hard-coded linear-Gaussian
+      `cpomdp.reference.filtering.condition` over the `ObservationLikelihood` protocol.
+- [x] Returns `E_p*[D_KL[q ‖ p(x|y)]]` directly. `averaged_inference_gap`.
+- [x] Written against a **general transition kernel**, not a hard-coded linear-Gaussian
       one. If Q(x) falls out of the internal interfaces at no cost, let it. Do not
       document it, write examples against it, or claim it in release notes (issue #56).
-- [ ] Rule ladder, common interface, **five rungs** (ADR-056): plug-in `R(μ⁻)`,
+      `TransitionKernel` is the protocol and `LinearGaussianKernel` the one instance.
+- [~] Rule ladder, common interface, **five rungs** (ADR-056): plug-in `R(μ⁻)`,
       Spinello–Stilwell single-step (36) and iterated (35), both with the documented
       modification of ADR-057, belief-smoothed `E[R(x)]`, exact reference at the top.
       Swappable in one line. (36) is (35) at a budget of one, so declaring it separately
       costs almost nothing and buys two adjacent differences that isolate distinct
-      mechanisms.
-- [ ] The rule list is **declared and versioned**, like `FiniteActionSet`. A rung added
-      after results are seen shows up in the diff.
+      mechanisms. **Two of five built**, in `cpomdp.reference.ladder`: `RungKind.PLUG_IN`
+      and `RungKind.EXACT`. The three between them land behind the same `Rung` type,
+      belief-smoothed next and the two Spinello–Stilwell rungs after it.
+- [~] The rule list is **declared and versioned**, like `FiniteActionSet`. A rung added
+      after results are seen shows up in the diff. `RuleLadder` is the type, validated
+      as `InferenceSet` is. The declared constant is written once the fifth rung exists,
+      so no version ever names a ladder with a rung missing.
 The completeness certificate and the R6 gap move to PR-7b, which is where the numbers
 they rest on get measured.
 
@@ -712,10 +718,15 @@ The substrate is built. `QuadratureGrid` and `GridDensity` carry `mean`, `cov` a
 and `averaged_inference_gap` takes the rule under test as `approximate_posterior`. The
 ladder is what is missing. Nothing in `src/cpomdp` implements that callable.
 
-- [ ] **A rung is a factory.** Model in, `ApproximatePosterior` out. The seam passes only
+- [x] **A rung is a factory.** Model in, `ApproximatePosterior` out. The seam passes only
       `(prior, observation)`, so the matrices, the noise function and the budget are closed
       over at construction. This is the front-loading the energy constraint asks for: the
-      fixed-sensor rung stays one matrix-vector product per reading.
+      fixed-sensor rung stays one matrix-vector product per reading. `Rung.build` takes
+      the likelihood and not `LinearGaussianModel`: the reference may reach no first-party
+      type beyond the validator (`tests/test_module_boundary.py`), and the likelihood
+      already carries the matrix and the noise. The Gaussian rungs read those through
+      `GaussianChannel`. Per reading the plug-in rung pays one solve of the innovation
+      covariance plus the render onto the lattice, and the render is every rung's.
 - [x] **One public way to put a Gaussian on a lattice.** `gaussian_on` in
       `cpomdp.reference.quadrature`. The copies in `tests/test_reference_gap.py` and
       `research.checks.gap_identity` now call it.
