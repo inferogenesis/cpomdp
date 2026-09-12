@@ -128,17 +128,3 @@ checks = [
   "gap_identity.reverse_is_not_forward",
   "gap_identity.vanishes_at_the_truth",
 ]
-
-[suites.ladder]
-entry_point = "research.checks.ladder:run_checks"
-checks = [
-  "ladder.belief_smoothed_to_exact",
-  "ladder.certificate",
-  "ladder.iterated_to_belief_smoothed",
-  "ladder.iterated_voids",
-  "ladder.plug_in_to_single_step",
-  "ladder.r6_signal",
-  "ladder.route6_derivative_terms",
-  "ladder.route6_iteration",
-  "ladder.single_step_to_iterated",
-]

@@ -169,7 +169,11 @@ no use of the readings beats it.
   orderings fire at the binding cell. The belief-smoothed rung sits with the plug-in,
   two to four decades above both Spinello–Stilwell rungs, and above the registered
   window those two fall behind the plug-in. Both route 6 mechanisms resolve at every
-  spread. The battery's RESULT of 2026-09-12 carries the table.
+  spread. The battery's RESULT of 2026-09-12 carries the table. A tenth row reads the
+  lattice at every spread on both lattices against the two bars `T` was registered
+  under. The suite stays out of the manifest, since it runs the reference engine and
+  three of its rows fire by recorded result. The slow test path pins its ids and
+  outcomes instead.
 - `research.spinello_stilwell.gap_rescaling` — route 1's empirical half, on the
   reported gap. The printed scheme and ADR-057's modification run through the gap at
   four unit choices, at rung (36)'s budget of one and at rung (35)'s declared budget.

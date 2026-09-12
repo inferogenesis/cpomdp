@@ -48,6 +48,35 @@ def test_a_run_that_spends_the_budget_answers_void():
     assert answer.iterations == 2
 
 
+def test_a_run_settling_on_its_last_allowed_step_is_accepted():
+    # The rung accepts a run whose last step fell under the tolerance, whatever the
+    # count. The stand-in has to read it the same way, so the budget is set to the
+    # exact count a settled run takes and then one less.
+    _, tolerance = gap_rescaling.declared_budget()
+    noise_at = gap_rescaling.scheme.quadratic_noise(
+        CASE["base_noise"], CASE["curvature"]
+    )
+    _, _, settled = gap_rescaling.scheme.iterate_with(
+        1.7,
+        CASE["prior_mean"],
+        CASE["prior_variance"],
+        noise_at,
+        1.0,
+        tolerance,
+        200,
+        log_block=False,
+    )
+    assert 1 < settled < 200
+    exact = gap_rescaling.scheme_rule(gap_rescaling.MODIFIED, 1.0, settled, tolerance)
+    assert isinstance(exact(prior(), [1.7]), GridDensity)
+    short = gap_rescaling.scheme_rule(
+        gap_rescaling.MODIFIED, 1.0, settled - 1, tolerance
+    )
+    answer = short(prior(), [1.7])
+    assert isinstance(answer, Void)
+    assert answer.iterations == settled - 1
+
+
 def test_a_single_step_never_answers_void():
     rule = gap_rescaling.scheme_rule(
         gap_rescaling.PRINTED, 1.0, *gap_rescaling.SINGLE_STEP

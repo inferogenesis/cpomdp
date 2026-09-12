@@ -122,6 +122,24 @@ def test_the_threshold_is_the_sum_of_bars_since_nothing_is_cancelled():
     assert comparisons[0].threshold == pytest.approx(one + other)
 
 
+def test_every_comparison_carries_the_sum_of_bars_beside_the_threshold():
+    comparisons = ladder.compare(decreasing(), "plug-in", "modified-single-step")
+    assert all(c.sum_of_bars == c.threshold for c in comparisons)
+    assert ladder.coincidence(comparisons) == (2, 2)
+
+
+def test_the_coincidence_count_sees_a_threshold_below_the_sum_of_bars():
+    # What a common-mode part would do once PR-8 certifies the error's shape: the
+    # threshold drops under the sum of bars, and the row has to say at how many
+    # spreads it did rather than assert in prose that they coincide.
+    apart = ladder.PairAtSpread(0.1, Order.ABOVE, 1e-3, 1e-6, 2e-6, False)
+    same = ladder.PairAtSpread(0.2, Order.ABOVE, 1e-3, 2e-6, 2e-6, False)
+    voided = ladder.PairAtSpread(
+        0.3, Order.NOT_RESOLVED, math.nan, math.nan, math.nan, True
+    )
+    assert ladder.coincidence([apart, same, voided]) == (1, 2)
+
+
 def test_a_mixed_pair_survives_where_it_resolves():
     values = {rung: (10.0**-k, 1.0 - 1e-3 * k) for k, rung in enumerate(NAMES)}
     wide_at_second = ladder.Sweep(
@@ -168,8 +186,8 @@ def reports():
     return {r.check_id: r for r in ladder.run_checks(sweep, reference=by_hand(sweep))}
 
 
-def test_the_suite_reports_nine_rows(reports):
-    assert len(reports) == 9
+def test_the_suite_reports_ten_rows(reports):
+    assert len(reports) == 10
 
 
 def test_every_ordering_row_is_computed_and_corroborated(reports):
@@ -178,7 +196,7 @@ def test_every_ordering_row_is_computed_and_corroborated(reports):
         assert row.tier is Tier.COMPUTED
         assert row.warrant is Warrant.CORROBORATED
         assert row.outcome is Outcome.NOT_TRIGGERED
-        assert "threshold equals the sum of bars" in row.detail
+        assert "threshold equals the sum of bars at 2/2 resolved spreads" in row.detail
 
 
 def test_route_6_reads_visible_where_a_pair_resolves(reports):
@@ -206,6 +224,46 @@ def test_the_void_row_fires_on_a_voided_spread():
     rows = {r.check_id: r for r in ladder.run_checks(voided, reference=by_hand(voided))}
     assert rows["ladder.iterated_voids"].outcome is Outcome.FIRED
     assert "voided 1.00e-09" in rows["ladder.iterated_voids"].detail
+
+
+def test_the_r6_row_reads_the_reference_once_per_spread():
+    sweep = decreasing()
+    calls = []
+
+    def counting(spread):
+        calls.append(spread)
+        return by_hand(sweep)(spread)
+
+    ladder.run_checks(sweep, reference=counting)
+    assert calls == list(TWO_SPREADS)
+
+
+def test_the_lattice_row_holds_on_a_box_that_caught_everything(reports):
+    row = reports["ladder.lattice"]
+    assert row.outcome is Outcome.NOT_TRIGGERED
+    assert row.tier is Tier.COMPUTED
+    assert "the same for every rung at a spread" in row.detail
+
+
+def test_the_lattice_row_fires_on_a_clipped_box():
+    sweep = decreasing()
+    cells = dict(sweep.cells)
+    first, second = cells["belief-smoothed"]
+    clipped = ladder.Reading(
+        gap=second.value, predictive_mass=0.9, worst_edge_ratio=0.0, voided_mass=0.0
+    )
+    cells["belief-smoothed"] = (
+        first,
+        ladder.Cell("belief-smoothed", second.spread, clipped, second.fine),
+    )
+    rows = {
+        r.check_id: r
+        for r in ladder.run_checks(ladder.Sweep(cells), reference=by_hand(sweep))
+    }
+    row = rows["ladder.lattice"]
+    assert row.outcome is Outcome.FIRED
+    assert "caught 0.9000000000 of p* at worst" in row.detail
+    assert f"σ={second.spread:.4f}" in row.detail
 
 
 def test_the_r6_row_fires_when_the_engines_disagree():
@@ -265,9 +323,42 @@ def _live():
     return tuple(ladder.run_checks())
 
 
+#: The suite is not in the manifest (its module docstring says why), so the ids are
+#: pinned here: one dropped or renamed fails by name on the merge and release path.
+RECORDED_IDS = (
+    "ladder.belief_smoothed_to_exact",
+    "ladder.certificate",
+    "ladder.iterated_to_belief_smoothed",
+    "ladder.iterated_voids",
+    "ladder.lattice",
+    "ladder.plug_in_to_single_step",
+    "ladder.r6_signal",
+    "ladder.route6_derivative_terms",
+    "ladder.route6_iteration",
+    "ladder.single_step_to_iterated",
+)
+
+#: The outcomes the battery's RESULT of 2026-09-12 records. Three orderings fired,
+#: and a row that stops firing is a moved result: the battery is amended before this
+#: tuple is.
+RECORDED_FIRED = (
+    "ladder.iterated_to_belief_smoothed",
+    "ladder.plug_in_to_single_step",
+    "ladder.single_step_to_iterated",
+)
+
+
 @pytest.mark.slow
-def test_the_live_run_reads_every_rung_and_agrees_with_the_threshold_engine():
+def test_the_live_run_reports_the_recorded_ids():
+    assert tuple(sorted(r.check_id for r in _live())) == RECORDED_IDS
+
+
+@pytest.mark.slow
+def test_the_live_run_reads_as_the_result_records():
     rows = {r.check_id: r for r in _live()}
-    assert rows["ladder.r6_signal"].outcome is Outcome.NOT_TRIGGERED
+    fired = tuple(sorted(k for k, r in rows.items() if r.outcome is Outcome.FIRED))
+    assert fired == RECORDED_FIRED
+    for check_id in set(RECORDED_IDS) - set(RECORDED_FIRED):
+        assert rows[check_id].outcome is Outcome.NOT_TRIGGERED, check_id
+    assert rows["ladder.certificate"].warrant is Warrant.PROVED
     assert rows["ladder.certificate"].evidence[0].visited == LADDER.size
-    assert all(r.outcome is not Outcome.NOT_APPLICABLE for r in rows.values())

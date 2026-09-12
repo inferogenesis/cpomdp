@@ -17,12 +17,22 @@ per pair reads the orders together: `FIRED` on a resolved `BELOW` anywhere,
 Two rows read route 6 off the same numbers: whether the derivative-of-covariance terms
 and the iteration are each visible as a resolved difference at one spread or more.
 
+One row reads the lattice: the predictive mass the observation box caught and the
+exact posterior's edge ratio, at every spread on both lattices, against the two bars
+the threshold exploration held the same lattice to. Both are the model's and not the
+rung's, so they are identical across rungs at a spread and are printed once per
+spread.
+
 The plug-in rung's row is the R6 signal PR-8 compares against `T`. It prints the gap
 beside `T` at every spread and asserts agreement with the threshold exploration's
 engine, since both run one engine on one lattice. It renders no verdict on the gate.
 
 `cpomdp` is imported inside the functions that need it, as the other suites do, since
-it is not a declared dependency of this package.
+it is not a declared dependency of this package. Unlike the other suites this one is
+not declared in `research/registered_checks.toml`: it runs the reference engine for
+minutes and its numbers move with `cpomdp.reference`, which the symbolic job's path
+filter cannot see (ADR-055). `tests/test_ladder_checks.py` pins its ids and its
+recorded outcomes on the slow test path instead.
 
 Run it::
 
@@ -69,13 +79,16 @@ if TYPE_CHECKING:
     from cpomdp.resolution import Bar, Bounded, Order
 
 __all__ = [
+    "EDGE_CEILING",
     "ENGINE_TOLERANCE",
+    "MASS_FLOOR",
     "PAIRS",
     "PROVENANCE",
     "Cell",
     "PairAtSpread",
     "Reading",
     "Sweep",
+    "coincidence",
     "compare",
     "main",
     "measure",
@@ -102,6 +115,16 @@ PROVENANCE = Provenance(
 
 ENGINE_TOLERANCE = 1e-12
 """Relative agreement the plug-in row asks of the threshold exploration's engine."""
+
+MASS_FLOOR = 1.0 - 1e-8
+"""The least of `p*` the observation box may leave uncaught, at any spread.
+
+The bar `research.explorations.threshold` held the declared lattice to when `T` was
+registered, so the ordering is read on a box the registration already accepted.
+"""
+
+EDGE_CEILING = 1e-12
+"""The most of its peak the exact posterior may put at the state box's surface."""
 
 PAIRS: tuple[tuple[str, str, str], ...] = (
     ("plug-in", "modified-single-step", "plug_in_to_single_step"),
@@ -208,6 +231,8 @@ class PairAtSpread:
         order: how the lower rung's gap sits against the higher rung's.
         difference: lower minus higher, in nats. NaN where a rung voided.
         threshold: what the difference had to exceed. NaN where a rung voided.
+        sum_of_bars: the conservative rule's threshold, beside it. The two coincide
+            while nothing is carried as common mode, and part once PR-8's shape is.
         voided: whether the comparison was set aside for a voided reading.
     """
 
@@ -215,6 +240,7 @@ class PairAtSpread:
     order: Order
     difference: float
     threshold: float
+    sum_of_bars: float
     voided: bool
 
 
@@ -306,7 +332,9 @@ def compare(sweep: Sweep, lower: str, higher: str) -> tuple[PairAtSpread, ...]:
     for a, b in zip(sweep.cells[lower], sweep.cells[higher], strict=True):
         if a.voided or b.voided:
             comparisons.append(
-                PairAtSpread(a.spread, Order.NOT_RESOLVED, math.nan, math.nan, True)
+                PairAtSpread(
+                    a.spread, Order.NOT_RESOLVED, math.nan, math.nan, math.nan, True
+                )
             )
             continue
         resolution = resolve(a.bounded, b.bounded)
@@ -316,10 +344,22 @@ def compare(sweep: Sweep, lower: str, higher: str) -> tuple[PairAtSpread, ...]:
                 resolution.order,
                 resolution.difference.value,
                 resolution.threshold,
+                resolution.sum_of_bars,
                 False,
             )
         )
     return tuple(comparisons)
+
+
+def coincidence(comparisons: Sequence[PairAtSpread]) -> tuple[int, int]:
+    """How many resolved comparisons had a threshold equal to their sum of bars.
+
+    Returns:
+        The count where they coincide, and the count of resolved comparisons.
+    """
+    resolved = [c for c in comparisons if not c.voided]
+    same = sum(1 for c in resolved if c.threshold == c.sum_of_bars)
+    return same, len(resolved)
 
 
 def outcome_of(comparisons: Sequence[PairAtSpread]) -> Outcome:
@@ -351,6 +391,7 @@ def _ordering_row(sweep: Sweep, lower: str, higher: str, key: str) -> CheckRepor
         (abs(c.difference) / c.threshold for c in resolved if c.threshold > 0.0),
         default=math.nan,
     )
+    same, total = coincidence(comparisons)
     return CheckReport(
         name=f"{lower} → {higher}: the gap decreases",
         check_id=f"ladder.{key}",
@@ -361,7 +402,8 @@ def _ordering_row(sweep: Sweep, lower: str, higher: str, key: str) -> CheckRepor
             f"above at {letters.count('A')}/{len(letters)} spreads, not resolved at "
             f"{letters.count('N')}, below at {letters.count('B')}, voided at "
             f"{letters.count('V')}; smallest |difference|/threshold {margin:.2e}; "
-            f"threshold equals the sum of bars throughout; by spread {letters}"
+            f"threshold equals the sum of bars at {same}/{total} resolved spreads; "
+            f"by spread {letters}"
         ),
     )
 
@@ -369,8 +411,10 @@ def _ordering_row(sweep: Sweep, lower: str, higher: str, key: str) -> CheckRepor
 def _route_6_row(
     sweep: Sweep, lower: str, higher: str, key: str, name: str
 ) -> CheckReport:
+    from cpomdp.resolution import Order
+
     comparisons = compare(sweep, lower, higher)
-    seen = sum(1 for c in comparisons if c.order.name != "NOT_RESOLVED")
+    seen = sum(1 for c in comparisons if c.order is not Order.NOT_RESOLVED)
     return CheckReport(
         name=name,
         check_id=f"ladder.{key}",
@@ -411,10 +455,8 @@ def _plug_in_by_threshold_engine(spread: float) -> float:
 
 def _r6_row(sweep: Sweep, reference: Callable[[float], float]) -> CheckReport:
     cells = sweep.cells["plug-in"]
-    worst = max(
-        abs(cell.value - reference(cell.spread)) / abs(reference(cell.spread))
-        for cell in cells
-    )
+    by_reference = [(cell, reference(cell.spread)) for cell in cells]
+    worst = max(abs(cell.value - other) / abs(other) for cell, other in by_reference)
     above = [cell.spread for cell in cells if cell.value > THRESHOLD]
     first = f"from σ={min(above):.4f}" if above else "at none"
     agrees = worst <= ENGINE_TOLERANCE
@@ -428,6 +470,36 @@ def _r6_row(sweep: Sweep, reference: Callable[[float], float]) -> CheckReport:
             f"agrees with research.explorations.threshold to {worst:.1e} relative; "
             f"exceeds T = {THRESHOLD:.3e} nats at {len(above)}/{len(cells)} spreads, "
             f"{first}; no verdict on the gate, which is PR-8's"
+        ),
+    )
+
+
+def _lattice_row(sweep: Sweep) -> CheckReport:
+    readings = [
+        (cell, reading)
+        for cells in sweep.cells.values()
+        for cell in cells
+        for reading in (cell.declared, cell.fine)
+    ]
+    least_mass, at_mass = min(
+        ((r.predictive_mass, c.spread) for c, r in readings), key=lambda x: x[0]
+    )
+    most_edge, at_edge = max(
+        ((r.worst_edge_ratio, c.spread) for c, r in readings), key=lambda x: x[0]
+    )
+    held = least_mass >= MASS_FLOOR and most_edge <= EDGE_CEILING
+    return CheckReport(
+        name="the lattice held at every spread, on both lattices",
+        check_id="ladder.lattice",
+        warrant=Warrant.CORROBORATED,
+        outcome=Outcome.NOT_TRIGGERED if held else Outcome.FIRED,
+        tier=Tier.COMPUTED,
+        detail=(
+            f"the observation box caught {least_mass:.10f} of p* at worst, at "
+            f"σ={at_mass:.4f}, against {MASS_FLOOR:.10f}; the exact posterior put "
+            f"{most_edge:.1e} of its peak at the state box's surface at worst, at "
+            f"σ={at_edge:.4f}, against {EDGE_CEILING:.0e}; both are the model's and "
+            "the same for every rung at a spread"
         ),
     )
 
@@ -473,7 +545,7 @@ def run_checks(
 
     Returns:
         Every check's report: four ordering rows, two route 6 rows, the void row,
-        the R6 row and the certificate.
+        the lattice row, the R6 row and the certificate.
     """
     sweep = measure() if sweep is None else sweep
     reports = [_ordering_row(sweep, lower, higher, key) for lower, higher, key in PAIRS]
@@ -494,22 +566,41 @@ def run_checks(
         )
     )
     reports.append(_voids_row(sweep))
+    reports.append(_lattice_row(sweep))
     reports.append(_r6_row(sweep, reference))
     reports.append(_certificate_row(sweep))
     return reports
 
 
 def _print_table(sweep: Sweep) -> None:
-    """The five gaps with their bars and the four orders, one line per spread."""
+    """The gaps with their bars, the orders, and the lattice, one line per spread.
+
+    The lattice columns are the declared lattice's, and they are the model's rather
+    than any rung's, so one pair per spread says it for all five.
+    """
     names = sweep.names
-    print("σ        " + "  ".join(f"{name[:12]:>24}" for name in names) + "   orders")
+    header = "  ".join(f"{name:>22}" for name in names)
+    print(f"{'σ':<6}   {header}   orders   1 - mass   edge")
     pairs = [compare(sweep, lower, higher) for lower, higher, _ in PAIRS]
     for index, spread in enumerate(SPREADS):
         cells = [sweep.cells[name][index] for name in names]
         values = "  ".join(f"{c.value:.6e} ± {c.bar.own:.1e}" for c in cells)
         orders = " ".join(_letters([pair[index]]) for pair in pairs)
-        print(f"{spread:.4f}   {values}   {orders}")
+        lattice = cells[0].declared
+        print(
+            f"{spread:.4f}   {values}   {orders}   {1.0 - lattice.predictive_mass:.1e}"
+            f"   {lattice.worst_edge_ratio:.1e}"
+        )
     print(f"\nT = {THRESHOLD:.6e} nats; A above, B below, N not resolved, V voided")
+    print("\nthe threshold beside the sum of bars, per pair and spread")
+    for (lower, higher, _), comparisons in zip(PAIRS, pairs, strict=True):
+        same, total = coincidence(comparisons)
+        print(f"  {lower} → {higher}: equal at {same}/{total} resolved spreads")
+        for c in comparisons:
+            print(
+                f"    σ={c.spread:.4f}  difference {c.difference:+.3e}  threshold "
+                f"{c.threshold:.2e}  sum of bars {c.sum_of_bars:.2e}"
+            )
 
 
 def main(argv: Sequence[str] | None = None) -> int:

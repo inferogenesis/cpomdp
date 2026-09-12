@@ -406,6 +406,47 @@ PR-9. This is one cell of one family under a measured bar. A prediction refuted 
 only be wider than the measured one and nothing in it can turn a `BELOW` into an
 `ABOVE`. What PR-9 can change is which spreads count.
 
+### AMENDMENT 2026-09-12: two registered shapes the suite as landed did not produce, a row it did not register, and the three refutations held in the manifest
+
+Review of the pull request carrying the RESULT above found the suite at `bf34ea0`
+short of the PRE-REGISTRATION in two places. Both are produced from the commit that
+carries this entry, and no number in the RESULT moves.
+
+**`sum_of_bars` beside `threshold`.** The registration says the report prints the
+two side by side so a reader can see they coincide. The suite as landed discarded the
+sum and wrote the sentence into every ordering row's detail as prose. Now each
+comparison carries both, the row's detail counts the spreads at which they are equal,
+and the table prints the pair per spread. Read on the RESULT's cells: equal at 15 of 15
+resolved spreads on every pair, as the conservative bar makes them. Once PR-8's shape
+puts a common-mode part on the bar, the count is what will change, and the row will
+say so rather than assert the sentence.
+
+**`predictive_mass` and `worst_edge_ratio` beside each value.** The registration says
+both are printed beside each rung's gap. The suite recorded them and read neither. Now
+the table prints them per spread, and a row the registration did not name,
+`ladder.lattice`, holds every spread on both lattices to the two bars the threshold
+exploration held the declared lattice to when `T` was registered: the observation box
+catches `p*` to within `1e−8`, and the exact posterior puts under `1e−12` of its peak
+at the state box's surface. Both quantities are the model's and not the rung's, so
+they are identical across the five rungs at a spread. On the RESULT's cells the box
+caught `1 − 1.1e−11` of `p*` at worst and the edge ratio was `9.3e−17` at worst, both
+at `σ = 0.7`. The row is added after the reading and reads the instrument, not the
+claim: it can fire only on the lattice, and the ordering rows would then stand on a
+box the registration had not accepted.
+
+**The suite is not declared in the manifest, and the registration's "Where it runs"
+line said it would be.** ADR-055 moved the manifest's reconciliation to a job that
+runs only when `research/` changes, on the premise that its suites import no `cpomdp`
+and take no measurement. This suite runs the reference engine for minutes and its
+numbers move with `cpomdp.reference`, which that job's filter cannot see, and three of
+its rows fire by registered result, which that job's plugin reads as failures. So it
+stays out of `research/registered_checks.toml`. Its ten ids and its recorded outcomes
+are pinned in `tests/test_ladder_checks.py` on the slow test path, where a dropped id
+or a row that stops firing fails by name on the merge and release runs. The
+certificate, its provenance and the ancestry test are the suite's own and are
+unchanged by where the ids are reconciled. A moved result amends this file before it
+touches that test.
+
 **D2 · scaling exponent** · SEVERE · R8 · toolbox C, F · tier `BOUNDED` · **PR-9 · v0.5**, gated on GATE-D4
 
 - Predict: `gap ∝ (curvature of R) × (belief spread)²`. Sweep both factors

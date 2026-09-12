@@ -128,14 +128,26 @@ def scheme_rule(
     Returns:
         ``rule(prior, observation)``, answering `Void` where the run did not settle.
     """
-    noise_at = scheme.quadratic_noise(CASE["base_noise"], CASE["curvature"])
+    quadratic = scheme.quadratic_noise(CASE["base_noise"], CASE["curvature"])
 
     def rule(prior: GridDensity, observation: ArrayLike) -> GridDensity | Void:
         from cpomdp.reference.gap import Void
         from cpomdp.reference.quadrature import gaussian_on
 
+        # The scheme reads the noise once per step, so the count of reads is the
+        # step a failure happened on, which the scheme cannot report itself.
+        reads = 0
+
+        def noise_at(state: float) -> tuple[float, float]:
+            nonlocal reads
+            reads += 1
+            return quadratic(state)
+
         mean, cov = prior.moments
         try:
+            # One step past the budget, so a run settling on its last allowed step
+            # is told apart from one that spent them all: the rung accepts the first
+            # and declines the second, and `taken` alone cannot say which happened.
             estimate, variance, taken = scheme.iterate_with(
                 float(np.asarray(observation)[0]),
                 float(mean[0]),
@@ -143,13 +155,15 @@ def scheme_rule(
                 noise_at,
                 scale,
                 tolerance,
-                budget,
+                budget + 1 if budget > 1 else 1,
                 log_block=variant.log_block,
             )
         except ZeroDivisionError:
-            return Void(iterations=0, detail="the printed curvature met ln(noise) = 0")
-        if budget > 1 and taken == budget:
-            return Void(iterations=taken, detail="budget spent above the tolerance")
+            return Void(
+                iterations=reads, detail="the printed curvature met ln(noise) = 0"
+            )
+        if taken > budget:
+            return Void(iterations=budget, detail="budget spent above the tolerance")
         if not (math.isfinite(estimate) and math.isfinite(variance) and variance > 0):
             return Void(iterations=taken, detail="the iterate left the reals")
         return gaussian_on(prior.grid, estimate, variance)

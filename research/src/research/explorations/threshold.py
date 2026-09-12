@@ -44,10 +44,13 @@ from research.explorations.operating_point import (
 from research.explorations.sigma_max_edge import c2, c4, c6
 
 __all__ = [
+    "BASE_NOISE",
     "DECADES_FLOOR",
     "DECLARED",
     "FINE",
     "FINER",
+    "KAPPA",
+    "RIDGE_MEAN",
     "ROUNDOFF_FLOOR",
     "SPREADS",
     "ErrorField",
@@ -58,6 +61,7 @@ __all__ = [
     "measure_field",
     "measure_gap",
     "optimise",
+    "quadratic_noise",
     "series_gap",
     "shift",
     "threshold",
