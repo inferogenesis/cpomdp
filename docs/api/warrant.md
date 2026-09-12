@@ -176,14 +176,14 @@ checks = [
   "series_kernel.first_cumulant_is_the_mean",
 ]
 
-[suites.ladder]
-entry_point = "research.checks.ladder:run_checks"
+[suites.example]
+entry_point = "research.checks.example:run_checks"
 checks = [
-  "ladder.belief_smoothed_to_exact",
-  "ladder.plug_in_to_single_step",
+  "example.holds",
+  "example.refuted_on_record",
 ]
 refuted = [
-  "ladder.plug_in_to_single_step",
+  "example.refuted_on_record",
 ]
 ```
 

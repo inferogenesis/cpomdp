@@ -8,8 +8,12 @@
 #
 # Adding a suite: add its [suites.<name>] table with an entry_point and no checks,
 # then rewrite.
+#
+# A check whose registered result is a refutation is listed under `refuted`, by hand
+# and after the result is on record. It then reconciles by firing, and fails by name
+# if it stops. A rewrite keeps the list.
 
-schema_version = "1.0"
+schema_version = "1.1"
 
 [suites.series_kernel]
 entry_point = "research.checks.series_kernel:run_checks"

@@ -87,7 +87,7 @@ reported when the file was written.
 
 ```toml
 # Generated. Do not edit by hand.
-schema_version = "1.0"
+schema_version = "1.1"
 
 [suites.series_kernel]
 entry_point = "research.checks.series_kernel:run_checks"
