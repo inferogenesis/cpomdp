@@ -779,7 +779,7 @@ Run so far:
 
 - [x] Route 1's symbolic half. Seven of eight terms survive an observation rescaling and
       the log-determinant term does not. The empirical half, a rescaling sweep of the
-      reported **gap**, still needs the rung.
+      reported **gap**, ran on 2026-09-12 once the rung existed, and both halves hold.
 - [x] Route 2. Four of the six declared families never dip below `R = 1`. Two of them,
       `1 + x²` and `1.5 + 0.5 sin(x)`, attain it exactly, so a units-only repair would
       have had to move the pole and not merely widen a margin. One `λ` clears every
@@ -821,24 +821,52 @@ under `o → λo` (ADR-057). Each rung evaluates. The ladder enumerates complete
 Split from PR-7 because PR-8 waits on one number in here and should not also wait on a
 ladder review.
 
-- [ ] **Route 1's empirical half**, changed in purpose by ADR-057. It measures what the
-      modification cost against the printed scheme at the declared budget.
-- [ ] **Route 6, rung one against (36).** Two adjacent differences separate the
+- [x] **Route 1's empirical half**, changed in purpose by ADR-057. It measures what the
+      modification cost against the printed scheme at the declared budget. Run in
+      `research.spinello_stilwell.gap_rescaling`: the modification's reported gap is
+      unit-free to `2e−14` at both budgets, the printed scheme's moves by four per cent
+      at rung (36) and reaches the same fixed point at the declared budget wherever it
+      converges, and the scalar scheme matches the ladder's rungs at unit scale. Q1 of
+      the rung record, RESOLVED 2026-09-12.
+- [x] **Route 6, rung one against (36).** Two adjacent differences separate the
       derivative-of-covariance terms from the iteration. If they do not separate, five
-      rungs was the wrong declaration and the record has to say so.
-- [ ] **The completeness certificate** over the declared five. A finite declared set is
-      what lets R7 reach a decided ordering rather than a sampled one.
-- [ ] **The R6 gap printed at `COMPUTED`, before certification.** GATE-D4 compares the
+      rungs was the wrong declaration and the record has to say so. Run: both resolve at
+      all fifteen spreads, the terms by two to four decades and the iteration by a part
+      in `10³` to `10⁵` of that. Five rungs stands. Q5 of the rung record, RESOLVED
+      2026-09-12.
+- [x] **The completeness certificate** over the declared five. A finite declared set is
+      what lets R7 reach a decided ordering rather than a sampled one. A one-axis
+      `ProductCompletenessCertificate` over `LADDER`, `PROVED`, in `ladder.certificate`.
+- [x] **The R6 gap printed at `COMPUTED`, before certification.** GATE-D4 compares the
       certified bound against that number by the pre-agreed factor, so the gate cannot be
       evaluated until the uncertified signal exists. This is the item that blocks PR-8.
-- [ ] **Warrants for anything certified.** A check suite declared in
+      `ladder.r6_signal` prints it at each spread beside `T`, bit-identical to the
+      threshold exploration's field. It exceeds `T` from `σ = 0.1706` up. PR-8 is
+      unblocked.
+- [x] **Warrants for anything certified.** A check suite declared in
       `research/registered_checks.toml`, with the registration commit ahead of the
-      measuring commit for every `PROVED` row.
+      measuring commit for every `PROVED` row. `research.checks.ladder`, ten ids. The
+      one `PROVED` row carries `PROVENANCE`, and `tests/test_provenance_ordering.py`
+      asks git that its registration precedes its measurement. Not declared in the
+      manifest, against this item's wording: the suite runs the reference engine and
+      its numbers move with `cpomdp`, which ADR-055's symbolic job cannot see, and its
+      three fired rows would read there as failures. `tests/test_ladder_checks.py`
+      pins the ids and the recorded outcomes on the slow path instead. The battery's
+      AMENDMENT of 2026-09-12 records it.
 - [ ] Route 7, section IV's constants, rides here or nowhere. It fixes what Paper 2 may
-      say about the published runs and decides nothing the rung needs.
+      say about the published runs and decides nothing the rung needs. Parked as #117:
+      the arithmetic needs the journal version's section IV, and the only open copy,
+      the 2008 technical report, has no simulation section.
 
 **Merge gate:** the ordering is reported with its bars, and an adjacent pair whose bars
 overlap reports `NOT_RESOLVED` rather than a direction.
+
+**Read once, 2026-09-12.** Three of the four registered orderings fire at the binding
+cell. The belief-smoothed rung sits with the plug-in, two to four decades above both
+Spinello–Stilwell rungs, at every spread but the largest. Above the registered window
+those two fall behind the plug-in. Only belief-smoothed to exact holds throughout.
+Every pair resolved at every spread and nothing voided. The battery's RESULT of
+2026-09-12 under D1 carries the table. The D1 test proper is PR-9's, under PR-8's bar.
 
 ## PR-8 — Certified discretisation bound · GATE-D4 · tag v0.4.5
 

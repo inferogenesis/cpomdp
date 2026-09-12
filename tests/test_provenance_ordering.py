@@ -17,7 +17,7 @@ import subprocess
 
 import pytest
 
-from research.checks import gap_identity, gap_series, series_kernel
+from research.checks import gap_identity, gap_series, ladder, series_kernel
 from research.checks.series_kernel import Source
 from warrantlib import Provenance
 
@@ -52,10 +52,11 @@ def _sources():
     # reduction in it rests on the same registration. Walked the same way regardless:
     # what matters is that a declared registration is reachable from here, not which
     # shape carries it.
-    for name in dir(gap_identity):
-        value = getattr(gap_identity, name)
-        if isinstance(value, Provenance):
-            found.append((f"gap_identity.{name}", value))
+    for module in (gap_identity, ladder):
+        for name in dir(module):
+            value = getattr(module, name)
+            if isinstance(value, Provenance):
+                found.append((f"{module.__name__.rsplit('.', 1)[-1]}.{name}", value))
     for name in dir(crossover):
         value = getattr(crossover, name)
         if isinstance(value, Provenance):

@@ -101,6 +101,49 @@ What this does not settle. The gap itself has still never been computed through 
 so the test as this question words it, on the reported gap rather than on the estimate,
 remains unrun. Routes 3, 5, 6 and 7 are untouched.
 
+### RESOLVED 2026-09-12: route 1's empirical half is run, and the test Q1 asks for holds on the gap
+
+`research.spinello_stilwell.gap_rescaling` runs the test this question words, on the
+quantity the ladder reports and not on the estimate: `E_p*[KL(q ‖ p(x|y))]` over the
+symbolic half's worked case, prior `N(1, 0.04)` under `R(x) = 1 + x²`, at
+`λ ∈ {1, ½, 3, 7}`, on the lattice `T` is registered under. The printed scheme and the
+modification each run at a budget of one, rung (36), and at the rung's declared 64 at
+`1e−12`, rung (35). The exact posterior and the observation box stay in native units,
+since the divergence is over the state, and `λ` reaches only the scheme.
+
+| scheme | budget | `λ = 1` | `λ = ½` | `λ = 3` | `λ = 7` |
+| --- | --- | --- | --- | --- | --- |
+| printed | 1 | 8.565375e−04 | 8.946782e−04 | 8.673353e−04 | 8.688809e−04 |
+| printed | 64 | 8.470280e−04 | 8.470280e−04 † | 8.470280e−04 | 8.470280e−04 |
+| modified | 1 | 8.716589e−04 | 8.716589e−04 | 8.716589e−04 | 8.716589e−04 |
+| modified | 64 | 8.470280e−04 | 8.470280e−04 | 8.470280e−04 | 8.470280e−04 |
+
+† declined `4.6e−12` of the predictive weight. At this unit choice the pole sits below
+the operating point, and a few far readings spend the budget against it. The value is
+the conditional reading ADR-060 defines.
+
+**The modification is unit-free on the gap.** Relative spread across the four unit
+choices `3.7e−15` at budget one and `1.3e−14` at 64. Both at roundoff.
+
+**The printed scheme is not, at rung (36).** Relative spread `4.4e−2`. The reported gap
+of the single-step rung moves by four per cent with the observation's units, and it
+reads below the modification at `λ = 1` and above it at `λ = ½`. Run to the declared
+budget it converges to the modification's fixed point wherever it converges, to
+`8e−14` relative. That is the AMENDMENT of 2026-09-04 read on the gap: the term moves a
+reported number at a finite budget and nothing at the fixed point.
+
+**The scalar scheme is the rung.** At `λ = 1` the modification through the scalar
+transcription agrees with `SINGLE_STEP_RUNG` to `2.5e−16` relative and with
+`ITERATED_RUNG` to `0.0`, on the same grids. That is the one check on the probe's
+wrapper that does not go through the wrapper.
+
+**What the modification costs at rung (36), in native units.** `−1.51e−05` nats, the
+printed scheme reading `1.7%` below the modification at `λ = 1`. The figure is a
+property of the unit choice and not of the scheme, since at `λ = ½` the sign reverses.
+That reversal is the reason the term left.
+
+Both halves of the test are now run and both hold.
+
 ## Q2. Ask whether the pole is a units artefact before writing any guard
 
 `R⁽ᶥ⁾` is singular at `σ = 1`. Under rescaling the pole sits at `σ = λ⁻²`, so the unit
@@ -282,6 +325,57 @@ distinct mechanisms.
 
 **This has to be decided before any R7 number exists.** A rung added after an ordering
 is seen is what standing rule 7 refuses.
+
+### ROUTE 2026-09-12: route 6 is registered, and what "separately visible" means
+
+The five rungs exist. Route 6 asks whether the two mechanisms Q5 separated are visible
+as two differences, and this entry fixes how that is read before the numbers exist. The
+numbers come from the ordering's first reading, pre-registered under D1 of
+`research/fep_falsification_battery.md` on this date: five gaps at fifteen spreads on
+`d4-family-v1` at the binding cell, each with a measured refinement bar, adjacent pairs
+resolved through `cpomdp.resolution`.
+
+Two pairs answer route 6. `plug-in → modified-single-step` is the
+derivative-of-covariance terms alone: both are one update from the prior mean, and the
+second adds `(1/2σ²)∇ᵀσ∇σ` to the posterior precision and the `∇σ` terms to the score
+and the curvature, and nothing else. `modified-single-step → modified-iterated` is the
+iteration alone: both run the same step, and the second runs it to the declared
+tolerance.
+
+**Separately visible** means each pair resolves, in either direction, at one or more of
+the fifteen spreads. The count of spreads at which each resolves is printed. A pair that
+resolves nowhere is a mechanism the ladder cannot see on this family at these bars, and
+then five rungs was the wrong declaration for this family. The record says so in a
+RESOLVED entry here, and D1's prediction is read over the rungs that remain
+distinguishable. Nothing leaves `LADDER`: a rung deleted after the numbers is what
+standing rule 7 refuses, in the other direction.
+
+Direction is not route 6's question. Which way each pair falls is D1's, and it is
+registered there.
+
+### RESOLVED 2026-09-12: route 6 is run, and both mechanisms are visible
+
+The ordering's first reading, `research.checks.ladder` at `bf34ea0` against the
+registration at `ac9fbc5`, resolves both pairs at all fifteen spreads on `d4-family-v1`
+at the binding cell. The RESULT under D1 of `research/fep_falsification_battery.md`
+carries the table.
+
+`plug-in → modified-single-step` resolves at `1.7e8` times its bar or more. The
+derivative-of-covariance terms move the gap by two decades at `σ = 0.7` and by four at
+`σ = 0.005`. `modified-single-step → modified-iterated` resolves at `1.4` times its bar
+at `σ = 0.005`, where one step is within `1.2e−16` nats of the fixed point, and at
+`1e³` times or more from `σ = 0.03` up. The iteration moves the gap by a part in `10³`
+to `10⁵` of what the terms moved it.
+
+So the two adjacent differences Q5 asked for are two differences, and five rungs was
+the right declaration. Which way each falls is D1's, and the RESULT records that both
+reverse above the registered window.
+
+One thing the reading adds to Q6. The belief-smoothed rung sits within a part in `10⁴`
+of the plug-in at every spread but the largest, two to four decades above the
+single-step rung. Averaging `R` under the prior does not recover what rung one
+discards, since `E[R(x)]` carries no `∇σ` either. The blindness Q6 names is the
+fourth rung's too.
 
 ## Q6. What rung one is blind to
 

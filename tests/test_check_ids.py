@@ -23,6 +23,7 @@ import pytest
 from research.checks import (
     gap_identity,
     gap_series,
+    ladder,
     log_ratio_series,
     series_kernel,
 )
@@ -35,6 +36,7 @@ _SUITES = {
     "log_ratio_series": log_ratio_series.run_checks,
     "gap_series": gap_series.run_checks,
     "gap_identity": gap_identity.run_checks,
+    "ladder": ladder.run_checks,
 }
 
 #: Reading a suite's check ids runs it. `gap_series` derives `c₂`, `c₄` and `c₆`
@@ -52,6 +54,8 @@ _SUITE_CASES = [
     # 24s: the symbolic identities settle in about a second, and the cross-engine
     # comparison runs two full quadrature engines at four spreads.
     pytest.param("gap_identity", marks=pytest.mark.slow),
+    # Minutes: five rungs at fifteen spreads on two lattices.
+    pytest.param("ladder", marks=pytest.mark.slow),
 ]
 
 
