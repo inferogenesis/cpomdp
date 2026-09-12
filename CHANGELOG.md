@@ -157,6 +157,15 @@ no use of the readings beats it.
   `T = 5.962e−4` nats is registered at `D = 0.5`, `f = 0.078157` under a declared
   lattice (`research/gate_d4_registration.md`, PRE-REGISTRATION and RESULT of
   2026-09-11).
+- `research.checks.ladder` — the ladder's first reading. Five rungs on `d4-family-v1`
+  at the binding cell, at the fifteen spreads and on the two lattices `T` was registered
+  under, each gap with a bar measured by refinement and carried whole as its own. One
+  row per adjacent pair resolves the ordering through `cpomdp.resolution` at every
+  spread, `NOT_RESOLVED` where the bars overlap, and every ordering row is `COMPUTED`
+  since the bar is measured and not certified. Two rows read route 6 off the same
+  numbers, one reports the R6 signal beside `T` with no verdict on the gate, and the
+  completeness certificate is a one-axis product over the declared ladder. Registered
+  under D1 of the battery before it was read.
 
 - `warrantlib.CompletenessEvidence` (warrantlib 0.3.0) — the two predicates a `PROVED`
   completeness claim rests on, held once in a base, with a leaf per domain shape under
