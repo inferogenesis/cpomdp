@@ -48,7 +48,7 @@ from typing import TYPE_CHECKING, Any, Literal
 import pytest
 
 from warrantlib._serialise import report_from_dict, report_to_dict
-from warrantlib._vocabulary import CheckReport, Outcome, check_summary
+from warrantlib._vocabulary import _TESTED_HERE, CheckReport, Outcome, check_summary
 from warrantlib.manifest import Manifest, Suite
 
 if TYPE_CHECKING:
@@ -397,26 +397,36 @@ def pytest_runtest_makereport(
     setattr(report, _REPORT_ATTRIBUTE, [report_to_dict(one) for one in records])
     if report.when == "call" and not call.excinfo:
         if getattr(item, "refuted", False):
-            _apply_refutation(report, records)
+            _apply_refutation(report, item, records)
         else:
             _apply_outcome(report, item, records)
     return report
 
 
-def _apply_refutation(report: TestReport, records: list[CheckReport]) -> None:
+def _apply_refutation(
+    report: TestReport, item: pytest.Item, records: list[CheckReport]
+) -> None:
     """Hold a registered refutation: the check firing passes, anything else fails.
 
     Args:
         report: the call phase's report, passing so far.
+        item: the manifest item, for the location a skip reason carries.
         records: the one record a manifest item carries.
     """
     (record,) = records
+    if record.outcome not in _TESTED_HERE:
+        # Void by construction, or measured elsewhere: nothing ran that could have
+        # fired, so the declaration has nothing to hold and the item skips as any
+        # other check with that outcome does.
+        _apply_outcome(report, item, records)
+        return
     fired = record.outcome is Outcome.FIRED
     status = _REFUTED if fired else _NOT_REFUTED
     report.outcome = _REFUTED_STATUS[status][0]
     setattr(report, _STATUS_ATTRIBUTE, status)
-    setattr(report, _REFUTED_ATTRIBUTE, record.check_id)
-    if not fired:
+    if fired:
+        setattr(report, _REFUTED_ATTRIBUTE, record.check_id)
+    else:
         report.longrepr = (
             f"{record.check_id}: registered as refuted and reported "
             f"{record.outcome.value}: {record.detail}. A refutation that stopped "
@@ -575,7 +585,9 @@ class _WarrantRun:
             terminalreporter.write_line(line)
         if self.refuted:
             # The fired count above includes these, and they passed. Say which, so a
-            # reader is not left reconciling a fired count against a green run.
+            # reader is not left reconciling a fired count against a green run. Set
+            # only where the check fired, so a refutation that stopped firing is
+            # never listed as held.
             terminalreporter.write_line(
                 "registered as refuted, and held: " + ", ".join(sorted(self.refuted))
             )

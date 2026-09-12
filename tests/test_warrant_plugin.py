@@ -290,14 +290,20 @@ from warrantlib import CheckReport, Outcome, Tier, Warrant
 
 REPORTED = {ids}
 FIRED = {fired}
+NOT_RUN = {not_run}
+
+def _outcome(check_id):
+    if check_id in NOT_RUN:
+        return Outcome.NOT_RUN_HERE
+    return Outcome.FIRED if check_id in FIRED else Outcome.NOT_TRIGGERED
 
 def run_checks():
     return [
         CheckReport(
             name="a check",
             check_id=check_id,
-            warrant=Warrant.CORROBORATED,
-            outcome=Outcome.FIRED if check_id in FIRED else Outcome.NOT_TRIGGERED,
+            warrant=None if check_id in NOT_RUN else Warrant.CORROBORATED,
+            outcome=_outcome(check_id),
             tier=Tier.COMPUTED,
             detail="why it reports what it reports",
         )
@@ -306,13 +312,18 @@ def run_checks():
 """
 
 
-def _manifest_suite(pytester, *, declared, reported, fired=(), refuted=()):
+def _manifest_suite(pytester, *, declared, reported, fired=(), not_run=(), refuted=()):
     """Write a suite reporting `reported` and a manifest declaring `declared`.
 
-    `fired` names the ids the suite reports as FIRED, and `refuted` the ids the
-    manifest declares as a registered refutation.
+    `fired` names the ids the suite reports as FIRED, `not_run` those it reports as
+    NOT_RUN_HERE, and `refuted` the ids the manifest declares as a registered
+    refutation.
     """
-    pytester.makepyfile(a_suite=_SUITE.format(ids=list(reported), fired=list(fired)))
+    pytester.makepyfile(
+        a_suite=_SUITE.format(
+            ids=list(reported), fired=list(fired), not_run=list(not_run)
+        )
+    )
     checks = "".join(f'  "{check}",\n' for check in declared)
     held = "".join(f'  "{check}",\n' for check in refuted)
     refuted_block = f"refuted = [\n{held}]\n" if refuted else ""
@@ -392,7 +403,9 @@ class TestTheManifestBecomesItems:
         # Front-loading the repo requires: a suite deriving a coefficient symbolically
         # costs tens of seconds, and one run per declared check multiplies that.
         pytester.makepyfile(
-            a_suite=_SUITE.format(ids=["a.one", "a.two", "a.three"], fired=[])
+            a_suite=_SUITE.format(
+                ids=["a.one", "a.two", "a.three"], fired=[], not_run=[]
+            )
             + "\nRUNS = []\n"
             "_original = run_checks\n"
             "def run_checks():\n"
@@ -467,8 +480,8 @@ def test_it():
 
     def test_the_reconciled_suites_are_named_not_counted(self, pytester):
         # A bare count leaves the reader working out which items they were.
-        pytester.makepyfile(a_suite=_SUITE.format(ids=["a.one"], fired=[]))
-        pytester.makepyfile(b_suite=_SUITE.format(ids=["b.one"], fired=[]))
+        pytester.makepyfile(a_suite=_SUITE.format(ids=["a.one"], fired=[], not_run=[]))
+        pytester.makepyfile(b_suite=_SUITE.format(ids=["b.one"], fired=[], not_run=[]))
         pytester.makefile(
             ".toml",
             registered_checks=(
@@ -538,6 +551,23 @@ class TestARegisteredRefutationIsHeld:
             ],
             consecutive=False,
         )
+        assert "registered as refuted, and held" not in result.stdout.str()
+
+    def test_a_declared_refutation_that_never_ran_skips(self, pytester):
+        # Nothing ran that could have fired, so there is nothing to hold and the item
+        # skips as any check with that outcome does, rather than failing as a
+        # refutation that stopped.
+        path = _manifest_suite(
+            pytester,
+            declared=["a.one", "a.two"],
+            reported=["a.one", "a.two"],
+            not_run=["a.two"],
+            refuted=["a.two"],
+        )
+        result = pytester.runpytest(path, "-v")
+        result.assert_outcomes(passed=2, skipped=1)
+        result.stdout.fnmatch_lines(["*a::two NOT RUN HERE*"])
+        assert "registered as refuted, and held" not in result.stdout.str()
 
     def test_a_fire_nobody_registered_still_fails(self, pytester):
         path = _manifest_suite(
