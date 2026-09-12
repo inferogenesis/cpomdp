@@ -849,7 +849,9 @@ ladder review.
       one `PROVED` row carries `PROVENANCE`, and `tests/test_provenance_ordering.py`
       asks git that its registration precedes its measurement.
 - [ ] Route 7, section IV's constants, rides here or nowhere. It fixes what Paper 2 may
-      say about the published runs and decides nothing the rung needs.
+      say about the published runs and decides nothing the rung needs. Parked as #117:
+      the arithmetic needs the journal version's section IV, and the only open copy,
+      the 2008 technical report, has no simulation section.
 
 **Merge gate:** the ordering is reported with its bars, and an adjacent pair whose bars
 overlap reports `NOT_RESOLVED` rather than a direction.
