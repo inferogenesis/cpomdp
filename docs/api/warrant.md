@@ -168,12 +168,22 @@ untouched, so the gate passes on a suite that is now measuring something else.
 every id it reported when the file was written.
 
 ```toml
-schema_version = "1.0"
+schema_version = "1.1"
 
 [suites.series_kernel]
 entry_point = "research.checks.series_kernel:run_checks"
 checks = [
   "series_kernel.first_cumulant_is_the_mean",
+]
+
+[suites.ladder]
+entry_point = "research.checks.ladder:run_checks"
+checks = [
+  "ladder.belief_smoothed_to_exact",
+  "ladder.plug_in_to_single_step",
+]
+refuted = [
+  "ladder.plug_in_to_single_step",
 ]
 ```
 
@@ -196,6 +206,14 @@ reason, which is the half a reader acts on.
 A check that fires reads like any other failing test. It gets a `FAILURES` block naming
 the check and carrying its reason, a row in the short summary, and the run's accounting
 prints underneath with the fired count in it. No flag is needed for that.
+
+A check whose registered result is a refutation is listed under `refuted`. Firing is
+then what reconciles, rendered `REFUTED`, and anything else fails by name as
+`NOT REFUTED`, since a refutation that stopped firing is a change on the same terms as
+a check that stopped reporting. The check's own report is untouched: the accounting
+still counts it as fired, and a line beneath names what was held. The list is written
+by hand, after the result is on record elsewhere, and a rewrite keeps it for every id
+the run still reports.
 
 pytest's own total counts those reconciliation items and the warrant accounting does not,
 because they are not checks and carry no warrant. Seventy declared checks across three

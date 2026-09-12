@@ -4263,3 +4263,59 @@ dimension. Nothing the rungs compute or report changes.
   the build plan's item on `R'` cites this entry.
 - ADR-062's sentence stands as written, superseded here, since `DECISIONS.md` is
   append-only.
+
+## ADR-064 — a registered refutation is declared in the manifest, and the symbolic job holds it
+
+**Date:** 2026-09-12
+**Status:** Accepted
+**Extends:** ADR-045, which made the manifest the declared inventory of a suite's
+checks, and ADR-055, which requires a change to `research/checks/` to keep the symbolic
+job green
+
+The ladder's first reading refuted three of the four orderings D1 registered. The
+battery's RESULT of 2026-09-12 records that, landing with pull request #118. `warrantlib`'s pytest plugin maps every
+`FIRED` to a pytest failure, and the symbolic job reconciles the manifest through that
+plugin on every push to `main`. So the result the battery exists to produce was also
+the thing that would turn `main` red and keep it red.
+
+### Decision
+
+A manifest suite may list ids under `refuted`. For a check so listed, firing is what
+reconciles and anything else fails by name, as `NOT REFUTED`. The check's own report is
+unchanged: the warrant summary still counts it as fired, and a line beneath names what
+was held. The manifest's schema is `1.1`, `Suite` carries the list, a rewrite keeps it
+for every id the run still reports, and `--layout-only` sorts it with the rest.
+
+The list is written by hand, and only after the refutation is on record in a durable
+file with its provenance. The manifest line cites nothing itself. Removing an id from
+the list is the reviewed diff a moved result has to produce, and it is not made before
+the registration that recorded the refutation gains the entry that says the result
+moved.
+
+### Why not the alternatives
+
+- **Leave the job red.** A job that is red by design cannot say when something else
+  went wrong in it. ADR-055's rule exists because the symbolic job is the only place a
+  fired check is a failure.
+- **Take the suite out of the manifest.** The manifest is what fails by name on a check
+  that stops reporting. A suite reading a result is the one whose checks most need
+  that.
+- **Invert the claim so the row passes.** The row's claim is the registered
+  prediction. Rewording it to fit the outcome is the move standing rule 2 refuses.
+
+This is pytest's strict `xfail` in the manifest's own vocabulary: an expected failure
+that passes by failing and fails by passing, declared beside the check rather than
+inside it, so the suite's code says nothing about which way it is expected to go.
+
+### Consequences
+
+- `warrantlib` is 0.4.0. Reading a manifest at schema `1.0` is refused, and the one
+  manifest in this tree carries `1.1`.
+- The symbolic job passes on the ladder's three fired rows, each rendered `REFUTED`,
+  and fails on any of them ceasing to fire.
+- pytest's tally no longer implies nothing fired. The warrant summary carries the
+  fired count and the held line, and those are what a reader of the job's output acts
+  on.
+- The registration that a `refuted` entry rests on is the battery's RESULT of
+  2026-09-12 under D1 and its AMENDMENT of the same date, which names the three ids.
+  Both land with #118, which stacks on the release of this field.

@@ -158,6 +158,13 @@ no use of the readings beats it.
   lattice (`research/gate_d4_registration.md`, PRE-REGISTRATION and RESULT of
   2026-09-11).
 
+- `Suite.refuted` (warrantlib 0.4.0) — a manifest suite may list the checks whose
+  registered result is a refutation. The pytest plugin passes such a check by firing,
+  rendered `REFUTED`, and fails it by name as `NOT REFUTED` otherwise, so a job that
+  reconciles the manifest holds a recorded refutation instead of going red on it. The
+  warrant summary still counts the check as fired and names what was held. Written by
+  hand after the result is on record, kept by a rewrite, manifest schema `1.1`
+  (ADR-064).
 - `warrantlib.CompletenessEvidence` (warrantlib 0.3.0) — the two predicates a `PROVED`
   completeness claim rests on, held once in a base, with a leaf per domain shape under
   it. `CompletenessCertificate` keeps its name, its fields and its rendering, and is now
