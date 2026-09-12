@@ -283,6 +283,33 @@ distinct mechanisms.
 **This has to be decided before any R7 number exists.** A rung added after an ordering
 is seen is what standing rule 7 refuses.
 
+### ROUTE 2026-09-12: route 6 is registered, and what "separately visible" means
+
+The five rungs exist. Route 6 asks whether the two mechanisms Q5 separated are visible
+as two differences, and this entry fixes how that is read before the numbers exist. The
+numbers come from the ordering's first reading, pre-registered under D1 of
+`research/fep_falsification_battery.md` on this date: five gaps at fifteen spreads on
+`d4-family-v1` at the binding cell, each with a measured refinement bar, adjacent pairs
+resolved through `cpomdp.resolution`.
+
+Two pairs answer route 6. `plug-in → modified-single-step` is the
+derivative-of-covariance terms alone: both are one update from the prior mean, and the
+second adds `(1/2σ²)∇ᵀσ∇σ` to the posterior precision and the `∇σ` terms to the score
+and the curvature, and nothing else. `modified-single-step → modified-iterated` is the
+iteration alone: both run the same step, and the second runs it to the declared
+tolerance.
+
+**Separately visible** means each pair resolves, in either direction, at one or more of
+the fifteen spreads. The count of spreads at which each resolves is printed. A pair that
+resolves nowhere is a mechanism the ladder cannot see on this family at these bars, and
+then five rungs was the wrong declaration for this family. The record says so in a
+RESOLVED entry here, and D1's prediction is read over the rungs that remain
+distinguishable. Nothing leaves `LADDER`: a rung deleted after the numbers is what
+standing rule 7 refuses, in the other direction.
+
+Direction is not route 6's question. Which way each pair falls is D1's, and it is
+registered there.
+
 ## Q6. What rung one is blind to
 
 The term rung one discards, `(1/2σ²)∇ᵀσ∇σ`, is non-zero exactly when the noise varies

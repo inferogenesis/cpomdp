@@ -241,6 +241,76 @@ its falsifier are unchanged, and "four computed numbers" in the warrant constrai
 five. Registered here before any rung exists, since an ordering
 seen before the set is fixed is what standing rule 7 refuses.
 
+### PRE-REGISTRATION 2026-09-12: the ordering's first reading, at `COMPUTED`, before the gate
+
+Written before any rung's gap is read beside another's. The five rungs exist in
+`cpomdp.reference.ladder` and GATE-D4 has not been evaluated, so this is not the D1
+test. It is the ordering the test will run on, read once at `COMPUTED` with measured
+bars, so that PR-8 has the R6 signal it compares against `T` and so that the direction
+is on record before a certified bar exists. The D1 test proper runs in PR-9 under PR-8's
+certified bars, and nothing here pre-empts it.
+
+**The cells.** `d4-family-v1` at the binding cell of the GATE-D4 registration:
+`R(x) = 1 + 0.1·x²`, `μ* = √10`, fifteen prior spreads even in `ln σ` on `[0.005, 0.7]`,
+on the lattice `T` is registered under and on the fine lattice beside it. These are
+`research.explorations.threshold`'s `SPREADS`, `DECLARED` and `FINE`, read from there
+rather than restated, so the ordering is measured where `T` was.
+
+**What each rung reports.** `averaged_inference_gap` on the declared lattice, one value
+per rung per spread, with `predictive_mass`, `worst_edge_ratio` and `voided_mass` printed
+beside it. The exact rung's value is whatever the engine returns for a rule that is the
+reference, and it is reported as measured rather than written as zero.
+
+**The bar, before certification.** A value's bar is its own refinement difference,
+`|gap_declared − gap_fine|`, floored at `100 × 2⁻⁵²` of the value so that no bar is
+claimed below what the arithmetic resolves. It is carried in `cpomdp.resolution` as
+`Bar(common_mode=0, own=…)`: the whole difference as the quantity's own, nothing
+cancelled between rungs. The five gaps are read against one exact posterior and a
+common-mode part exists. Claiming it needs the error's shape, which is what PR-8
+certifies. Until then the conservative reading is the registered one, and the report
+prints `threshold` and `sum_of_bars` side by side so a reader can see they coincide.
+
+**The minimum separation that counts.** For an adjacent pair at one spread,
+`resolution_threshold(bar_lower, bar_higher)`, and nothing else. A pair whose
+`|difference|` does not exceed it reports `NOT_RESOLVED` at that spread.
+
+**The prediction, and the falsifier.** Along `plug-in → modified-single-step →
+modified-iterated → belief-smoothed → exact` the gap decreases, so each adjacent pair
+reads `ABOVE` wherever it resolves, the lower rung's gap above the higher rung's. One
+row per pair, whose outcome over the fifteen spreads is `FIRED` if the pair resolves
+`BELOW` at any spread, `NOT_RESOLVED` if it resolves at none, and `NOT_TRIGGERED`
+otherwise. The row lists the order at every spread. Every ordering row is `COMPUTED`,
+since its bar is measured and not certified.
+
+**`VOID`.** The iterated rung may decline a reading. Predicted: none on this family at
+this curvature, since the budget survey found exhaustion only at `κ = 100` and on the
+bounded sine family. Where `voided_mass` is above the roundoff floor at a spread, the
+two pairs the iterated rung sits in read `NOT_RESOLVED` at that spread rather than on
+the conditional value, and the mass is printed.
+
+**The R6 signal.** The plug-in rung's row prints its gap at each spread beside
+`T = 5.962e−4` nats, and the spreads at which the gap exceeds `T`. It asserts agreement
+with `research.explorations.threshold.measure_gap` at every spread to `1e−12` relative,
+since both run one engine on one lattice and a disagreement would be a defect in one of
+them. It renders no verdict on the gate. That is PR-8's.
+
+**The completeness certificate.** A `ProductCompletenessCertificate` over one axis,
+`rung`, of size five at `LADDER.version`, `visited` being the rungs whose gap was read
+at every spread. `PROVED` when the two agree, with a `Provenance` whose `registered_at`
+is the commit this entry lands in and whose `measured_at` is the commit the suite lands
+in, both filled in the RESULT.
+
+**Where it runs.** `research.checks.ladder`, declared in
+`research/registered_checks.toml`:
+
+```text
+uv run --no-sync python -m research.checks.ladder --check
+```
+
+**What would change this.** A different family, lattice or spread set re-registers this
+entry. Route 6's reading of the same numbers is registered under Q5 of
+`research/spinello_stilwell_rung.md`, dated with this one.
+
 **D2 · scaling exponent** · SEVERE · R8 · toolbox C, F · tier `BOUNDED` · **PR-9 · v0.5**, gated on GATE-D4
 
 - Predict: `gap ∝ (curvature of R) × (belief spread)²`. Sweep both factors
