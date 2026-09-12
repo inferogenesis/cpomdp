@@ -186,6 +186,7 @@
     "reportinfo",
     "roled",
     "rootdir",
+    "roundoff",
     "rtol",
     "runpytest",
     "runtest",

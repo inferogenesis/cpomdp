@@ -170,6 +170,12 @@ no use of the readings beats it.
   two to four decades above both Spinello–Stilwell rungs, and above the registered
   window those two fall behind the plug-in. Both route 6 mechanisms resolve at every
   spread. The battery's RESULT of 2026-09-12 carries the table.
+- `research.spinello_stilwell.gap_rescaling` — route 1's empirical half, on the
+  reported gap. The printed scheme and ADR-057's modification run through the gap at
+  four unit choices, at rung (36)'s budget of one and at rung (35)'s declared budget.
+  The modification's gap is unit-free to roundoff at both. The printed scheme's moves
+  by four per cent at a budget of one and reaches the same fixed point at the declared
+  budget wherever it converges. Q1 of the rung record closes on it.
 
 - `warrantlib.CompletenessEvidence` (warrantlib 0.3.0) — the two predicates a `PROVED`
   completeness claim rests on, held once in a base, with a leaf per domain shape under

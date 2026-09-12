@@ -101,6 +101,49 @@ What this does not settle. The gap itself has still never been computed through 
 so the test as this question words it, on the reported gap rather than on the estimate,
 remains unrun. Routes 3, 5, 6 and 7 are untouched.
 
+### RESOLVED 2026-09-12: route 1's empirical half is run, and the test Q1 asks for holds on the gap
+
+`research.spinello_stilwell.gap_rescaling` runs the test this question words, on the
+quantity the ladder reports and not on the estimate: `E_p*[KL(q ‖ p(x|y))]` over the
+symbolic half's worked case, prior `N(1, 0.04)` under `R(x) = 1 + x²`, at
+`λ ∈ {1, ½, 3, 7}`, on the lattice `T` is registered under. The printed scheme and the
+modification each run at a budget of one, rung (36), and at the rung's declared 64 at
+`1e−12`, rung (35). The exact posterior and the observation box stay in native units,
+since the divergence is over the state, and `λ` reaches only the scheme.
+
+| scheme | budget | `λ = 1` | `λ = ½` | `λ = 3` | `λ = 7` |
+| --- | --- | --- | --- | --- | --- |
+| printed | 1 | 8.565375e−04 | 8.946782e−04 | 8.673353e−04 | 8.688809e−04 |
+| printed | 64 | 8.470280e−04 | 8.470280e−04 † | 8.470280e−04 | 8.470280e−04 |
+| modified | 1 | 8.716589e−04 | 8.716589e−04 | 8.716589e−04 | 8.716589e−04 |
+| modified | 64 | 8.470280e−04 | 8.470280e−04 | 8.470280e−04 | 8.470280e−04 |
+
+† declined `4.6e−12` of the predictive weight. At this unit choice the pole sits below
+the operating point, and a few far readings spend the budget against it. The value is
+the conditional reading ADR-060 defines.
+
+**The modification is unit-free on the gap.** Relative spread across the four unit
+choices `3.7e−15` at budget one and `1.3e−14` at 64. Both at roundoff.
+
+**The printed scheme is not, at rung (36).** Relative spread `4.4e−2`. The reported gap
+of the single-step rung moves by four per cent with the observation's units, and it
+reads below the modification at `λ = 1` and above it at `λ = ½`. Run to the declared
+budget it converges to the modification's fixed point wherever it converges, to
+`8e−14` relative. That is the AMENDMENT of 2026-09-04 read on the gap: the term moves a
+reported number at a finite budget and nothing at the fixed point.
+
+**The scalar scheme is the rung.** At `λ = 1` the modification through the scalar
+transcription agrees with `SINGLE_STEP_RUNG` to `2.5e−16` relative and with
+`ITERATED_RUNG` to `0.0`, on the same grids. That is the one check on the probe's
+wrapper that does not go through the wrapper.
+
+**What the modification costs at rung (36), in native units.** `−1.51e−05` nats, the
+printed scheme reading `1.7%` below the modification at `λ = 1`. The figure is a
+property of the unit choice and not of the scheme, since at `λ = ½` the sign reverses.
+That reversal is the reason the term left.
+
+Both halves of the test are now run and both hold.
+
 ## Q2. Ask whether the pole is a units artefact before writing any guard
 
 `R⁽ᶥ⁾` is singular at `σ = 1`. Under rescaling the pole sits at `σ = λ⁻²`, so the unit

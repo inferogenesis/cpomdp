@@ -779,7 +779,7 @@ Run so far:
 
 - [x] Route 1's symbolic half. Seven of eight terms survive an observation rescaling and
       the log-determinant term does not. The empirical half, a rescaling sweep of the
-      reported **gap**, still needs the rung.
+      reported **gap**, ran on 2026-09-12 once the rung existed, and both halves hold.
 - [x] Route 2. Four of the six declared families never dip below `R = 1`. Two of them,
       `1 + x²` and `1.5 + 0.5 sin(x)`, attain it exactly, so a units-only repair would
       have had to move the pole and not merely widen a margin. One `λ` clears every
@@ -821,8 +821,13 @@ under `o → λo` (ADR-057). Each rung evaluates. The ladder enumerates complete
 Split from PR-7 because PR-8 waits on one number in here and should not also wait on a
 ladder review.
 
-- [ ] **Route 1's empirical half**, changed in purpose by ADR-057. It measures what the
-      modification cost against the printed scheme at the declared budget.
+- [x] **Route 1's empirical half**, changed in purpose by ADR-057. It measures what the
+      modification cost against the printed scheme at the declared budget. Run in
+      `research.spinello_stilwell.gap_rescaling`: the modification's reported gap is
+      unit-free to `1e−14` at both budgets, the printed scheme's moves by four per cent
+      at rung (36) and reaches the same fixed point at the declared budget wherever it
+      converges, and the scalar scheme matches the ladder's rungs at unit scale. Q1 of
+      the rung record, RESOLVED 2026-09-12.
 - [x] **Route 6, rung one against (36).** Two adjacent differences separate the
       derivative-of-covariance terms from the iteration. If they do not separate, five
       rungs was the wrong declaration and the record has to say so. Run: both resolve at
