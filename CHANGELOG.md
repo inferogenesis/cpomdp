@@ -157,6 +157,29 @@ no use of the readings beats it.
   `T = 5.962e−4` nats is registered at `D = 0.5`, `f = 0.078157` under a declared
   lattice (`research/gate_d4_registration.md`, PRE-REGISTRATION and RESULT of
   2026-09-11).
+- `research.checks.ladder` — the ladder's first reading. Five rungs on `d4-family-v1`
+  at the binding cell, at the fifteen spreads and on the two lattices `T` was registered
+  under, each gap with a bar measured by refinement and carried whole as its own. One
+  row per adjacent pair resolves the ordering through `cpomdp.resolution` at every
+  spread, `NOT_RESOLVED` where the bars overlap, and every ordering row is `COMPUTED`
+  since the bar is measured and not certified. Two rows read route 6 off the same
+  numbers, one reports the R6 signal beside `T` with no verdict on the gate, and the
+  completeness certificate is a one-axis product over the declared ladder. Registered
+  under D1 of the battery before it was read. Read once: three of the four registered
+  orderings fire at the binding cell. The belief-smoothed rung sits with the plug-in,
+  two to four decades above both Spinello–Stilwell rungs, and above the registered
+  window those two fall behind the plug-in. Both route 6 mechanisms resolve at every
+  spread. The battery's RESULT of 2026-09-12 carries the table. A tenth row reads the
+  lattice at every spread on both lattices against the two bars `T` was registered
+  under. The suite stays out of the manifest, since it runs the reference engine and
+  three of its rows fire by recorded result. The slow test path pins its ids and
+  outcomes instead.
+- `research.spinello_stilwell.gap_rescaling` — route 1's empirical half, on the
+  reported gap. The printed scheme and ADR-057's modification run through the gap at
+  four unit choices, at rung (36)'s budget of one and at rung (35)'s declared budget.
+  The modification's gap is unit-free to roundoff at both. The printed scheme's moves
+  by four per cent at a budget of one and reaches the same fixed point at the declared
+  budget wherever it converges. Q1 of the rung record closes on it.
 
 - `warrantlib.CompletenessEvidence` (warrantlib 0.3.0) — the two predicates a `PROVED`
   completeness claim rests on, held once in a base, with a leaf per domain shape under
