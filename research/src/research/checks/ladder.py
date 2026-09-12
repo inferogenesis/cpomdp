@@ -71,6 +71,7 @@ if TYPE_CHECKING:
 __all__ = [
     "ENGINE_TOLERANCE",
     "PAIRS",
+    "PROVENANCE",
     "Cell",
     "PairAtSpread",
     "Reading",
@@ -87,8 +88,17 @@ _REGISTERED_REF = "ac9fbc5"
 
 #: The commit whose tree produced the numbers, which is the one this suite landed in.
 #: Filled by the commit after it, since a commit cannot carry its own hash (ADR-041).
-#: Until then the certificate reports CORROBORATED and says why.
-_MEASURED_REF: str | None = None
+_MEASURED_REF = "bf34ea0"
+
+PROVENANCE = Provenance(
+    registered_at=_REGISTERED_REF,
+    measured_at=_MEASURED_REF,
+    registered=(
+        "the ordering's first reading: cells, lattices, the bar, the minimum "
+        "separation, the direction and the void rule, under D1 of the battery"
+    ),
+)
+"""Where the reading was registered and where it was taken, for the certificate."""
 
 ENGINE_TOLERANCE = 1e-12
 """Relative agreement the plug-in row asks of the threshold exploration's engine."""
@@ -147,7 +157,9 @@ class Cell:
     @property
     def voided(self) -> bool:
         """Set aside: weight declined above the roundoff floor, or no gap at all."""
-        return not math.isfinite(self.declared.gap)
+        return self.declared.voided_mass > ROUNDOFF_FLOOR or not math.isfinite(
+            self.declared.gap
+        )
 
     @property
     def bar(self) -> Bar:
@@ -426,32 +438,14 @@ def _certificate_row(sweep: Sweep) -> CheckReport:
     declared = sweep.names == LADDER.names
     visited = sum(1 for rung in sweep.names if sweep.read_at_every_spread(rung))
     complete = declared and visited == LADDER.size
-    proved = complete and _MEASURED_REF is not None
     certificate = ProductCompletenessCertificate(
         expected=LADDER.size,
         visited=visited,
-        warrant=Warrant.PROVED if proved else Warrant.CORROBORATED,
+        warrant=Warrant.PROVED if complete else Warrant.CORROBORATED,
         axes=(AxisDeclaration(name="rung", size=LADDER.size, version=LADDER.version),),
     )
-    if proved:
-        provenance: tuple[Provenance, ...] = (
-            Provenance(
-                registered_at=_REGISTERED_REF,
-                measured_at=_MEASURED_REF or _REGISTERED_REF,
-                registered=(
-                    "the ordering's first reading: cells, lattices, the bar, the "
-                    "minimum separation, the direction and the void rule, under D1 "
-                    "of the battery"
-                ),
-            ),
-        )
-        why = "registered before it was read"
-    elif complete:
-        provenance = ()
-        why = "measured_at is the commit this suite lands in, filled by the next"
-    else:
-        provenance = ()
-        why = "the ladder was not read in full"
+    provenance: tuple[Provenance, ...] = (PROVENANCE,) if complete else ()
+    why = "registered before it was read" if complete else "not read in full"
     return CheckReport(
         name="every declared rung was read at every spread",
         check_id="ladder.certificate",

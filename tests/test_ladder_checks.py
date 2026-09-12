@@ -233,15 +233,11 @@ def test_the_certificate_quantifies_over_the_declared_ladder(reports):
     assert row.tier is Tier.EXACT
 
 
-def test_the_certificate_is_proved_only_with_both_refs(reports):
-    # The ref that measured cannot be the commit being written, so until the next
-    # commit fills it the row says CORROBORATED and why (ADR-041).
+def test_the_certificate_is_proved_with_its_provenance(reports):
     row = reports["ladder.certificate"]
-    if row.warrant is Warrant.PROVED:
-        assert row.provenance
-    else:
-        assert row.warrant is Warrant.CORROBORATED
-        assert "measured_at" in row.detail
+    assert row.warrant is Warrant.PROVED
+    assert row.provenance == (ladder.PROVENANCE,)
+    assert not ladder.PROVENANCE.same_ref
 
 
 def test_an_unread_rung_leaves_the_certificate_incomplete():

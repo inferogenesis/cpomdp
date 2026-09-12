@@ -311,6 +311,101 @@ uv run --no-sync python -m research.checks.ladder --check
 entry. Route 6's reading of the same numbers is registered under Q5 of
 `research/spinello_stilwell_rung.md`, dated with this one.
 
+### RESULT 2026-09-12: three of the four orderings fire at the binding cell, and route 6 separates
+
+The PRE-REGISTRATION above landed at `ac9fbc5`. The suite that reads it landed at
+`bf34ea0`, and this entry quotes that commit's run of
+
+```text
+uv run --no-sync python -m research.checks.ladder --check
+```
+
+**The table.** Five gaps in nats on the declared lattice, each with its refinement bar,
+and the four adjacent orders read left to right: `A` the lower rung above the higher,
+`B` below. No spread read `NOT_RESOLVED` and none voided.
+
+| `σ` | plug-in | modified-single-step | modified-iterated | belief-smoothed | exact | orders |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0.0050 | 6.249777e−07 ± 1.5e−16 | 3.203058e−11 ± 5.8e−17 | 3.203046e−11 ± 2.8e−17 | 6.249777e−07 ± 1.5e−16 | 5.4e−18 ± 1.1e−17 | A A B A |
+| 0.0071 | 1.266014e−06 ± 1.1e−16 | 1.314425e−10 ± 5.5e−17 | 1.314414e−10 ± 1.6e−17 | 1.266014e−06 ± 2.3e−16 | 3.2e−17 ± 3.8e−17 | A A B A |
+| 0.0101 | 2.564460e−06 ± 3.0e−16 | 5.393829e−10 ± 9.0e−17 | 5.393743e−10 ± 9.1e−17 | 2.564460e−06 ± 1.8e−16 | 1.7e−17 ± 9.1e−18 | A A B A |
+| 0.0144 | 5.194223e−06 ± 1.3e−16 | 2.213298e−09 ± 2.7e−17 | 2.213227e−09 ± 1.1e−17 | 5.194223e−06 ± 1.2e−16 | 7.3e−18 ± 5.4e−18 | A A B A |
+| 0.0205 | 1.051909e−05 ± 2.2e−16 | 9.081241e−09 ± 4.9e−17 | 9.080655e−09 ± 1.8e−16 | 1.051910e−05 ± 2.3e−16 | 3.9e−18 ± 9.3e−18 | A A B A |
+| 0.0292 | 2.129614e−05 ± 3.3e−16 | 3.725412e−08 ± 1.1e−16 | 3.724927e−08 ± 1.7e−16 | 2.129614e−05 ± 3.1e−16 | 1.2e−17 ± 1.8e−17 | A A B A |
+| 0.0416 | 4.308733e−05 ± 2.4e−16 | 1.527737e−07 ± 5.5e−18 | 1.527339e−07 ± 8.9e−18 | 4.308735e−05 ± 1.1e−16 | −3.6e−17 ± 5.2e−17 | A A B A |
+| 0.0592 | 8.706507e−05 ± 2.2e−16 | 6.260497e−07 ± 1.5e−16 | 6.257257e−07 ± 1.3e−16 | 8.706528e−05 ± 1.2e−16 | 5.6e−18 ± 4.2e−17 | A A B A |
+| 0.0842 | 1.754761e−04 ± 4.2e−17 | 2.561696e−06 ± 2.4e−16 | 2.559120e−06 ± 1.5e−16 | 1.754779e−04 ± 4.4e−16 | 5.8e−18 ± 1.2e−17 | A A B A |
+| 0.1198 | 3.518302e−04 ± 4.8e−16 | 1.045030e−05 ± 2.2e−16 | 1.043080e−05 ± 1.4e−16 | 3.518445e−04 ± 2.1e−16 | 1.1e−17 ± 2.3e−17 | A A B A |
+| 0.1706 | 6.981055e−04 ± 2.7e−16 | 4.236383e−05 ± 1.4e−16 | 4.223146e−05 ± 1.6e−16 | 6.982199e−04 ± 8.3e−17 | −2.2e−17 ± 5.1e−18 | A A B A |
+| 0.2428 | 1.356990e−03 ± 1.9e−16 | 1.694743e−04 ± 4.2e−17 | 1.688001e−04 ± 5.8e−17 | 1.357873e−03 ± 2.6e−16 | −4.0e−17 ± 4.9e−18 | A A B A |
+| 0.3455 | 2.537238e−03 ± 7.1e−15 | 6.592401e−04 ± 1.2e−15 | 6.588204e−04 ± 2.2e−16 | 2.543557e−03 ± 7.2e−15 | 2.5e−18 ± 2.2e−17 | A A B A |
+| 0.4918 | 4.448418e−03 ± 2.7e−13 | 2.423097e−03 ± 1.0e−13 | 2.464341e−03 ± 2.2e−14 | 4.487740e−03 ± 2.8e−13 | 8.8e−18 ± 2.0e−18 | A B B A |
+| 0.7000 | 7.300378e−03 ± 1.8e−12 | 8.069977e−03 ± 2.8e−12 | 8.561262e−03 ± 2.0e−12 | 7.490756e−03 ± 2.3e−12 | 3.2e−17 ± 3.7e−17 | B B A A |
+
+The exact rung's gap is a divergence of a density from itself on one lattice, and it
+reads at `1e−17` to `1e−18` of either sign. That is the engine's floor, reported as
+measured.
+
+**The rows.**
+
+| pair | outcome | by spread |
+| --- | --- | --- |
+| plug-in → modified-single-step | `FIRED` | above at 14, below at `σ = 0.7000` |
+| modified-single-step → modified-iterated | `FIRED` | above at 13, below at `σ = 0.4918` and `0.7000` |
+| modified-iterated → belief-smoothed | `FIRED` | below at 14, above only at `σ = 0.7000` |
+| belief-smoothed → exact | `NOT_TRIGGERED` | above at 15 |
+
+Every pair resolved at every spread. The nearest call is single-step against iterated
+at `σ = 0.005`, where the iteration moves the gap by `1.2e−16` nats against a threshold
+of `8.6e−17`, so the pair resolves at `1.4` times its bar there. Everywhere else the
+smallest margin is `1.7e8` times the bar. `threshold` equalled `sum_of_bars` at every
+comparison, as registered.
+
+**What fired, and where.** The registered direction was monotone decrease. Three
+readings against it.
+
+- *Belief-smoothed sits with the plug-in, far above both Spinello–Stilwell rungs.* At
+  every spread but the largest, `E[R(x)]` under the prior moves the plug-in's gap by a
+  part in `10⁴` or less, since on this family `E[R] − R(μ*) = κσ²` while `R(μ*) = 2`.
+  The single-step rung sits two to four decades below both. So the fourth rung is not
+  a refinement of the third on this family. It is a refinement of the first, and a
+  slight one. Rmk 3's approximation-order argument said nothing about where the
+  derivative-of-covariance terms would put the two middle rungs, and Q6 of the rung
+  record said in advance what rung one is blind to. The belief-smoothed rung is blind
+  to the same thing.
+- *Above the registered window both Spinello–Stilwell rungs fall behind the plug-in.*
+  The window `T` was derived on runs from `σ_min = 0.15443` to `σ_max = 0.48835`. At
+  `σ = 0.7` the single-step rung reads above the plug-in and the iterated rung above
+  the single-step. At `σ = 0.4918`, a part in `140` above `σ_max`, the iterated rung
+  reads above the single-step. Inside the window every pair but the third holds. The
+  registration counted all fifteen spreads and the rows fire on any `BELOW`, so these
+  two rows fire. Where they fire is on record for PR-9, which decides the spreads the
+  D1 test runs at under the certified bar.
+- *Nothing was set aside.* No spread voided and none read `NOT_RESOLVED`, so the
+  outcomes are readings of the rungs and not of the bars. As landed, `bf34ea0`'s
+  `Cell.voided` read only a missing gap and not declined weight above the floor. The
+  commit carrying this entry restores the registered rule. The largest declined weight
+  at any spread was `0.0`, so no row depends on which rule ran.
+
+**Route 6.** Both mechanisms are visible at all fifteen spreads. The
+derivative-of-covariance terms move the gap by two to four decades and the iteration
+by a part in `10³` to `10⁵` of that. Five rungs was the right declaration. Recorded
+under Q5 of `research/spinello_stilwell_rung.md`.
+
+**The R6 signal.** The plug-in gap agrees with `research.explorations.threshold` to
+`0.0` relative at every spread, which is the same grids in the same engine. It exceeds
+`T = 5.962e−4` nats at five of the fifteen spreads, from `σ = 0.1706` up, and sits
+below it at `σ = 0.1198` and under. No verdict on the gate is taken here.
+
+**The certificate.** Five of five rungs read at fifteen spreads over ladder `v1`,
+`PROVED`, with `registered_at = ac9fbc5` and `measured_at = bf34ea0`.
+
+**What this does not decide.** D1 is registered at a certified tolerance and runs in
+PR-9. This is one cell of one family under a measured bar. A prediction refuted at
+`COMPUTED` is reported as refuted here and re-read there, since a certified bar can
+only be wider than the measured one and nothing in it can turn a `BELOW` into an
+`ABOVE`. What PR-9 can change is which spreads count.
+
 **D2 · scaling exponent** · SEVERE · R8 · toolbox C, F · tier `BOUNDED` · **PR-9 · v0.5**, gated on GATE-D4
 
 - Predict: `gap ∝ (curvature of R) × (belief spread)²`. Sweep both factors

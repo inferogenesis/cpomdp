@@ -165,7 +165,11 @@ no use of the readings beats it.
   since the bar is measured and not certified. Two rows read route 6 off the same
   numbers, one reports the R6 signal beside `T` with no verdict on the gate, and the
   completeness certificate is a one-axis product over the declared ladder. Registered
-  under D1 of the battery before it was read.
+  under D1 of the battery before it was read. Read once: three of the four registered
+  orderings fire at the binding cell. The belief-smoothed rung sits with the plug-in,
+  two to four decades above both Spinello–Stilwell rungs, and above the registered
+  window those two fall behind the plug-in. Both route 6 mechanisms resolve at every
+  spread. The battery's RESULT of 2026-09-12 carries the table.
 
 - `warrantlib.CompletenessEvidence` (warrantlib 0.3.0) — the two predicates a `PROVED`
   completeness claim rests on, held once in a base, with a leaf per domain shape under

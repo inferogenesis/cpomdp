@@ -310,6 +310,30 @@ standing rule 7 refuses, in the other direction.
 Direction is not route 6's question. Which way each pair falls is D1's, and it is
 registered there.
 
+### RESOLVED 2026-09-12: route 6 is run, and both mechanisms are visible
+
+The ordering's first reading, `research.checks.ladder` at `bf34ea0` against the
+registration at `ac9fbc5`, resolves both pairs at all fifteen spreads on `d4-family-v1`
+at the binding cell. The RESULT under D1 of `research/fep_falsification_battery.md`
+carries the table.
+
+`plug-in → modified-single-step` resolves at `1.7e8` times its bar or more. The
+derivative-of-covariance terms move the gap by two decades at `σ = 0.7` and by four at
+`σ = 0.005`. `modified-single-step → modified-iterated` resolves at `1.4` times its bar
+at `σ = 0.005`, where one step is within `1.2e−16` nats of the fixed point, and at
+`1e³` times or more from `σ = 0.03` up. The iteration moves the gap by a part in `10³`
+to `10⁵` of what the terms moved it.
+
+So the two adjacent differences Q5 asked for are two differences, and five rungs was
+the right declaration. Which way each falls is D1's, and the RESULT records that both
+reverse above the registered window.
+
+One thing the reading adds to Q6. The belief-smoothed rung sits within a part in `10⁴`
+of the plug-in at every spread but the largest, two to four decades above the
+single-step rung. Averaging `R` under the prior does not recover what rung one
+discards, since `E[R(x)]` carries no `∇σ` either. The blindness Q6 names is the
+fourth rung's too.
+
 ## Q6. What rung one is blind to
 
 The term rung one discards, `(1/2σ²)∇ᵀσ∇σ`, is non-zero exactly when the noise varies
