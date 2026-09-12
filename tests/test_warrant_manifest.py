@@ -94,7 +94,7 @@ class TestTheWriterRefusesWhatItCannotEmit:
 
 class TestReadingRefuses:
     def test_an_unknown_schema_version_is_refused(self):
-        text = _manifest().to_toml().replace('"1.0"', '"2.0"')
+        text = _manifest().to_toml().replace(f'"{MANIFEST_SCHEMA_VERSION}"', '"2.0"')
         with pytest.raises(ValueError, match="schema_version"):
             Manifest.from_toml(text)
 
@@ -171,6 +171,56 @@ class TestRewriting:
         monkeypatch.setattr(Suite, "run", lambda self: [])
         rewritten = _manifest().rewritten()
         assert rewritten.suites[0].entry_point == _suite().entry_point
+
+
+class TestARegisteredRefutation:
+    """A check whose registered result is a refutation is declared, and survives."""
+
+    def _refuting(self, refuted=("a.two",)):
+        return Suite(
+            name="series_kernel",
+            entry_point="research.checks.series_kernel:run_checks",
+            checks=("a.one", "a.two"),
+            refuted=tuple(refuted),
+        )
+
+    def test_it_round_trips(self):
+        original = Manifest(suites=(self._refuting(),))
+        assert Manifest.from_toml(original.to_toml()) == original
+        parsed = tomllib.loads(original.to_toml())
+        assert parsed["suites"]["series_kernel"]["refuted"] == ["a.two"]
+
+    def test_a_suite_declaring_none_writes_no_field(self):
+        assert "refuted = [" not in _manifest().to_toml()
+        assert Manifest.from_toml(_manifest().to_toml()).suites[0].refuted == ()
+
+    def test_it_must_name_a_declared_check(self):
+        with pytest.raises(ValueError, match="declares no such check"):
+            self._refuting(refuted=("a.three",))
+
+    def test_it_is_declared_once(self):
+        with pytest.raises(ValueError, match="more than once"):
+            self._refuting(refuted=("a.two", "a.two"))
+
+    def test_the_field_must_be_a_list(self):
+        text = _manifest().to_toml() + 'refuted = "a.two"\n'
+        with pytest.raises(ValueError, match="not a list"):
+            Manifest.from_toml(text)
+
+    def test_a_rewrite_keeps_what_the_run_still_reports(self, monkeypatch):
+        # The declaration over an id the run no longer reports leaves with the id,
+        # and the dropped line is in the diff the rewrite is reviewed by.
+        suite = self._refuting(refuted=("a.two", "a.one"))
+        monkeypatch.setattr(
+            Suite, "run", lambda self: [_Reported("a.two"), _Reported("a.new")]
+        )
+        rewritten = Manifest(suites=(suite,)).rewritten().suites[0]
+        assert rewritten.checks == ("a.new", "a.two")
+        assert rewritten.refuted == ("a.two",)
+
+    def test_relaid_sorts_it(self):
+        relaid = Manifest(suites=(self._refuting(("a.two", "a.one")),)).relaid()
+        assert relaid.suites[0].refuted == ("a.one", "a.two")
 
 
 class TestRunningASuite:
@@ -346,14 +396,14 @@ class TestTheManifestRefusesWhatWouldReadAsChecks:
         # `tuple("a.one")` is five ids, each a single character, each collected as its
         # own item. The same coercion `_sequence` exists to stop in the wire form.
         text = (
-            'schema_version = "1.0"\n\n'
+            f'schema_version = "{MANIFEST_SCHEMA_VERSION}"\n\n'
             '[suites.a]\nentry_point = "x:y"\nchecks = "a.one"\n'
         )
         with pytest.raises(ValueError, match="checks"):
             Manifest.from_toml(text)
 
     def test_a_suite_that_is_not_a_table_is_refused(self):
-        text = 'schema_version = "1.0"\n\n[suites]\na = "x:y"\n'
+        text = f'schema_version = "{MANIFEST_SCHEMA_VERSION}"\n\n[suites]\na = "x:y"\n'
         with pytest.raises(ValueError, match="entry_point"):
             Manifest.from_toml(text)
 
@@ -361,7 +411,7 @@ class TestTheManifestRefusesWhatWouldReadAsChecks:
         # `reconcile` compares sets, so one report satisfies both declarations and the
         # two items collide by name. A key shared by two checks is not a key.
         text = (
-            'schema_version = "1.0"\n\n'
+            f'schema_version = "{MANIFEST_SCHEMA_VERSION}"\n\n'
             '[suites.a]\nentry_point = "x:y"\nchecks = [\n  "shared.id",\n]\n\n'
             '[suites.b]\nentry_point = "x:z"\nchecks = [\n  "shared.id",\n]\n'
         )

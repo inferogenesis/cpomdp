@@ -139,6 +139,11 @@ Adding a suite means adding its
 `[suites.<name>]` table by hand, with no checks, and then rewriting. The new ids land in
 the diff, which is where they get reviewed.
 
+A check whose registered result is a refutation is listed under `refuted`, by hand and
+after the result is on record. The pytest plugin then passes it by firing, as
+`REFUTED`, and fails it by name as `NOT REFUTED` otherwise. A rewrite keeps the list
+for every id the run still reports.
+
 ## Warrant
 
 `Warrant` says how well a claim is warranted, by the prover class behind it.

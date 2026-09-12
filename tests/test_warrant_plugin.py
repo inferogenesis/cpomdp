@@ -12,6 +12,8 @@ entry point, the same way it will for anyone who installs it.
 
 import pytest
 
+from warrantlib.manifest import MANIFEST_SCHEMA_VERSION
+
 #: Imported by every generated suite. Kept here so a change to the vocabulary breaks
 #: one string rather than a dozen.
 _PREAMBLE = """
@@ -287,6 +289,7 @@ _SUITE = """
 from warrantlib import CheckReport, Outcome, Tier, Warrant
 
 REPORTED = {ids}
+FIRED = {fired}
 
 def run_checks():
     return [
@@ -294,7 +297,7 @@ def run_checks():
             name="a check",
             check_id=check_id,
             warrant=Warrant.CORROBORATED,
-            outcome=Outcome.NOT_TRIGGERED,
+            outcome=Outcome.FIRED if check_id in FIRED else Outcome.NOT_TRIGGERED,
             tier=Tier.COMPUTED,
             detail="why it reports what it reports",
         )
@@ -303,17 +306,23 @@ def run_checks():
 """
 
 
-def _manifest_suite(pytester, *, declared, reported):
-    """Write a suite reporting `reported` and a manifest declaring `declared`."""
-    pytester.makepyfile(a_suite=_SUITE.format(ids=list(reported)))
+def _manifest_suite(pytester, *, declared, reported, fired=(), refuted=()):
+    """Write a suite reporting `reported` and a manifest declaring `declared`.
+
+    `fired` names the ids the suite reports as FIRED, and `refuted` the ids the
+    manifest declares as a registered refutation.
+    """
+    pytester.makepyfile(a_suite=_SUITE.format(ids=list(reported), fired=list(fired)))
     checks = "".join(f'  "{check}",\n' for check in declared)
+    held = "".join(f'  "{check}",\n' for check in refuted)
+    refuted_block = f"refuted = [\n{held}]\n" if refuted else ""
     pytester.makefile(
         ".toml",
         registered_checks=(
-            'schema_version = "1.0"\n\n'
+            f'schema_version = "{MANIFEST_SCHEMA_VERSION}"\n\n'
             "[suites.a_suite]\n"
             'entry_point = "a_suite:run_checks"\n'
-            f"checks = [\n{checks}]\n"
+            f"checks = [\n{checks}]\n" + refuted_block
         ),
     )
     # `pythonpath` so the inner run can import the suite the entry point names. In a
@@ -383,7 +392,8 @@ class TestTheManifestBecomesItems:
         # Front-loading the repo requires: a suite deriving a coefficient symbolically
         # costs tens of seconds, and one run per declared check multiplies that.
         pytester.makepyfile(
-            a_suite=_SUITE.format(ids=["a.one", "a.two", "a.three"]) + "\nRUNS = []\n"
+            a_suite=_SUITE.format(ids=["a.one", "a.two", "a.three"], fired=[])
+            + "\nRUNS = []\n"
             "_original = run_checks\n"
             "def run_checks():\n"
             "    RUNS.append(1)\n"
@@ -393,7 +403,7 @@ class TestTheManifestBecomesItems:
         pytester.makefile(
             ".toml",
             registered_checks=(
-                'schema_version = "1.0"\n\n[suites.a_suite]\n'
+                f'schema_version = "{MANIFEST_SCHEMA_VERSION}"\n\n[suites.a_suite]\n'
                 'entry_point = "a_suite:run_checks"\n'
                 f"checks = [\n{checks}]\n"
             ),
@@ -410,7 +420,9 @@ class TestTheManifestBecomesItems:
 
     def test_a_manifest_nothing_points_at_is_left_alone(self, pytester):
         # The ini option is unset, so the file is ordinary and pytest ignores it.
-        pytester.makefile(".toml", registered_checks='schema_version = "1.0"\n')
+        pytester.makefile(
+            ".toml", registered_checks=f'schema_version = "{MANIFEST_SCHEMA_VERSION}"\n'
+        )
         _suite(
             pytester,
             """
@@ -455,12 +467,12 @@ def test_it():
 
     def test_the_reconciled_suites_are_named_not_counted(self, pytester):
         # A bare count leaves the reader working out which items they were.
-        pytester.makepyfile(a_suite=_SUITE.format(ids=["a.one"]))
-        pytester.makepyfile(b_suite=_SUITE.format(ids=["b.one"]))
+        pytester.makepyfile(a_suite=_SUITE.format(ids=["a.one"], fired=[]))
+        pytester.makepyfile(b_suite=_SUITE.format(ids=["b.one"], fired=[]))
         pytester.makefile(
             ".toml",
             registered_checks=(
-                'schema_version = "1.0"\n\n'
+                f'schema_version = "{MANIFEST_SCHEMA_VERSION}"\n\n'
                 '[suites.a_suite]\nentry_point = "a_suite:run_checks"\n'
                 'checks = [\n  "a.one",\n]\n\n'
                 '[suites.b_suite]\nentry_point = "b_suite:run_checks"\n'
@@ -477,6 +489,73 @@ def test_it():
         result.stdout.fnmatch_lines(
             ["*reconciled against the manifest: a_suite, b_suite*"]
         )
+
+
+class TestARegisteredRefutationIsHeld:
+    """A check the manifest lists as refuted passes by firing, and fails otherwise."""
+
+    def test_a_declared_refutation_that_fires_passes(self, pytester):
+        path = _manifest_suite(
+            pytester,
+            declared=["a.one", "a.two"],
+            reported=["a.one", "a.two"],
+            fired=["a.two"],
+            refuted=["a.two"],
+        )
+        result = pytester.runpytest(path, "-v")
+        result.assert_outcomes(passed=3)
+        result.stdout.fnmatch_lines(
+            ["*a::two REFUTED*", "*registered as refuted, and held: a.two*"],
+            consecutive=False,
+        )
+
+    def test_the_fired_count_still_says_it_fired(self, pytester):
+        # The accounting is the checks' own. Holding a refutation changes what pytest
+        # counts, not what the check reported.
+        path = _manifest_suite(
+            pytester,
+            declared=["a.one", "a.two"],
+            reported=["a.one", "a.two"],
+            fired=["a.two"],
+            refuted=["a.two"],
+        )
+        result = pytester.runpytest(path)
+        result.stdout.fnmatch_lines(["*2 registered, 2 tested here, 1 fired*"])
+
+    def test_a_declared_refutation_that_stops_firing_fails_by_name(self, pytester):
+        path = _manifest_suite(
+            pytester,
+            declared=["a.one", "a.two"],
+            reported=["a.one", "a.two"],
+            refuted=["a.two"],
+        )
+        result = pytester.runpytest(path, "-v")
+        result.assert_outcomes(passed=2, failed=1)
+        result.stdout.fnmatch_lines(
+            [
+                "*a::two NOT REFUTED*",
+                "*a.two: registered as refuted and reported NOT TRIGGERED*",
+            ],
+            consecutive=False,
+        )
+
+    def test_a_fire_nobody_registered_still_fails(self, pytester):
+        path = _manifest_suite(
+            pytester,
+            declared=["a.one", "a.two"],
+            reported=["a.one", "a.two"],
+            fired=["a.two"],
+        )
+        result = pytester.runpytest(path)
+        result.assert_outcomes(passed=2, failed=1)
+
+    def test_a_refutation_over_an_undeclared_check_does_not_collect(self, pytester):
+        path = _manifest_suite(
+            pytester, declared=["a.one"], reported=["a.one"], refuted=["a.two"]
+        )
+        result = pytester.runpytest(path)
+        result.assert_outcomes(errors=1)
+        result.stdout.fnmatch_lines(["*declares no such check*"])
 
 
 class TestTheDetailFlag:

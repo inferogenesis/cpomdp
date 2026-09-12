@@ -135,6 +135,21 @@ _STATUS_ATTRIBUTE = "warrant_status"
 #: pytest says 73, and the reader is left subtracting.
 _RECONCILED_ATTRIBUTE = "warrant_reconciled"
 
+#: What a check the manifest lists as refuted becomes, by whether it fired. A registered
+#: refutation is a result the run holds, so the check firing is the pass, and anything
+#: else is the change that has to be looked at. The words are the status attribute's
+#: values for these two, beside the outcome values it carries otherwise.
+_REFUTED = "REFUTED"
+_NOT_REFUTED = "NOT REFUTED"
+_REFUTED_STATUS: dict[str, tuple[_PytestOutcome, str, str, str]] = {
+    _REFUTED: ("passed", "passed", "x", _REFUTED),
+    _NOT_REFUTED: ("failed", "failed", "F", _NOT_REFUTED),
+}
+
+#: The id of a check the manifest lists as refuted, set on its report, so the accounting
+#: can name what was held rather than leave a fired count beside a green run.
+_REFUTED_ATTRIBUTE = "warrant_refuted"
+
 
 #: Every suite's reports, run once per session and read by each of its items. Front
 #: loaded on purpose: a suite deriving a coefficient symbolically costs tens of seconds,
@@ -254,6 +269,7 @@ class _CheckItem(pytest.Item):
         super().__init__(**kwargs)
         self.suite = suite
         self.check_id = check_id
+        self.refuted = check_id in suite.refuted
 
     def runtest(self) -> None:
         """Look the check up in what the suite reported, and record it.
@@ -380,8 +396,33 @@ def pytest_runtest_makereport(
         return report
     setattr(report, _REPORT_ATTRIBUTE, [report_to_dict(one) for one in records])
     if report.when == "call" and not call.excinfo:
-        _apply_outcome(report, item, records)
+        if getattr(item, "refuted", False):
+            _apply_refutation(report, records)
+        else:
+            _apply_outcome(report, item, records)
     return report
+
+
+def _apply_refutation(report: TestReport, records: list[CheckReport]) -> None:
+    """Hold a registered refutation: the check firing passes, anything else fails.
+
+    Args:
+        report: the call phase's report, passing so far.
+        records: the one record a manifest item carries.
+    """
+    (record,) = records
+    fired = record.outcome is Outcome.FIRED
+    status = _REFUTED if fired else _NOT_REFUTED
+    report.outcome = _REFUTED_STATUS[status][0]
+    setattr(report, _STATUS_ATTRIBUTE, status)
+    setattr(report, _REFUTED_ATTRIBUTE, record.check_id)
+    if not fired:
+        report.longrepr = (
+            f"{record.check_id}: registered as refuted and reported "
+            f"{record.outcome.value}: {record.detail}. A refutation that stopped "
+            "firing is a change on the same terms as a check that stopped reporting; "
+            "if the result moved, the registration is amended before the manifest is."
+        )
 
 
 def _apply_outcome(
@@ -448,7 +489,10 @@ def pytest_report_teststatus(
     status = getattr(report, _STATUS_ATTRIBUTE, None)
     if status is None:
         return None
-    _, category, letter, word = _STATUS[Outcome(status)]
+    if status in _REFUTED_STATUS:
+        _, category, letter, word = _REFUTED_STATUS[status]
+    else:
+        _, category, letter, word = _STATUS[Outcome(status)]
     return category, letter, word
 
 
@@ -478,6 +522,7 @@ class _WarrantRun:
         """Start with nothing recorded."""
         self.records: list[CheckReport] = []
         self.reconciled: list[str] = []
+        self.refuted: list[str] = []
 
     def pytest_runtest_logreport(self, report: TestReport) -> None:
         """Gather a report's checks, on the controller and on a worker alike.
@@ -491,6 +536,9 @@ class _WarrantRun:
         suite = getattr(report, _RECONCILED_ATTRIBUTE, None)
         if suite is not None:
             self.reconciled.append(suite)
+        refuted = getattr(report, _REFUTED_ATTRIBUTE, None)
+        if refuted is not None:
+            self.refuted.append(refuted)
 
     def pytest_terminal_summary(
         self,
@@ -525,6 +573,12 @@ class _WarrantRun:
         terminalreporter.write_sep("=", "warrant summary")
         for line in check_summary(self.records).splitlines():
             terminalreporter.write_line(line)
+        if self.refuted:
+            # The fired count above includes these, and they passed. Say which, so a
+            # reader is not left reconciling a fired count against a green run.
+            terminalreporter.write_line(
+                "registered as refuted, and held: " + ", ".join(sorted(self.refuted))
+            )
         if self.reconciled:
             # Named rather than counted. These are not checks and carry no warrant, so
             # they are absent from the rows above while pytest counts them, and a

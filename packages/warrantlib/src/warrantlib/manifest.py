@@ -19,6 +19,13 @@ strings, and arrays of quoted strings. A round-trip test parses what it wrote wi
 Run ``python -m warrantlib.manifest <path>`` to rewrite one after a suite changes, and
 ``--check`` to ask whether it is current without touching it. Adding a suite means
 adding its entry point by hand, with no checks, and then rewriting.
+
+A check whose registered result is a refutation is listed under ``refuted``. A
+falsifier that fired is a result, and a run that holds it there has to say so: with
+the declaration, the check firing is what reconciles, and the check not firing fails
+by name, since a refutation that vanished is a change on the same terms as a check
+that stopped reporting. The list is written by hand after the result is on record,
+and a rewrite carries it.
 """
 
 from __future__ import annotations
@@ -32,7 +39,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-MANIFEST_SCHEMA_VERSION = "1.0"
+MANIFEST_SCHEMA_VERSION = "1.1"
 """The version of the manifest's form, carried on the file.
 
 Bumped whenever a field is added, removed or renamed. A manifest this version does not
@@ -51,7 +58,11 @@ _HEADER = """\
 # Ask whether it is current:      python -m warrantlib.manifest --check <this file>
 #
 # Adding a suite: add its [suites.<name>] table with an entry_point and no checks,
-# then rewrite."""
+# then rewrite.
+#
+# A check whose registered result is a refutation is listed under `refuted`, by hand
+# and after the result is on record. It then reconciles by firing, and fails by name
+# if it stops. A rewrite keeps the list."""
 
 #: What a bare key may hold, so the writer never has to quote one. Suite names come from
 #: the file itself, and anything outside this needs TOML's quoting rules rather than the
@@ -71,11 +82,36 @@ class Suite:
             the manifest is rewritten, and by anything running the suite from it.
         checks: the ids the suite reported when the manifest was last written, sorted so
             the file's order is the file's own rather than the runner's.
+        refuted: the ids among ``checks`` whose registered result is a refutation.
+            Declared by hand once the result is on record. A run in which one of them
+            fires reconciles, and a run in which it does not fails by name.
+
+    Raises:
+        ValueError: if ``refuted`` names an id that is not one of ``checks``, or names
+            one twice.
     """
 
     name: str
     entry_point: str
     checks: tuple[str, ...]
+    refuted: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        """Reject a refutation declared over a check the suite does not declare."""
+        unknown = sorted(set(self.refuted) - set(self.checks))
+        if unknown:
+            raise ValueError(
+                f"suite {self.name!r} lists {', '.join(unknown)} as refuted, and "
+                "declares no such check. A refutation is a result a declared check "
+                "reported, so the id is registered under checks first."
+            )
+        repeated = sorted({one for one in self.refuted if self.refuted.count(one) > 1})
+        if repeated:
+            raise ValueError(
+                f"suite {self.name!r} lists {', '.join(repeated)} as refuted more "
+                "than once. One declaration per check, so the diff that records a "
+                "refutation is one line."
+            )
 
     def run(self) -> list[Any]:
         """Import the entry point and call it.
@@ -194,11 +230,15 @@ class Manifest:
                     "once. Two checks under one id are one row in any ledger joining "
                     "on it, and a manifest cannot declare the difference between them."
                 )
+            # A refutation declared over an id the run no longer reports leaves with
+            # the id. The rewrite is the reviewed half, so the dropped line is in the
+            # diff.
             suites.append(
                 Suite(
                     name=suite.name,
                     entry_point=suite.entry_point,
                     checks=tuple(ids),
+                    refuted=tuple(one for one in suite.refuted if one in ids),
                 )
             )
         return Manifest(suites=tuple(suites)).relaid()
@@ -219,6 +259,7 @@ class Manifest:
                     name=suite.name,
                     entry_point=suite.entry_point,
                     checks=tuple(sorted(suite.checks)),
+                    refuted=tuple(sorted(suite.refuted)),
                 )
                 for suite in self.suites
             )
@@ -245,11 +286,15 @@ class Manifest:
                     "rest correctly is the part of the format it does not implement."
                 )
             entries = "".join(f'  "{_quoted(check)}",\n' for check in suite.checks)
-            blocks.append(
+            block = (
                 f"[suites.{suite.name}]\n"
                 f'entry_point = "{_quoted(suite.entry_point)}"\n'
                 f"checks = [\n{entries}]"
             )
+            if suite.refuted:
+                refuted = "".join(f'  "{_quoted(check)}",\n' for check in suite.refuted)
+                block += f"\nrefuted = [\n{refuted}]"
+            blocks.append(block)
         return "\n\n".join(blocks) + "\n"
 
     @classmethod
@@ -285,7 +330,8 @@ class Manifest:
                 Suite(
                     name=name,
                     entry_point=_field(name, entry, "entry_point"),
-                    checks=_checks(name, entry),
+                    checks=_ids(name, entry, "checks"),
+                    refuted=_ids(name, entry, "refuted", optional=True),
                 )
                 for name, entry in suites.items()
             )
@@ -327,8 +373,10 @@ def _quoted(value: str) -> str:
     return value
 
 
-def _checks(suite: str, entry: Any) -> tuple[str, ...]:
-    """Read a suite's declared ids, without coercing what is not a list.
+def _ids(
+    suite: str, entry: Any, name: str, *, optional: bool = False
+) -> tuple[str, ...]:
+    """Read a suite's list of ids, without coercing what is not a list.
 
     `tuple` accepts any iterable and a bare string is one, so `checks = "a.one"` would
     declare five ids of one character each and collect five items to match.
@@ -336,17 +384,22 @@ def _checks(suite: str, entry: Any) -> tuple[str, ...]:
     Args:
         suite: the suite, as the message names it.
         entry: its table in the file.
+        name: which list.
+        optional: whether an absent field reads as an empty list rather than as a
+            file this version cannot read.
 
     Returns:
         The ids.
 
     Raises:
-        ValueError: if the field is absent or is not a list.
+        ValueError: if the field is absent and not optional, or is not a list.
     """
-    value = _field(suite, entry, "checks")
+    if optional and isinstance(entry, dict) and name not in entry:
+        return ()
+    value = _field(suite, entry, name)
     if not isinstance(value, list):
         raise ValueError(
-            f"suite {suite!r} has checks={value!r}, which is not a list. Converting "
+            f"suite {suite!r} has {name}={value!r}, which is not a list. Converting "
             "whatever arrives is how a bare string becomes one id per character, each "
             "of them collected as a check nobody wrote."
         )

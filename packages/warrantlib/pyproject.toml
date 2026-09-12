@@ -1,6 +1,6 @@
 [project]
 name = "warrantlib"
-version = "0.3.0"
+version = "0.4.0"
 description = "A vocabulary for how well a claim is warranted, kept separate from whether it held."
 readme = "README.md"
 requires-python = ">=3.11"
