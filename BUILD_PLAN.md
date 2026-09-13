@@ -123,7 +123,9 @@ Import it; do not restate it.
 | **PR-7a** | Printed-scheme failure probes and the declared budget | 2, 3 | — | — | S | v0.4.5 |
 | **PR-7** | Exact reference filter and the rule ladder | 2, 3 | PR-3, PR-7a | P2-5 (C) | L | v0.4.5 |
 | **PR-7b** | The ladder's ordering, and the R6 gap | 2, 3 | PR-7 | P2-7 (D) | M | v0.4.5 |
-| **PR-8** | **Certified discretisation bound · GATE-D4 · tag v0.4.5** | 2, 3 | PR-7b | P2-6 (C′) | L | v0.4.5 |
+| **PR-8a** | The bound's derivation, registered before any number | 2, 3 | PR-7b | — | S | v0.4.5 |
+| **PR-8** | **Certified discretisation bound, `δ_ref` at `CERTIFIED`** | 2, 3 | PR-8a | P2-6 (C′) | L | v0.4.5 |
+| **PR-8c** | **GATE-D4 evaluated · tag v0.4.5** | 2, 3 | PR-8 | — | S | v0.4.5 |
 | **PR-9** ⛔ | Window harness and Paper 2 Part 2 results | 2 | GATE-D4, PR-4 | P2-8 (F6) | L | v0.5 |
 | **PR-10** ⛔ | Paper 3 Part 2 results | 3 | GATE-D4, PR-2, PR-6 | — | M | v0.5 |
 | **PR-11** | v0.5 release | 2, 3 | all | — | M | v0.5 |
@@ -131,17 +133,19 @@ Import it; do not restate it.
 Size key: S under a day, M two to four days, L a week or more. Grouping the original
 nineteen items into eleven PRs pushed six of them to L. That is the trade.
 
-**Critical path.** `PR-1 → PR-3 → PR-7 → PR-7b → PR-8 → PR-9 → PR-11`. It runs through the
-gate, so nothing shortens it except starting PR-7 early. PR-7a blocks PR-7 without being
-on the path: it has no blockers of its own and is a day's work, so it can land any time
-before PR-7, which cannot ship a declared budget until it has.
+**Critical path.** `PR-1 → PR-3 → PR-7 → PR-7b → PR-8a → PR-8 → PR-8c → PR-9 → PR-11`. It
+runs through the gate, so nothing shortens it except starting PR-7 early. PR-7a blocks
+PR-7 without being on the path: it has no blockers of its own and is a day's work, so it
+can land any time before PR-7, which cannot ship a declared budget until it has. PR-8a
+and PR-8c are each a day and sit on the path because the ordering is the point: the
+bound's method is registered before its number exists, and the gate is run after both.
 
 **Parallel tracks.** PR-1 and PR-2 touch nothing else and can go first or alongside
 anything. PR-1b is the exception: it edits `enumeration.py`, which PR-3 also opens, so it
 goes ahead of both rather than beside them. PR-3 is the fan-out point. After it lands,
 three tracks run independently: the Paper 2 scoring track (PR-4 → PR-5), the
-reference-filter track (PR-7a → PR-7 → PR-7b → PR-8), and the Paper 3 track (PR-6). Only PR-9 and PR-10
-wait on the gate.
+reference-filter track (PR-7a → PR-7 → PR-7b → PR-8a → PR-8 → PR-8c), and the Paper 3
+track (PR-6). Only PR-9 and PR-10 wait on the gate.
 
 **ADR numbers are not pre-allocated.** A PR takes the next free number when it lands, and
 the heading carries its decision date. Reserving numbers against unwritten work collides
@@ -987,20 +991,76 @@ prose survived them, which is a failure mode worth not repeating.
       expression there rather than a value, so this closes when `T` does. Closed by the
       RESULT of 2026-09-11: `T = 5.962e−4` nats, so D1 and D2 are tests iff
       `δ_ref ≤ 5.96e−5` nats.
+**Split into three, on the terms PR-7 split.** The bound's method has to be registered
+before its number exists, and the gate has to be run after both, so one PR cannot keep
+the ordering that makes the result readable. Each of the three is its own pull request.
+
+### PR-8a — the bound's derivation, registered before any number
+
+`size: S` · `blocked by: PR-7b`. Prose and a hand derivation, no number, in
+`research/discretisation_bound_hand_derivation.md` with the scan beside it, on the
+terms `research/c6_hand_derivation.md` and the Spinello–Stilwell derivation landed. A
+PRE-REGISTRATION in `research/gate_d4_registration.md` cites it and fixes what follows.
+
+- [ ] **The four error sources, each with its classical bound and hypotheses.** The
+      trapezoid rule on the state axis, the trapezoid rule on the observation axis, the
+      state box clipping the posterior, the observation box clipping `p*`. The
+      integrands are analytic on this family, so the quadrature bounds are the
+      exponentially small ones and the constants have to be written out, not cited.
+- [ ] **How the four propagate into a bound on the gap.** The gap is a divergence of
+      two densities, not an integral, so each source passes through a normalisation
+      and a log before it reaches the reported number. The derivation carries the
+      constants through, and says where it gives away a factor rather than sharpening.
+- [ ] **Roundoff, as a term or as a disclosure.** The measured floor is `1e−16` nats
+      and no lattice argument covers it. Decide before any number whether the bound
+      carries a roundoff term with a standard error analysis behind it, or discloses
+      the floor beside the bound as the threshold RESULT disclosed its own.
+- [ ] **Hand-derived bounds checked numerically, or interval arithmetic.** JAX has no
+      interval type, so the hand route is the realistic one. Say so, and say what a
+      numerical check of a hand-derived bound licenses and what it does not.
+- [ ] **What would stop the bound being stated**, written before it is tried. A
+      propagated constant loose by decades that clears the measured error and still
+      fails `T / k_min` is an outcome the registration already covers, and it is named
+      here rather than met.
+- [ ] **A prediction.** The order of magnitude the bound is expected to land at on the
+      declared lattice, against the measured `1e−16` to `2e−12` nats, so a bound that
+      comes out far looser than predicted reads as a defect of the derivation.
+
+### PR-8 — the bound computed, `δ_ref` at `CERTIFIED`
+
+`size: L` · `blocked by: PR-8a` · `alias: P2-6 (C′)`. The large one, and the one with
+the risk.
+
 - [ ] A **certified** bound, not a fine grid with a convergence plot. Interval arithmetic
       or a proved quadrature error bound, the device licensing *for all x in the domain,
-      |p_grid − p_exact| ≤ δ*.
-- [ ] Stated as a number and shown small relative to R6's measured signal by the
-      pre-agreed factor.
+      |p_grid − p_exact| ≤ δ*, evaluated on the declared family and lattice by a check
+      suite whose provenance refs point at PR-8a's commit.
+- [ ] **The bound sits above the measured error field at every spread**, or the
+      derivation is wrong. `research.explorations.threshold` measured the field the
+      bound has to cover, and the cross-check is a row.
 - [ ] Emits `CERTIFIED`, not `PROVED`. The distinction is validated numerics against
-      enumeration, and it is not
-      cosmetic.
+      enumeration, and it is not cosmetic.
+- [ ] Stated as a number in a RESULT entry, with the gate **not** evaluated here. The
+      number and the comparison are two commits apart on purpose.
+
+### PR-8c — GATE-D4 evaluated, and the tag
+
+`size: S` · `blocked by: PR-8`. The gate is one command that prints both inequalities,
+`gap > T` and `δ_ref ≤ T / k_min`, the clearance `k = T / δ_ref`, and `PASS` or `FAIL`
+in the warrant vocabulary.
+
+- [ ] **The gate is run by the owner, in the terminal.** The code stops at "ready to
+      run" and hands over the command. The RESULT entry quotes what was seen, and is
+      written after. This is a standing rule for any registered gate, not a courtesy
+      for this one.
+- [ ] Shown small relative to R6's measured signal by the pre-agreed factor, whichever
+      way it comes out.
 - [ ] **Cut v0.4.5 at this merge whatever the outcome.** Release notes record the gate
       result as a number against the factor, `PASS` or `FAIL`. Changelog, `DECISIONS.md`
       entry, `CITATION.cff` and `__init__.__version__` on the release commit, matching
-      v0.4.4's discipline.
+      v0.4.4's discipline. The release commit is only the release.
 
-**Merge gate — hard, existential.** See "GATE-D4" below. **ADR on landing.**
+**Merge gate — hard, existential.** See "GATE-D4" below. **ADR on landing** of PR-8c.
 
 ## PR-9 ⛔ — Window harness and Paper 2 Part 2 results
 
