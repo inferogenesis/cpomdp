@@ -150,9 +150,9 @@ uv run --extra examples ty check # type checking (examples are in the checked tr
 uv run pre-commit run --all-files
 ```
 
-The symbolic suites are deliberately not in `testpaths`. `gap_series` derives `c₂` and
-`c₄` symbolically and costs about half a minute, which nobody wants on every run. They
-have their own commands, and their own CI job:
+The symbolic suites are deliberately not in `testpaths`. `gap_series` derives `c₂`, `c₄`
+and `c₆` symbolically and costs about six and a half minutes, which nobody wants on every
+run. They have their own commands, and their own CI job:
 
 ```bash
 uv run pytest research/registered_checks.toml                   # reconcile the run
@@ -196,3 +196,26 @@ uv run --extra rxinfer pytest -m rxinfer
 
 You don't need Julia for normal work. The pure-Python suite covers the core, and
 the rxinfer job runs separately in CI.
+
+### What each path costs
+
+Measured 2026-09-13 at `179c354`, each run serial and isolated on a warm JAX cache. That
+is the condition `conftest.SLOW_TEST_SECONDS` is defined against, so these numbers and the
+`slow` marker rule agree about what a second means.
+
+| command | wall |
+| --- | --- |
+| `pytest -m "not rxinfer and not slow"` | 247 s |
+| `pytest -m "not rxinfer"` | 1913 s |
+| `pytest research/registered_checks.toml` | 637 s |
+
+CI runs the last two as separate jobs, so a merge costs about 32 minutes of wall clock and
+about 42 of compute. By hand, it is the sum. Most of the merge path is the four symbolic
+suites, each derived two or three times per merge, because reading a suite's check ids
+runs it.
+
+**Never put `-n auto` in `addopts`.** warrantlib's plugin runs each suite once per session
+and caches the reports in `config.stash`, which is per process. Under xdist every worker
+that draws one of a suite's checks derives that suite again. The `test` job passes
+`-n auto --dist worksteal` on the command line and the `symbolic` job does not, which is
+the split that keeps this true.
