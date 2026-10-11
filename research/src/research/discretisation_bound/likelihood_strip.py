@@ -505,9 +505,11 @@ def main() -> None:
         decimal_cap**2 / (2 * cell.LARGEST_SPREAD**2)
     )
     assert f"{float(envelope(decimal_cap)):.2f}" == "2.43"
+    assert float(envelope(decimal_cap)) > PAGE_SEVEN["envelope_at_cap"]
     assert f"{float(as_written):.2f}" == "31.05"
     assert float(log_below) > PAGE_SEVEN["log_error_below_crossover"]
     assert float(log_largest) < PAGE_SEVEN["log_error_at_largest"]
+    print("  C(a) <= 2.43 does not hold: C(1.58) = 2.4306")
     print("  M <= 1.3e22 holds; M <= 31 does not (31.27, and 31.05 with a = 1.58)")
     print("  2.6e22 e^-4189 is below the bound, since 2 pi a/h_x is 4188.79, not 4189")
     print("  62 e^-945 holds")

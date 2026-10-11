@@ -91,6 +91,11 @@ class TestPageSevenAsWritten:
     # Page 7 was computed with a = 1.58 as a decimal and rounded 4188.79 to 4189. These
     # pin what the CLARIFICATION of 2026-10-11 says about each figure.
 
+    def test_c_at_most_2_43_fails_by_rounding(self):
+        C = float(likelihood_strip.envelope(sympy.Rational(158, 100)))
+        assert f"{C:.4f}" == "2.4306"
+        assert likelihood_strip.PAGE_SEVEN["envelope_at_cap"] < C
+
     def test_m_below_the_crossover_holds(self):
         M = float(likelihood_strip.line_integral_bound(cell.CROSSOVER_SPREAD))
         assert likelihood_strip.PAGE_SEVEN["bound_below_crossover"] >= M

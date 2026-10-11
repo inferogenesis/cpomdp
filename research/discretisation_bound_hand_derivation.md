@@ -534,7 +534,8 @@ through the normalisations and the log are still to come.
    `bound ≤ 2.6e22 · e^{−4189}` for `f_y` fails the same way: the bound is
    `2.5e22 · e^{−4188.79}`, which is `3.1e22 · e^{−4189}`. At `σ = 0.7` both statements
    hold.
-2. **Page 7's `M ≤ 31` at `σ = 0.7` fails by rounding.** It is 31.05 at `a = 1.58` and
+2. **Page 7 rounds down twice.** `C(a) ≤ 2.43` for `σ ≤ 0.158` fails, since
+   `C(1.58) = 2.4306`. `M ≤ 31` at `σ = 0.7` fails too: it is 31.05 at `a = 1.58` and
    31.27 at `√10/2`. `M ≤ 1.3e22` and `bound ≤ 62 · e^{−945}` hold.
 3. **"The exponents do not change with `σ`" below 0.158.** True of `2πa/h_x` and
    `a²/2σ²`. False of (d)'s `a²/2R₀ = 50σ²`, and the prefactors of (b) and (c) grow too.
