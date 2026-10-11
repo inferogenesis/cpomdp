@@ -36,9 +36,9 @@ action-dependent Jacobians and does not collapse this way, whatever its `R` does
 - standoff: the twin's `argmin G` is exactly `argmin pragmatic`, so its operating point
   is whatever preference dictates and nothing else. The `R(x)` agent's sits further
   from surge, held off by the ambiguity term.
-- meter quality: over an 8:1 turndown ladder the `R(x)` standoff moves monotonically
-  while the twin's does not move at all. The surge control line is an inference outcome
-  under `R(Q)` and a hand-set constant under fixed `R`.
+- meter quality: over an 8:1 ladder in meter quality the `R(x)` standoff moves
+  monotonically while the twin's does not move at all. The surge control line is an
+  inference outcome under `R(Q)` and a hand-set constant under fixed `R`.
 - slope: `ℓ'(m) = d/dm log R` from autodiff matches the closed form `−2/Q`, so this
   sensor's inference-gap coefficient is `c₂ = (ℓ'/2)² = 1/Q²`.
 - robustness: the `R(x)` agent stays held off the twin's standoff across a 10:1 sweep
@@ -67,7 +67,7 @@ The bare command renders a three-panel figure:
 - LEFT and MIDDLE: EFE and its split across the valve grid, one agent each at a shared
   y-scale, surge line marked. The twin's flat epistemic line against the `R(x)`
   agent's rising one, and the `G` argmin moving off the pragmatic argmin.
-- RIGHT: standoff against meter turndown. A flat line (fixed `R`) against a curve. The
+- RIGHT: standoff against meter quality. A flat line (fixed `R`) against a curve. The
   vertical position of that curve is set by `Λ`, so read its shape and not its height.
 
 Nothing here is a citable number. See `examples/README.md`.
@@ -130,13 +130,14 @@ GOAL_PRECISION = 0.002
 ACTIONS = jnp.linspace(-14.0, 20.0, 400)
 GRID_STEP = float(ACTIONS[1] - ACTIONS[0])
 
-# An 8:1 turndown ladder in meter quality, anchored on E_REF at the good end. Doubling
-# rather than a fine sweep, so each rung's standoff move clears the grid resolution by
-# a wide margin rather than by one cell.
+# An 8:1 ladder in meter quality, anchored on E_REF at the good end. Doubling rather
+# than a fine sweep, so each rung's standoff move clears the grid resolution by a wide
+# margin rather than by one cell. It is a ladder in e_ref and not in turndown: eight
+# times the error at design flow is what the base meter shows at 1/sqrt(8) of it.
 METER_QUALITIES = (E_REF, 2 * E_REF, 4 * E_REF, 8 * E_REF)
 
-# A 10:1 sweep of the economic weight, to price the meter ladder against the one knob
-# that is not traceable to the meter derivation. This moves the standoff further than
+# A 10:1 sweep of the economic weight, to price the meter ladder against a knob that
+# is not traceable to the meter derivation. This moves the standoff further than
 # meter quality does, which is the point of printing it beside the ladder.
 GOAL_PRECISIONS = (
     GOAL_PRECISION / 4,
@@ -185,7 +186,7 @@ def _frozen_noise(e_ref: float) -> float:
 
 
 def _model(e_ref: float = E_REF, *, live: bool = True) -> LinearGaussianModel:
-    """The compressor model, with the meter either live or frozen at design flow.
+    """The compressor model, its meter live or frozen at the operating point.
 
     Args:
         e_ref: the meter's relative flow uncertainty at ``Q_REF``.
@@ -268,12 +269,30 @@ def _cached_sweep(
     )
 
 
+def _interior_argmin(values: np.ndarray) -> int:
+    """The grid index of the minimum, refusing one on the edge of the valve grid.
+
+    A minimum on the edge is the grid's limit and not the agent's optimum. Every row
+    that reads a standoff would pass on it without saying so.
+
+    Raises:
+        ValueError: if the minimum sits on the first or last grid action.
+    """
+    index = int(np.argmin(values))
+    if index in (0, len(values) - 1):
+        raise ValueError(
+            f"the minimum sits on the valve grid's edge, at action "
+            f"{float(ACTIONS[index]):g}. Widen ACTIONS before reading it as a standoff"
+        )
+    return index
+
+
 def _standoff(
     e_ref: float = E_REF, *, live: bool = True, precision: float = GOAL_PRECISION
 ) -> float:
     """Where one EFE step from the prior aims: `argmin G`, in % above surge."""
     _, _, g = _sweep(e_ref, live=live, precision=precision)
-    return OPERATING_MARGIN + float(ACTIONS[int(np.argmin(g))])
+    return OPERATING_MARGIN + float(ACTIONS[_interior_argmin(g)])
 
 
 def _pragmatic_standoff(
@@ -281,7 +300,7 @@ def _pragmatic_standoff(
 ) -> float:
     """Where preference alone would put the valve, ignoring the ambiguity term."""
     pragmatic, _, _ = _sweep(e_ref, live=live, precision=precision)
-    return OPERATING_MARGIN + float(ACTIONS[int(np.argmin(pragmatic))])
+    return OPERATING_MARGIN + float(ACTIONS[_interior_argmin(pragmatic)])
 
 
 def _log_noise(margin, params):
@@ -326,7 +345,7 @@ def _standoffs() -> tuple[float, float, float]:
     return _standoff(), _standoff(live=False), _pragmatic_standoff(live=False)
 
 
-def _turndown_ladder() -> tuple[tuple[float, float, float], ...]:
+def _meter_ladder() -> tuple[tuple[float, float, float], ...]:
     """`(e_ref, live standoff, frozen standoff)` at each rung of the meter ladder."""
     return tuple(
         (e_ref, _standoff(e_ref), _standoff(e_ref, live=False))
@@ -382,7 +401,7 @@ def falsifiers() -> tuple[CheckReport, ...]:
     """
     live_swing, frozen_swing = _dissociation()
     live_standoff, twin_standoff, twin_pragmatic = _standoffs()
-    ladder = _turndown_ladder()
+    ladder = _meter_ladder()
     economic = _economic_ladder()
     worst_slope, c2 = _slope_deviation()
     report = _sensor_report()
@@ -440,7 +459,7 @@ def falsifiers() -> tuple[CheckReport, ...]:
             return Outcome.FIRED
         return Outcome.NOT_TRIGGERED
 
-    turndown = METER_QUALITIES[-1] / METER_QUALITIES[0]
+    quality_ratio = METER_QUALITIES[-1] / METER_QUALITIES[0]
     return (
         CheckReport(
             name="1. epistemic term does not dissociate",
@@ -473,7 +492,8 @@ def falsifiers() -> tuple[CheckReport, ...]:
             outcome=ladder_not_monotone(),
             tier=Tier.BOUNDED,
             detail=(
-                f"over a {turndown:.0f}:1 turndown ladder the R(x) standoff falls "
+                f"over an {quality_ratio:.0f}:1 ladder in meter quality the R(x) "
+                f"standoff falls "
                 f"{live_margins[0]:.2f}% -> {live_margins[-1]:.2f}%, every rung moving "
                 f"more than the grid step {GRID_STEP:.4f}% (smallest {min(drops):.3f}%)"
                 f". The twin does not move: spread {frozen_spread:.0e}%"
@@ -559,7 +579,7 @@ def check() -> None:
         f"m = {GOAL_MARGIN:.0f}%, Λ = {GOAL_PRECISION}\n"
     )
 
-    ladder = _turndown_ladder()
+    ladder = _meter_ladder()
     print("One EFE step from the prior, against meter quality (the headline):")
     print(f"   {'e_ref':>8} {'% at design':>12} {'R(x) agent':>12} {'fixed twin':>12}")
     for e_ref, live, frozen in ladder:
@@ -605,7 +625,7 @@ def render(out_path: Path) -> Path:
 
     Two EFE panels through the shared gallery helper, one per agent, so the flat
     epistemic line and the rising one sit side by side at the same scale. The third
-    panel is the turndown ladder.
+    panel is the meter-quality ladder.
 
     Args:
         out_path: where the PNG goes.
@@ -613,12 +633,12 @@ def render(out_path: Path) -> Path:
     Returns:
         The path written.
     """
+    gallery.use_headless_backend()
     import matplotlib.pyplot as plt
 
-    gallery.use_headless_backend()
     twin_prag, twin_epi, twin_g = _sweep(live=False)
     live_prag, live_epi, live_g = _sweep()
-    ladder = _turndown_ladder()
+    ladder = _meter_ladder()
 
     fig, (twin_ax, live_ax, right) = plt.subplots(1, 3, figsize=(17.5, 5.0))
     fig.patch.set_facecolor(gallery.PAPER.bg)

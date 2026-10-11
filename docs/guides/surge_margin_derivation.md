@@ -135,10 +135,10 @@ as ADR-003, and the demo's first two rows measure it.
 The scope condition is easy to overstate, so here it is precisely. The collapse is a
 property of **the agent's generative model**, not of the plant. It needs a
 linear-Gaussian model with additive control and a fixed `R`: control then enters the
-mean only, the covariance recursion `P⁻ = APAᵀ + Q`, `S = CP⁻Cᵀ + R`, `P⁺` is
-action-independent, and the epistemic term `½(ln det S − ln det R)` cannot vary. The
-plant the agent is pointed at may be arbitrarily nonlinear without changing any of
-that.
+mean only, the covariance recursion `P⁻ = APAᵀ + q`, `S = CP⁻Cᵀ + R`, `P⁺` is
+action-independent, and the epistemic term `½(ln det S − ln det R)` cannot vary. `q` is
+the dynamics noise, written small to keep it apart from the flow `Q`. The plant the
+agent is pointed at may be arbitrarily nonlinear without changing any of that.
 
 What it does not cover: an EKF linearised on a nonlinear plant has Jacobians `A(x)` and
 `C(x)` that depend on the linearisation point, which depends on the predicted mean,

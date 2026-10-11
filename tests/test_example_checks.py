@@ -36,7 +36,7 @@ def test_surge_margin_check():
     Six registered falsifiers over the valve sweep. The fixed-R twin's epistemic term
     is flat and its argmin G is its argmin pragmatic (the ADR-003 collapse), the R(Q)
     agent is held off that optimum, and its standoff falls monotonically across an 8:1
-    meter-turndown ladder while the twin's does not move. The closed-form row asserts
+    ladder in meter quality while the twin's does not move. The closed-form row asserts
     autodiff `ell'(m)` against `-2/Q`, which is what ties the demo's sensor to the
     shape the gap work is written in.
 
