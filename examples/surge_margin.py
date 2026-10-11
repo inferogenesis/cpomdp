@@ -27,7 +27,7 @@ exhibits is a property of *the agent's generative model*, which is linear-Gaussi
 additive control here, and not of the plant. An EKF linearised on a nonlinear plant has
 action-dependent Jacobians and does not collapse this way, whatever its `R` does.
 
-`--check` reports six registered falsifiers, with no plotting deps:
+`--check` reports seven registered falsifiers, with no plotting deps:
 
 - dissociation: the twin's epistemic term is dead-flat across the valve grid, the
   `R(x)` agent's is not. Koudahl, Kouw and de Vries proved the flat case for
@@ -45,16 +45,20 @@ action-dependent Jacobians and does not collapse this way, whatever its `R` does
   of the economic weight `Λ`, so the *direction* of the offset survives that knob.
 - sensor probe: the library's `probe_model` says the sensor earns its keep over the
   reachable set.
+- stationarity law: every grid argmin lands within one grid step of the root of
+  `Λ(m − g) = −ℓ'(m)·(κ + ΛR)/2`, with κ the Kalman gain.
 
-**Where the standoff sits is a `Λ` artefact and is not a result.** `Λ` prices margin
-against information and I chose it. Sweeping it 10:1 moves the standoff by more than
-the meter ladder does, which `--check` prints and asserts beside the ladder so the two
-cannot be read as comparable. The existence of the offset and its direction are what
-survive.
+**The standoff has a closed form.** Setting `dG/dm` to zero puts the offset from
+preference at about `κ/(ΛQ)` for this meter. `Λ` prices margin against information and
+I chose it, so it sets the scale. Sweeping it 10:1 moves the standoff by more than the
+meter ladder does, which `--check` prints and asserts beside the ladder. The meter
+enters only through the Kalman gain κ. The existence of the offset and its direction are
+what belong to the meter.
 
 Every standoff here is one EFE step from the prior, whose σ is 2% of design flow. That
-is where the first decision aims. It is not where a closed-loop agent settles, and the
-prior's width scales it as much as `Λ` does.
+is where the first decision aims. It is not where a closed-loop agent settles. κ depends
+on the meter only through `P⁻/R`, so from a fixed prior a meter twice as bad and a prior
+four times as tight give the same standoff.
 
 **The direction is not the engineering one, and that is the interesting part.** A worse
 meter moves this agent *closer* to surge, because a meter that resolves nothing offers
@@ -68,7 +72,8 @@ The bare command renders a three-panel figure:
   y-scale, surge line marked. The twin's flat epistemic line against the `R(x)`
   agent's rising one, and the `G` argmin moving off the pragmatic argmin.
 - RIGHT: standoff against meter quality. A flat line (fixed `R`) against a curve. The
-  vertical position of that curve is set by `Λ`, so read its shape and not its height.
+  vertical position of that curve is set by `Λ` through the law, so read its shape and
+  not its height.
 
 Nothing here is a citable number. See `examples/README.md`.
 
@@ -318,6 +323,89 @@ def _log_noise_slope(margin: float, e_ref: float = E_REF) -> float:
     return float(_log_noise_slopes(jnp.array([margin]), _meter_params(e_ref))[0])
 
 
+# --- the stationarity law -----------------------------------------------------------
+# One EFE step moves only the predicted mean. With m the margin a valve step aims for
+# and P⁻ the predicted variance, the two parts of G are
+#
+#     pragmatic(m) = ½Λ·[(m − g)² + P⁻ + R(m)]
+#     epistemic(m) = ½·ln(1 + P⁻/R(m))
+#
+# Setting dG/dm to zero, with ℓ' = R'/R and the Kalman gain κ = P⁻/(P⁻ + R), gives
+#
+#     Λ·(m − g) = −ℓ'(m)·(κ(m) + Λ·R(m)) / 2
+#
+# For the DP meter ℓ' = −2/Q, so the offset from preference is about κ/(ΛQ). Λ sets its
+# scale, and the meter enters only through κ. κ depends on the meter only through
+# P⁻/R, and R scales as e_ref², so one step from a fixed prior a meter twice as bad and
+# a prior four times as tight give the same standoff.
+PREDICTED_VAR = MARGIN_VAR + DYNAMICS_NOISE[0][0]  # P⁻, one step from the prior
+
+
+def _stationarity_residual(
+    margin: float, e_ref: float, precision: float, predicted_var: float
+) -> float:
+    """`dG/dm` at one target margin, from the closed form above.
+
+    Written from the meter's own `R` and its autodiff slope, and from nothing in the
+    library's EFE kernel, so a root of it is an independent oracle for the grid argmin.
+
+    Args:
+        margin: the margin a valve step aims for — m.
+        e_ref: the meter's relative flow uncertainty at ``Q_REF``.
+        precision: the economic weight — Λ.
+        predicted_var: the predicted variance of the margin — P⁻.
+
+    Returns:
+        `Λ(m − g) + ℓ'(m)·(κ + ΛR)/2`, which is zero at the standoff.
+    """
+    return float(
+        _residual_kernel(margin, _meter_params(e_ref), precision, predicted_var)
+    )
+
+
+@jax.jit
+def _residual_kernel(margin, params, precision, predicted_var):
+    """The traced body of `_stationarity_residual`.
+
+    Jitted because a bisection calls it hundreds of times, and eager dispatch of three
+    small ops per call costs more than the sweep the root is checked against.
+    """
+    noise = _dp_meter_noise(jnp.array([margin]), params)[0, 0]
+    gain = predicted_var / (predicted_var + noise)  # κ
+    slope = jax.grad(_log_noise)(margin, params)  # ℓ'
+    return precision * (margin - GOAL_MARGIN) + 0.5 * slope * (gain + precision * noise)
+
+
+def _bisect(residual, low: float, high: float, steps: int = 60) -> float:
+    """A root of ``residual`` on ``[low, high]``, which must bracket a sign change."""
+    if not residual(low) < 0.0 < residual(high):
+        raise ValueError(f"[{low}, {high}] does not bracket a root of the residual")
+    for _ in range(steps):
+        middle = 0.5 * (low + high)
+        if residual(middle) < 0.0:
+            low = middle
+        else:
+            high = middle
+    return 0.5 * (low + high)
+
+
+def _law_standoff(
+    e_ref: float = E_REF,
+    precision: float = GOAL_PRECISION,
+    predicted_var: float = PREDICTED_VAR,
+) -> float:
+    """The margin where `dG/dm = 0`, one step from the prior unless told otherwise.
+
+    The bracket runs from the clamp at ``Q_FLOOR`` up to design flow, which holds the
+    root for every setting the demo visits.
+    """
+    return _bisect(
+        lambda margin: _stationarity_residual(margin, e_ref, precision, predicted_var),
+        Q_FLOOR - Q_SURGE,
+        Q_REF - Q_SURGE,
+    )
+
+
 def _panel(ax, prag, epi, g, title, note):
     """This demo's EFE panel: the shared one, labelled for a valve step."""
     gallery.draw_efe_panel(
@@ -370,6 +458,26 @@ def _economic_ladder() -> tuple[tuple[float, float, float], ...]:
     )
 
 
+def _law_agreement() -> tuple[tuple[float, float, float, float], ...]:
+    """`(e_ref, Λ, grid standoff, law root)` at every live setting the ladders visit.
+
+    The two ladders share their default rung, so seven settings rather than eight.
+    """
+    settings = dict.fromkeys(
+        [(e_ref, GOAL_PRECISION) for e_ref in METER_QUALITIES]
+        + [(E_REF, precision) for precision in GOAL_PRECISIONS]
+    )
+    return tuple(
+        (
+            e_ref,
+            precision,
+            _standoff(e_ref, precision=precision),
+            _law_standoff(e_ref, precision),
+        )
+        for e_ref, precision in settings
+    )
+
+
 def _slope_deviation() -> tuple[float, float]:
     """Worst `|autodiff ℓ' − (−2/Q)|` over the grid, and `c₂` at the operating point."""
     margins = OPERATING_MARGIN + jnp.asarray(ACTIONS)
@@ -389,7 +497,7 @@ def _sensor_report():
 
 # --- the registered falsifiers ------------------------------------------------------
 def falsifiers() -> tuple[CheckReport, ...]:
-    """The six registered falsifiers as reports, the last being the sensor probe.
+    """The registered falsifiers as reports. The sixth is the library's sensor probe.
 
     Every row here is read off a sweep over a *continuous* valve range, which is a
     finite grid over an infinite domain. That samples, so no row is ``PROVED`` at any
@@ -405,11 +513,13 @@ def falsifiers() -> tuple[CheckReport, ...]:
     economic = _economic_ladder()
     worst_slope, c2 = _slope_deviation()
     report = _sensor_report()
+    agreement = _law_agreement()
 
     live_margins = [m for _, m, _ in ladder]
     frozen_margins = [m for _, _, m in ladder]
     drops = [a - b for a, b in pairwise(live_margins)]
     frozen_spread = max(frozen_margins) - min(frozen_margins)
+    law_misses = [abs(grid - law) for _, _, grid, law in agreement]
 
     def dissociation_fails() -> Outcome:
         """Fires unless the twin is flat and the live meter is not."""
@@ -458,6 +568,15 @@ def falsifiers() -> tuple[CheckReport, ...]:
         if report.flattens or not report.epistemic_varies:
             return Outcome.FIRED
         return Outcome.NOT_TRIGGERED
+
+    def standoff_leaves_its_law() -> Outcome:
+        """Fires if any grid argmin sits more than one grid step from the law's root.
+
+        A grid argmin of a smooth single-minimum curve lies within one cell of the
+        true minimum, so one grid step is the sweep's own resolution and nothing is
+        fitted to it.
+        """
+        return Outcome.NOT_TRIGGERED if max(law_misses) <= GRID_STEP else Outcome.FIRED
 
     quality_ratio = METER_QUALITIES[-1] / METER_QUALITIES[0]
     return (
@@ -537,6 +656,19 @@ def falsifiers() -> tuple[CheckReport, ...]:
                 f" .. {report.epistemic_range[1]:.3f} nats"
             ),
         ),
+        CheckReport(
+            name="7. standoff leaves its stationarity law",
+            check_id="surge_margin.standoff_leaves_its_stationarity_law",
+            warrant=Warrant.CORROBORATED,
+            outcome=standoff_leaves_its_law(),
+            tier=Tier.BOUNDED,
+            detail=(
+                f"worst |grid argmin − law root| over {len(agreement)} settings of "
+                f"both ladders: {max(law_misses):.3f}%, against the grid step "
+                f"{GRID_STEP:.4f}%. Λ(m − g) = −ℓ'(κ + ΛR)/2 places the standoff to "
+                "the sweep's resolution"
+            ),
+        ),
     )
 
 
@@ -581,26 +713,36 @@ def check() -> None:
 
     ladder = _meter_ladder()
     print("One EFE step from the prior, against meter quality (the headline):")
-    print(f"   {'e_ref':>8} {'% at design':>12} {'R(x) agent':>12} {'fixed twin':>12}")
-    for e_ref, live, frozen in ladder:
-        print(f"   {e_ref:>8.4f} {e_ref * 100:>11.1f}% {live:>11.2f}% {frozen:>11.2f}%")
     print(
-        "   -> a worse meter runs CLOSER to surge. The ambiguity term rewards "
-        "resolvable\n      uncertainty, and it is not a safety factor.\n"
+        f"   {'e_ref':>8} {'% at design':>12} {'R(x) agent':>12} {'law':>8} "
+        f"{'fixed twin':>12}"
+    )
+    for e_ref, live, frozen in ladder:
+        print(
+            f"   {e_ref:>8.4f} {e_ref * 100:>11.1f}% {live:>11.2f}% "
+            f"{_law_standoff(e_ref):>7.2f}% {frozen:>11.2f}%"
+        )
+    print(
+        "   -> a worse meter runs CLOSER to surge. It lowers the Kalman gain κ, and "
+        "the\n      offset scales with κ. The ambiguity term rewards resolvable "
+        "uncertainty,\n      and it is not a safety factor.\n"
     )
 
     economic = _economic_ladder()
     meter_span = max(m for _, m, _ in ladder) - min(m for _, m, _ in ladder)
     economic_span = max(m for _, m, _ in economic) - min(m for _, m, _ in economic)
     print("The same standoff against the economic weight Λ (the control):")
-    print(f"   {'Λ':>8} {'':>12} {'R(x) agent':>12} {'fixed twin':>12}")
+    print(f"   {'Λ':>8} {'':>12} {'R(x) agent':>12} {'law':>8} {'fixed twin':>12}")
     for precision, live, frozen in economic:
-        print(f"   {precision:>8.5f} {'':>12} {live:>11.2f}% {frozen:>11.2f}%")
+        print(
+            f"   {precision:>8.5f} {'':>12} {live:>11.2f}% "
+            f"{_law_standoff(precision=precision):>7.2f}% {frozen:>11.2f}%"
+        )
     print(
         f"   -> Λ spans {economic_span:.2f}% of design flow against the meter "
-        f"ladder's {meter_span:.2f}%.\n      Where the standoff SITS is a Λ artefact. "
-        "Only the direction of the offset\n      is a result, and row 5 is what "
-        "claims it.\n"
+        f"ladder's {meter_span:.2f}%.\n      The law says why: the offset is about "
+        "κ/(ΛQ), so Λ sets its scale. Only the\n      direction belongs to the "
+        "meter, and row 5 is what claims it.\n"
     )
     assert economic_span > meter_span, (
         f"the meter ladder spans {meter_span:.2f}%, at least the Λ ladder's "

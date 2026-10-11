@@ -118,7 +118,7 @@ class TestTheSuitesDeclareDistinctKeys:
         # Sweeps rather than enumerations, so this one is seconds and stays on the
         # pull-request path where the crossover equivalent cannot.
         ids = _surge_margin_ids()
-        assert len(set(ids)) == len(ids) == 6
+        assert len(set(ids)) == len(ids) == 7
 
     def test_every_surge_margin_key_is_namespaced_to_its_module(self):
         ids = _surge_margin_ids()
