@@ -65,7 +65,8 @@ offset and its direction are what belong to the meter.
 
 The ladders measure the first EFE step, taken from a prior whose σ is 2% of design
 flow. κ depends on the meter only through `P⁻/R`, so from a fixed prior a meter twice as
-bad and a prior four times as tight give the same first step. The closed loop separates
+bad and a prior four times as tight give almost the same first step. Only the small
+pragmatic part tells them apart. The closed loop separates
 them, because there P⁻ comes from the filter's steady state and so from the meter
 itself. A settled loop holds a tighter belief than the prior, so its κ is smaller and it
 sits much nearer the preference than its first step aimed. `--check` prints both.
@@ -355,10 +356,11 @@ def _log_noise_slope(margin: float, e_ref: float = E_REF) -> float:
 # a noisier reading costs expected pragmatic value, and the reading is quieter at higher
 # flow. As the meter worsens, κ falls and R rises, so the two parts pull opposite ways.
 # One step from the prior κ is near one and the first part carries all but a few
-# percent. A settled loop's κ is small enough that the second part matters. Λ sets the
-# scale of the first. κ depends on the meter only through P⁻/R, and R scales as e_ref²,
-# so one step from a fixed prior a meter twice as bad and a prior four times as tight
-# give the same standoff.
+# percent. A settled loop's κ is small enough at the worse meters that the second part
+# matters. Λ sets the scale of the first. κ depends on the meter only through P⁻/R, and
+# R scales as e_ref², so one step from a fixed prior a meter twice as bad and a prior
+# four times as tight give almost the same standoff. Only the pragmatic part, which
+# depends on R alone, tells them apart, and one step from the prior it is small.
 PREDICTED_VAR = MARGIN_VAR + DYNAMICS_NOISE[0][0]  # P⁻, one step from the prior
 
 
@@ -644,8 +646,8 @@ def falsifiers() -> tuple[CheckReport, ...]:
     settled_margins = [margin for _, _, margin in settled]
     settled_drops = [a - b for a, b in pairwise(settled_margins)]
     settled_offset = settled_default - GOAL_MARGIN
-    # Guarded, so a regression that puts the loop on its preference reaches row 9 as a
-    # FIRED row rather than as a ZeroDivisionError out of this function.
+    # Guarded, so a regression in the settled law that puts it on the preference reaches
+    # row 9 as a FIRED row rather than as a ZeroDivisionError out of this function.
     overshoot = (
         (first_step - GOAL_MARGIN) / settled_offset if settled_offset > 0 else math.inf
     )
@@ -717,12 +719,16 @@ def falsifiers() -> tuple[CheckReport, ...]:
         twin_on_preference = abs(loop_twin - GOAL_MARGIN) <= GRID_STEP
         return Outcome.NOT_TRIGGERED if agrees and twin_on_preference else Outcome.FIRED
 
-    def offset_lost_in_closed_loop() -> Outcome:
+    def settled_ladder_loses_the_offset() -> Outcome:
         """Fires if any settled rung loses the offset or the ladder stops falling.
 
         By the law, every rung of the meter ladder has to settle more than a grid step
         clear of the preference, and each worse meter more than a grid step nearer it.
-        That is the first step's direction, held once the loop has settled.
+        That is the first step's direction, held once the loop has settled. The settled
+        margins are roots of the law and not read off the sweep. The grid step is the
+        bar anyway because it is the agent's resolution: a loop acting on this grid
+        holds its margin only to within a cell, so a settled difference smaller than
+        that could not show up in the loop the law describes.
         """
         clear = all(margin - GOAL_MARGIN > GRID_STEP for margin in settled_margins)
         falling = all(drop > GRID_STEP for drop in settled_drops)
@@ -833,10 +839,10 @@ def falsifiers() -> tuple[CheckReport, ...]:
             ),
         ),
         CheckReport(
-            name="9. offset does not survive closed loop",
-            check_id="surge_margin.offset_does_not_survive_closed_loop",
+            name="9. settled ladder loses the offset",
+            check_id="surge_margin.settled_ladder_loses_the_offset",
             warrant=Warrant.CORROBORATED,
-            outcome=offset_lost_in_closed_loop(),
+            outcome=settled_ladder_loses_the_offset(),
             tier=Tier.BOUNDED,
             detail=(
                 f"by the law the {quality_ratio:.0f}:1 ladder settles "
