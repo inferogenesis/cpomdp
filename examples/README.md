@@ -277,6 +277,6 @@ standoff that moved by less than one grid cell did not measurably move. The
 `ℓ'(m) = −2/Q` row is `EXACT`, being autodiff against a closed form at machine
 precision, and it is a statement about the sensor rather than a measured inference gap.
 
-`--check` prints both ladders, the `probe_model` verdict and the seven falsifiers. It
+`--check` prints both ladders, the `probe_model` verdict and the eight falsifiers. It
 asserts that none of them fired and that `Λ` moves the standoff further than the meter
 does, with no plotting deps.

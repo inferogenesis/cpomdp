@@ -27,7 +27,7 @@ exhibits is a property of *the agent's generative model*, which is linear-Gaussi
 additive control here, and not of the plant. An EKF linearised on a nonlinear plant has
 action-dependent Jacobians and does not collapse this way, whatever its `R` does.
 
-`--check` reports seven registered falsifiers, with no plotting deps:
+`--check` reports eight registered falsifiers, with no plotting deps:
 
 - dissociation: the twin's epistemic term is dead-flat across the valve grid, the
   `R(x)` agent's is not. Koudahl, Kouw and de Vries proved the flat case for
@@ -47,6 +47,9 @@ action-dependent Jacobians and does not collapse this way, whatever its `R` does
   reachable set.
 - stationarity law: every grid argmin lands within one grid step of the root of
   `Λ(m − g) = −ℓ'(m)·(κ + ΛR)/2`, with κ the Kalman gain.
+- closed loop: the library's own `Agent`, run noise-free at the default meter, settles
+  within a grid step of the law with κ at its steady state. By the law, every rung of
+  the meter ladder settles clear of the preference.
 
 **The standoff has a closed form.** Setting `dG/dm` to zero puts the offset from
 preference at about `κ/(ΛQ)` for this meter. `Λ` prices margin against information and
@@ -55,10 +58,12 @@ meter ladder does, which `--check` prints and asserts beside the ladder. The met
 enters only through the Kalman gain κ. The existence of the offset and its direction are
 what belong to the meter.
 
-Every standoff here is one EFE step from the prior, whose σ is 2% of design flow. That
-is where the first decision aims. It is not where a closed-loop agent settles. κ depends
-on the meter only through `P⁻/R`, so from a fixed prior a meter twice as bad and a prior
-four times as tight give the same standoff.
+The ladders measure the first EFE step, taken from a prior whose σ is 2% of design
+flow. κ depends on the meter only through `P⁻/R`, so from a fixed prior a meter twice as
+bad and a prior four times as tight give the same first step. The closed loop separates
+them, because there P⁻ comes from the filter's steady state and so from the meter
+itself. A settled loop holds a tighter belief than the prior, so its κ is smaller and it
+sits much nearer the preference than its first step aimed. `--check` prints both.
 
 **The direction is not the engineering one, and that is the interesting part.** A worse
 meter moves this agent *closer* to surge, because a meter that resolves nothing offers
@@ -71,9 +76,10 @@ The bare command renders a three-panel figure:
 - LEFT and MIDDLE: EFE and its split across the valve grid, one agent each at a shared
   y-scale, surge line marked. The twin's flat epistemic line against the `R(x)`
   agent's rising one, and the `G` argmin moving off the pragmatic argmin.
-- RIGHT: standoff against meter quality. A flat line (fixed `R`) against a curve. The
-  vertical position of that curve is set by `Λ` through the law, so read its shape and
-  not its height.
+- RIGHT: standoff against meter quality, first step and settled, with the library
+  `Agent`'s closed-loop point on the settled curve. A flat line (fixed `R`) against two
+  curves. Their height is set by `Λ` through the law, so read their shape and not their
+  height.
 
 Nothing here is a citable number. See `examples/README.md`.
 
@@ -83,6 +89,7 @@ Run:
 Output (bare command): docs/assets/surge_margin.png
 """
 
+import math
 from functools import cache
 from itertools import pairwise
 from pathlib import Path
@@ -92,6 +99,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+from cpomdp import Agent, EFESelector, ObservationGoal
 from cpomdp.diagnostics import probe_model
 from cpomdp.efe import expected_free_energy
 from cpomdp.observation import CallableSensor
@@ -406,6 +414,80 @@ def _law_standoff(
     )
 
 
+# --- the closed loop ----------------------------------------------------------------
+# A loop that has run for a while holds a tighter belief than the prior, so its κ is
+# smaller and it settles nearer the preference than its first step aimed. At steady
+# state the scalar filter's predicted variance solves P⁻² − qP⁻ − qR = 0 at the margin
+# the loop holds, and that margin solves the law at that P⁻. Iterating the two finds
+# the fixed point.
+LOOP_STEPS = 40  # the default meter's belief settles inside twenty steps
+LOOP_TAIL = 10  # the steps averaged, since a grid action dithers by a cell
+
+
+def _steady_predicted_var(noise: float) -> float:
+    """The scalar filter's steady-state P⁻ at one `R`, the positive root above."""
+    process_noise = DYNAMICS_NOISE[0][0]  # q
+    return 0.5 * (
+        process_noise + math.sqrt(process_noise**2 + 4.0 * process_noise * noise)
+    )
+
+
+def _settled_law(e_ref: float = E_REF, precision: float = GOAL_PRECISION) -> float:
+    """Where the closed loop settles by the law, with P⁻ at its steady state there.
+
+    Raises:
+        RuntimeError: if the fixed-point iteration does not converge.
+    """
+    margin = _law_standoff(e_ref, precision)
+    for _ in range(100):
+        noise = float(_dp_meter_noise(jnp.array([margin]), _meter_params(e_ref))[0, 0])
+        settled = _law_standoff(e_ref, precision, _steady_predicted_var(noise))
+        if abs(settled - margin) < 1e-10:
+            return settled
+        margin = settled
+    raise RuntimeError(f"the steady-state law did not converge at e_ref = {e_ref}")
+
+
+@cache
+def _closed_loop(live: bool) -> float:
+    """Where the library's own `Agent` settles at the default meter, run noise-free.
+
+    The plant follows the agent's model and the meter reads true, so the run is
+    deterministic. The belief variance follows the filter's recursion and the margin
+    goes wherever each step aims. A noisy run fluctuates about this point. Only the
+    default meter runs here: a worse meter has a small gain, its variance takes
+    hundreds of steps to settle, and the law covers it.
+
+    Args:
+        live: ``True`` for the ``R(x)`` agent, ``False`` for the fixed-`R` twin.
+
+    Returns:
+        The mean margin over the last ``LOOP_TAIL`` steps.
+    """
+    model = _model(live=live)
+    bounds = (float(ACTIONS[0]), float(ACTIONS[-1]))
+    objective = ObservationGoal(
+        [GOAL_MARGIN],
+        precision=[[GOAL_PRECISION]],
+        action_bounds=bounds,
+        n_candidates=len(ACTIONS),
+    )
+    # The Agent declines EFE on a fixed sensor unless handed a selector, because the
+    # epistemic term is dead there. The twin needs one to be a twin at all.
+    selector = (
+        None
+        if live
+        else EFESelector(model, n_candidates=len(ACTIONS), action_bounds=bounds)
+    )
+    agent = Agent(model, objective, selector=selector)
+    margin, trace = OPERATING_MARGIN, []
+    for _ in range(LOOP_STEPS):
+        agent.infer_states(jnp.array([margin]))
+        margin += float(agent.sample_action()[0])
+        trace.append(margin)
+    return float(np.mean(trace[-LOOP_TAIL:]))
+
+
 def _panel(ax, prag, epi, g, title, note):
     """This demo's EFE panel: the shared one, labelled for a valve step."""
     gallery.draw_efe_panel(
@@ -478,6 +560,13 @@ def _law_agreement() -> tuple[tuple[float, float, float, float], ...]:
     )
 
 
+def _settled_ladder() -> tuple[tuple[float, float, float], ...]:
+    """`(e_ref, first step, settled)` by the law at each rung of the meter ladder."""
+    return tuple(
+        (e_ref, _law_standoff(e_ref), _settled_law(e_ref)) for e_ref in METER_QUALITIES
+    )
+
+
 def _slope_deviation() -> tuple[float, float]:
     """Worst `|autodiff ℓ' − (−2/Q)|` over the grid, and `c₂` at the operating point."""
     margins = OPERATING_MARGIN + jnp.asarray(ACTIONS)
@@ -514,12 +603,16 @@ def falsifiers() -> tuple[CheckReport, ...]:
     worst_slope, c2 = _slope_deviation()
     report = _sensor_report()
     agreement = _law_agreement()
+    settled = _settled_ladder()
+    loop_live, loop_twin = _closed_loop(True), _closed_loop(False)
 
     live_margins = [m for _, m, _ in ladder]
     frozen_margins = [m for _, _, m in ladder]
     drops = [a - b for a, b in pairwise(live_margins)]
     frozen_spread = max(frozen_margins) - min(frozen_margins)
     law_misses = [abs(grid - law) for _, _, grid, law in agreement]
+    _, first_step, settled_default = settled[0]  # METER_QUALITIES opens on E_REF
+    overshoot = (first_step - GOAL_MARGIN) / (settled_default - GOAL_MARGIN)
 
     def dissociation_fails() -> Outcome:
         """Fires unless the twin is flat and the live meter is not."""
@@ -577,6 +670,23 @@ def falsifiers() -> tuple[CheckReport, ...]:
         fitted to it.
         """
         return Outcome.NOT_TRIGGERED if max(law_misses) <= GRID_STEP else Outcome.FIRED
+
+    def offset_lost_in_closed_loop() -> Outcome:
+        """Fires if the library's loop leaves the settled law, or the offset vanishes.
+
+        Three things have to hold. The library's own `Agent` settles within a grid step
+        of the law at the default meter. The twin settles on its preference. By the
+        law, every rung of the meter ladder settles more than a grid step clear of the
+        preference, so the direction survives closed loop at every meter quality.
+        """
+        agrees = abs(loop_live - settled_default) <= GRID_STEP
+        twin_on_preference = abs(loop_twin - GOAL_MARGIN) <= GRID_STEP
+        clear = all(margin - GOAL_MARGIN > GRID_STEP for _, _, margin in settled)
+        return (
+            Outcome.NOT_TRIGGERED
+            if agrees and twin_on_preference and clear
+            else Outcome.FIRED
+        )
 
     quality_ratio = METER_QUALITIES[-1] / METER_QUALITIES[0]
     return (
@@ -669,6 +779,22 @@ def falsifiers() -> tuple[CheckReport, ...]:
                 "the sweep's resolution"
             ),
         ),
+        CheckReport(
+            name="8. offset does not survive closed loop",
+            check_id="surge_margin.offset_does_not_survive_closed_loop",
+            warrant=Warrant.CORROBORATED,
+            outcome=offset_lost_in_closed_loop(),
+            tier=Tier.BOUNDED,
+            detail=(
+                f"library Agent, noise-free closed loop: settles at m = "
+                f"{loop_live:.2f}% against the law's {settled_default:.2f}%, twin at "
+                f"{loop_twin:.2f}%. By the law the {quality_ratio:.0f}:1 ladder "
+                f"settles "
+                f"{settled[0][2]:.2f}% -> {settled[-1][2]:.2f}%, every rung clear of "
+                f"the preference by more than the grid step. The first step's offset "
+                f"from preference is {overshoot:.1f}x the settled one"
+            ),
+        ),
     )
 
 
@@ -712,20 +838,31 @@ def check() -> None:
     )
 
     ladder = _meter_ladder()
-    print("One EFE step from the prior, against meter quality (the headline):")
+    print("Where the R(x) agent aims, and where it settles (the headline):")
     print(
-        f"   {'e_ref':>8} {'% at design':>12} {'R(x) agent':>12} {'law':>8} "
-        f"{'fixed twin':>12}"
+        f"   {'e_ref':>8} {'% at design':>12} {'first step':>11} {'law':>8} "
+        f"{'settles':>9} {'fixed twin':>11}"
     )
     for e_ref, live, frozen in ladder:
         print(
-            f"   {e_ref:>8.4f} {e_ref * 100:>11.1f}% {live:>11.2f}% "
-            f"{_law_standoff(e_ref):>7.2f}% {frozen:>11.2f}%"
+            f"   {e_ref:>8.4f} {e_ref * 100:>11.1f}% {live:>10.2f}% "
+            f"{_law_standoff(e_ref):>7.2f}% {_settled_law(e_ref):>8.2f}% "
+            f"{frozen:>10.2f}%"
         )
     print(
-        "   -> a worse meter runs CLOSER to surge. It lowers the Kalman gain κ, and "
-        "the\n      offset scales with κ. The ambiguity term rewards resolvable "
-        "uncertainty,\n      and it is not a safety factor.\n"
+        "   first step: the grid argmin. law: its closed-form root. settles: the law "
+        "with κ\n   at its steady state."
+    )
+    print(
+        f"   library Agent in closed loop at e_ref = {E_REF}: settles at "
+        f"{_closed_loop(True):.2f}%, the twin at {_closed_loop(False):.2f}%"
+    )
+    print(
+        "   -> a worse meter runs CLOSER to surge, first step and settled alike. It "
+        "lowers\n      the Kalman gain κ, and the offset scales with κ. A settled "
+        "loop holds a\n      tighter belief, so its κ is smaller and it sits nearer "
+        "the preference. The\n      ambiguity term rewards resolvable uncertainty, "
+        "and it is not a safety factor.\n"
     )
 
     economic = _economic_ladder()
@@ -767,7 +904,8 @@ def render(out_path: Path) -> Path:
 
     Two EFE panels through the shared gallery helper, one per agent, so the flat
     epistemic line and the rising one sit side by side at the same scale. The third
-    panel is the meter-quality ladder.
+    panel is the meter-quality ladder, with the first step against where the loop
+    settles.
 
     Args:
         out_path: where the PNG goes.
@@ -810,10 +948,27 @@ def render(out_path: Path) -> Path:
     right.plot(
         e_refs,
         [m for _, m, _ in ladder],
+        "--o",
+        color=gallery.EPISTEMIC_C,
+        mfc="white",
+        lw=1.6,
+        label="R(Q) agent, first step",
+    )
+    right.plot(
+        e_refs,
+        [_settled_law(e_ref) for e_ref in e_refs],
         "-o",
         color=gallery.EPISTEMIC_C,
         lw=2.2,
-        label="R(Q) agent",
+        label="R(Q) agent, settled (law)",
+    )
+    right.plot(
+        [E_REF],
+        [_closed_loop(True)],
+        "*",
+        color=gallery.VERMILLION,
+        ms=13,
+        label="library Agent, closed loop",
     )
     right.plot(
         e_refs,
@@ -830,12 +985,12 @@ def render(out_path: Path) -> Path:
     # rungs, which reads as data points that are not there.
     right.set_xticks([], minor=True)
     right.set_xlabel("meter relative uncertainty at design flow")
-    right.set_ylabel("one-step standoff above surge  (% of design flow)")
+    right.set_ylabel("standoff above surge  (% of design flow)")
     right.set_title(
         "the control line moves, or it does not", fontsize=12, fontweight="bold"
     )
     right.annotate(
-        "a worse meter runs CLOSER to surge:\n"
+        "a worse meter runs CLOSER to surge, first step and settled alike:\n"
         "the ambiguity term is not a safety factor.\n"
         "Read the shape, not the height: Λ sets the height",
         xy=(0.5, -0.30),
@@ -846,7 +1001,7 @@ def render(out_path: Path) -> Path:
         color="#333333",
     )
     right.grid(True, alpha=0.25)
-    right.legend(loc="upper right", fontsize=8.5, framealpha=0.9)
+    right.legend(loc="center left", fontsize=8.5, framealpha=0.9)
 
     fig.tight_layout()
     return gallery.save_figure(fig, out_path, dpi=150, tight=True)

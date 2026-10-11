@@ -80,8 +80,9 @@ def _ids(module: str) -> tuple[str, ...]:
 def _surge_margin_ids() -> tuple[str, ...]:
     """Every id the applied demo declares, computed once for the whole session.
 
-    Its `falsifiers()` runs fourteen action sweeps, so the three assertions below share
-    one run rather than paying for three.
+    Its `falsifiers()` runs fourteen action sweeps and two closed-loop runs of the
+    library's `Agent`, so the three assertions below share one run rather than paying
+    for three.
     """
     return tuple(report.check_id for report in surge_margin.falsifiers())
 
@@ -118,7 +119,7 @@ class TestTheSuitesDeclareDistinctKeys:
         # Sweeps rather than enumerations, so this one is seconds and stays on the
         # pull-request path where the crossover equivalent cannot.
         ids = _surge_margin_ids()
-        assert len(set(ids)) == len(ids) == 7
+        assert len(set(ids)) == len(ids) == 8
 
     def test_every_surge_margin_key_is_namespaced_to_its_module(self):
         ids = _surge_margin_ids()
