@@ -172,8 +172,8 @@ m − g = κ/(Λ·Q) + R/Q
 The first part is epistemic. The second is pragmatic, and it comes from the `R(m)`
 inside the pragmatic term. The preference is over readings, a noisier reading costs
 expected pragmatic value, and this meter's reading is quieter at higher flow. One step
-from the demo's prior, κ is near one and the second part is a few percent of the offset
-at most. Once the loop has settled, κ is small enough at the worse meters that it is
+from the demo's prior κ is large, near one at the default meter, and the second part is
+a few percent of the offset at most. Once the loop has settled, κ is small enough at the worse meters that it is
 not.
 
 `Λ` sets the scale of the epistemic part, as `1/Λ`. That is why sweeping it moves the
@@ -186,8 +186,10 @@ rung the demo visits, which is why a worse meter runs closer to surge. The check
 that net direction for the first step and for the settled loop.
 
 κ depends on the meter only through `P⁻/R`, and `R` scales as `e_ref²`. One step from a
-fixed prior, a meter twice as bad and a prior four times as tight give the same
-standoff. A ladder of first steps cannot tell them apart.
+fixed prior, a meter twice as bad and a prior four times as tight give almost the same
+standoff. Only the pragmatic part, which depends on `R` alone, separates them, and one
+step from the prior it is small. A ladder of first steps cannot tell them apart in
+practice.
 
 The closed loop can. A loop that has run a while holds the filter's steady-state
 variance. For this scalar model, with `q` the dynamics noise, that variance solves
