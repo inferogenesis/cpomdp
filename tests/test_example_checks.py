@@ -33,7 +33,7 @@ def test_single_chain_theorem_check():
 def test_surge_margin_check():
     """The applied R(x) demo: a DP flow meter's own noise moves the surge control line.
 
-    Eight registered falsifiers over the valve sweep. The fixed-R twin's epistemic term
+    Nine registered falsifiers over the valve sweep. The fixed-R twin's epistemic term
     is flat and its argmin G is its argmin pragmatic (the ADR-003 collapse), the R(Q)
     agent is held off that optimum, and its standoff falls monotonically across an 8:1
     ladder in meter quality while the twin's does not move. The closed-form row asserts
@@ -44,11 +44,12 @@ def test_surge_margin_check():
     economic weight, which moves the standoff further than meter quality does. That is
     what separates the demo's claim (the direction) from its output (the numbers). The
     sixth is the library's own sensor probe. The seventh checks every grid argmin
-    against the root of the stationarity law, which says why: the offset is about
-    `kappa/(Lambda Q)`, so Lambda sets its scale and the meter enters through the
-    Kalman gain. The eighth runs the library's own `Agent` in closed loop and checks it
-    settles where the law puts it, with the offset smaller than the first step's and
-    still clear of the preference.
+    against the root of the stationarity law, which says why: the offset is
+    `kappa/(Lambda Q) + R/Q`, an epistemic part whose scale Lambda sets and a pragmatic
+    part from the preference being over noisy readings. The eighth runs the library's
+    own `Agent` in closed loop and checks it settles where the law puts it. The ninth
+    checks that every settled rung stays clear of the preference and that a worse meter
+    still settles nearer it.
 
     Fourteen vmapped sweeps of 400 grid actions and two 40-step agent loops, each
     computed once, a few seconds, so it stays on the pull-request path.

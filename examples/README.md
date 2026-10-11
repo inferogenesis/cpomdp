@@ -265,17 +265,23 @@ The standoff has a closed form. One EFE step moves only the predicted mean, so s
 Λ·(m − g) = −ℓ'(m)·(κ + Λ·R) / 2        κ = P⁻ / (P⁻ + R),  the Kalman gain
 ```
 
-For a DP meter `ℓ' = −2/Q`, so the agent sits about `κ/(ΛQ)` above its preference.
-Every grid argmin in the demo lands within one grid step of this root. The economic
-weight `Λ` sets the scale. The meter enters only through κ, which is why a worse meter
-moves the agent closer: it lowers the gain.
+For a DP meter `ℓ' = −2/Q`, so the agent sits exactly `κ/(ΛQ) + R/Q` above its
+preference. Every grid argmin in the demo lands within one grid step of this root.
+
+The first part is epistemic, and the economic weight `Λ` sets its scale. The second is
+pragmatic. The preference is over readings, a noisier reading costs expected pragmatic
+value, and a DP meter's reading is quieter at higher flow. A worse meter lowers κ and
+shrinks the first part. It raises `R` and grows the second. The first wins, so a worse
+meter still moves the agent closer to surge, and the check asserts that direction for
+the first step and for the settled loop.
 
 κ also depends on how sure the agent already is. The first decision is taken from a
 broad prior, so its κ is near one and it aims well out. A loop that has run a while
 holds a tighter belief, its κ is smaller, and it settles much nearer the preference.
 Run in closed loop, the library's own `Agent` settles where the law puts it with κ at
 the filter's steady state. `--check` prints the first step and the settled margin side
-by side. The settled offset is the one an operator would see.
+by side. The settled offset is the one an operator would see. Its κ is small enough
+that the pragmatic part is no longer negligible at the worse meters.
 
 ### The direction is the wrong way round, and that is the result
 
@@ -300,6 +306,6 @@ The law and closed-loop rows are `BOUNDED` by the same grid step. The closed loo
 noise-free and only at the default meter. The rest of the settled ladder comes from the
 law.
 
-`--check` prints both ladders, the `probe_model` verdict and the eight falsifiers. It
+`--check` prints both ladders, the `probe_model` verdict and the nine falsifiers. It
 asserts that none of them fired and that `Λ` moves the standoff further than the meter
 does, with no plotting deps.

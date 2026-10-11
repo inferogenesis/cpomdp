@@ -163,19 +163,27 @@ Differentiate and use `R' = ℓ'·R`. The epistemic term's slope is `−½·κ·
 Λ·(m − g) = −ℓ'(m)·(κ(m) + Λ·R(m)) / 2
 ```
 
-For this meter `ℓ' = −2/Q`, and `Λ·R` is small beside κ, so
+For this meter `ℓ' = −2/Q`, so
 
 ```text
-m − g ≈ κ / (Λ·Q)
+m − g = κ/(Λ·Q) + R/Q
 ```
 
-`Λ` sets the scale of the offset, as `1/Λ`. That is why sweeping it moves the standoff
-further than the meter ladder does. It needs no separate disclosure, because it is the
-formula.
+The first part is epistemic. The second is pragmatic, and it comes from the `R(m)`
+inside the pragmatic term. The preference is over readings, a noisier reading costs
+expected pragmatic value, and this meter's reading is quieter at higher flow. One step
+from the demo's prior, κ is near one and the second part is a few percent of the offset
+at most. Once the loop has settled, κ is small enough at the worse meters that it is
+not.
 
-The meter enters only through κ. A worse meter means a larger `R`, a smaller gain and a
-smaller offset. That is the whole mechanism behind a worse meter running closer to
-surge.
+`Λ` sets the scale of the epistemic part, as `1/Λ`. That is why sweeping it moves the
+standoff further than the meter ladder does. It needs no separate disclosure, because it
+is the formula.
+
+A worse meter means a larger `R`. That lowers κ and shrinks the epistemic part, and it
+grows the pragmatic part. The two pull opposite ways. The epistemic part wins on every
+rung the demo visits, which is why a worse meter runs closer to surge. The check asserts
+that net direction for the first step and for the settled loop.
 
 κ depends on the meter only through `P⁻/R`, and `R` scales as `e_ref²`. One step from a
 fixed prior, a meter twice as bad and a prior four times as tight give the same
@@ -268,9 +276,11 @@ The demo and anything written about it quote the same list:
 - The operating point is illustrative. `Q_ref`, `Q_s` and the design margin describe no
   machine and were not read off a performance map.
 - Where the standoff sits is set by the economic weight `Λ`, which is a policy choice.
-  The law makes the offset scale as `1/Λ`, and sweeping `Λ` over 10:1 moves the
-  standoff further than the whole meter ladder does.
+  The law makes the epistemic part of the offset scale as `1/Λ`, and sweeping `Λ` over
+  10:1 moves the standoff further than the whole meter ladder does.
   The demo's claim is the *direction* of the offset, not its size.
+- The ladders' first steps are taken from a prior with σ = 2% of design flow, and the
+  prior's width scales them as much as `Λ` does.
 - The closed loop is noise-free, and only the default meter runs through the library's
   `Agent`. A noisy loop fluctuates about the point it finds. The settled margins for the
   rest of the meter ladder come from the law.
