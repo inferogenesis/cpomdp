@@ -5,23 +5,24 @@ notebook Part 1 was worked in, dated 18/09/2026 to 11/10/2026. It is the origina
 is a typed up version of that scan by AI-Claude Opus: the same steps, in the same order,
 under the notes' own numbering, so the two read side by side.
 
-The steps transcribe the scan and stop where it stops. The dated sections at the foot
-are not in the scan and were added after the code ran. Each says what in the scan it
-corrects. Where a step and the scan disagree, the scan is what happened and the step has
-the transcription error.
+The steps transcribe the scan and stop where it stops. Anything dated at the foot of
+this file is not in the scan. It is added after code has checked the steps, and says
+what in the scan it corrects. Where a step and the scan disagree, the scan is what
+happened and the step has the transcription error.
 
 GATE-D4 compares a certified bound `δ_ref` on the reference engine's discretisation
 error against the threshold `T`. D1 and D2 are tests only if `δ_ref ≤ T/k_min`. Section
 4 of `research/gate_d4_registration.md` sets that up and its RESULT of 2026-09-11 gives
 `T`. This file derives the bound. Part 1 sets up the cell and the engine, splits the error
 into four sources, and runs Route B on the state axis for the likelihood integrand and
-the four prior-side sums. The observation axis, the tails and the propagation into the
-gap come in later parts.
+the four prior-side sums. The notes' step 2 takes the observation axis and the ratios the
+engine forms from those sums. The tails, the bound on `ŝ²` that sum (d) leans on, and
+the propagation into the gap come after it.
 
-`research.discretisation_bound` checks what is here. Nothing in the steps is a measured
-result except the threshold RESULT the notes quote.
+Nothing in the steps is a measured result except the threshold RESULT the notes quote.
 
-Line citations in the notes are against `main` at `2836ec5`.
+Line citations in the notes are against `main` at `2836ec5`, which was still the tip of
+`main` on 2026-09-18.
 
 ## Prelims
 
@@ -62,7 +63,8 @@ are `w = h`, halved at both ends (`quadrature.py:76-79`).
    π_i = π(x_i)      m_π = Σ_x π_i      π̃_i = π_i / m_π
    ```
 
-2. Its moments, and the noise at its mean. `ladder.py:131`, `:391-394`, `:132`.
+2. Its moments, and the noise at its mean. `ladder.py:131`, `quadrature.py:391-394`,
+   `ladder.py:132`.
 
    ```text
    μ̂ = Σ_x π̃_i x_i      ŝ² = Σ_x π̃_i (x_i − μ̂)²      R̂ = R(μ̂)
@@ -332,7 +334,7 @@ per spread against a cost of `e^{50}`. The cap binds above `σ = 0.158`.
 
 ## Step 1.4: the trapezoid error on the four prior-side sums
 
-Dated 11/10/2026 in the scan.
+The scan's page 8, where this step starts, is dated 11/10/2026.
 
 The engine computes four sums over the state grid that depend only on the prior or on the
 plug-in rung's Gaussian. Each sum stands in for an integral. This step shows that the
