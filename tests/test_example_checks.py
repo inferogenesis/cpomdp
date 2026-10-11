@@ -17,6 +17,7 @@ import crossover_sweep
 import efe_collapse_figure
 import epistemic_dissociation_figure
 import pytest
+import surge_margin
 
 from cpomdp.enumeration import CompletenessCertificate
 from cpomdp.warrant import Outcome, Tier, Warrant, check_summary
@@ -27,6 +28,27 @@ def test_single_chain_theorem_check():
     its frozen-R twin is flat, and the observation noise traces a curve across the
     grid."""
     efe_collapse_figure.check()
+
+
+def test_surge_margin_check():
+    """The applied R(x) demo: a DP flow meter's own noise moves the surge control line.
+
+    Six registered falsifiers over the valve sweep. The fixed-R twin's epistemic term
+    is flat and its argmin G is its argmin pragmatic (the ADR-003 collapse), the R(Q)
+    agent is held off that optimum, and its standoff falls monotonically across an 8:1
+    ladder in meter quality while the twin's does not move. The closed-form row asserts
+    autodiff `ell'(m)` against `-2/Q`, which is what ties the demo's sensor to the
+    shape the gap work is written in.
+
+    The fifth row is the control on the rest: the offset survives a 10:1 sweep of the
+    economic weight, which moves the standoff further than meter quality does. That is
+    what separates the demo's claim (the direction) from its output (the numbers). The
+    sixth is the library's own sensor probe.
+
+    Fourteen vmapped sweeps of 400 grid actions, each computed once, a few seconds, so
+    it stays on the pull-request path.
+    """
+    surge_margin.check()
 
 
 def test_epistemic_dissociation_check():

@@ -310,6 +310,14 @@ no use of the readings beats it.
   free energy reduces to KL control under a fixed linear-Gaussian sensor is theirs, and
   the README, both example galleries and two API pages asserted it without saying so.
   Friston et al. (2015) gets the same treatment where the T-maze is named.
+- `examples/surge_margin.py`, the gallery's first applied demo: anti-surge margin on a
+  compressor whose flow meter is a differential-pressure element. The square-root law
+  makes the meter's variance `R(Q) ∝ 1/Q²`, so the state-dependent noise comes from the
+  instrument rather than a modelling choice. A fixed-`R` twin collapses onto its economic
+  optimum and the `R(Q)` agent is held off it. Six registered falsifiers, all
+  `CORROBORATED`. `docs/guides/surge_margin_derivation.md` derives the meter model, fixes
+  its one calibration constant and lists what the demo does not model. It sits under a
+  new **Applications** section of the docs.
 
 ### Fixed
 

@@ -206,3 +206,77 @@ corridor is the proof, in [`ffg/crossover.py`](ffg/crossover.py) and
 [`warrant_numbers.md`](../warrant_numbers.md), and it answers a question left open by
 [arXiv:2607.20306](https://arxiv.org/abs/2607.20306): that paper gets the epistemic term
 to stop being constant, and stopping being constant is not yet changing a decision.
+
+---
+
+## Applied — a DP flow meter hands you `R(x)`, and the surge control line stops being a constant
+
+[`surge_margin.py`](surge_margin.py) · ADR-003, ADR-019
+
+First example of an industry application of cpomdp. The modelling is my
+**interpretation** of Sathish, Khader, Sayma and Shah, *Centrifugal Compressor Design
+and Surge Simulation for Active Inference Based Control* (ASME Turbo Expo 2024,
+[GT2024-124905](https://doi.org/10.1115/GT2024-124905)). Every modelling choice here is
+mine, and nothing below is a claim about what that paper did.
+
+Anti-surge control on a centrifugal compressor holds a margin above the surge line, and
+the flow it holds that margin on is measured with a differential-pressure element. A DP
+element obeys `Q = k·√ΔP`, and the transmitter's error is roughly flat across its span.
+Propagate one through the other and the flow variance is
+
+```text
+R(Q) = e_ref²·Q_ref⁴ / Q²
+```
+
+cpomdp takes that noise as it comes. `CallableSensor` carries `R(Q)` as a
+state-dependent observation noise, and the state stays continuous, with no grid over
+flow. Two approximations remain. `R(Q)` is a first-order propagation through the square
+root. The filter plugs in `R` at the predicted mean, which is the approximation the
+inference-gap work measures. The full derivation, its one calibration constant and the
+list of what is not modelled are in
+[the derivation note](../docs/guides/surge_margin_derivation.md).
+
+Two agents differ in one line:
+
+```python
+# the conventional setup: R frozen at the operating point
+observation_model = None                                     # R = R(m₀), a constant
+
+# the meter's actual noise
+observation_model = CallableSensor(C, _dp_meter_noise, params)   # R = R(m)
+```
+
+![Three panels. The left shows the fixed-R agent, whose epistemic curve is a flat horizontal line so the minimum of G sits exactly on the minimum of the pragmatic term. The middle shows the R(Q) agent, whose epistemic curve rises away from the surge line and pulls the minimum of G off the economic optimum. The right plots the one-step standoff margin against meter uncertainty: the R(Q) agent traces a falling curve from 12.2% down to 8.2% of design flow while the fixed-R twin is a flat line at 5%. Where that curve sits vertically is set by the economic weight, not by the meter.](../docs/assets/surge_margin.png)
+
+The fixed twin's `argmin G` is exactly its `argmin pragmatic`. Its surge control line is
+whatever preference was set to and nothing else. Koudahl, Kouw and de Vries proved that
+for fixed-noise linear Gaussian state space models, where EFE minimisation reduces to KL
+control and the exploratory drive does no work
+([Entropy 23(12):1565](https://doi.org/10.3390/e23121565)). This repo records it as
+ADR-003, and here it is in industry terms. The `R(Q)` agent is held off that optimum by
+the ambiguity term, and where its first step aims moves with the quality of the meter.
+That is one EFE step from the prior. It is not a closed-loop operating point.
+
+### The direction is the wrong way round, and that is the result
+
+A worse meter moves this agent **closer** to surge, not further. A meter that resolves
+nothing offers no information worth travelling for, so the epistemic term flattens and
+the economics win.
+
+Real surge margin runs the other way because it prices the cost of *being wrong*, and
+that is a pragmatic quantity. So the demo is a clean negative result: the EFE ambiguity
+term is not a safety factor, and anyone reaching for it as one is reading it as a risk
+term when it is an information term.
+
+### What the row labels are entitled to claim
+
+Every row samples a sweep over a continuous valve range, which is a finite grid over an
+infinite domain. So each reports `CORROBORATED` and none is `PROVED` at any grid
+resolution. The monotonicity row is `BOUNDED` against the sweep's own step size: a
+standoff that moved by less than one grid cell did not measurably move. The
+`ℓ'(m) = −2/Q` row is `EXACT`, being autodiff against a closed form at machine
+precision, and it is a statement about the sensor rather than a measured inference gap.
+
+`--check` prints both ladders, the `probe_model` verdict and the six falsifiers. It
+asserts that none of them fired and that `Λ` moves the standoff further than the meter
+does, with no plotting deps.
