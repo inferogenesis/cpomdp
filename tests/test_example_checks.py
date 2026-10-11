@@ -51,7 +51,7 @@ def test_surge_margin_check():
     checks that every settled rung stays clear of the preference and that a worse meter
     still settles nearer it.
 
-    Fourteen vmapped sweeps of 400 grid actions and two 40-step agent loops, each
+    Fourteen vmapped sweeps of 600 grid actions and two 40-step agent loops, each
     computed once, a few seconds, so it stays on the pull-request path.
     """
     surge_margin.check()

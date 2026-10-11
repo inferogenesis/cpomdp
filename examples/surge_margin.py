@@ -145,8 +145,10 @@ GOAL_MARGIN = 5.0
 GOAL_PRECISION = 0.002
 
 # The valve grid. Its resolution is also the bar the monotonicity row is read against,
-# so both come from this one line.
-ACTIONS = jnp.linspace(-14.0, 20.0, 400)
+# so both come from this one line. It reaches 15% of design flow past the surge line.
+# `_interior_argmin` refuses a minimum on the edge, and a grid that stopped short of
+# surge would act as an interlock nobody declared, deciding where the agent may go.
+ACTIONS = jnp.linspace(-30.0, 20.0, 600)
 GRID_STEP = float(ACTIONS[1] - ACTIONS[0])
 
 # An 8:1 ladder in meter quality, anchored on E_REF at the good end. Doubling rather
@@ -275,7 +277,7 @@ def _cached_sweep(
     The rows and the printout ask for the same settings more than once, and the ladders
     share their first rung with the default. Fourteen distinct settings cover the
     whole check. `gallery.efe_sweep` loops eagerly, which suits the tens of actions it
-    was written for and not the 400 here.
+    was written for and not the 600 here.
     """
     model, belief, goal = _model(e_ref, live=live), _belief(), _goal(precision)
     g, parts = jax.vmap(
@@ -611,7 +613,7 @@ def _slope_deviation() -> tuple[float, float]:
 @cache
 def _sensor_report():
     """The library's own verdict on whether the sensor earns its keep over the grid."""
-    actions = [jnp.array([a]) for a in np.asarray(ACTIONS)[::16]]
+    actions = [jnp.array([a]) for a in np.asarray(ACTIONS)[::24]]
     return probe_model(_model(), _belief(), actions)
 
 
