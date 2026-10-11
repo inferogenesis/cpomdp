@@ -146,6 +146,57 @@ which depends on the action. Its covariance recursion *is* action-dependent, so 
 epistemic term is not flat, with no `R(x)` involved. Whether that variation is enough
 to move the argmin is an empirical question and this demo does not answer it.
 
+## Where the standoff sits
+
+One EFE step moves only the predicted mean. With `m` the margin a valve step aims for,
+`g` the preferred margin and `P⁻` the predicted variance, the two parts of `G` are
+
+```text
+pragmatic(m) = ½Λ·[(m − g)² + P⁻ + R(m)]
+epistemic(m) = ½·ln(1 + P⁻/R(m))
+```
+
+Differentiate and use `R' = ℓ'·R`. The epistemic term's slope is `−½·κ·ℓ'`, where
+`κ = P⁻/(P⁻ + R)` is the Kalman gain. Setting `dG/dm` to zero gives
+
+```text
+Λ·(m − g) = −ℓ'(m)·(κ(m) + Λ·R(m)) / 2
+```
+
+For this meter `ℓ' = −2/Q`, and `Λ·R` is small beside κ, so
+
+```text
+m − g ≈ κ / (Λ·Q)
+```
+
+`Λ` sets the scale of the offset, as `1/Λ`. That is why sweeping it moves the standoff
+further than the meter ladder does. It needs no separate disclosure, because it is the
+formula.
+
+The meter enters only through κ. A worse meter means a larger `R`, a smaller gain and a
+smaller offset. That is the whole mechanism behind a worse meter running closer to
+surge.
+
+κ depends on the meter only through `P⁻/R`, and `R` scales as `e_ref²`. One step from a
+fixed prior, a meter twice as bad and a prior four times as tight give the same
+standoff. A ladder of first steps cannot tell them apart.
+
+The closed loop can. A loop that has run a while holds the filter's steady-state
+variance. For this scalar model, with `q` the dynamics noise, that variance solves
+
+```text
+P⁻² − q·P⁻ − q·R = 0
+```
+
+at the margin the loop holds. That `P⁻` comes from the meter, so the settled margin does
+too. The steady-state κ is far below one, so the settled offset is much smaller than the
+first step's. The demo finds the fixed point by iterating the two equations, and checks
+it against the library's own `Agent` run in closed loop.
+
+The sign of the offset is the sign of `−ℓ'`, since `κ + Λ·R` is positive. A meter with
+`ℓ' > 0` puts the agent below its preference, on the surge side. The sign table above is
+that statement.
+
 ## Where this sits relative to `c₂`
 
 The log-noise and its derivative are the quantities the programme's gap work is written
@@ -217,10 +268,12 @@ The demo and anything written about it quote the same list:
 - The operating point is illustrative. `Q_ref`, `Q_s` and the design margin describe no
   machine and were not read off a performance map.
 - Where the standoff sits is set by the economic weight `Λ`, which is a policy choice.
-  Sweeping `Λ` over 10:1 moves the standoff further than the whole meter ladder does.
+  The law makes the offset scale as `1/Λ`, and sweeping `Λ` over 10:1 moves the
+  standoff further than the whole meter ladder does.
   The demo's claim is the *direction* of the offset, not its size.
-- The standoff is one EFE step from a prior with σ = 2% of design flow. It is not where
-  a closed-loop agent settles, and the prior's width scales it as much as `Λ` does.
+- The closed loop is noise-free, and only the default meter runs through the library's
+  `Agent`. A noisy loop fluctuates about the point it finds. The settled margins for the
+  rest of the meter ladder come from the law.
 
 The demo is a statement about what a state-dependent sensor does to action selection. It
 is not a compressor model.
