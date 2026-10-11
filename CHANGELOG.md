@@ -314,11 +314,12 @@ no use of the readings beats it.
   compressor whose flow meter is a differential-pressure element. The square-root law
   makes the meter's variance `R(Q) ∝ 1/Q²`, so the state-dependent noise comes from the
   instrument rather than a modelling choice. A fixed-`R` twin collapses onto its economic
-  optimum and the `R(Q)` agent is held off it. The offset has a closed form, about
-  `κ/(ΛQ)` with κ the Kalman gain, and every grid argmin lands within a grid step of it.
-  Run in closed loop, the library's own `Agent` settles where that law puts it with κ at
-  the filter's steady state, much nearer the preference than its first step aimed. Eight
-  registered falsifiers, all `CORROBORATED`. `docs/guides/surge_margin_derivation.md`
+  optimum and the `R(Q)` agent is held off it. The offset has a closed form,
+  `κ/(ΛQ) + R/Q` with κ the Kalman gain, an epistemic part and a pragmatic one, and every
+  grid argmin lands within a grid step of it. Run in closed loop, the library's own
+  `Agent` settles where that law puts it with κ at the filter's steady state, much
+  nearer the preference than its first step aimed. Nine registered falsifiers, all
+  `CORROBORATED`. `docs/guides/surge_margin_derivation.md`
   derives the meter model and the law, fixes the one calibration constant and lists what
   the demo does not model. It sits under a new **Applications** section of the docs.
 

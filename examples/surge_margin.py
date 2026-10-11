@@ -27,7 +27,7 @@ exhibits is a property of *the agent's generative model*, which is linear-Gaussi
 additive control here, and not of the plant. An EKF linearised on a nonlinear plant has
 action-dependent Jacobians and does not collapse this way, whatever its `R` does.
 
-`--check` reports eight registered falsifiers, with no plotting deps:
+`--check` reports nine registered falsifiers, with no plotting deps:
 
 - dissociation: the twin's epistemic term is dead-flat across the valve grid, the
   `R(x)` agent's is not. Koudahl, Kouw and de Vries proved the flat case for
@@ -48,19 +48,25 @@ action-dependent Jacobians and does not collapse this way, whatever its `R` does
 - stationarity law: every grid argmin lands within one grid step of the root of
   `Λ(m − g) = −ℓ'(m)·(κ + ΛR)/2`, with κ the Kalman gain.
 - closed loop: the library's own `Agent`, run noise-free at the default meter, settles
-  within a grid step of the law with κ at its steady state. By the law, every rung of
-  the meter ladder settles clear of the preference.
+  within a grid step of the law with κ at its steady state, and the twin on its
+  preference.
+- settled offset: by the law, every rung of the meter ladder settles clear of the
+  preference, and each worse meter settles nearer it.
 
 **The standoff has a closed form.** Setting `dG/dm` to zero puts the offset from
-preference at about `κ/(ΛQ)` for this meter. `Λ` prices margin against information and
-I chose it, so it sets the scale. Sweeping it 10:1 moves the standoff by more than the
-meter ladder does, which `--check` prints and asserts beside the ladder. The meter
-enters only through the Kalman gain κ. The existence of the offset and its direction are
-what belong to the meter.
+preference at exactly `κ/(ΛQ) + R/Q` for this meter, with κ the Kalman gain. The first
+part is epistemic. The second is pragmatic, because the preference is over readings and
+a reading is quieter at higher flow. `Λ` prices margin against information and I chose
+it, so it sets the scale of the first part. Sweeping it 10:1 moves the standoff by more
+than the meter ladder does, which `--check` prints and asserts beside the ladder. A
+worse meter lowers κ, which shrinks the first part, and raises `R`, which grows the
+second. The first wins, and rows 3 and 9 assert the net direction. The existence of the
+offset and its direction are what belong to the meter.
 
 The ladders measure the first EFE step, taken from a prior whose σ is 2% of design
 flow. κ depends on the meter only through `P⁻/R`, so from a fixed prior a meter twice as
-bad and a prior four times as tight give the same first step. The closed loop separates
+bad and a prior four times as tight give almost the same first step. Only the small
+pragmatic part tells them apart. The closed loop separates
 them, because there P⁻ comes from the filter's steady state and so from the meter
 itself. A settled loop holds a tighter belief than the prior, so its κ is smaller and it
 sits much nearer the preference than its first step aimed. `--check` prints both.
@@ -342,10 +348,19 @@ def _log_noise_slope(margin: float, e_ref: float = E_REF) -> float:
 #
 #     Λ·(m − g) = −ℓ'(m)·(κ(m) + Λ·R(m)) / 2
 #
-# For the DP meter ℓ' = −2/Q, so the offset from preference is about κ/(ΛQ). Λ sets its
-# scale, and the meter enters only through κ. κ depends on the meter only through
-# P⁻/R, and R scales as e_ref², so one step from a fixed prior a meter twice as bad and
-# a prior four times as tight give the same standoff.
+# For the DP meter ℓ' = −2/Q, so the offset from preference is exactly
+#
+#     m − g = κ/(ΛQ) + R/Q
+#
+# The first part is epistemic. The second is pragmatic: the preference is over readings,
+# a noisier reading costs expected pragmatic value, and the reading is quieter at higher
+# flow. As the meter worsens, κ falls and R rises, so the two parts pull opposite ways.
+# One step from the prior κ is near one and the first part carries all but a few
+# percent. A settled loop's κ is small enough at the worse meters that the second part
+# matters. Λ sets the scale of the first. κ depends on the meter only through P⁻/R, and
+# R scales as e_ref², so one step from a fixed prior a meter twice as bad and a prior
+# four times as tight give almost the same standoff. Only the pragmatic part, which
+# depends on R alone, tells them apart, and one step from the prior it is small.
 PREDICTED_VAR = MARGIN_VAR + DYNAMICS_NOISE[0][0]  # P⁻, one step from the prior
 
 
@@ -385,7 +400,11 @@ def _residual_kernel(margin, params, precision, predicted_var):
 
 
 def _bisect(residual, low: float, high: float, steps: int = 60) -> float:
-    """A root of ``residual`` on ``[low, high]``, which must bracket a sign change."""
+    """A root of ``residual`` on ``[low, high]``, running from negative to positive.
+
+    Raises:
+        ValueError: unless ``residual`` is negative at ``low`` and positive at ``high``.
+    """
     if not residual(low) < 0.0 < residual(high):
         raise ValueError(f"[{low}, {high}] does not bracket a root of the residual")
     for _ in range(steps):
@@ -407,6 +426,12 @@ def _law_standoff(
     The bracket runs from the clamp at ``Q_FLOOR`` up to design flow, which holds the
     root for every setting the demo visits.
     """
+    return _cached_law_standoff(float(e_ref), float(precision), float(predicted_var))
+
+
+@cache
+def _cached_law_standoff(e_ref: float, precision: float, predicted_var: float) -> float:
+    """One bisection per setting, computed once per process."""
     return _bisect(
         lambda margin: _stationarity_residual(margin, e_ref, precision, predicted_var),
         Q_FLOOR - Q_SURGE,
@@ -438,6 +463,12 @@ def _settled_law(e_ref: float = E_REF, precision: float = GOAL_PRECISION) -> flo
     Raises:
         RuntimeError: if the fixed-point iteration does not converge.
     """
+    return _cached_settled_law(float(e_ref), float(precision))
+
+
+@cache
+def _cached_settled_law(e_ref: float, precision: float) -> float:
+    """One fixed-point iteration per setting, computed once per process."""
     margin = _law_standoff(e_ref, precision)
     for _ in range(100):
         noise = float(_dp_meter_noise(jnp.array([margin]), _meter_params(e_ref))[0, 0])
@@ -612,7 +643,14 @@ def falsifiers() -> tuple[CheckReport, ...]:
     frozen_spread = max(frozen_margins) - min(frozen_margins)
     law_misses = [abs(grid - law) for _, _, grid, law in agreement]
     _, first_step, settled_default = settled[0]  # METER_QUALITIES opens on E_REF
-    overshoot = (first_step - GOAL_MARGIN) / (settled_default - GOAL_MARGIN)
+    settled_margins = [margin for _, _, margin in settled]
+    settled_drops = [a - b for a, b in pairwise(settled_margins)]
+    settled_offset = settled_default - GOAL_MARGIN
+    # Guarded, so a regression in the settled law that puts it on the preference reaches
+    # row 9 as a FIRED row rather than as a ZeroDivisionError out of this function.
+    overshoot = (
+        (first_step - GOAL_MARGIN) / settled_offset if settled_offset > 0 else math.inf
+    )
 
     def dissociation_fails() -> Outcome:
         """Fires unless the twin is flat and the live meter is not."""
@@ -671,22 +709,30 @@ def falsifiers() -> tuple[CheckReport, ...]:
         """
         return Outcome.NOT_TRIGGERED if max(law_misses) <= GRID_STEP else Outcome.FIRED
 
-    def offset_lost_in_closed_loop() -> Outcome:
-        """Fires if the library's loop leaves the settled law, or the offset vanishes.
+    def loop_leaves_the_law() -> Outcome:
+        """Fires if the library's own loop settles away from where the law puts it.
 
-        Three things have to hold. The library's own `Agent` settles within a grid step
-        of the law at the default meter. The twin settles on its preference. By the
-        law, every rung of the meter ladder settles more than a grid step clear of the
-        preference, so the direction survives closed loop at every meter quality.
+        The `R(x)` agent has to settle within a grid step of the law at the default
+        meter, and the twin within a grid step of its preference.
         """
         agrees = abs(loop_live - settled_default) <= GRID_STEP
         twin_on_preference = abs(loop_twin - GOAL_MARGIN) <= GRID_STEP
-        clear = all(margin - GOAL_MARGIN > GRID_STEP for _, _, margin in settled)
-        return (
-            Outcome.NOT_TRIGGERED
-            if agrees and twin_on_preference and clear
-            else Outcome.FIRED
-        )
+        return Outcome.NOT_TRIGGERED if agrees and twin_on_preference else Outcome.FIRED
+
+    def settled_ladder_loses_the_offset() -> Outcome:
+        """Fires if any settled rung loses the offset or the ladder stops falling.
+
+        By the law, every rung of the meter ladder has to settle more than a grid step
+        clear of the preference, and each worse meter more than a grid step nearer it.
+        That is the first step's direction, held once the loop has settled. The settled
+        margins are roots of the law and not read off the sweep. The grid step is the
+        bar anyway because it is the agent's resolution: a loop acting on this grid
+        holds its margin only to within a cell, so a settled difference smaller than
+        that could not show up in the loop the law describes.
+        """
+        clear = all(margin - GOAL_MARGIN > GRID_STEP for margin in settled_margins)
+        falling = all(drop > GRID_STEP for drop in settled_drops)
+        return Outcome.NOT_TRIGGERED if clear and falling else Outcome.FIRED
 
     quality_ratio = METER_QUALITIES[-1] / METER_QUALITIES[0]
     return (
@@ -780,19 +826,31 @@ def falsifiers() -> tuple[CheckReport, ...]:
             ),
         ),
         CheckReport(
-            name="8. offset does not survive closed loop",
-            check_id="surge_margin.offset_does_not_survive_closed_loop",
+            name="8. closed loop leaves the settled law",
+            check_id="surge_margin.closed_loop_leaves_the_settled_law",
             warrant=Warrant.CORROBORATED,
-            outcome=offset_lost_in_closed_loop(),
+            outcome=loop_leaves_the_law(),
             tier=Tier.BOUNDED,
             detail=(
-                f"library Agent, noise-free closed loop: settles at m = "
-                f"{loop_live:.2f}% against the law's {settled_default:.2f}%, twin at "
-                f"{loop_twin:.2f}%. By the law the {quality_ratio:.0f}:1 ladder "
-                f"settles "
-                f"{settled[0][2]:.2f}% -> {settled[-1][2]:.2f}%, every rung clear of "
-                f"the preference by more than the grid step. The first step's offset "
-                f"from preference is {overshoot:.1f}x the settled one"
+                f"library Agent, noise-free closed loop at e_ref = {E_REF}: settles at "
+                f"m = {loop_live:.2f}% against the law's {settled_default:.2f}%, and "
+                f"the twin at {loop_twin:.2f}% against its preference "
+                f"{GOAL_MARGIN:.2f}%, both within the grid step {GRID_STEP:.4f}%"
+            ),
+        ),
+        CheckReport(
+            name="9. settled ladder loses the offset",
+            check_id="surge_margin.settled_ladder_loses_the_offset",
+            warrant=Warrant.CORROBORATED,
+            outcome=settled_ladder_loses_the_offset(),
+            tier=Tier.BOUNDED,
+            detail=(
+                f"by the law the {quality_ratio:.0f}:1 ladder settles "
+                f"{settled_margins[0]:.2f}% -> {settled_margins[-1]:.2f}%, every rung "
+                f"clear of the preference and every step down larger than the grid "
+                f"step {GRID_STEP:.4f}% (smallest {min(settled_drops):.3f}%). The "
+                f"first step's offset from preference is {overshoot:.1f}x the settled "
+                "one"
             ),
         ),
     )
@@ -858,11 +916,12 @@ def check() -> None:
         f"{_closed_loop(True):.2f}%, the twin at {_closed_loop(False):.2f}%"
     )
     print(
-        "   -> a worse meter runs CLOSER to surge, first step and settled alike. It "
-        "lowers\n      the Kalman gain κ, and the offset scales with κ. A settled "
-        "loop holds a\n      tighter belief, so its κ is smaller and it sits nearer "
-        "the preference. The\n      ambiguity term rewards resolvable uncertainty, "
-        "and it is not a safety factor.\n"
+        "   -> a worse meter runs CLOSER to surge, first step and settled alike, which "
+        "rows\n      3 and 9 assert. The offset is κ/(ΛQ) + R/Q. A worse meter lowers "
+        "the gain κ,\n      which shrinks the first part, and raises R, which grows "
+        "the second. The first\n      wins. A settled loop holds a tighter belief, so "
+        "its κ is smaller and it sits\n      nearer the preference. The ambiguity term "
+        "rewards resolvable uncertainty, and\n      it is not a safety factor.\n"
     )
 
     economic = _economic_ladder()
@@ -877,9 +936,9 @@ def check() -> None:
         )
     print(
         f"   -> Λ spans {economic_span:.2f}% of design flow against the meter "
-        f"ladder's {meter_span:.2f}%.\n      The law says why: the offset is about "
-        "κ/(ΛQ), so Λ sets its scale. Only the\n      direction belongs to the "
-        "meter, and row 5 is what claims it.\n"
+        f"ladder's {meter_span:.2f}%.\n      The law says why: the epistemic part of "
+        "the offset is κ/(ΛQ), so Λ sets its\n      scale. Only the direction belongs "
+        "to the meter, and row 5 is what claims it.\n"
     )
     assert economic_span > meter_span, (
         f"the meter ladder spans {meter_span:.2f}%, at least the Λ ladder's "
