@@ -22,6 +22,8 @@ What is checked, in the notes' order:
 7. **Route B's rate on the state axis.** `2π/(h_x/σ) = 400π/3`, the notes' 419.
 """
 
+import math
+
 import sympy
 
 from research.discretisation_bound import cell
@@ -29,6 +31,7 @@ from research.explorations import operating_point, threshold
 
 __all__ = [
     "cell_constants",
+    "end_weight_residuals",
     "engine_node_departure",
     "engine_weight_departure",
     "exact_kl_residual",
@@ -92,6 +95,32 @@ def engine_node_departure(spread: float) -> tuple[float, bool]:
         abs(node - (lower + index * step)) / step for index, node in enumerate(nodes)
     )
     return departure, nodes[0] == lower and nodes[-1] == upper
+
+
+def end_weight_residuals(spread: float) -> tuple[float, float]:
+    """The engine's box sum against the end-weight correction, with either sign.
+
+    With weights `h` halved at both ends, `Σ_x f = h Σ_{i=0}^{N} f(x_i) − (h/2)(f(x₀) +
+    f(x_N))`. The scan writes the correction with a plus. `f(x) = x` keeps both edge
+    values far above roundoff, so the wrong sign shows.
+
+    Args:
+        spread: the prior spread `σ`.
+
+    Returns:
+        The relative miss with the correction subtracted, then with it added.
+    """
+    grid = cell.state_grid(spread)
+    step = grid.spacing[0]
+    nodes = [float(node) for node in grid.nodes[:, 0]]
+    engine = math.fsum(
+        float(weight) * node for weight, node in zip(grid.weights, nodes, strict=True)
+    )
+    plain = step * math.fsum(nodes)
+    edges = (step / 2) * (nodes[0] + nodes[-1])
+    return abs(engine - (plain - edges)) / engine, abs(
+        engine - (plain + edges)
+    ) / engine
 
 
 def plug_in_variance(prior_variance: sympy.Expr, noise: sympy.Expr) -> sympy.Expr:
@@ -233,6 +262,10 @@ def main() -> None:
     assert all(exact for _, exact in nodes)
     assert worst_node < 1e-9, worst_node
     print("  endpoints exact at all fifteen spreads; interior nodes off by roundoff")
+    signs = [end_weight_residuals(spread) for spread in threshold.SPREADS]
+    assert max(subtracted for subtracted, _ in signs) < 1e-14, signs
+    assert min(added for _, added in signs) > 1e-4, signs
+    print("  the end-weight correction is subtracted, not added as the scan writes")
 
     print("\n=== Steps 4 and 5, and the exact quantity ===")
     closed, precision = plug_in_variance_residuals()

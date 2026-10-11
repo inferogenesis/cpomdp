@@ -553,15 +553,26 @@ through the normalisations and the log are still to come.
 7. **Step 5, "since `Σ_x q̃_i = 1`".** The second line is the first with `q̃ = q/m_Q`
    and `p̂ = J/m_J` substituted, and needs nothing else. `Σ q̃ = 1` is what would let
    the constants come outside the sum, which the second line does not do.
-8. **Three line citations miss at `2836ec5`.**
+8. **Step 1, the sign of the end-weight correction.** The weights are `h`, halved at both
+   ends, so
+
+   ```text
+   Σ_x f = h Σ_{j∈ℤ} f(x₀ + jh) − h Σ_{outside} f(x_j) − (h/2)(f(x₀) + f(x₁₆₀₀))
+   ```
+
+   The scan writes the correction with a plus and defines it as the positive
+   `h·f(x₀)/2 + h·f(x₁₆₀₀)/2`, so the identity as written is off by
+   `h(f(x₀) + f(x₁₆₀₀))`. The split of S1 into the theorem bound, the outside nodes and
+   the two edge values stands as a bound on magnitudes. Later parts carry the signed
+   split, so the sign matters there.
+9. **Two line citations miss at `2836ec5`.**
    - `threshold.py:72` holds `R₀` only. `R(x)` is at `:131-134` and `κ` at `:75`.
-   - `ladder.py:391-394` is the rung's validation and `build`. The plug-in dispatch is
-     at `:421-422` and the rule itself, `_plug_in`, at `:126-140`.
-   - `likelihood.py:38` is the constant `_LOG_TWO_PI`. The log-density is assembled at
-     `:128-131` and the state-dependent noise path is at `:337-345`.
-9. **The nodes are not `x₀ + ih` bit for bit.** `linspace` computes
-   `x₀(1 − t) + x_N t`. The endpoints are exact, as the notes say. Route B assumes exact
-   spacing, so the departure belongs with the roundoff disclosure.
-10. **Not an error.** The (a) to (d) integrands are entire, so `a_cap` is inherited from
+   - `likelihood.py:38` is the constant `_LOG_TWO_PI`. The `N(y; x_i, R(x_i))` that
+     step 3 builds `J_i` from is `StateDependentNoiseLikelihood.log_likelihood`, at
+     `:328-345`.
+10. **The nodes are not `x₀ + ih` bit for bit.** `linspace` computes
+    `x₀(1 − t) + x_N t`. The endpoints are exact, as the notes say. Route B assumes
+    exact spacing, so the departure belongs with the roundoff disclosure.
+11. **Not an error.** The (a) to (d) integrands are entire, so `a_cap` is inherited from
     `f_y` there. Nothing forces it. For (a) the best strip would give the Poisson exponent,
     about `e^{−87730}`, against the inherited strip's `e^{−4138}`. Neither matters.

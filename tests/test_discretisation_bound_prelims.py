@@ -61,6 +61,14 @@ class TestTheEngineLattice:
         assert departure < 1e-9, departure
 
 
+@pytest.mark.parametrize("spread", [threshold.SPREADS[0], threshold.SPREADS[-1]])
+def test_the_end_weight_correction_is_subtracted(spread):
+    # The scan's step 1 adds it. CLARIFICATION 2026-10-11 item 8 corrects the sign.
+    subtracted, added = prelims.end_weight_residuals(spread)
+    assert subtracted < 1e-14, subtracted
+    assert added > 1e-4, added
+
+
 class TestTheSteps:
     def test_the_plug_in_variance_has_the_two_other_forms(self):
         closed, precision = prelims.plug_in_variance_residuals()
