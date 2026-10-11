@@ -246,7 +246,7 @@ observation_model = None                                     # R = R(m₀), a co
 observation_model = CallableSensor(C, _dp_meter_noise, params)   # R = R(m)
 ```
 
-![Three panels. The left shows the fixed-R agent, whose epistemic curve is a flat horizontal line so the minimum of G sits exactly on the minimum of the pragmatic term. The middle shows the R(Q) agent, whose epistemic curve rises away from the surge line and pulls the minimum of G off the economic optimum. The right plots the one-step standoff margin against meter uncertainty: the R(Q) agent traces a falling curve from 12.2% down to 8.2% of design flow while the fixed-R twin is a flat line at 5%. Where that curve sits vertically is set by the economic weight, not by the meter.](../docs/assets/surge_margin.png)
+![Three panels. The left shows the fixed-R agent, whose epistemic curve is a flat horizontal line so the minimum of G sits exactly on the minimum of the pragmatic term. The middle shows the R(Q) agent, whose epistemic curve rises away from the surge line and pulls the minimum of G off the economic optimum. The right plots the standoff against meter uncertainty. A dashed curve is where the R(Q) agent's first step aims, and a solid curve below it is where the loop settles, with a star on it where the library's own Agent settled in a closed-loop run. Both fall as the meter gets worse, and the fixed-R twin is a flat line at the preference. Where the curves sit vertically is set by the economic weight, not by the meter.](../docs/assets/surge_margin.png)
 
 The fixed twin's `argmin G` is exactly its `argmin pragmatic`. Its surge control line is
 whatever preference was set to and nothing else. Koudahl, Kouw and de Vries proved that
@@ -254,14 +254,34 @@ for fixed-noise linear Gaussian state space models, where EFE minimisation reduc
 control and the exploratory drive does no work
 ([Entropy 23(12):1565](https://doi.org/10.3390/e23121565)). This repo records it as
 ADR-003, and here it is in industry terms. The `R(Q)` agent is held off that optimum by
-the ambiguity term, and where its first step aims moves with the quality of the meter.
-That is one EFE step from the prior. It is not a closed-loop operating point.
+the ambiguity term, and how far moves with the quality of the meter.
+
+### Where it settles, and why
+
+The standoff has a closed form. One EFE step moves only the predicted mean, so setting
+`dG/dm` to zero gives
+
+```text
+Λ·(m − g) = −ℓ'(m)·(κ + Λ·R) / 2        κ = P⁻ / (P⁻ + R),  the Kalman gain
+```
+
+For a DP meter `ℓ' = −2/Q`, so the agent sits about `κ/(ΛQ)` above its preference.
+Every grid argmin in the demo lands within one grid step of this root. The economic
+weight `Λ` sets the scale. The meter enters only through κ, which is why a worse meter
+moves the agent closer: it lowers the gain.
+
+κ also depends on how sure the agent already is. The first decision is taken from a
+broad prior, so its κ is near one and it aims well out. A loop that has run a while
+holds a tighter belief, its κ is smaller, and it settles much nearer the preference.
+Run in closed loop, the library's own `Agent` settles where the law puts it with κ at
+the filter's steady state. `--check` prints the first step and the settled margin side
+by side. The settled offset is the one an operator would see.
 
 ### The direction is the wrong way round, and that is the result
 
-A worse meter moves this agent **closer** to surge, not further. A meter that resolves
-nothing offers no information worth travelling for, so the epistemic term flattens and
-the economics win.
+A worse meter moves this agent **closer** to surge, not further, on the first step and
+once settled. A meter that resolves nothing offers no information worth travelling for,
+so the epistemic term flattens and the economics win.
 
 Real surge margin runs the other way because it prices the cost of *being wrong*, and
 that is a pragmatic quantity. So the demo is a clean negative result: the EFE ambiguity
@@ -276,7 +296,10 @@ resolution. The monotonicity row is `BOUNDED` against the sweep's own step size:
 standoff that moved by less than one grid cell did not measurably move. The
 `ℓ'(m) = −2/Q` row is `EXACT`, being autodiff against a closed form at machine
 precision, and it is a statement about the sensor rather than a measured inference gap.
+The law and closed-loop rows are `BOUNDED` by the same grid step. The closed loop runs
+noise-free and only at the default meter. The rest of the settled ladder comes from the
+law.
 
-`--check` prints both ladders, the `probe_model` verdict and the six falsifiers. It
+`--check` prints both ladders, the `probe_model` verdict and the eight falsifiers. It
 asserts that none of them fired and that `Λ` moves the standoff further than the meter
 does, with no plotting deps.
