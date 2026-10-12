@@ -124,9 +124,21 @@ class RxInferBackend:
     belief one step at a time. No steady-state mode — that belongs to the native
     fast path; this backend exists for correctness, not speed. The first instance
     built in a process loads the Julia runtime; later ones reuse it.
+
+    Fixed noise only. The Julia model takes one ``Q`` and one ``R``, so a model
+    carrying a state-dependent ``R(x)`` or ``Q(x)`` raises ``ValueError`` here, before
+    Julia starts. Filtering it on the plain fields would hold constant what the model
+    varies.
     """
 
     def __init__(self, model: LinearGaussianModel) -> None:
+        for slot in ("observation_model", "dynamics_noise_model"):
+            carried = getattr(model, slot)
+            if carried is not None and not carried.is_fixed:
+                raise ValueError(
+                    f"the model's {slot} is state-dependent, and the RxInfer model "
+                    f"filters on one fixed Q and R. Use KalmanBackend for R(x) or Q(x)."
+                )
         self.model = model
         self._jl = _julia()
 

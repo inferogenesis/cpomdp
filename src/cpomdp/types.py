@@ -138,6 +138,12 @@ class LinearGaussianModel:
     [`DynamicsNoise`][cpomdp.DynamicsNoise] for state-dependent process noise
     ``Q(x)``), and ``structure`` (a [`ModelStructure`][cpomdp.ModelStructure]
     declaring the factor / Markov-blanket partition).
+
+    ``observation_noise`` is optional when an ``observation_model`` is given. Omitted,
+    it is the sensor's ``R`` at ``prior.mean``, read once at construction. Beside a
+    state-dependent sensor the field is a nominal value. A consumer that understands
+    the sensor reads ``R(x)`` from the sensor. One that needs a single ``R`` either
+    refuses the model or documents that it reads this one (DECISIONS.md ADR-064).
     """
 
     dynamics_matrix: Float64[Array, "n n"]
@@ -156,7 +162,7 @@ class LinearGaussianModel:
         *,
         observation_matrix: ArrayLike,
         dynamics_noise: ArrayLike,
-        observation_noise: ArrayLike,
+        observation_noise: ArrayLike | None = None,
         prior: Belief,
         control_matrix: ArrayLike | None = None,
         observation_model: ObservationModel | None = None,
@@ -172,9 +178,6 @@ class LinearGaussianModel:
         object.__setattr__(
             self, "dynamics_noise", jnp.asarray(dynamics_noise, dtype=float)
         )
-        object.__setattr__(
-            self, "observation_noise", jnp.asarray(observation_noise, dtype=float)
-        )
         object.__setattr__(self, "prior", prior)
         object.__setattr__(
             self,
@@ -186,7 +189,47 @@ class LinearGaussianModel:
         object.__setattr__(self, "observation_model", observation_model)
         object.__setattr__(self, "dynamics_noise_model", dynamics_noise_model)
         object.__setattr__(self, "structure", structure)
+        self._validate_noise_sources()
+        object.__setattr__(
+            self,
+            "observation_noise",
+            jnp.asarray(
+                self._sensor_noise_at_prior()
+                if observation_noise is None
+                else observation_noise,
+                dtype=float,
+            ),
+        )
         self._validate()
+
+    def _validate_noise_sources(self) -> None:
+        """Check the kinds of ``prior`` and ``observation_model`` before either is read.
+
+        An omitted ``observation_noise`` is read from the sensor at the prior mean
+        before anything else is validated, so these two are checked first.
+        """
+        if not isinstance(self.prior, Belief):
+            raise TypeError(f"prior must be a Belief, got {type(self.prior).__name__}")
+        if self.observation_model is not None and not isinstance(
+            self.observation_model, ObservationModel
+        ):
+            raise TypeError(
+                f"observation_model must be an ObservationModel, "
+                f"got {type(self.observation_model).__name__}"
+            )
+
+    def _sensor_noise_at_prior(self) -> Float64[Array, "m m"]:
+        """The sensor's ``R`` at the prior mean, for a model given no observation noise.
+
+        The prior mean is where ``_validate`` already probes the sensor, so a fixed
+        sensor's own ``R`` comes back here and meets the exact-equality guard by
+        construction (DECISIONS.md ADR-064).
+        """
+        if self.observation_model is None:
+            raise TypeError(
+                "observation_noise is required when no observation_model supplies it"
+            )
+        return self.observation_model.linearize(self.prior.mean)[1]
 
     def _validate(self) -> None:
         # dynamics is square and defines the state dimension n.
@@ -235,11 +278,6 @@ class LinearGaussianModel:
                 f"got shape {self.control_matrix.shape}"
             )
         if self.observation_model is not None:
-            if not isinstance(self.observation_model, ObservationModel):
-                raise TypeError(
-                    f"observation_model must be an ObservationModel, "
-                    f"got {type(self.observation_model).__name__}"
-                )
             # An observation_model restates the observation channel, and the consumers
             # split on which restatement they read: the Kalman filter and the world use
             # the plain fields when the sensor is fixed, the EFE kernel uses the sensor
@@ -307,9 +345,7 @@ class LinearGaussianModel:
                 f"got {type(self.structure).__name__}"
             )
 
-        # prior is a Belief over the same n-D state.
-        if not isinstance(self.prior, Belief):
-            raise TypeError(f"prior must be a Belief, got {type(self.prior).__name__}")
+        # prior is over the same n-D state. _validate_noise_sources checked its kind.
         if self.prior.ndim != n:
             raise ValueError(
                 f"prior must be over the {n}-D state, got a {self.prior.ndim}-D belief"

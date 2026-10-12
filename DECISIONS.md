@@ -4263,3 +4263,74 @@ dimension. Nothing the rungs compute or report changes.
   the build plan's item on `R'` cites this entry.
 - ADR-062's sentence stands as written, superseded here, since `DECISIONS.md` is
   append-only.
+
+## ADR-064 — an omitted `observation_noise` is the sensor's `R` at the prior mean
+
+**Date:** 2026-10-12
+**Status:** Accepted
+**Phase:** issue #128
+
+### Decision
+
+`LinearGaussianModel` takes `observation_noise` as optional when an `observation_model`
+is given. Omitted, the field is `observation_model.linearize(prior.mean)[1]`, computed
+once in the constructor and stored as the same leaf a passed value would be. With no
+sensor the field is still required. Leaving it out raises `TypeError`.
+
+Before this a model with a state-dependent sensor described its observation channel
+twice. The plain field was checked for positive-definiteness and then read by almost
+nothing. Every consumer that understands the sensor branches on `is_fixed` and
+linearizes instead. The guard refusing a fixed sensor that disagrees with the field
+exists because there were two descriptions. It is their cost.
+
+**Why the prior mean.** It is the one point the constructor already probes the sensor
+at, to refuse a linearized observation matrix that is not `observation_matrix`. A fixed
+sensor returns its own `R` there and meets the exact-equality guard by construction.
+ADR-019's `μ⁺` is a different point. It is the FFG's per-step predictive mean, which a
+constructor does not have.
+
+**A passed value beside a state-dependent sensor is kept, and a mismatch does not
+warn.** The field is then a nominal `R`, the constant a consumer needing a single `R`
+substitutes. `WrongFixedRBackend` is the one consumer that reads it on purpose. A
+nominal taken at some other operating point is a legitimate thing to hand it. A
+warning would fire on that use.
+
+### Every reader of the field, under a state-dependent sensor
+
+| Reader | Treatment |
+| --- | --- |
+| `KalmanBackend`, per step | linearizes at `μ⁻` and does not read the field |
+| `KalmanBackend`, steady state | refuses, unchanged |
+| the EFE kernel's `_efe_step` | calls the sensor's `gaussianize`. Reads the field only with no sensor |
+| `ChainBackend` | linearizes at `μ⁻` per step. Reads the field only for a fixed sensor |
+| `harness.World` | linearizes at the true state |
+| `diagnostics.probe_model` | linearizes at each predicted mean. Reads the field only with no sensor |
+| `control.kalman_schedule`, `control.closed_loop_cost` | refuse, unchanged |
+| `scoring.observation_predictive` and the scores built on it | refuse, unchanged |
+| `constructors.ModelSpec.build` | refuses a perturbation of the shadowed field, unchanged |
+| `CouplingGraphBackend` | passes its representative `R(0)` with a zero prior mean, the value this rule derives. Every reader of its `(C, R)` tuple discards the `R` |
+| `WrongFixedRBackend` | reads it on purpose, as the constant it scales |
+| `additivity.variational_free_energy` | read it silently. Now refuses |
+| `RxInferBackend` | read it silently. Now refuses, and refuses `Q(x)` for the same reason |
+
+The last two are the case to remove: a nominal `R` used without saying so.
+`AdditivityCheck` already refused through `predicted_belief`. A direct call to
+`variational_free_energy` did not. The RxInfer model takes one `Q` and one `R` and was
+handed the plain fields whatever the model carried.
+
+### Consequences
+
+- The fixed-sensor hot path is untouched. The filter reads the field directly, and the
+  field holds the sensor's own `R`.
+- Construction pays one extra `linearize` call when the field is omitted. Nothing in the
+  loop changes.
+- The pytree has the same leaves in the same order, and `tree_unflatten` still skips
+  validation. `observation_noise` stays keyword-only and gains a default.
+- The derived value is fixed at construction. `dataclasses.replace(model, prior=...)`
+  passes the old field back in, so the nominal stays at the old prior mean.
+- The prior and sensor kind checks move ahead of the derivation, into
+  `_validate_noise_sources`. A model of the wrong kind raises the `TypeError` it raised
+  before.
+- `dynamics_noise` beside a `dynamics_noise_model` is described twice in the same way.
+  It is left as it is here, and so is `ModelSpec`, which still requires
+  `observation_noise`.

@@ -1,3 +1,5 @@
+import warnings
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -325,3 +327,97 @@ class TestACarriedModelObjectAgreesWithThePlainFields:
         LinearGaussianModel(
             **_valid_kwargs(dynamics_noise_model=_AgreeingFixedProcessNoise())
         )
+
+
+def _rising_noise(mean, params):
+    return jnp.array([[1.0 + mean[0] ** 2]])
+
+
+# R(x) is 5 here and 1 at the origin, where CallableSensor probes itself, so a value
+# read at the wrong point shows.
+_OFF_ORIGIN_PRIOR = Belief(mean=[2.0, 0.0], cov=[[1.0, 0.0], [0.0, 1.0]])
+
+
+def _without_observation_noise(**overrides):
+    kwargs = _valid_kwargs(**overrides)
+    del kwargs["observation_noise"]
+    return kwargs
+
+
+class TestAnOmittedObservationNoiseIsReadFromTheSensor:
+    """A sensor states the channel once. The plain field is its R at the prior mean."""
+
+    def test_a_state_dependent_sensor_supplies_its_noise_at_the_prior_mean(self):
+        sensor = CallableSensor([[1.0, 0.0]], _rising_noise, ())
+        model = LinearGaussianModel(
+            **_without_observation_noise(
+                observation_model=sensor, prior=_OFF_ORIGIN_PRIOR
+            )
+        )
+        np.testing.assert_array_equal(model.observation_noise, [[5.0]])
+
+    def test_omitting_it_builds_the_model_that_passing_it_at_the_prior_mean_does(self):
+        sensor = CallableSensor([[1.0, 0.0]], _rising_noise, ())
+        omitted = LinearGaussianModel(
+            **_without_observation_noise(
+                observation_model=sensor, prior=_OFF_ORIGIN_PRIOR
+            )
+        )
+        passed = LinearGaussianModel(
+            **_valid_kwargs(
+                observation_model=sensor,
+                prior=_OFF_ORIGIN_PRIOR,
+                observation_noise=[[5.0]],
+            )
+        )
+        omitted_leaves, omitted_structure = jax.tree_util.tree_flatten(omitted)
+        passed_leaves, passed_structure = jax.tree_util.tree_flatten(passed)
+        assert omitted_structure == passed_structure
+        for a, b in zip(omitted_leaves, passed_leaves, strict=True):
+            np.testing.assert_array_equal(a, b)
+
+    def test_the_derived_noise_survives_a_flatten_unflatten_round_trip(self):
+        sensor = CallableSensor([[1.0, 0.0]], _rising_noise, ())
+        model = LinearGaussianModel(
+            **_without_observation_noise(
+                observation_model=sensor, prior=_OFF_ORIGIN_PRIOR
+            )
+        )
+        leaves, treedef = jax.tree_util.tree_flatten(model)
+        restored = jax.tree_util.tree_unflatten(treedef, leaves)
+        np.testing.assert_array_equal(restored.observation_noise, [[5.0]])
+
+    def test_a_fixed_sensor_supplies_its_own_noise(self):
+        sensor = FixedSensor([[1.0, 0.0]], observation_noise=[[0.5]])
+        model = LinearGaussianModel(
+            **_without_observation_noise(observation_model=sensor)
+        )
+        np.testing.assert_array_equal(model.observation_noise, [[0.5]])
+
+    def test_with_no_sensor_it_is_still_required(self):
+        with pytest.raises(TypeError, match="observation_noise"):
+            LinearGaussianModel(**_without_observation_noise())
+
+    def test_passed_beside_a_state_dependent_sensor_it_is_kept_and_not_warned_on(self):
+        # The field is then the nominal R a fixed-noise consumer substitutes. One taken
+        # somewhere other than the prior mean is a choice, not a disagreement.
+        sensor = CallableSensor([[1.0, 0.0]], _rising_noise, ())
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            model = LinearGaussianModel(
+                **_valid_kwargs(observation_model=sensor, prior=_OFF_ORIGIN_PRIOR)
+            )
+        np.testing.assert_array_equal(model.observation_noise, [[1.0]])
+
+    def test_a_sensor_of_the_wrong_kind_is_named_rather_than_asked_for_a_noise(self):
+        with pytest.raises(TypeError, match="ObservationModel"):
+            LinearGaussianModel(
+                **_without_observation_noise(observation_model="not a sensor")
+            )
+
+    def test_a_prior_of_the_wrong_kind_is_named_rather_than_probed(self):
+        sensor = CallableSensor([[1.0, 0.0]], _rising_noise, ())
+        with pytest.raises(TypeError, match="Belief"):
+            LinearGaussianModel(
+                **_without_observation_noise(observation_model=sensor, prior=[2.0, 0.0])
+            )

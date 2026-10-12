@@ -31,6 +31,7 @@ from cpomdp.scoring import (
     CrossCell,
     StepUpdate,
     _affine_in_observation,
+    _require_fixed_noise,
     inference_gap_step,
     misspecification_step,
     observation_predictive,
@@ -170,7 +171,13 @@ def variational_free_energy(
 
     Returns:
         The free energy in nats, a scalar array or one per reading.
+
+    Raises:
+        ValueError: If the model carries state-dependent noise. Under ``R(x)`` the
+            plain ``observation_noise`` is the noise at one state, and the likelihood
+            term would price every reading against it.
     """
+    _require_fixed_noise(model)
     mean_q = np.atleast_2d(np.asarray(posterior_mean, dtype=float))
     cov_q = np.asarray(posterior_cov, dtype=float)
     readings = np.atleast_2d(np.asarray(observation, dtype=float))

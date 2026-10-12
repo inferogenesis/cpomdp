@@ -24,8 +24,10 @@ class WrongFixedRBackend:
 
     The filter uses ``observation_noise * (1 + magnitude)``, held fixed. A model
     carrying a state-dependent ``R(x)`` loses it here, so the filter reads a constant
-    where the model varies. On such a model a magnitude of zero is already a
-    degradation; on a fixed-noise model it reproduces the exact filter.
+    where the model varies. The constant is the model's nominal ``observation_noise``,
+    which is ``R`` at the prior mean when the model was built without one. On such a
+    model a magnitude of zero is already a degradation. On a fixed-noise model it
+    reproduces the exact filter.
 
     ``model`` is the model the agent is scored under, unchanged and still carrying its
     own sensor. Only the filter sees the substitution.

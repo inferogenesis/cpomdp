@@ -111,6 +111,32 @@ def test_a_state_dependent_sensor_is_replaced_by_the_fixed_fallback():
     assert np.allclose(np.asarray(degraded.cov), np.asarray(oracle.cov), atol=0)
 
 
+def test_an_omitted_noise_falls_back_to_the_sensors_r_at_the_prior_mean():
+    # Off the origin, so R at the prior mean is not the R(0) the sensor probes itself
+    # at, and the fallback reads the one the model derived.
+    prior = Belief(mean=[1.0, 0.0], cov=[[1.0, 0.0], [0.0, 1.0]])
+    sensed = LinearGaussianModel(
+        dynamics_matrix=DYNAMICS,
+        observation_matrix=SENSOR,
+        dynamics_noise=[[1e-3, 0.0], [0.0, 1e-3]],
+        prior=prior,
+        control_matrix=CONTROL,
+        observation_model=CallableSensor(SENSOR, _noise_at, ()),
+    )
+    frozen = LinearGaussianModel(
+        dynamics_matrix=DYNAMICS,
+        observation_matrix=SENSOR,
+        dynamics_noise=[[1e-3, 0.0], [0.0, 1e-3]],
+        observation_noise=_noise_at(prior.mean, ()),
+        prior=prior,
+        control_matrix=CONTROL,
+    )
+    degraded = _run(WrongFixedRBackend(sensed, magnitude=0.0))
+    oracle = _run(KalmanBackend(frozen))
+    assert np.allclose(np.asarray(degraded.mean), np.asarray(oracle.mean), atol=0)
+    assert np.allclose(np.asarray(degraded.cov), np.asarray(oracle.cov), atol=0)
+
+
 def test_a_state_dependent_sensor_makes_a_zero_magnitude_a_real_degradation():
     sensed = _sensed_model()
     exact = _run(KalmanBackend(sensed))

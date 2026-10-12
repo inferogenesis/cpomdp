@@ -352,6 +352,12 @@ no use of the readings beats it.
   so four API pages shipped a raw key where a reference should have been and no page
   carried a bibliography at all. Enabling the extension fixes every citation in the tree
   at once. No prose contained `[^` beforehand, so nothing existing changes meaning.
+- `cpomdp.additivity.variational_free_energy` and `RxInferBackend` refuse a
+  state-dependent sensor. Both read the plain `observation_noise` whatever the model
+  carried, so a model with `R(x)` was priced or filtered against a constant without
+  saying so. `AdditivityCheck` already refused through `predicted_belief`. A direct call
+  did not. `RxInferBackend` refuses a state-dependent `Q(x)` too, since its Julia model
+  takes one fixed `Q` as well, and it refuses before Julia starts.
 
 ### Changed
 
@@ -369,6 +375,13 @@ no use of the readings beats it.
   `LinearGaussianModel(observation_matrix=[[1., 0.]], observation_noise=[[1.]],
   observation_model=FixedSensor([[1., 0.]], observation_noise=[[0.5]]), ...)` built
   before and now raises. Pass the same value twice, or drop the redundant field.
+- `LinearGaussianModel`'s `observation_noise` is optional when an `observation_model` is
+  given. Omitted, it is the sensor's `R` at `prior.mean`, read once at construction
+  (ADR-064). A state-dependent sensor used to need a positive-definite `R` beside it that
+  almost nothing read, so the channel was described twice. A fixed sensor's own `R` comes
+  back unchanged and meets the restatement guard above by construction. With no sensor
+  the field is still required. A value passed beside a state-dependent sensor is kept as
+  the model's nominal `R`. No warning fires when it differs from the derived one.
 - The `symbolic` CI job reconciles the three symbolic suites against
   `research/registered_checks.toml` instead of comparing three hand-typed strings. The
   strings said `23 registered, 23 tested here, none fired` and two more like it. They

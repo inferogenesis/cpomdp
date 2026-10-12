@@ -6,6 +6,7 @@ with the native KalmanBackend through entirely separate machinery, so most tests
 here assert exactly that agreement rather than re-deriving numbers by hand.
 """
 
+import jax.numpy as jnp
 import numpy as np
 import pytest
 from numpy.typing import ArrayLike
@@ -13,8 +14,10 @@ from numpy.typing import ArrayLike
 from cpomdp.backends.base import InferenceBackend
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.backends.rxinfer import RxInferBackend, rxinfer_chemotaxis_tree_root
+from cpomdp.dynamics import CallableProcessNoise
 from cpomdp.ffg.factors.linear_gaussian import GaussianCoupling, GaussianObservation
 from cpomdp.ffg.graph import Coupling, CouplingGraph
+from cpomdp.observation import CallableSensor
 from cpomdp.types import Belief, LinearGaussianModel
 
 pytestmark = pytest.mark.rxinfer
@@ -116,6 +119,32 @@ def test_does_not_mutate_prior():
     RxInferBackend(model).infer_states(np.array([1.2]), prior)
     np.testing.assert_array_equal(prior.mean, mean_before)
     np.testing.assert_array_equal(prior.cov, cov_before)
+
+
+def _rising_noise(x, params):
+    return jnp.array([[1.0 + x[0] ** 2]])
+
+
+@pytest.mark.parametrize(
+    ("slot", "noise_model"),
+    [
+        ("observation_model", CallableSensor([[1.0]], _rising_noise, ())),
+        ("dynamics_noise_model", CallableProcessNoise(_rising_noise, ())),
+    ],
+)
+def test_refuses_state_dependent_noise(slot, noise_model):
+    # The Julia model takes one Q and one R. Built over R(x) or Q(x) it would filter
+    # on the plain fields, a constant where the model varies.
+    model = LinearGaussianModel(
+        dynamics_matrix=[[0.9]],
+        observation_matrix=[[1.0]],
+        dynamics_noise=[[0.5]],
+        observation_noise=[[1.0]],
+        prior=Belief(mean=[0.0], cov=[[10.0]]),
+        **{slot: noise_model},
+    )
+    with pytest.raises(ValueError, match=f"{slot} is state-dependent"):
+        RxInferBackend(model)
 
 
 def test_branching_tree_matches_coupling_graph():

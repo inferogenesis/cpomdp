@@ -1,6 +1,7 @@
 """Whether ``E[F] = H(p*) + D₁ + D₂`` closes, with both sides measured separately."""
 
 import jax
+import jax.numpy as jnp
 import numpy as np
 import pytest
 
@@ -23,13 +24,14 @@ from cpomdp.constructors import (
     ModelSpec,
     Perturbation,
 )
+from cpomdp.observation import CallableSensor
 from cpomdp.scoring import (
     build_cross,
     gaussian_kl,
     observation_predictive,
     predicted_belief,
 )
-from cpomdp.types import Belief
+from cpomdp.types import Belief, LinearGaussianModel
 
 DT = 0.1
 
@@ -144,6 +146,25 @@ def test_the_free_energy_is_vectorised_over_readings():
         for p, r in zip(posteriors, readings, strict=True)
     ]
     np.testing.assert_allclose(batched, singles, rtol=1e-14)
+
+
+def _rising_noise(mean, params):
+    return jnp.array([[1e-2 * (1.0 + mean[0] ** 2)]])
+
+
+def test_the_free_energy_refuses_a_state_dependent_sensor():
+    # Under R(x) the plain field is the noise at one state, and the likelihood term
+    # would price every reading against it.
+    sensed = LinearGaussianModel(
+        dynamics_matrix=[[1.0, DT], [0.0, 1.0]],
+        observation_matrix=[[1.0, 0.0]],
+        dynamics_noise=[[1e-4, 0.0], [0.0, 1e-4]],
+        prior=BELIEF,
+        control_matrix=[[0.0], [DT]],
+        observation_model=CallableSensor([[1.0, 0.0]], _rising_noise, ()),
+    )
+    with pytest.raises(ValueError, match="observation_model is state-dependent"):
+        variational_free_energy(BELIEF.mean, BELIEF.cov, sensed, BELIEF, [0.1])
 
 
 # --- the entropy, estimated in one place --------------------------------------------
