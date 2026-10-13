@@ -96,7 +96,7 @@ Output (bare command): docs/assets/surge_margin.png
 """
 
 import math
-from functools import cache
+from functools import cache, partial
 from itertools import pairwise
 from pathlib import Path
 
@@ -402,9 +402,17 @@ def _log_noise_slope(margin: float, e_ref: float = E_REF) -> float:
 # depends on R alone, tells them apart, and one step from the prior it is small.
 PREDICTED_VAR = MARGIN_VAR + DYNAMICS_NOISE[0][0]  # P⁻, one step from the prior
 
+# Stops short of the clamp at Q_FLOOR. Below about m = −45 the Coriolis residual has a
+# false root, and at the clamp's kink the gradient of jnp.maximum is split in half.
+LAW_BRACKET = (-Q_SURGE / 2, Q_REF - Q_SURGE)
+
 
 def _stationarity_residual(
-    margin: float, e_ref: float, precision: float, predicted_var: float
+    margin: float,
+    e_ref: float,
+    precision: float,
+    predicted_var: float,
+    meter: str = "dp",
 ) -> float:
     """`dG/dm` at one target margin, from the closed form above.
 
@@ -416,25 +424,33 @@ def _stationarity_residual(
         e_ref: the meter's relative flow uncertainty at ``Q_REF``.
         precision: the economic weight — Λ.
         predicted_var: the predicted variance of the margin — P⁻.
+        meter: a key of ``METERS``.
 
     Returns:
         `Λ(m − g) + ℓ'(m)·(κ + ΛR)/2`, which is zero at the standoff.
     """
     return float(
-        _residual_kernel(margin, _meter_params(e_ref), precision, predicted_var)
+        _residual_kernel(
+            margin, _meter_params(e_ref), precision, predicted_var, meter=meter
+        )
     )
 
 
-@jax.jit
-def _residual_kernel(margin, params, precision, predicted_var):
+@partial(jax.jit, static_argnames="meter")
+def _residual_kernel(margin, params, precision, predicted_var, *, meter):
     """The traced body of `_stationarity_residual`.
 
     Jitted because a bisection calls it hundreds of times, and eager dispatch of three
-    small ops per call costs more than the sweep the root is checked against.
+    small ops per call costs more than the sweep the root is checked against. The meter
+    is static, so each one compiles once.
     """
-    noise = _dp_meter_noise(jnp.array([margin]), params)[0, 0]
+
+    def log_noise_at_margin(margin):
+        return jnp.log(METERS[meter](jnp.array([margin]), params)[0, 0])
+
+    noise = METERS[meter](jnp.array([margin]), params)[0, 0]
     gain = predicted_var / (predicted_var + noise)  # κ
-    slope = jax.grad(_log_noise)(margin, params)  # ℓ'
+    slope = jax.grad(log_noise_at_margin)(margin)  # ℓ'
     return precision * (margin - GOAL_MARGIN) + 0.5 * slope * (gain + precision * noise)
 
 
@@ -459,22 +475,28 @@ def _law_standoff(
     e_ref: float = E_REF,
     precision: float = GOAL_PRECISION,
     predicted_var: float = PREDICTED_VAR,
+    meter: str = "dp",
 ) -> float:
     """The margin where `dG/dm = 0`, one step from the prior unless told otherwise.
 
-    The bracket runs from the clamp at ``Q_FLOOR`` up to design flow, which holds the
-    root for every setting the demo visits.
+    The root is searched for over ``LAW_BRACKET``, which holds it for every setting the
+    demo visits, with either meter.
     """
-    return _cached_law_standoff(float(e_ref), float(precision), float(predicted_var))
+    return _cached_law_standoff(
+        float(e_ref), float(precision), float(predicted_var), meter
+    )
 
 
 @cache
-def _cached_law_standoff(e_ref: float, precision: float, predicted_var: float) -> float:
+def _cached_law_standoff(
+    e_ref: float, precision: float, predicted_var: float, meter: str
+) -> float:
     """One bisection per setting, computed once per process."""
     return _bisect(
-        lambda margin: _stationarity_residual(margin, e_ref, precision, predicted_var),
-        Q_FLOOR - Q_SURGE,
-        Q_REF - Q_SURGE,
+        lambda margin: _stationarity_residual(
+            margin, e_ref, precision, predicted_var, meter
+        ),
+        *LAW_BRACKET,
     )
 
 
