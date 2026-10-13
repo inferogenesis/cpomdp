@@ -311,7 +311,7 @@ standoff that moved by less than one grid cell did not measurably move. The
 `ℓ'(m) = −2/Q` row is `EXACT`, being autodiff against a closed form at machine
 precision, and it is a statement about the sensor rather than a measured inference gap.
 The law, closed-loop and Coriolis rows are `BOUNDED` by the same grid step. The closed
-loop runs noise-free, at the default meter for each meter type. The rest of the settled
+loop runs noise-free, for each meter at the default accuracy. The rest of the settled
 ladder comes from the law.
 
 `--check` prints both ladders, the `probe_model` verdict and the eleven falsifiers. It

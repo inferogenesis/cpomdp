@@ -129,14 +129,14 @@ OUT = Path(__file__).resolve().parent.parent / "docs" / "assets" / "surge_margin
 # off a measured performance map at a speed line, and nothing here was read off one.
 Q_REF = 100.0  # design volumetric flow
 Q_SURGE = 55.0  # surge-line flow at the operating speed line
-Q_FLOOR = 5.0  # clamp on Q inside R(Q), see _dp_meter_noise
+Q_FLOOR = 5.0  # clamp on Q inside both meters' R(Q), each docstring says why
 E_REF = 0.002  # relative flow uncertainty at Q_REF, the one calibration constant
 
 # The latent is the surge margin m = Q - Q_SURGE, so the agent reasons in the quantity
 # an anti-surge controller actually holds. The valve acts on it additively.
 DYNAMICS_MATRIX = [[1.0]]  # A: margin persists
 CONTROL_MATRIX = [[1.0]]  # B: an anti-surge valve step moves flow additively
-OBSERVATION_MATRIX = [[1.0]]  # C: the DP meter reads flow
+OBSERVATION_MATRIX = [[1.0]]  # C: the meter reads flow
 DYNAMICS_NOISE = [[0.01]]
 
 OPERATING_MARGIN = 15.0  # m at the operating point (Q = 70%), illustrative
@@ -156,6 +156,7 @@ GOAL_PRECISION = 0.002
 # surge would act as an interlock nobody declared, deciding where the agent may go.
 ACTIONS = jnp.linspace(-30.0, 20.0, 600)
 GRID_STEP = float(ACTIONS[1] - ACTIONS[0])
+PROBE_SAMPLES = 25  # actions `probe_model` samples, evenly strided over ACTIONS
 
 # An 8:1 ladder in meter quality, anchored on E_REF at the good end. Doubling rather
 # than a fine sweep, so each rung's standoff move clears the grid resolution by a wide
@@ -367,18 +368,23 @@ def _pragmatic_standoff(
     return OPERATING_MARGIN + float(ACTIONS[_interior_argmin(pragmatic)])
 
 
-def _log_noise(margin, params):
-    """`ℓ(m) = log R(m)`, the scalar the gap work's coefficients are written in."""
-    return jnp.log(_dp_meter_noise(jnp.array([margin]), params)[0, 0])
+def _log_noise(margin, params, meter="dp"):
+    """`ℓ(m) = log R(m)`, the scalar the gap work's coefficients are written in.
+
+    ``meter`` is a key of ``METERS``. ``jax.grad`` passes it through undifferentiated,
+    so the law's kernel and the DP slope below share this one function.
+    """
+    return jnp.log(METERS[meter](jnp.array([margin]), params)[0, 0])
 
 
-#: `ℓ'(m)` over a whole grid in one traced call. Built once at import: a `jax.grad`
-#: constructed per call retraces per call, which costs more than the sweep it checks.
+#: The DP meter's `ℓ'(m)` over a whole grid in one traced call, for row 4. Built once
+#: at import: a `jax.grad` constructed per call retraces per call, which costs more
+#: than the sweep it checks.
 _log_noise_slopes = jax.jit(jax.vmap(jax.grad(_log_noise), in_axes=(0, None)))
 
 
 def _log_noise_slope(margin: float, e_ref: float = E_REF) -> float:
-    """`ℓ'(m) = d/dm log R(m)` at one margin, by autodiff through the demo's own `R`."""
+    """The DP meter's `ℓ'(m) = d/dm log R(m)` at one margin, by autodiff through `R`."""
     return float(_log_noise_slopes(jnp.array([margin]), _meter_params(e_ref))[0])
 
 
@@ -453,13 +459,9 @@ def _residual_kernel(margin, params, precision, predicted_var, *, meter):
     small ops per call costs more than the sweep the root is checked against. The meter
     is static, so each one compiles once.
     """
-
-    def log_noise_at_margin(margin):
-        return jnp.log(METERS[meter](jnp.array([margin]), params)[0, 0])
-
     noise = METERS[meter](jnp.array([margin]), params)[0, 0]
     gain = predicted_var / (predicted_var + noise)  # κ
-    slope = jax.grad(log_noise_at_margin)(margin)  # ℓ'
+    slope = jax.grad(_log_noise)(margin, params, meter)  # ℓ'
     return precision * (margin - GOAL_MARGIN) + 0.5 * slope * (gain + precision * noise)
 
 
@@ -701,7 +703,8 @@ def _slope_deviation() -> tuple[float, float]:
 @cache
 def _sensor_report():
     """The library's own verdict on whether the sensor earns its keep over the grid."""
-    actions = [jnp.array([a]) for a in np.asarray(ACTIONS)[::24]]
+    stride = len(ACTIONS) // PROBE_SAMPLES
+    actions = [jnp.array([a]) for a in np.asarray(ACTIONS)[::stride]]
     return probe_model(_model(), _belief(), actions)
 
 
@@ -1027,7 +1030,7 @@ def check() -> None:
             spans as much as the `Λ` ladder, which would make the printout's framing
             of the two wrong.
     """
-    print("Anti-surge margin under a DP flow meter, R(Q) = e_ref²·Q_ref⁴/Q²")
+    print("Anti-surge margin, DP flow meter unless stated, R(Q) = e_ref²·Q_ref⁴/Q²")
     print(
         f"   surge line Q_s = {Q_SURGE:.0f}%, design flow Q_ref = {Q_REF:.0f}%, "
         f"e_ref = {E_REF} ({E_REF * 100:.1f}% at design flow)"
