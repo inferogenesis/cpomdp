@@ -382,6 +382,11 @@ no use of the readings beats it.
   back unchanged and meets the restatement guard above by construction. With no sensor
   the field is still required. A value passed beside a state-dependent sensor is kept as
   the model's nominal `R`. No warning fires when it differs from the derived one.
+- Refusing state-dependent noise is one function, `require_fixed_noise`, in the internal
+  `_validation` module. The closed forms in `control` and `scoring`, the free energy,
+  `RxInferBackend` and the steady-state `KalmanBackend` each held a copy of it. The
+  `control` and `scoring` messages are unchanged. The steady-state refusal now names the
+  slot that varies.
 - The `symbolic` CI job reconciles the three symbolic suites against
   `research/registered_checks.toml` instead of comparing three hand-typed strings. The
   strings said `23 registered, 23 tested here, none fired` and two more like it. They

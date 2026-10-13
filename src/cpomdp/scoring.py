@@ -18,6 +18,7 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import ArrayLike
 
+from cpomdp._validation import require_fixed_noise
 from cpomdp.backends.base import InferenceBackend
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.constructors import ConstructorSet, InferenceKind, InferenceSet, ModelSpec
@@ -44,6 +45,11 @@ __all__ = [
     "misspecification_step",
     "observation_predictive",
 ]
+
+# The closed forms here are Gaussian ones. Under R(x) the exact posterior and the
+# predictive are not Gaussian, and scoring them needs the reference filter rather than
+# a formula.
+_FIXED_NOISE_ONLY = "the closed-form terms here are for fixed noise only"
 
 #: One filter step with its belief and action fixed: the reading in, the posterior out.
 StepUpdate = Callable[[np.ndarray], Belief]
@@ -589,7 +595,7 @@ def predicted_belief(
             control matrix and ``action`` is ``None``, or if the belief is not over
             the model's state.
     """
-    _require_fixed_noise(model)
+    require_fixed_noise(model, _FIXED_NOISE_ONLY)
     mean = np.asarray(belief.mean, dtype=float)
     cov = np.asarray(belief.cov, dtype=float)
     if mean.shape != (model.n_states,):
@@ -641,22 +647,6 @@ def misspecification_step(
     true_mean, true_cov = observation_predictive(truth, truth_belief, action)
     model_mean, model_cov = observation_predictive(model, model_belief, action)
     return gaussian_kl(true_mean, true_cov, model_mean, model_cov)
-
-
-def _require_fixed_noise(model: LinearGaussianModel) -> None:
-    """Refuse a model whose noise varies with the state.
-
-    The closed forms here are Gaussian ones. Under ``R(x)`` the exact posterior and
-    the predictive are not Gaussian, and scoring them needs the reference filter
-    rather than a formula.
-    """
-    for slot in ("observation_model", "dynamics_noise_model"):
-        carried = getattr(model, slot)
-        if carried is not None and not carried.is_fixed:
-            raise ValueError(
-                f"the model's {slot} is state-dependent; the closed-form terms here "
-                f"are for fixed noise only"
-            )
 
 
 def inference_gap_step(
@@ -792,7 +782,7 @@ class ThreeTermEvaluator:
 
     def __post_init__(self) -> None:
         """Refuse a true model the closed forms do not describe."""
-        _require_fixed_noise(self.truth)
+        require_fixed_noise(self.truth, _FIXED_NOISE_ONLY)
 
     def score(
         self, cell: CrossCell, run: DrivenRun, sequence: ExogenousActionSequence
@@ -832,7 +822,7 @@ class ThreeTermEvaluator:
                 f"model over {sequence.horizon} steps of {self.truth.n_observations} "
                 f"readings expects {(sequence.horizon, self.truth.n_observations)}"
             )
-        _require_fixed_noise(cell.model)
+        require_fixed_noise(cell.model, _FIXED_NOISE_ONLY)
 
         exact_truth = KalmanBackend(self.truth)
         exact_model = KalmanBackend(cell.model)

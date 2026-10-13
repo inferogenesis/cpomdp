@@ -13,6 +13,7 @@ import jax.numpy as jnp
 from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
+from cpomdp._validation import require_fixed_noise
 from cpomdp.backends.kalman import _gain_and_posterior_cov
 from cpomdp.resolution import Bar, Bounded
 from cpomdp.types import Belief, LinearGaussianModel
@@ -31,6 +32,9 @@ __all__ = [
     "kalman_schedule",
     "optimal_cost",
 ]
+
+# Every closed form here prices one fixed noise, so R(x) and Q(x) are refused.
+_PRICES_FIXED_NOISE = "the closed form prices a fixed noise"
 
 
 def _validate_cost(
@@ -244,16 +248,6 @@ def finite_horizon_lqr(
     )
 
 
-def _require_fixed(model: LinearGaussianModel, slot: str) -> None:
-    """Refuse a noise model that varies with the state; the closed forms price fixed."""
-    carried = getattr(model, slot)
-    if carried is not None and not carried.is_fixed:
-        raise ValueError(
-            f"the model's {slot} is state-dependent; the closed form prices a fixed "
-            f"noise"
-        )
-
-
 def _held_goal(model: LinearGaussianModel, goal: ArrayLike) -> Float64[Array, "n"]:
     """``goal`` as an array, refused unless the dynamics hold it at zero action.
 
@@ -332,8 +326,7 @@ def kalman_schedule(
     """
     if horizon < 1:
         raise ValueError(f"horizon must be at least 1, got {horizon}")
-    _require_fixed(model, "observation_model")
-    _require_fixed(model, "dynamics_noise_model")
+    require_fixed_noise(model, _PRICES_FIXED_NOISE)
     prior = _prior_over(model, prior)
     gains, covariances = [], [prior.cov]
     for _ in range(horizon):
@@ -389,8 +382,7 @@ def closed_loop_cost(
             state, or if either gain sequence is not one per step of the plan.
     """
     model = schedule.model
-    _require_fixed(model, "observation_model")
-    _require_fixed(model, "dynamics_noise_model")
+    require_fixed_noise(model, _PRICES_FIXED_NOISE)
     goal = _held_goal(model, goal)
     prior = _prior_over(model, prior)
     n, m, p, horizon = (
@@ -546,7 +538,7 @@ def full_information_cost(
             over the model's state.
     """
     model = schedule.model
-    _require_fixed(model, "dynamics_noise_model")
+    require_fixed_noise(model, _PRICES_FIXED_NOISE, slots=("dynamics_noise_model",))
     goal = _held_goal(model, goal)
     prior = _prior_over(model, prior)
 

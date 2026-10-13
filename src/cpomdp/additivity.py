@@ -26,12 +26,12 @@ import numpy as np
 from jaxtyping import Array
 from numpy.typing import ArrayLike
 
+from cpomdp._validation import require_fixed_noise
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.scoring import (
     CrossCell,
     StepUpdate,
     _affine_in_observation,
-    _require_fixed_noise,
     inference_gap_step,
     misspecification_step,
     observation_predictive,
@@ -177,7 +177,7 @@ def variational_free_energy(
             plain ``observation_noise`` is the noise at one state, and the likelihood
             term would price every reading against it.
     """
-    _require_fixed_noise(model)
+    require_fixed_noise(model, "the free energy here is a closed form for fixed noise")
     mean_q = np.atleast_2d(np.asarray(posterior_mean, dtype=float))
     cov_q = np.asarray(posterior_cov, dtype=float)
     readings = np.atleast_2d(np.asarray(observation, dtype=float))

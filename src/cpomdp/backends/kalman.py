@@ -5,6 +5,7 @@ import jax.numpy as jnp
 from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
+from cpomdp._validation import require_fixed_noise
 from cpomdp.backends.base import validate_step_inputs
 from cpomdp.types import Belief, LinearGaussianModel
 
@@ -118,19 +119,11 @@ class KalmanBackend:
         self.model = model
         self.steady_state = steady_state
         if steady_state:
-            sensor_fixed = (
-                model.observation_model is None or model.observation_model.is_fixed
+            require_fixed_noise(
+                model,
+                "steady_state=True needs a constant fixed point, and R(x) or Q(x) has "
+                "none. Use steady_state=False.",
             )
-            process_fixed = (
-                model.dynamics_noise_model is None
-                or model.dynamics_noise_model.is_fixed
-            )
-            if not (sensor_fixed and process_fixed):
-                raise ValueError(
-                    "steady_state=True needs fixed sensor and process noise; a "
-                    "state-dependent R(x) or Q(x) has no constant fixed point — "
-                    "use steady_state=False."
-                )
             self._steady_gain, self._steady_cov = self._converge_to_steady_state(
                 tol, max_iter
             )
