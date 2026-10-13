@@ -518,22 +518,26 @@ def _steady_predicted_var(noise: float) -> float:
     )
 
 
-def _settled_law(e_ref: float = E_REF, precision: float = GOAL_PRECISION) -> float:
+def _settled_law(
+    e_ref: float = E_REF, precision: float = GOAL_PRECISION, meter: str = "dp"
+) -> float:
     """Where the closed loop settles by the law, with P⁻ at its steady state there.
 
     Raises:
         RuntimeError: if the fixed-point iteration does not converge.
     """
-    return _cached_settled_law(float(e_ref), float(precision))
+    return _cached_settled_law(float(e_ref), float(precision), meter)
 
 
 @cache
-def _cached_settled_law(e_ref: float, precision: float) -> float:
+def _cached_settled_law(e_ref: float, precision: float, meter: str) -> float:
     """One fixed-point iteration per setting, computed once per process."""
-    margin = _law_standoff(e_ref, precision)
+    margin = _law_standoff(e_ref, precision, meter=meter)
     for _ in range(100):
-        noise = float(_dp_meter_noise(jnp.array([margin]), _meter_params(e_ref))[0, 0])
-        settled = _law_standoff(e_ref, precision, _steady_predicted_var(noise))
+        noise = float(METERS[meter](jnp.array([margin]), _meter_params(e_ref))[0, 0])
+        settled = _law_standoff(
+            e_ref, precision, _steady_predicted_var(noise), meter=meter
+        )
         if abs(settled - margin) < 1e-10:
             return settled
         margin = settled
@@ -541,22 +545,23 @@ def _cached_settled_law(e_ref: float, precision: float) -> float:
 
 
 @cache
-def _closed_loop(live: bool) -> float:
-    """Where the library's own `Agent` settles at the default meter, run noise-free.
+def _closed_loop(live: bool, meter: str = "dp") -> float:
+    """Where the library's own `Agent` settles at the default accuracy, run noise-free.
 
     The plant follows the agent's model and the meter reads true, so the run is
     deterministic. The belief variance follows the filter's recursion and the margin
     goes wherever each step aims. A noisy run fluctuates about this point. Only the
-    default meter runs here: a worse meter has a small gain, its variance takes
+    default accuracy runs here: a worse meter has a small gain, its variance takes
     hundreds of steps to settle, and the law covers it.
 
     Args:
         live: ``True`` for the ``R(x)`` agent, ``False`` for the fixed-`R` twin.
+        meter: a key of ``METERS``.
 
     Returns:
         The mean margin over the last ``LOOP_TAIL`` steps.
     """
-    model = _model(live=live)
+    model = _model(live=live, meter=meter)
     bounds = (float(ACTIONS[0]), float(ACTIONS[-1]))
     objective = ObservationGoal(
         [GOAL_MARGIN],
