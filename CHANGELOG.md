@@ -321,9 +321,10 @@ no use of the readings beats it.
   nearer the preference than its first step aimed. A Coriolis meter at the same
   accuracy flips the offset's sign, and the library's `Agent` with it settles past the
   surge line. Eleven registered falsifiers, all `CORROBORATED`.
-  `docs/guides/surge_margin_derivation.md` derives the meter model and the law, fixes
-  the one calibration constant and lists what the demo does not model. It sits under a
-  new **Applications** section of the docs.
+  `docs/guides/surge_margin.md` leads with those results for a reader who runs
+  compressors. `docs/guides/surge_margin_derivation.md` derives the meter model and the
+  law, fixes the one calibration constant and lists what the demo does not model. Both
+  sit under a new **Applications** section of the docs.
 
 ### Fixed
 

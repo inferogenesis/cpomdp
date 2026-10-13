@@ -1,8 +1,9 @@
 # The DP flow meter gives you `R(x)` for free
 
-Supporting note for [`examples/surge_margin.py`](https://github.com/inferogenesis/cpomdp/blob/main/examples/surge_margin.py).
-It derives the sensor model that demo runs on, fixes its one calibration constant, and
-records what the demo does not model.
+Supporting note for [the anti-surge application](surge_margin.md), which leads with
+the results. It derives the sensor model that
+[`examples/surge_margin.py`](https://github.com/inferogenesis/cpomdp/blob/main/examples/surge_margin.py)
+runs on, fixes its one calibration constant, and records what the demo does not model.
 
 Nothing here is a citable result. The example gallery's numbers are showcases, and this
 note inherits that status.
@@ -291,9 +292,9 @@ The demo and anything written about it quote the same list:
   The demo's claim is the *direction* of the offset, not its size.
 - The ladders' first steps are taken from a prior with σ = 2% of design flow, and the
   prior's width scales them as much as `Λ` does.
-- The closed loop is noise-free, and only the default meter runs through the library's
-  `Agent`. A noisy loop fluctuates about the point it finds. The settled margins for the
-  rest of the meter ladder come from the law.
+- The closed loop is noise-free, and only the default accuracy runs through the
+  library's `Agent`, once for each meter. A noisy loop fluctuates about the point it
+  finds. The settled margins for the rest of the meter ladder come from the law.
 
 The demo is a statement about what a state-dependent sensor does to action selection. It
 is not a compressor model.
