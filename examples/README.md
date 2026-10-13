@@ -306,6 +306,6 @@ The law and closed-loop rows are `BOUNDED` by the same grid step. The closed loo
 noise-free and only at the default meter. The rest of the settled ladder comes from the
 law.
 
-`--check` prints both ladders, the `probe_model` verdict and the nine falsifiers. It
+`--check` prints both ladders, the `probe_model` verdict and the eleven falsifiers. It
 asserts that none of them fired and that `Λ` moves the standoff further than the meter
 does, with no plotting deps.

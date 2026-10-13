@@ -27,7 +27,7 @@ exhibits is a property of *the agent's generative model*, which is linear-Gaussi
 additive control here, and not of the plant. An EKF linearised on a nonlinear plant has
 action-dependent Jacobians and does not collapse this way, whatever its `R` does.
 
-`--check` reports nine registered falsifiers, with no plotting deps:
+`--check` reports eleven registered falsifiers, with no plotting deps:
 
 - dissociation: the twin's epistemic term is dead-flat across the valve grid, the
   `R(x)` agent's is not. Koudahl, Kouw and de Vries proved the flat case for
@@ -52,6 +52,10 @@ action-dependent Jacobians and does not collapse this way, whatever its `R` does
   preference.
 - settled offset: by the law, every rung of the meter ladder settles clear of the
   preference, and each worse meter settles nearer it.
+- Coriolis sign: a Coriolis meter with the same accuracy at design flow has
+  `ℓ' = +2/Q`, and puts the agent below its preference, first step and settled.
+- Coriolis loop: the library's own `Agent` with that meter settles where the law puts
+  it, past the surge line.
 
 **The standoff has a closed form.** Setting `dG/dm` to zero puts the offset from
 preference at exactly `κ/(ΛQ) + R/Q` for this meter, with κ the Kalman gain. The first
@@ -307,9 +311,9 @@ def _cached_sweep(
     """One vmapped sweep per setting, computed once per process.
 
     The rows and the printout ask for the same settings more than once, and the ladders
-    share their first rung with the default. Fourteen distinct settings cover the
-    whole check. `gallery.efe_sweep` loops eagerly, which suits the tens of actions it
-    was written for and not the 600 here.
+    share their first rung with the default. Fifteen distinct settings cover the whole
+    check, one of them the Coriolis meter's. `gallery.efe_sweep` loops eagerly, which
+    suits the tens of actions it was written for and not the 600 here.
     """
     model = _model(e_ref, live=live, meter=meter)
     belief, goal = _belief(), _goal(precision)
@@ -400,6 +404,9 @@ def _log_noise_slope(margin: float, e_ref: float = E_REF) -> float:
 # R scales as e_ref², so one step from a fixed prior a meter twice as bad and a prior
 # four times as tight give almost the same standoff. Only the pragmatic part, which
 # depends on R alone, tells them apart, and one step from the prior it is small.
+#
+# The sign of the offset is the sign of −ℓ', since κ + ΛR is positive. A Coriolis meter
+# has ℓ' = +2/Q, so the same law puts it on the surge side of its preference.
 PREDICTED_VAR = MARGIN_VAR + DYNAMICS_NOISE[0][0]  # P⁻, one step from the prior
 
 # Stops short of the clamp at Q_FLOOR. Below about m = −45 the Coriolis residual has a
@@ -637,23 +644,38 @@ def _economic_ladder() -> tuple[tuple[float, float, float], ...]:
     )
 
 
-def _law_agreement() -> tuple[tuple[float, float, float, float], ...]:
-    """`(e_ref, Λ, grid standoff, law root)` at every live setting the ladders visit.
+def _law_agreement() -> tuple[tuple[str, float, float, float, float], ...]:
+    """`(meter, e_ref, Λ, grid standoff, law root)` at every live setting visited.
 
-    The two ladders share their default rung, so seven settings rather than eight.
+    The two ladders share their default rung, so seven DP settings rather than eight,
+    and the Coriolis meter adds its default.
     """
     settings = dict.fromkeys(
-        [(e_ref, GOAL_PRECISION) for e_ref in METER_QUALITIES]
-        + [(E_REF, precision) for precision in GOAL_PRECISIONS]
+        [("dp", e_ref, GOAL_PRECISION) for e_ref in METER_QUALITIES]
+        + [("dp", E_REF, precision) for precision in GOAL_PRECISIONS]
+        + [("coriolis", E_REF, GOAL_PRECISION)]
     )
     return tuple(
         (
+            meter,
             e_ref,
             precision,
-            _standoff(e_ref, precision=precision),
-            _law_standoff(e_ref, precision),
+            _standoff(e_ref, precision=precision, meter=meter),
+            _law_standoff(e_ref, precision, meter=meter),
         )
-        for e_ref, precision in settings
+        for meter, e_ref, precision in settings
+    )
+
+
+def _coriolis() -> tuple[float, float, float]:
+    """The Coriolis meter at the default: first step, settled law, and the `Agent` loop.
+
+    The first step is the grid argmin, which row 7 checks against the law's root.
+    """
+    return (
+        _standoff(meter="coriolis"),
+        _settled_law(meter="coriolis"),
+        _closed_loop(True, "coriolis"),
     )
 
 
@@ -700,6 +722,7 @@ def falsifiers() -> tuple[CheckReport, ...]:
     worst_slope, c2 = _slope_deviation()
     report = _sensor_report()
     agreement = _law_agreement()
+    coriolis_first, coriolis_settled, coriolis_loop = _coriolis()
     settled = _settled_ladder()
     loop_live, loop_twin = _closed_loop(True), _closed_loop(False)
 
@@ -707,7 +730,7 @@ def falsifiers() -> tuple[CheckReport, ...]:
     frozen_margins = [m for _, _, m in ladder]
     drops = [a - b for a, b in pairwise(live_margins)]
     frozen_spread = max(frozen_margins) - min(frozen_margins)
-    law_misses = [abs(grid - law) for _, _, grid, law in agreement]
+    law_misses = [abs(grid - law) for *_, grid, law in agreement]
     _, first_step, settled_default = settled[0]  # METER_QUALITIES opens on E_REF
     settled_margins = [margin for _, _, margin in settled]
     settled_drops = [a - b for a, b in pairwise(settled_margins)]
@@ -800,6 +823,29 @@ def falsifiers() -> tuple[CheckReport, ...]:
         falling = all(drop > GRID_STEP for drop in settled_drops)
         return Outcome.NOT_TRIGGERED if clear and falling else Outcome.FIRED
 
+    def coriolis_keeps_the_sign() -> Outcome:
+        """Fires unless a Coriolis meter puts the agent on the surge side of preference.
+
+        Its `ℓ' = +2/Q` against the DP meter's `−2/Q`, so the law flips the offset. The
+        first step and the settled margin both have to land more than a grid step
+        below the preference.
+        """
+        flipped = (
+            coriolis_first < GOAL_MARGIN - GRID_STEP
+            and coriolis_settled < GOAL_MARGIN - GRID_STEP
+        )
+        return Outcome.NOT_TRIGGERED if flipped else Outcome.FIRED
+
+    def coriolis_stops_short_of_surge() -> Outcome:
+        """Fires unless the library's Coriolis loop settles past the surge line.
+
+        The library's own `Agent` has to settle within a grid step of the law, and
+        more than a grid step below zero margin.
+        """
+        agrees = abs(coriolis_loop - coriolis_settled) <= GRID_STEP
+        past_surge = coriolis_loop < -GRID_STEP
+        return Outcome.NOT_TRIGGERED if agrees and past_surge else Outcome.FIRED
+
     quality_ratio = METER_QUALITIES[-1] / METER_QUALITIES[0]
     return (
         CheckReport(
@@ -886,9 +932,9 @@ def falsifiers() -> tuple[CheckReport, ...]:
             tier=Tier.BOUNDED,
             detail=(
                 f"worst |grid argmin − law root| over {len(agreement)} settings of "
-                f"both ladders: {max(law_misses):.3f}%, against the grid step "
-                f"{GRID_STEP:.4f}%. Λ(m − g) = −ℓ'(κ + ΛR)/2 places the standoff to "
-                "the sweep's resolution"
+                f"both ladders and the Coriolis meter: {max(law_misses):.3f}%, "
+                f"against the grid step {GRID_STEP:.4f}%. Λ(m − g) = −ℓ'(κ + ΛR)/2 "
+                "places the standoff to the sweep's resolution"
             ),
         ),
         CheckReport(
@@ -917,6 +963,34 @@ def falsifiers() -> tuple[CheckReport, ...]:
                 f"step {GRID_STEP:.4f}% (smallest {min(settled_drops):.3f}%). The "
                 f"first step's offset from preference is {overshoot:.1f}x the settled "
                 "one"
+            ),
+        ),
+        CheckReport(
+            name="10. Coriolis offset keeps the DP sign",
+            check_id="surge_margin.coriolis_offset_keeps_the_dp_sign",
+            warrant=Warrant.CORROBORATED,
+            outcome=coriolis_keeps_the_sign(),
+            tier=Tier.BOUNDED,
+            detail=(
+                f"a Coriolis meter, {E_REF * 100:.1f}% at design flow like the DP one: "
+                f"the first step aims at m = {coriolis_first:.2f}% and the law settles "
+                f"it at m = {coriolis_settled:.2f}%, both below the preference "
+                f"{GOAL_MARGIN:.0f}% by more than the grid step {GRID_STEP:.4f}%. "
+                "ℓ' = +2/Q flips the offset"
+            ),
+        ),
+        CheckReport(
+            name="11. Coriolis loop settles short of surge",
+            check_id="surge_margin.coriolis_loop_settles_short_of_surge",
+            warrant=Warrant.CORROBORATED,
+            outcome=coriolis_stops_short_of_surge(),
+            tier=Tier.BOUNDED,
+            detail=(
+                f"library Agent with the Coriolis meter, noise-free closed loop: "
+                f"settles at m = {coriolis_loop:.2f}% against the law's "
+                f"{coriolis_settled:.2f}%, past the surge line by more than the grid "
+                f"step {GRID_STEP:.4f}%. With the DP meter it settles at "
+                f"{loop_live:.2f}%"
             ),
         ),
     )

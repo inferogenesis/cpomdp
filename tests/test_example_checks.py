@@ -33,7 +33,7 @@ def test_single_chain_theorem_check():
 def test_surge_margin_check():
     """The applied R(x) demo: a DP flow meter's own noise moves the surge control line.
 
-    Nine registered falsifiers over the valve sweep. The fixed-R twin's epistemic term
+    Eleven registered falsifiers over the valve sweep. The fixed-R twin's epistemic term
     is flat and its argmin G is its argmin pragmatic (the ADR-003 collapse), the R(Q)
     agent is held off that optimum, and its standoff falls monotonically across an 8:1
     ladder in meter quality while the twin's does not move. The closed-form row asserts
@@ -49,9 +49,11 @@ def test_surge_margin_check():
     part from the preference being over noisy readings. The eighth runs the library's
     own `Agent` in closed loop and checks it settles where the law puts it. The ninth
     checks that every settled rung stays clear of the preference and that a worse meter
-    still settles nearer it.
+    still settles nearer it. The last two swap in a Coriolis meter, whose noise grows
+    with flow: the offset flips sign, and the library's loop settles past the surge
+    line.
 
-    Fourteen vmapped sweeps of 600 grid actions and two 40-step agent loops, each
+    Fifteen vmapped sweeps of 600 grid actions and three 40-step agent loops, each
     computed once, a few seconds, so it stays on the pull-request path.
     """
     surge_margin.check()
