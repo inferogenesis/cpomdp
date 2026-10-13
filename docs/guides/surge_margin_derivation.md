@@ -57,6 +57,10 @@ Read the middle row. A meter whose relative accuracy is flat has `σ_Q = e·Q`, 
 flow, and the agent is pulled *toward* surge instead of held off it. Same machinery,
 opposite conclusion, and nothing about the inference changed.
 
+The demo runs that row. A Coriolis meter with the same accuracy at design flow puts the
+agent's first step below its preference, and in closed loop the library's own `Agent`
+settles past the surge line. `--check` asserts both, in rows 10 and 11.
+
 The bottom row is the one that matters for whether any of this is worth doing. A
 constant-`R` meter puts `ℓ' = 0`, and then the epistemic term is constant across
 actions and the agent reduces to a controller.
@@ -205,7 +209,7 @@ it against the library's own `Agent` run in closed loop.
 
 The sign of the offset is the sign of `−ℓ'`, since `κ + Λ·R` is positive. A meter with
 `ℓ' > 0` puts the agent below its preference, on the surge side. The sign table above is
-that statement.
+that statement, and the demo's two Coriolis rows measure it.
 
 ## Where this sits relative to `c₂`
 
@@ -264,6 +268,10 @@ The demo and anything written about it quote the same list:
   interesting version of this problem and is not what the demo does.
 - A DP element is assumed. The sign table above is what that assumption buys, and a
   different element buys a different sign or none.
+- The Coriolis meter shares the DP meter's accuracy at design flow and nothing else. A
+  real Coriolis meter adds a zero-stability term, constant in absolute flow, that
+  dominates at low flow. There `R` stops falling and the pull toward low flow weakens.
+  The demo leaves that term out.
 - **The meter model is derived from a standard that excludes the regime of interest.**
   [ISO 5167](https://www.iso.org/standard/79179.html) does not apply to pulsating
   flow, and surge is a pulsating flow instability. So `R(Q)` describes the meter on the

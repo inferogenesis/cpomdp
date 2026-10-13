@@ -246,7 +246,7 @@ observation_model = None                                     # R = R(m₀), a co
 observation_model = CallableSensor(C, _dp_meter_noise, params)   # R = R(m)
 ```
 
-![Three panels. The left shows the fixed-R agent, whose epistemic curve is a flat horizontal line so the minimum of G sits exactly on the minimum of the pragmatic term. The middle shows the R(Q) agent, whose epistemic curve rises away from the surge line and pulls the minimum of G off the economic optimum. The right plots the standoff against meter uncertainty. A dashed curve is where the R(Q) agent's first step aims, and a solid curve below it is where the loop settles, with a star on it where the library's own Agent settled in a closed-loop run. Both fall as the meter gets worse, and the fixed-R twin is a flat line at the preference. Where the curves sit vertically is set by the economic weight, not by the meter.](../docs/assets/surge_margin.png)
+![Four panels. Top left, the fixed-R agent: its epistemic curve is a flat horizontal line, so the minimum of G sits exactly on the minimum of the pragmatic term. Top right, the DP meter: its epistemic curve rises away from the surge line and pulls the minimum of G off the economic optimum. Bottom left, a Coriolis meter: its epistemic curve rises toward the surge line and the minimum of G lands past it. Bottom right, the standoff against meter uncertainty: a dashed curve where the DP agent's first step aims, a solid curve below it where the loop settles with a star where the library's own Agent settled, a flat line for the fixed-R twin at the preference, and a single diamond for the Coriolis meter just below the surge line.](../docs/assets/surge_margin.png)
 
 The fixed twin's `argmin G` is exactly its `argmin pragmatic`. Its surge control line is
 whatever preference was set to and nothing else. Koudahl, Kouw and de Vries proved that
@@ -289,10 +289,18 @@ A worse meter moves this agent **closer** to surge, not further, on the first st
 once settled. A meter that resolves nothing offers no information worth travelling for,
 so the epistemic term flattens and the economics win.
 
+Swap the meter and it gets worse. A Coriolis meter's error is a constant percentage of
+rate, so its absolute noise is smallest at low flow. Give the same agent one, at the
+same accuracy at design flow, and the offset flips sign. The information term now pulls
+toward surge. In closed loop the library's own `Agent` settles past the surge line.
+Nothing in the agent changed. Only the sensor did.
+
 Real surge margin runs the other way because it prices the cost of *being wrong*, and
 that is a pragmatic quantity. So the demo is a clean negative result: the EFE ambiguity
-term is not a safety factor, and anyone reaching for it as one is reading it as a risk
-term when it is an information term.
+term is not a safety factor, and with the wrong meter it works against one. Anyone
+reaching for it as a safety factor is reading it as a risk term when it is an
+information term. Surge protection has to be priced in the preference or held by a
+hard limit.
 
 ### What the row labels are entitled to claim
 
@@ -302,9 +310,9 @@ resolution. The monotonicity row is `BOUNDED` against the sweep's own step size:
 standoff that moved by less than one grid cell did not measurably move. The
 `ℓ'(m) = −2/Q` row is `EXACT`, being autodiff against a closed form at machine
 precision, and it is a statement about the sensor rather than a measured inference gap.
-The law and closed-loop rows are `BOUNDED` by the same grid step. The closed loop runs
-noise-free and only at the default meter. The rest of the settled ladder comes from the
-law.
+The law, closed-loop and Coriolis rows are `BOUNDED` by the same grid step. The closed
+loop runs noise-free, at the default meter for each meter type. The rest of the settled
+ladder comes from the law.
 
 `--check` prints both ladders, the `probe_model` verdict and the eleven falsifiers. It
 asserts that none of them fired and that `Λ` moves the standoff further than the meter
