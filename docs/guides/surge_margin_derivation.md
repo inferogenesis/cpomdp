@@ -255,6 +255,20 @@ only at order σ², and the third cumulant separates them above that. It is posi
 locally, because `c₄ < 0` turns the series over at larger spread. Both are recorded in
 `research/gate_d4_registration.md`.
 
+## What the checks are entitled to claim
+
+Every row samples a sweep over a continuous valve range, which is a finite grid over an
+infinite domain. So each reports `CORROBORATED` and none is `PROVED` at any grid
+resolution. The monotonicity row is `BOUNDED` against the sweep's own step size: a
+standoff that moved by less than one grid cell did not measurably move. The
+`ℓ'(m) = −2/Q` row is `EXACT`, being autodiff against a closed form at machine
+precision, and it is a statement about the sensor rather than a measured inference gap.
+The law, closed-loop and Coriolis rows are `BOUNDED` by the same grid step.
+
+`--check` prints both ladders, the `probe_model` verdict and the eleven falsifiers. It
+asserts that none of them fired and that `Λ` moves the standoff further than the meter
+does, with no plotting deps.
+
 ## What this does not model
 
 The demo and anything written about it quote the same list:
