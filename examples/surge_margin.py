@@ -1085,6 +1085,21 @@ def check() -> None:
         f"{economic_span:.2f}%, so the printout's framing no longer holds"
     )
 
+    coriolis_first, coriolis_settled, coriolis_loop = _coriolis()
+    print(
+        f"The same agent with a Coriolis meter, {E_REF * 100:.1f}% at design flow, "
+        "R = (e_ref·Q)²:"
+    )
+    print(
+        f"   first step m = {coriolis_first:.2f}%, settles m = {coriolis_settled:.2f}% "
+        f"by the law, library Agent in closed loop {coriolis_loop:.2f}%"
+    )
+    print(
+        "   -> the offset flips sign. ℓ' = +2/Q, so the information term pulls toward "
+        "low\n      flow, where this meter reads best, and the loop settles past the "
+        "surge line.\n      The ambiguity term can push the agent into surge.\n"
+    )
+
     print(_sensor_report().summary())
 
     reports = falsifiers()
