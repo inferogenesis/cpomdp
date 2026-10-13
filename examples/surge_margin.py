@@ -190,6 +190,32 @@ def _dp_meter_noise(x, params):
     return jnp.array([[variance]])
 
 
+def _coriolis_meter_noise(x, params):
+    """`R(m)` for a Coriolis meter: constant percentage of rate, so `R` grows as `Q²`.
+
+    It reads the DP meter's parameters, so the two agree at design flow, where both are
+    ``e_ref`` relative. Below design flow the DP meter gets worse and this one gets
+    better, which is the whole difference between them.
+
+    The clamp has its own reason here. Unclamped, ``R`` reaches zero at ``Q = 0``. That
+    claims a perfect reading and makes the epistemic term infinite. An agent would steer
+    into deep surge to collect it.
+
+    Args:
+        x: the predicted mean, whose single entry is the surge margin ``m``.
+        params: ``e_ref``, ``q_ref``, ``q_surge`` and ``floor``.
+
+    Returns:
+        The 1x1 observation-noise matrix — R.
+    """
+    flow = jnp.maximum(params["q_surge"] + x[0], params["floor"])
+    variance = (params["e_ref"] * flow) ** 2
+    return jnp.array([[variance]])
+
+
+METERS = {"dp": _dp_meter_noise, "coriolis": _coriolis_meter_noise}
+
+
 def _meter_params(e_ref: float) -> dict:
     """The meter's noise parameters at one relative uncertainty."""
     return {
@@ -200,17 +226,20 @@ def _meter_params(e_ref: float) -> dict:
     }
 
 
-def _frozen_noise(e_ref: float) -> float:
+def _frozen_noise(e_ref: float, meter: str = "dp") -> float:
     """`R` at the operating point (Q = 70%), which is what the fixed twin is given."""
     params = _meter_params(e_ref)
-    return float(_dp_meter_noise(jnp.array([OPERATING_MARGIN]), params)[0, 0])
+    return float(METERS[meter](jnp.array([OPERATING_MARGIN]), params)[0, 0])
 
 
-def _model(e_ref: float = E_REF, *, live: bool = True) -> LinearGaussianModel:
+def _model(
+    e_ref: float = E_REF, *, meter: str = "dp", live: bool = True
+) -> LinearGaussianModel:
     """The compressor model, its meter live or frozen at the operating point.
 
     Args:
         e_ref: the meter's relative flow uncertainty at ``Q_REF``.
+        meter: a key of ``METERS``. The DP meter unless told otherwise.
         live: ``True`` for the ``R(x)`` agent, ``False`` for the fixed-`R` twin.
 
     Returns:
@@ -221,14 +250,12 @@ def _model(e_ref: float = E_REF, *, live: bool = True) -> LinearGaussianModel:
     """
     sensor = None
     if live:
-        sensor = CallableSensor(
-            OBSERVATION_MATRIX, _dp_meter_noise, _meter_params(e_ref)
-        )
+        sensor = CallableSensor(OBSERVATION_MATRIX, METERS[meter], _meter_params(e_ref))
     return LinearGaussianModel(
         DYNAMICS_MATRIX,
         observation_matrix=OBSERVATION_MATRIX,
         dynamics_noise=DYNAMICS_NOISE,
-        observation_noise=None if live else [[_frozen_noise(e_ref)]],
+        observation_noise=None if live else [[_frozen_noise(e_ref, meter)]],
         prior=_belief(),
         control_matrix=CONTROL_MATRIX,
         observation_model=sensor,
@@ -253,7 +280,11 @@ def _goal(precision: float = GOAL_PRECISION) -> Preference:
 
 
 def _sweep(
-    e_ref: float = E_REF, *, live: bool = True, precision: float = GOAL_PRECISION
+    e_ref: float = E_REF,
+    *,
+    live: bool = True,
+    precision: float = GOAL_PRECISION,
+    meter: str = "dp",
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Pragmatic, epistemic and G over the valve grid, for one meter and one `Λ`.
 
@@ -261,16 +292,17 @@ def _sweep(
         e_ref: the meter's relative flow uncertainty at ``Q_REF``.
         live: ``True`` for the ``R(x)`` agent, ``False`` for the fixed-`R` twin.
         precision: the economic weight — Λ.
+        meter: a key of ``METERS``.
 
     Returns:
         Three arrays, ``(pragmatic, epistemic, g)``, aligned with ``ACTIONS``.
     """
-    return _cached_sweep(float(e_ref), bool(live), float(precision))
+    return _cached_sweep(float(e_ref), bool(live), float(precision), meter)
 
 
 @cache
 def _cached_sweep(
-    e_ref: float, live: bool, precision: float
+    e_ref: float, live: bool, precision: float, meter: str
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """One vmapped sweep per setting, computed once per process.
 
@@ -279,7 +311,8 @@ def _cached_sweep(
     whole check. `gallery.efe_sweep` loops eagerly, which suits the tens of actions it
     was written for and not the 600 here.
     """
-    model, belief, goal = _model(e_ref, live=live), _belief(), _goal(precision)
+    model = _model(e_ref, live=live, meter=meter)
+    belief, goal = _belief(), _goal(precision)
     g, parts = jax.vmap(
         lambda action: expected_free_energy(model, belief, action[None], goal)
     )(ACTIONS)
@@ -309,10 +342,14 @@ def _interior_argmin(values: np.ndarray) -> int:
 
 
 def _standoff(
-    e_ref: float = E_REF, *, live: bool = True, precision: float = GOAL_PRECISION
+    e_ref: float = E_REF,
+    *,
+    live: bool = True,
+    precision: float = GOAL_PRECISION,
+    meter: str = "dp",
 ) -> float:
     """Where one EFE step from the prior aims: `argmin G`, in % above surge."""
-    _, _, g = _sweep(e_ref, live=live, precision=precision)
+    _, _, g = _sweep(e_ref, live=live, precision=precision, meter=meter)
     return OPERATING_MARGIN + float(ACTIONS[_interior_argmin(g)])
 
 
