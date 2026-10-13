@@ -32,6 +32,9 @@ the square root:
 σ_Q = |dQ/dΔP|·σ_ΔP = (k / 2√ΔP)·σ_ΔP = k²σ_ΔP / (2Q)
 ```
 
+That is a first-order propagation. It holds while `σ_ΔP` is small against `ΔP`, which is
+least true at low flow.
+
 So the variance of the flow measurement is
 
 ```text
@@ -278,6 +281,9 @@ The demo and anything written about it quote the same list:
 - No cubic compressor characteristic.
 - No speed line, and no travel along one.
 - A local linearisation about a single operating point.
+- `R(Q)` is a first-order propagation through the square root. The filter plugs in `R`
+  at the predicted mean, which is the approximation the inference-gap work measures. The
+  demo measures neither.
 - Horizon-1 EFE only. No multi-step planning.
 - The surge point `Q_s` is known and fixed. Treating it as an unknown latent is the
   interesting version of this problem and is not what the demo does.

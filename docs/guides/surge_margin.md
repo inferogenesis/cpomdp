@@ -23,12 +23,13 @@ economic preference. Only the error's shape differs.
 | Meter | Flow variance `R(Q)` | Where the agent settles | Rows |
 | --- | --- | --- | --- |
 | Fixed `R`, frozen at the operating point | constant | on the preference | 2, 8 |
-| Differential pressure: orifice, venturi, nozzle | `∝ 1/Q²` | above the preference, on the safe side | 7, 8, 9 |
+| Differential pressure: orifice, venturi, nozzle | `∝ 1/Q²` | above the preference, on the safe side | 2, 8, 9 |
 | Coriolis | `∝ Q²` | below the preference, past the surge line | 10, 11 |
 
 The rows are the falsifiers `--check` runs. Each one fires if its claim fails, and none
-does. The settled margins come from a closed-form law and from the library's own
-`Agent` run in closed loop. The two agree to within a grid step.
+does. At the default accuracy the settled margins come from a closed-form law and from
+the library's own `Agent`, run noise-free in closed loop. The two agree to within a grid
+step. The worse meters on the ladder have the law alone.
 
 A worse DP meter moves the agent closer to surge, on its first step and once settled.
 Rows 3 and 9 assert that direction.
@@ -45,7 +46,8 @@ high flow and noisy near surge, so the pull is away from surge. A Coriolis meter
 is a constant percentage of rate. That gives `R ∝ Q²`, quietest at low flow, and the
 pull runs toward surge. Constant absolute error gives no pull. The agent then collapses
 onto its economic optimum, as Koudahl, Kouw and de Vries proved for fixed-noise linear
-Gaussian models ([Entropy 23(12):1565](https://doi.org/10.3390/e23121565)).
+Gaussian state space models ([Entropy 23(12):1565](https://doi.org/10.3390/e23121565)).
+The collapse also needs control to enter additively. Here it does.
 
 [The derivation](surge_margin_derivation.md) makes this exact. It gives a closed-form
 law for where the agent stands, and the sign of its offset from the preference is the
@@ -62,7 +64,7 @@ limit.
 The coordinates matter too. Conventional anti-surge control often works in reduced ΔP
 coordinates and never takes the square root. Write a linear-Gaussian model with
 additive control in those coordinates and its `R` is constant. The epistemic term then
-vanishes and the agent reduces to a controller.
+takes the same value for every action. The agent reduces to a controller.
 
 So an active-inference controller on a compressor needs its meter's error model. Above
 all it needs the sign.
@@ -89,8 +91,8 @@ demo's claim is the direction of the offset. Its size is not a result.
 ## Run it
 
 ```bash
-uv run python examples/surge_margin.py --check                  # the eleven falsifiers
-uv run --extra examples python examples/surge_margin.py         # the figure above
+uv run --extra examples python examples/surge_margin.py --check  # the eleven falsifiers
+uv run --extra examples python examples/surge_margin.py          # the figure above
 ```
 
-`--check` needs no plotting libraries. It prints the numbers behind every row.
+`--check` itself needs no plotting libraries. It prints the numbers behind every row.

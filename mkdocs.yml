@@ -74,7 +74,7 @@ nav:
       - FFG examples: examples-ffg.md
   - Applications:
       - "Anti-surge control": guides/surge_margin.md
-      - "Anti-surge: the derivation": guides/surge_margin_derivation.md
+      - "Anti-surge: the meter's R(x), derived": guides/surge_margin_derivation.md
   - API reference:
       - Agent: api/agent.md
       - Model & belief: api/model.md
