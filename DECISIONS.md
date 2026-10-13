@@ -4334,3 +4334,61 @@ handed the plain fields whatever the model carried.
 - `dynamics_noise` beside a `dynamics_noise_model` is described twice in the same way.
   It is left as it is here, and so is `ModelSpec`, which still requires
   `observation_noise`.
+
+## ADR-065 — an omitted `dynamics_noise` is the process noise's `Q` at the prior mean
+
+**Date:** 2026-10-12
+**Status:** Accepted
+**Extends:** ADR-064, whose rule this applies to the process noise
+**Phase:** issue #128
+
+### Decision
+
+`LinearGaussianModel` takes `dynamics_noise` as optional when a `dynamics_noise_model`
+is given. Omitted, the field is `dynamics_noise_model.noise_at(prior.mean)`, computed
+once in the constructor. Without that object the field is still required.
+
+This is ADR-064 applied to `Q`. A plain `Q` beside a `Q(x)` was the same double
+description, and the constructor already refused a fixed object that disagreed with
+it. The prior mean is the nominal point for the reason it is for `R`. It is the
+operating point a caller would otherwise evaluate `Q` at by hand.
+
+The constructor's own probe of `Q(x)` runs at the origin. I left it there. It checks
+shape and semi-definiteness at one more state, and moving it would change what a model
+is refused for. The derived value passes the field's checks, so the prior mean is
+covered too.
+
+A value passed beside a state-dependent `Q(x)` is kept. No warning fires, as for `R`.
+
+### Every reader of the field, under a state-dependent `Q(x)`
+
+| Reader | Treatment |
+| --- | --- |
+| `KalmanBackend`, per step | evaluates `Q` at `μ⁻` and does not read the field |
+| `KalmanBackend`, steady state | refuses |
+| the EFE kernel's `_efe_step` | evaluates `Q` at the predicted mean. Reads the field only with no object |
+| `ChainBackend` | evaluates `Q` at `μ⁻` per step. Reads the field only when `Q` is fixed |
+| `harness.World` | evaluates `Q` at the noiseless next state |
+| `ModelStructure.validate` | skips its block check on `Q` whenever an object is carried |
+| `control`'s three closed forms | refuse |
+| `scoring.predicted_belief` and the scores built on it | refuse |
+| `constructors.ModelSpec.build` | refuses a perturbation of the shadowed field |
+| `WrongFixedRBackend` | passes the field and the object through together |
+| `RxInferBackend` | refuses, since ADR-064 |
+| `diagnostics.probe_model` | added the field silently. Now evaluates `Q` at each predicted mean |
+
+The last row is the one change in behaviour. `probe_model` reports the epistemic value
+over the means a set of actions reaches. With the plain `Q` its predicted covariance
+was one the EFE kernel never forms. A `Q(x)` model under a fixed sensor then read as
+having a constant epistemic value. The kernel's varied with the action.
+
+### Consequences
+
+- The fixed path is untouched. The filter and the kernel read `Q` directly when no
+  process-noise object is carried.
+- Construction pays one `noise_at` call when the field is omitted.
+- The pytree is unchanged. `dynamics_noise` stays keyword-only and gains a default.
+- `_validate_noise_sources` checks the kind of `dynamics_noise_model` as well, since the
+  derivation reads it before anything else is validated.
+- The derived value is fixed at construction, with the `dataclasses.replace`
+  consequence ADR-064 records.

@@ -358,6 +358,10 @@ no use of the readings beats it.
   saying so. `AdditivityCheck` already refused through `predicted_belief`. A direct call
   did not. `RxInferBackend` refuses a state-dependent `Q(x)` too, since its Julia model
   takes one fixed `Q` as well, and it refuses before Julia starts.
+- `probe_model` added the plain `dynamics_noise` to every predicted covariance, whatever
+  `Q(x)` the model carried. The EFE kernel adds `Q` at the predicted mean, so a `Q(x)`
+  model under a fixed sensor reported a constant epistemic value the kernel never
+  computes. The probe now takes `Q` at each predicted mean as the kernel does.
 
 ### Changed
 
@@ -387,6 +391,9 @@ no use of the readings beats it.
   `RxInferBackend` and the steady-state `KalmanBackend` each held a copy of it. The
   `control` and `scoring` messages are unchanged. The steady-state refusal now names the
   slot that varies.
+- `LinearGaussianModel`'s `dynamics_noise` is optional when a `dynamics_noise_model` is
+  given, on the rule `observation_noise` follows. Omitted, it is the process noise's `Q`
+  at `prior.mean` (ADR-065). With no process-noise object the field is still required.
 - The `symbolic` CI job reconciles the three symbolic suites against
   `research/registered_checks.toml` instead of comparing three hand-typed strings. The
   strings said `23 registered, 23 tested here, none fired` and two more like it. They

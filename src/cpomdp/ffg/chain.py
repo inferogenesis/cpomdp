@@ -88,11 +88,10 @@ class ChainBackend:
         ``observation_model.linearize(μ⁻)`` /
         ``dynamics_noise_model.noise_at(μ⁻)`` instead (ADR-012 amendment
         2026-06-26). This is not just laziness: ``GaussianTransition`` requires Q
-        positive-*definite* (it inverts it), but a model carrying a state-dependent
-        ``dynamics_noise_model`` is only required to give ``model.dynamics_noise``
-        itself a
-        positive-*semi*-definite placeholder (it's unused) — front-loading
-        unconditionally would reject that legitimate placeholder.
+        positive-*definite* (it inverts it). Beside a state-dependent
+        ``dynamics_noise_model``, ``model.dynamics_noise`` is a nominal ``Q`` this
+        backend never reads, required only to be positive-*semi*-definite. Front-loading
+        unconditionally would reject a legitimate one.
 
         Args:
             model: see the class docstring.

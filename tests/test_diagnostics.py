@@ -23,6 +23,7 @@ from cpomdp.diagnostics import (
     loewner_order,
     logdet_pd,
 )
+from cpomdp.dynamics import CallableProcessNoise
 
 ACTIONS = [np.array([u]) for u in np.linspace(-3.0, 3.0, 13)]
 
@@ -146,6 +147,26 @@ class TestProbeFlatModel:
         assert not report.non_constant
         assert not report.epistemic_varies
         assert report.epistemic_range[0] == pytest.approx(report.epistemic_range[1])
+
+    def test_state_dependent_process_noise_reaches_the_predicted_covariance(self):
+        # The EFE kernel adds Q at each predicted mean. Adding the plain field instead
+        # reports an epistemic value the kernel never computes, and under a fixed
+        # sensor it would read as constant.
+        model = LinearGaussianModel(
+            dynamics_matrix=[[1.0]],
+            observation_matrix=[[1.0]],
+            observation_noise=[[1.0]],
+            prior=Belief([0.0], [[1.0]]),
+            control_matrix=[[1.0]],
+            dynamics_noise_model=CallableProcessNoise(range_noise, None),
+        )
+        report = probe_model(model, Belief([0.0], [[1.0]]), ACTIONS)
+        # Σ⁻ = AΣAᵀ + Q(μ⁻) with μ⁻ = u, so 1 + (1 + u²).
+        expected = [
+            epistemic_value([[2.0 + u[0] ** 2]], [[1.0]], [[1.0]]) for u in ACTIONS
+        ]
+        assert report.epistemic_varies
+        assert report.epistemic_range == pytest.approx((min(expected), max(expected)))
 
     def test_noise_the_control_cannot_reach_flattens(self):
         """Declared state-dependent, but no action moves the mean off the prior."""

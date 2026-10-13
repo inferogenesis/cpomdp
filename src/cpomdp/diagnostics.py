@@ -251,6 +251,18 @@ def _linearizations(
     return [np.asarray(observation.linearize(mu)[1], dtype=float) for mu in means]
 
 
+def _process_noises(
+    process, dynamics_noise: ArrayLike, means: np.ndarray
+) -> list[np.ndarray]:
+    """Each mean's ``Q``, taken at that mean when the model carries a ``Q(x)``.
+
+    The EFE kernel adds ``Q`` at the predicted mean, so the probe adds the same one.
+    """
+    if process is None:
+        return [np.asarray(dynamics_noise, dtype=float)] * len(means)
+    return [np.asarray(process.noise_at(mu), dtype=float) for mu in means]
+
+
 def probe_model(
     model: "LinearGaussianModel | ProbeBackend",
     belief: "Belief",
@@ -263,7 +275,8 @@ def probe_model(
     Each action is pushed through the prediction step to get ``(μ⁻, Σ⁻)``; the sensor is
     linearized at each ``μ⁻`` and the four conditions are evaluated over the resulting
     sample. This is the reachable set the conditions are about — vary ``actions`` to
-    widen it.
+    widen it. A state-dependent ``Q(x)`` enters ``Σ⁻`` at each ``μ⁻``, where the EFE
+    kernel evaluates it.
 
     Args:
         model: a [`LinearGaussianModel`][cpomdp.LinearGaussianModel], or a backend
@@ -310,10 +323,13 @@ def probe_model(
                     for a in actions
                 ]
             )
-        cov = dynamics_matrix @ prior_cov @ dynamics_matrix.T + np.asarray(
-            model.dynamics_noise, dtype=float
-        )
-        covs = [cov] * len(actions)
+        propagated = dynamics_matrix @ prior_cov @ dynamics_matrix.T
+        covs = [
+            propagated + q
+            for q in _process_noises(
+                model.dynamics_noise_model, model.dynamics_noise, means
+            )
+        ]
         fixed = np.asarray(model.observation_noise, dtype=float)
         noises = _linearizations(
             model.observation_model, observation_matrix, means
