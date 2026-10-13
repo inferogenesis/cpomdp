@@ -47,7 +47,8 @@ def require_fixed_noise(
 
     For a consumer whose arithmetic holds ``R`` and ``Q`` constant. Built over ``R(x)``
     or ``Q(x)`` it would read the plain fields, which are then nominal values, and
-    compute against a constant where the model varies (DECISIONS.md ADR-064).
+    compute against a constant where the model varies (DECISIONS.md ADR-064 for
+    ``R``, ADR-065 for ``Q``).
 
     Args:
         model: The model the consumer was handed.

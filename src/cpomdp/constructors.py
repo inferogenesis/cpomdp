@@ -1,8 +1,9 @@
 """Two declared axes: what a model gets wrong, and what its filter gets wrong.
 
 ``ModelSpec`` is a model's parameters, held as inert arrays. ``build`` turns them into a
-``LinearGaussianModel``, a fresh one on every call, sharing no array with the last. Two
-things built from one spec are equal in value and separate in memory.
+``LinearGaussianModel``, a fresh one on every call, sharing no declared array with the
+last. Two things built from one spec are equal in value. Only a carried noise object,
+and a noise derived from one, is the same in memory.
 
 ``Perturbation`` is a named change to one parameter, carried as data rather than as a
 function: the parameter it touches and how far, relative to what the spec declares.
@@ -112,7 +113,8 @@ class ModelSpec:
 
     Held as read-only numpy arrays, so the spec itself never enters a computation.
     ``build`` is the only route from here to a ``LinearGaussianModel``, and it copies,
-    so nothing built from a spec can reach back into it or into a sibling.
+    so nothing built from a spec can reach back into it, or into a sibling through a
+    declared array.
 
     ``observation_model``, ``dynamics_noise_model`` and ``structure`` pass through
     unchanged. They are objects rather than arrays, no perturbation names them, and a
@@ -325,7 +327,7 @@ class ConstructorSet:
 
         Returns:
             One ``(name, model)`` pair per member, in declaration order. Every model is
-            its own object and shares no array with any other.
+            its own object and shares no declared array with any other.
         """
         return tuple((p.name, spec.build(p)) for p in self.perturbations)
 

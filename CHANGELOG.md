@@ -393,8 +393,9 @@ no use of the readings beats it.
 - Refusing state-dependent noise is one function, `require_fixed_noise`, in the internal
   `_validation` module. The closed forms in `control` and `scoring`, the free energy,
   `RxInferBackend` and the steady-state `KalmanBackend` each held a copy of it. The
-  `control` and `scoring` messages are unchanged. The steady-state refusal now names the
-  slot that varies.
+  `control` and `scoring` messages are unchanged. The free energy's refusal, new in this
+  release, takes its own wording. The steady-state refusal now names the slot that
+  varies.
 - `LinearGaussianModel`'s `dynamics_noise` is optional when a `dynamics_noise_model` is
   given, on the rule `observation_noise` follows. Omitted, it is the process noise's `Q`
   at `prior.mean` (ADR-065). With no process-noise object the field is still required.
