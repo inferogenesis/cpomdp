@@ -27,7 +27,7 @@ exhibits is a property of *the agent's generative model*, which is linear-Gaussi
 additive control here, and not of the plant. An EKF linearised on a nonlinear plant has
 action-dependent Jacobians and does not collapse this way, whatever its `R` does.
 
-`--check` reports nine registered falsifiers, with no plotting deps:
+`--check` reports eleven registered falsifiers, with no plotting deps:
 
 - dissociation: the twin's epistemic term is dead-flat across the valve grid, the
   `R(x)` agent's is not. Koudahl, Kouw and de Vries proved the flat case for
@@ -52,6 +52,10 @@ action-dependent Jacobians and does not collapse this way, whatever its `R` does
   preference.
 - settled offset: by the law, every rung of the meter ladder settles clear of the
   preference, and each worse meter settles nearer it.
+- Coriolis sign: a Coriolis meter with the same accuracy at design flow has
+  `ℓ' = +2/Q`, and puts the agent below its preference, first step and settled.
+- Coriolis loop: the library's own `Agent` with that meter settles where the law puts
+  it, past the surge line.
 
 **The standoff has a closed form.** Setting `dG/dm` to zero puts the offset from
 preference at exactly `κ/(ΛQ) + R/Q` for this meter, with κ the Kalman gain. The first
@@ -77,15 +81,17 @@ no information to go and get, so the economic term wins. Real surge margin is se
 cost of being wrong, which is a pragmatic quantity. The ambiguity term is not a safety
 factor, and this demo is the cleanest way to see that it is not.
 
-The bare command renders a three-panel figure:
+The bare command renders a four-panel figure:
 
-- LEFT and MIDDLE: EFE and its split across the valve grid, one agent each at a shared
-  y-scale, surge line marked. The twin's flat epistemic line against the `R(x)`
-  agent's rising one, and the `G` argmin moving off the pragmatic argmin.
-- RIGHT: standoff against meter quality, first step and settled, with the library
-  `Agent`'s closed-loop point on the settled curve. A flat line (fixed `R`) against two
-  curves. Their height is set by `Λ` through the law, so read their shape and not their
-  height.
+- TOP: EFE and its split across the valve grid for the fixed-`R` twin and the DP
+  meter, at a shared y-scale with the surge line marked. The twin's flat epistemic line
+  against the DP meter's rising one, and the `G` argmin moving off the pragmatic argmin.
+- BOTTOM LEFT: the same for a Coriolis meter. Its epistemic line rises toward surge, and
+  the `G` argmin lands past the surge line.
+- BOTTOM RIGHT: standoff against meter quality, first step and settled, with the
+  library `Agent`'s closed-loop point on the settled curve and the Coriolis meter's
+  settled margin below the surge line. The DP curves' height is set by `Λ` through the
+  law, so read their shape and not their height.
 
 Nothing here is a citable number. See `examples/README.md`.
 
@@ -96,7 +102,7 @@ Output (bare command): docs/assets/surge_margin.png
 """
 
 import math
-from functools import cache
+from functools import cache, partial
 from itertools import pairwise
 from pathlib import Path
 
@@ -123,14 +129,14 @@ OUT = Path(__file__).resolve().parent.parent / "docs" / "assets" / "surge_margin
 # off a measured performance map at a speed line, and nothing here was read off one.
 Q_REF = 100.0  # design volumetric flow
 Q_SURGE = 55.0  # surge-line flow at the operating speed line
-Q_FLOOR = 5.0  # clamp on Q inside R(Q), see _dp_meter_noise
+Q_FLOOR = 5.0  # clamp on Q inside both meters' R(Q), each docstring says why
 E_REF = 0.002  # relative flow uncertainty at Q_REF, the one calibration constant
 
 # The latent is the surge margin m = Q - Q_SURGE, so the agent reasons in the quantity
 # an anti-surge controller actually holds. The valve acts on it additively.
 DYNAMICS_MATRIX = [[1.0]]  # A: margin persists
 CONTROL_MATRIX = [[1.0]]  # B: an anti-surge valve step moves flow additively
-OBSERVATION_MATRIX = [[1.0]]  # C: the DP meter reads flow
+OBSERVATION_MATRIX = [[1.0]]  # C: the meter reads flow
 DYNAMICS_NOISE = [[0.01]]
 
 OPERATING_MARGIN = 15.0  # m at the operating point (Q = 70%), illustrative
@@ -145,9 +151,12 @@ GOAL_MARGIN = 5.0
 GOAL_PRECISION = 0.002
 
 # The valve grid. Its resolution is also the bar the monotonicity row is read against,
-# so both come from this one line.
-ACTIONS = jnp.linspace(-14.0, 20.0, 400)
+# so both come from this one line. It reaches 15% of design flow past the surge line.
+# `_interior_argmin` refuses a minimum on the edge, and a grid that stopped short of
+# surge would act as an interlock nobody declared, deciding where the agent may go.
+ACTIONS = jnp.linspace(-30.0, 20.0, 600)
 GRID_STEP = float(ACTIONS[1] - ACTIONS[0])
+PROBE_SAMPLES = 25  # actions `probe_model` samples, evenly strided over ACTIONS
 
 # An 8:1 ladder in meter quality, anchored on E_REF at the good end. Doubling rather
 # than a fine sweep, so each rung's standoff move clears the grid resolution by a wide
@@ -188,6 +197,32 @@ def _dp_meter_noise(x, params):
     return jnp.array([[variance]])
 
 
+def _coriolis_meter_noise(x, params):
+    """`R(m)` for a Coriolis meter: constant percentage of rate, so `R` grows as `Q²`.
+
+    It reads the DP meter's parameters, so the two agree at design flow, where both are
+    ``e_ref`` relative. Below design flow the DP meter gets worse and this one gets
+    better, which is the whole difference between them.
+
+    The clamp has its own reason here. Unclamped, ``R`` reaches zero at ``Q = 0``. That
+    claims a perfect reading and makes the epistemic term infinite. An agent would steer
+    into deep surge to collect it.
+
+    Args:
+        x: the predicted mean, whose single entry is the surge margin ``m``.
+        params: ``e_ref``, ``q_ref``, ``q_surge`` and ``floor``.
+
+    Returns:
+        The 1x1 observation-noise matrix — R.
+    """
+    flow = jnp.maximum(params["q_surge"] + x[0], params["floor"])
+    variance = (params["e_ref"] * flow) ** 2
+    return jnp.array([[variance]])
+
+
+METERS = {"dp": _dp_meter_noise, "coriolis": _coriolis_meter_noise}
+
+
 def _meter_params(e_ref: float) -> dict:
     """The meter's noise parameters at one relative uncertainty."""
     return {
@@ -198,17 +233,20 @@ def _meter_params(e_ref: float) -> dict:
     }
 
 
-def _frozen_noise(e_ref: float) -> float:
+def _frozen_noise(e_ref: float, meter: str = "dp") -> float:
     """`R` at the operating point (Q = 70%), which is what the fixed twin is given."""
     params = _meter_params(e_ref)
-    return float(_dp_meter_noise(jnp.array([OPERATING_MARGIN]), params)[0, 0])
+    return float(METERS[meter](jnp.array([OPERATING_MARGIN]), params)[0, 0])
 
 
-def _model(e_ref: float = E_REF, *, live: bool = True) -> LinearGaussianModel:
+def _model(
+    e_ref: float = E_REF, *, meter: str = "dp", live: bool = True
+) -> LinearGaussianModel:
     """The compressor model, its meter live or frozen at the operating point.
 
     Args:
         e_ref: the meter's relative flow uncertainty at ``Q_REF``.
+        meter: a key of ``METERS``. The DP meter unless told otherwise.
         live: ``True`` for the ``R(x)`` agent, ``False`` for the fixed-`R` twin.
 
     Returns:
@@ -219,14 +257,12 @@ def _model(e_ref: float = E_REF, *, live: bool = True) -> LinearGaussianModel:
     """
     sensor = None
     if live:
-        sensor = CallableSensor(
-            OBSERVATION_MATRIX, _dp_meter_noise, _meter_params(e_ref)
-        )
+        sensor = CallableSensor(OBSERVATION_MATRIX, METERS[meter], _meter_params(e_ref))
     return LinearGaussianModel(
         DYNAMICS_MATRIX,
         observation_matrix=OBSERVATION_MATRIX,
         dynamics_noise=DYNAMICS_NOISE,
-        observation_noise=None if live else [[_frozen_noise(e_ref)]],
+        observation_noise=None if live else [[_frozen_noise(e_ref, meter)]],
         prior=_belief(),
         control_matrix=CONTROL_MATRIX,
         observation_model=sensor,
@@ -251,7 +287,11 @@ def _goal(precision: float = GOAL_PRECISION) -> Preference:
 
 
 def _sweep(
-    e_ref: float = E_REF, *, live: bool = True, precision: float = GOAL_PRECISION
+    e_ref: float = E_REF,
+    *,
+    live: bool = True,
+    precision: float = GOAL_PRECISION,
+    meter: str = "dp",
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Pragmatic, epistemic and G over the valve grid, for one meter and one `Λ`.
 
@@ -259,25 +299,27 @@ def _sweep(
         e_ref: the meter's relative flow uncertainty at ``Q_REF``.
         live: ``True`` for the ``R(x)`` agent, ``False`` for the fixed-`R` twin.
         precision: the economic weight — Λ.
+        meter: a key of ``METERS``.
 
     Returns:
         Three arrays, ``(pragmatic, epistemic, g)``, aligned with ``ACTIONS``.
     """
-    return _cached_sweep(float(e_ref), bool(live), float(precision))
+    return _cached_sweep(float(e_ref), bool(live), float(precision), meter)
 
 
 @cache
 def _cached_sweep(
-    e_ref: float, live: bool, precision: float
+    e_ref: float, live: bool, precision: float, meter: str
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """One vmapped sweep per setting, computed once per process.
 
     The rows and the printout ask for the same settings more than once, and the ladders
-    share their first rung with the default. Fourteen distinct settings cover the
-    whole check. `gallery.efe_sweep` loops eagerly, which suits the tens of actions it
-    was written for and not the 400 here.
+    share their first rung with the default. Fifteen distinct settings cover the whole
+    check, one of them the Coriolis meter's. `gallery.efe_sweep` loops eagerly, which
+    suits the tens of actions it was written for and not the 600 here.
     """
-    model, belief, goal = _model(e_ref, live=live), _belief(), _goal(precision)
+    model = _model(e_ref, live=live, meter=meter)
+    belief, goal = _belief(), _goal(precision)
     g, parts = jax.vmap(
         lambda action: expected_free_energy(model, belief, action[None], goal)
     )(ACTIONS)
@@ -307,10 +349,14 @@ def _interior_argmin(values: np.ndarray) -> int:
 
 
 def _standoff(
-    e_ref: float = E_REF, *, live: bool = True, precision: float = GOAL_PRECISION
+    e_ref: float = E_REF,
+    *,
+    live: bool = True,
+    precision: float = GOAL_PRECISION,
+    meter: str = "dp",
 ) -> float:
     """Where one EFE step from the prior aims: `argmin G`, in % above surge."""
-    _, _, g = _sweep(e_ref, live=live, precision=precision)
+    _, _, g = _sweep(e_ref, live=live, precision=precision, meter=meter)
     return OPERATING_MARGIN + float(ACTIONS[_interior_argmin(g)])
 
 
@@ -322,18 +368,23 @@ def _pragmatic_standoff(
     return OPERATING_MARGIN + float(ACTIONS[_interior_argmin(pragmatic)])
 
 
-def _log_noise(margin, params):
-    """`ℓ(m) = log R(m)`, the scalar the gap work's coefficients are written in."""
-    return jnp.log(_dp_meter_noise(jnp.array([margin]), params)[0, 0])
+def _log_noise(margin, params, meter="dp"):
+    """`ℓ(m) = log R(m)`, the scalar the gap work's coefficients are written in.
+
+    ``meter`` is a key of ``METERS``. ``jax.grad`` passes it through undifferentiated,
+    so the law's kernel and the DP slope below share this one function.
+    """
+    return jnp.log(METERS[meter](jnp.array([margin]), params)[0, 0])
 
 
-#: `ℓ'(m)` over a whole grid in one traced call. Built once at import: a `jax.grad`
-#: constructed per call retraces per call, which costs more than the sweep it checks.
+#: The DP meter's `ℓ'(m)` over a whole grid in one traced call, for row 4. Built once
+#: at import: a `jax.grad` constructed per call retraces per call, which costs more
+#: than the sweep it checks.
 _log_noise_slopes = jax.jit(jax.vmap(jax.grad(_log_noise), in_axes=(0, None)))
 
 
 def _log_noise_slope(margin: float, e_ref: float = E_REF) -> float:
-    """`ℓ'(m) = d/dm log R(m)` at one margin, by autodiff through the demo's own `R`."""
+    """The DP meter's `ℓ'(m) = d/dm log R(m)` at one margin, by autodiff through `R`."""
     return float(_log_noise_slopes(jnp.array([margin]), _meter_params(e_ref))[0])
 
 
@@ -361,11 +412,22 @@ def _log_noise_slope(margin: float, e_ref: float = E_REF) -> float:
 # R scales as e_ref², so one step from a fixed prior a meter twice as bad and a prior
 # four times as tight give almost the same standoff. Only the pragmatic part, which
 # depends on R alone, tells them apart, and one step from the prior it is small.
+#
+# The sign of the offset is the sign of −ℓ', since κ + ΛR is positive. A Coriolis meter
+# has ℓ' = +2/Q, so the same law puts it on the surge side of its preference.
 PREDICTED_VAR = MARGIN_VAR + DYNAMICS_NOISE[0][0]  # P⁻, one step from the prior
+
+# Stops short of the clamp at Q_FLOOR. Below about m = −45 the Coriolis residual has a
+# false root, and at the clamp's kink the gradient of jnp.maximum is split in half.
+LAW_BRACKET = (-Q_SURGE / 2, Q_REF - Q_SURGE)
 
 
 def _stationarity_residual(
-    margin: float, e_ref: float, precision: float, predicted_var: float
+    margin: float,
+    e_ref: float,
+    precision: float,
+    predicted_var: float,
+    meter: str = "dp",
 ) -> float:
     """`dG/dm` at one target margin, from the closed form above.
 
@@ -377,25 +439,29 @@ def _stationarity_residual(
         e_ref: the meter's relative flow uncertainty at ``Q_REF``.
         precision: the economic weight — Λ.
         predicted_var: the predicted variance of the margin — P⁻.
+        meter: a key of ``METERS``.
 
     Returns:
         `Λ(m − g) + ℓ'(m)·(κ + ΛR)/2`, which is zero at the standoff.
     """
     return float(
-        _residual_kernel(margin, _meter_params(e_ref), precision, predicted_var)
+        _residual_kernel(
+            margin, _meter_params(e_ref), precision, predicted_var, meter=meter
+        )
     )
 
 
-@jax.jit
-def _residual_kernel(margin, params, precision, predicted_var):
+@partial(jax.jit, static_argnames="meter")
+def _residual_kernel(margin, params, precision, predicted_var, *, meter):
     """The traced body of `_stationarity_residual`.
 
     Jitted because a bisection calls it hundreds of times, and eager dispatch of three
-    small ops per call costs more than the sweep the root is checked against.
+    small ops per call costs more than the sweep the root is checked against. The meter
+    is static, so each one compiles once.
     """
-    noise = _dp_meter_noise(jnp.array([margin]), params)[0, 0]
+    noise = METERS[meter](jnp.array([margin]), params)[0, 0]
     gain = predicted_var / (predicted_var + noise)  # κ
-    slope = jax.grad(_log_noise)(margin, params)  # ℓ'
+    slope = jax.grad(_log_noise)(margin, params, meter)  # ℓ'
     return precision * (margin - GOAL_MARGIN) + 0.5 * slope * (gain + precision * noise)
 
 
@@ -420,22 +486,28 @@ def _law_standoff(
     e_ref: float = E_REF,
     precision: float = GOAL_PRECISION,
     predicted_var: float = PREDICTED_VAR,
+    meter: str = "dp",
 ) -> float:
     """The margin where `dG/dm = 0`, one step from the prior unless told otherwise.
 
-    The bracket runs from the clamp at ``Q_FLOOR`` up to design flow, which holds the
-    root for every setting the demo visits.
+    The root is searched for over ``LAW_BRACKET``, which holds it for every setting the
+    demo visits, with either meter.
     """
-    return _cached_law_standoff(float(e_ref), float(precision), float(predicted_var))
+    return _cached_law_standoff(
+        float(e_ref), float(precision), float(predicted_var), meter
+    )
 
 
 @cache
-def _cached_law_standoff(e_ref: float, precision: float, predicted_var: float) -> float:
+def _cached_law_standoff(
+    e_ref: float, precision: float, predicted_var: float, meter: str
+) -> float:
     """One bisection per setting, computed once per process."""
     return _bisect(
-        lambda margin: _stationarity_residual(margin, e_ref, precision, predicted_var),
-        Q_FLOOR - Q_SURGE,
-        Q_REF - Q_SURGE,
+        lambda margin: _stationarity_residual(
+            margin, e_ref, precision, predicted_var, meter
+        ),
+        *LAW_BRACKET,
     )
 
 
@@ -457,22 +529,26 @@ def _steady_predicted_var(noise: float) -> float:
     )
 
 
-def _settled_law(e_ref: float = E_REF, precision: float = GOAL_PRECISION) -> float:
+def _settled_law(
+    e_ref: float = E_REF, precision: float = GOAL_PRECISION, meter: str = "dp"
+) -> float:
     """Where the closed loop settles by the law, with P⁻ at its steady state there.
 
     Raises:
         RuntimeError: if the fixed-point iteration does not converge.
     """
-    return _cached_settled_law(float(e_ref), float(precision))
+    return _cached_settled_law(float(e_ref), float(precision), meter)
 
 
 @cache
-def _cached_settled_law(e_ref: float, precision: float) -> float:
+def _cached_settled_law(e_ref: float, precision: float, meter: str) -> float:
     """One fixed-point iteration per setting, computed once per process."""
-    margin = _law_standoff(e_ref, precision)
+    margin = _law_standoff(e_ref, precision, meter=meter)
     for _ in range(100):
-        noise = float(_dp_meter_noise(jnp.array([margin]), _meter_params(e_ref))[0, 0])
-        settled = _law_standoff(e_ref, precision, _steady_predicted_var(noise))
+        noise = float(METERS[meter](jnp.array([margin]), _meter_params(e_ref))[0, 0])
+        settled = _law_standoff(
+            e_ref, precision, _steady_predicted_var(noise), meter=meter
+        )
         if abs(settled - margin) < 1e-10:
             return settled
         margin = settled
@@ -480,22 +556,23 @@ def _cached_settled_law(e_ref: float, precision: float) -> float:
 
 
 @cache
-def _closed_loop(live: bool) -> float:
-    """Where the library's own `Agent` settles at the default meter, run noise-free.
+def _closed_loop(live: bool, meter: str = "dp") -> float:
+    """Where the library's own `Agent` settles at the default accuracy, run noise-free.
 
     The plant follows the agent's model and the meter reads true, so the run is
     deterministic. The belief variance follows the filter's recursion and the margin
     goes wherever each step aims. A noisy run fluctuates about this point. Only the
-    default meter runs here: a worse meter has a small gain, its variance takes
+    default accuracy runs here: a worse meter has a small gain, its variance takes
     hundreds of steps to settle, and the law covers it.
 
     Args:
         live: ``True`` for the ``R(x)`` agent, ``False`` for the fixed-`R` twin.
+        meter: a key of ``METERS``.
 
     Returns:
         The mean margin over the last ``LOOP_TAIL`` steps.
     """
-    model = _model(live=live)
+    model = _model(live=live, meter=meter)
     bounds = (float(ACTIONS[0]), float(ACTIONS[-1]))
     objective = ObservationGoal(
         [GOAL_MARGIN],
@@ -571,23 +648,38 @@ def _economic_ladder() -> tuple[tuple[float, float, float], ...]:
     )
 
 
-def _law_agreement() -> tuple[tuple[float, float, float, float], ...]:
-    """`(e_ref, Λ, grid standoff, law root)` at every live setting the ladders visit.
+def _law_agreement() -> tuple[tuple[str, float, float, float, float], ...]:
+    """`(meter, e_ref, Λ, grid standoff, law root)` at every live setting visited.
 
-    The two ladders share their default rung, so seven settings rather than eight.
+    The two ladders share their default rung, so seven DP settings rather than eight,
+    and the Coriolis meter adds its default.
     """
     settings = dict.fromkeys(
-        [(e_ref, GOAL_PRECISION) for e_ref in METER_QUALITIES]
-        + [(E_REF, precision) for precision in GOAL_PRECISIONS]
+        [("dp", e_ref, GOAL_PRECISION) for e_ref in METER_QUALITIES]
+        + [("dp", E_REF, precision) for precision in GOAL_PRECISIONS]
+        + [("coriolis", E_REF, GOAL_PRECISION)]
     )
     return tuple(
         (
+            meter,
             e_ref,
             precision,
-            _standoff(e_ref, precision=precision),
-            _law_standoff(e_ref, precision),
+            _standoff(e_ref, precision=precision, meter=meter),
+            _law_standoff(e_ref, precision, meter=meter),
         )
-        for e_ref, precision in settings
+        for meter, e_ref, precision in settings
+    )
+
+
+def _coriolis() -> tuple[float, float, float]:
+    """The Coriolis meter at the default: first step, settled law, and the `Agent` loop.
+
+    The first step is the grid argmin, which row 7 checks against the law's root.
+    """
+    return (
+        _standoff(meter="coriolis"),
+        _settled_law(meter="coriolis"),
+        _closed_loop(True, "coriolis"),
     )
 
 
@@ -611,7 +703,8 @@ def _slope_deviation() -> tuple[float, float]:
 @cache
 def _sensor_report():
     """The library's own verdict on whether the sensor earns its keep over the grid."""
-    actions = [jnp.array([a]) for a in np.asarray(ACTIONS)[::16]]
+    stride = len(ACTIONS) // PROBE_SAMPLES
+    actions = [jnp.array([a]) for a in np.asarray(ACTIONS)[::stride]]
     return probe_model(_model(), _belief(), actions)
 
 
@@ -634,6 +727,7 @@ def falsifiers() -> tuple[CheckReport, ...]:
     worst_slope, c2 = _slope_deviation()
     report = _sensor_report()
     agreement = _law_agreement()
+    coriolis_first, coriolis_settled, coriolis_loop = _coriolis()
     settled = _settled_ladder()
     loop_live, loop_twin = _closed_loop(True), _closed_loop(False)
 
@@ -641,7 +735,7 @@ def falsifiers() -> tuple[CheckReport, ...]:
     frozen_margins = [m for _, _, m in ladder]
     drops = [a - b for a, b in pairwise(live_margins)]
     frozen_spread = max(frozen_margins) - min(frozen_margins)
-    law_misses = [abs(grid - law) for _, _, grid, law in agreement]
+    law_misses = [abs(grid - law) for *_, grid, law in agreement]
     _, first_step, settled_default = settled[0]  # METER_QUALITIES opens on E_REF
     settled_margins = [margin for _, _, margin in settled]
     settled_drops = [a - b for a, b in pairwise(settled_margins)]
@@ -734,6 +828,29 @@ def falsifiers() -> tuple[CheckReport, ...]:
         falling = all(drop > GRID_STEP for drop in settled_drops)
         return Outcome.NOT_TRIGGERED if clear and falling else Outcome.FIRED
 
+    def coriolis_keeps_the_sign() -> Outcome:
+        """Fires unless a Coriolis meter puts the agent on the surge side of preference.
+
+        Its `ℓ' = +2/Q` against the DP meter's `−2/Q`, so the law flips the offset. The
+        first step and the settled margin both have to land more than a grid step
+        below the preference.
+        """
+        flipped = (
+            coriolis_first < GOAL_MARGIN - GRID_STEP
+            and coriolis_settled < GOAL_MARGIN - GRID_STEP
+        )
+        return Outcome.NOT_TRIGGERED if flipped else Outcome.FIRED
+
+    def coriolis_stops_short_of_surge() -> Outcome:
+        """Fires unless the library's Coriolis loop settles past the surge line.
+
+        The library's own `Agent` has to settle within a grid step of the law, and
+        more than a grid step below zero margin.
+        """
+        agrees = abs(coriolis_loop - coriolis_settled) <= GRID_STEP
+        past_surge = coriolis_loop < -GRID_STEP
+        return Outcome.NOT_TRIGGERED if agrees and past_surge else Outcome.FIRED
+
     quality_ratio = METER_QUALITIES[-1] / METER_QUALITIES[0]
     return (
         CheckReport(
@@ -820,9 +937,9 @@ def falsifiers() -> tuple[CheckReport, ...]:
             tier=Tier.BOUNDED,
             detail=(
                 f"worst |grid argmin − law root| over {len(agreement)} settings of "
-                f"both ladders: {max(law_misses):.3f}%, against the grid step "
-                f"{GRID_STEP:.4f}%. Λ(m − g) = −ℓ'(κ + ΛR)/2 places the standoff to "
-                "the sweep's resolution"
+                f"both ladders and the Coriolis meter: {max(law_misses):.3f}%, "
+                f"against the grid step {GRID_STEP:.4f}%. Λ(m − g) = −ℓ'(κ + ΛR)/2 "
+                "places the standoff to the sweep's resolution"
             ),
         ),
         CheckReport(
@@ -851,6 +968,34 @@ def falsifiers() -> tuple[CheckReport, ...]:
                 f"step {GRID_STEP:.4f}% (smallest {min(settled_drops):.3f}%). The "
                 f"first step's offset from preference is {overshoot:.1f}x the settled "
                 "one"
+            ),
+        ),
+        CheckReport(
+            name="10. Coriolis offset keeps the DP sign",
+            check_id="surge_margin.coriolis_offset_keeps_the_dp_sign",
+            warrant=Warrant.CORROBORATED,
+            outcome=coriolis_keeps_the_sign(),
+            tier=Tier.BOUNDED,
+            detail=(
+                f"a Coriolis meter, {E_REF * 100:.1f}% at design flow like the DP one: "
+                f"the first step aims at m = {coriolis_first:.2f}% and the law settles "
+                f"it at m = {coriolis_settled:.2f}%, both below the preference "
+                f"{GOAL_MARGIN:.0f}% by more than the grid step {GRID_STEP:.4f}%. "
+                "ℓ' = +2/Q flips the offset"
+            ),
+        ),
+        CheckReport(
+            name="11. Coriolis loop settles short of surge",
+            check_id="surge_margin.coriolis_loop_settles_short_of_surge",
+            warrant=Warrant.CORROBORATED,
+            outcome=coriolis_stops_short_of_surge(),
+            tier=Tier.BOUNDED,
+            detail=(
+                f"library Agent with the Coriolis meter, noise-free closed loop: "
+                f"settles at m = {coriolis_loop:.2f}% against the law's "
+                f"{coriolis_settled:.2f}%, past the surge line by more than the grid "
+                f"step {GRID_STEP:.4f}%. With the DP meter it settles at "
+                f"{loop_live:.2f}%"
             ),
         ),
     )
@@ -885,7 +1030,7 @@ def check() -> None:
             spans as much as the `Λ` ladder, which would make the printout's framing
             of the two wrong.
     """
-    print("Anti-surge margin under a DP flow meter, R(Q) = e_ref²·Q_ref⁴/Q²")
+    print("Anti-surge margin, DP flow meter unless stated, R(Q) = e_ref²·Q_ref⁴/Q²")
     print(
         f"   surge line Q_s = {Q_SURGE:.0f}%, design flow Q_ref = {Q_REF:.0f}%, "
         f"e_ref = {E_REF} ({E_REF * 100:.1f}% at design flow)"
@@ -945,6 +1090,21 @@ def check() -> None:
         f"{economic_span:.2f}%, so the printout's framing no longer holds"
     )
 
+    coriolis_first, coriolis_settled, coriolis_loop = _coriolis()
+    print(
+        f"The same agent with a Coriolis meter, {E_REF * 100:.1f}% at design flow, "
+        "R = (e_ref·Q)²:"
+    )
+    print(
+        f"   first step m = {coriolis_first:.2f}%, settles m = {coriolis_settled:.2f}% "
+        f"by the law, library Agent in closed loop {coriolis_loop:.2f}%"
+    )
+    print(
+        "   -> the offset flips sign. ℓ' = +2/Q, so the information term pulls toward "
+        "low\n      flow, where this meter reads best, and the loop settles past the "
+        "surge line.\n      The ambiguity term can push the agent into surge.\n"
+    )
+
     print(_sensor_report().summary())
 
     reports = falsifiers()
@@ -959,12 +1119,13 @@ def check() -> None:
 
 
 def render(out_path: Path) -> Path:
-    """Draw the three-panel figure and write it.
+    """Draw the four-panel figure and write it.
 
-    Two EFE panels through the shared gallery helper, one per agent, so the flat
-    epistemic line and the rising one sit side by side at the same scale. The third
-    panel is the meter-quality ladder, with the first step against where the loop
-    settles.
+    Three EFE panels through the shared gallery helper at one y-scale: the fixed-`R`
+    twin's flat epistemic line, the DP meter's rising one, and the Coriolis meter's
+    falling one. The fourth panel is the meter-quality ladder, the first step against
+    where the loop settles, with the Coriolis meter's settled margin below the surge
+    line.
 
     Args:
         out_path: where the PNG goes.
@@ -977,9 +1138,12 @@ def render(out_path: Path) -> Path:
 
     twin_prag, twin_epi, twin_g = _sweep(live=False)
     live_prag, live_epi, live_g = _sweep()
+    coriolis_prag, coriolis_epi, coriolis_g = _sweep(meter="coriolis")
     ladder = _meter_ladder()
 
-    fig, (twin_ax, live_ax, right) = plt.subplots(1, 3, figsize=(17.5, 5.0))
+    fig, ((twin_ax, live_ax), (coriolis_ax, right)) = plt.subplots(
+        2, 2, figsize=(13.0, 11.0)
+    )
     fig.patch.set_facecolor(gallery.PAPER.bg)
 
     _panel(
@@ -996,11 +1160,20 @@ def render(out_path: Path) -> Path:
         live_prag,
         live_epi,
         live_g,
-        f"R(Q) live, e_ref = {E_REF}",
+        f"DP meter, R(Q) live, e_ref = {E_REF}",
         "epistemic rises away from surge and holds\nthe valve off the economic optimum",
     )
-    for ax in (twin_ax, live_ax):
-        ax.set_ylim(_shared_ylim(twin_g, live_g, twin_epi, live_epi))
+    _panel(
+        coriolis_ax,
+        coriolis_prag,
+        coriolis_epi,
+        coriolis_g,
+        f"Coriolis meter, R(Q) live, e_ref = {E_REF}",
+        "epistemic rises toward surge and pulls\nthe valve past the surge line",
+    )
+    ylim = _shared_ylim(twin_g, live_g, coriolis_g, twin_epi, live_epi, coriolis_epi)
+    for ax in (twin_ax, live_ax, coriolis_ax):
+        ax.set_ylim(ylim)
         _mark_surge(ax)
 
     e_refs = [e for e, _, _ in ladder]
@@ -1011,7 +1184,7 @@ def render(out_path: Path) -> Path:
         color=gallery.EPISTEMIC_C,
         mfc="white",
         lw=1.6,
-        label="R(Q) agent, first step",
+        label="DP meter, first step",
     )
     right.plot(
         e_refs,
@@ -1019,7 +1192,7 @@ def render(out_path: Path) -> Path:
         "-o",
         color=gallery.EPISTEMIC_C,
         lw=2.2,
-        label="R(Q) agent, settled (law)",
+        label="DP meter, settled (law)",
     )
     right.plot(
         [E_REF],
@@ -1027,7 +1200,7 @@ def render(out_path: Path) -> Path:
         "*",
         color=gallery.VERMILLION,
         ms=13,
-        label="library Agent, closed loop",
+        label="library Agent, DP meter, closed loop",
     )
     right.plot(
         e_refs,
@@ -1036,6 +1209,26 @@ def render(out_path: Path) -> Path:
         color=gallery.PRAGMATIC_C,
         lw=2.2,
         label="fixed R twin",
+    )
+    right.plot(
+        [E_REF],
+        [_settled_law(meter="coriolis")],
+        "D",
+        color=gallery.VERMILLION,
+        ms=8,
+        label="Coriolis meter, settled (law)",
+    )
+    right.axhline(0.0, color=gallery.VERMILLION, lw=1.4, ls="--", zorder=1)
+    right.annotate(
+        "surge",
+        xy=(1.0, 0.0),
+        xycoords=("axes fraction", "data"),
+        xytext=(-4, 4),
+        textcoords="offset points",
+        ha="right",
+        color=gallery.VERMILLION,
+        fontsize=9,
+        fontweight="bold",
     )
     right.set_xscale("log")
     right.set_xticks(e_refs)
@@ -1049,9 +1242,9 @@ def render(out_path: Path) -> Path:
         "the control line moves, or it does not", fontsize=12, fontweight="bold"
     )
     right.annotate(
-        "a worse meter runs CLOSER to surge, first step and settled alike:\n"
-        "the ambiguity term is not a safety factor.\n"
-        "Read the shape, not the height: Λ sets the height",
+        "a worse DP meter runs CLOSER to surge, first step and settled alike,\n"
+        "and a Coriolis meter settles past it: the ambiguity term is not a\n"
+        "safety factor. Read the shape, not the height: Λ sets the height",
         xy=(0.5, -0.30),
         xycoords="axes fraction",
         ha="center",
@@ -1060,14 +1253,17 @@ def render(out_path: Path) -> Path:
         color="#333333",
     )
     right.grid(True, alpha=0.25)
-    right.legend(loc="center left", fontsize=8.5, framealpha=0.9)
+    # Between the surge line and the twin's line, the one band no curve crosses.
+    right.legend(
+        loc="lower right", bbox_to_anchor=(1.0, 0.1), fontsize=8.5, framealpha=0.9
+    )
 
     fig.tight_layout()
     return gallery.save_figure(fig, out_path, dpi=150, tight=True)
 
 
 def _shared_ylim(*series) -> tuple[float, float]:
-    """One y-range across both EFE panels, so the flat line reads as flat.
+    """One y-range across the EFE panels, so the flat line reads as flat.
 
     The headroom is uneven on purpose. The epistemic line runs along the top of the
     data, and the shared legend sits upper right, so without room above it the legend
