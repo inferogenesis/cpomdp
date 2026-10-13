@@ -1,5 +1,6 @@
 """Core data types: the Gaussian ``Belief`` and its ``LinearGaussianModel``."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import jax
@@ -88,6 +89,13 @@ class Belief:
         return obj
 
 
+def _declared_or(
+    declared: ArrayLike | None, derive: Callable[[], ArrayLike]
+) -> Float64[Array, "k k"]:
+    """``declared`` as a float array, or what ``derive`` returns when it is ``None``."""
+    return jnp.asarray(derive() if declared is None else declared, dtype=float)
+
+
 # A pytree leaf of a LinearGaussianModel: a matrix, the prior Belief, a child
 # sensor/process-noise model, or None (an absent control_matrix,
 # observation_model or dynamics_noise_model).
@@ -144,6 +152,8 @@ class LinearGaussianModel:
     state-dependent sensor the field is a nominal value. A consumer that understands
     the sensor reads ``R(x)`` from the sensor. One that needs a single ``R`` either
     refuses the model or documents that it reads this one (DECISIONS.md ADR-064).
+    ``dynamics_noise`` follows the same rule beside a ``dynamics_noise_model``, and is
+    then its ``Q`` at ``prior.mean`` (ADR-065).
     """
 
     dynamics_matrix: Float64[Array, "n n"]
@@ -161,7 +171,7 @@ class LinearGaussianModel:
         dynamics_matrix: ArrayLike,
         *,
         observation_matrix: ArrayLike,
-        dynamics_noise: ArrayLike,
+        dynamics_noise: ArrayLike | None = None,
         observation_noise: ArrayLike | None = None,
         prior: Belief,
         control_matrix: ArrayLike | None = None,
@@ -174,9 +184,6 @@ class LinearGaussianModel:
         )
         object.__setattr__(
             self, "observation_matrix", jnp.asarray(observation_matrix, dtype=float)
-        )
-        object.__setattr__(
-            self, "dynamics_noise", jnp.asarray(dynamics_noise, dtype=float)
         )
         object.__setattr__(self, "prior", prior)
         object.__setattr__(
@@ -192,21 +199,21 @@ class LinearGaussianModel:
         self._validate_noise_sources()
         object.__setattr__(
             self,
+            "dynamics_noise",
+            _declared_or(dynamics_noise, self._process_noise_at_prior),
+        )
+        object.__setattr__(
+            self,
             "observation_noise",
-            jnp.asarray(
-                self._sensor_noise_at_prior()
-                if observation_noise is None
-                else observation_noise,
-                dtype=float,
-            ),
+            _declared_or(observation_noise, self._sensor_noise_at_prior),
         )
         self._validate()
 
     def _validate_noise_sources(self) -> None:
-        """Check the kinds of ``prior`` and ``observation_model`` before either is read.
+        """Check the kinds of the prior and the two noise objects before any is read.
 
-        An omitted ``observation_noise`` is read from the sensor at the prior mean
-        before anything else is validated, so these two are checked first.
+        An omitted noise is read from its object at the prior mean before anything
+        else is validated, so these three are checked first.
         """
         if not isinstance(self.prior, Belief):
             raise TypeError(f"prior must be a Belief, got {type(self.prior).__name__}")
@@ -217,6 +224,25 @@ class LinearGaussianModel:
                 f"observation_model must be an ObservationModel, "
                 f"got {type(self.observation_model).__name__}"
             )
+        if self.dynamics_noise_model is not None and not isinstance(
+            self.dynamics_noise_model, DynamicsNoise
+        ):
+            raise TypeError(
+                f"dynamics_noise_model must be a DynamicsNoise, "
+                f"got {type(self.dynamics_noise_model).__name__}"
+            )
+
+    def _process_noise_at_prior(self) -> Float64[Array, "n n"]:
+        """The process noise's ``Q`` at the prior mean, for a model given no ``Q``.
+
+        The rule ADR-064 sets for ``R`` (DECISIONS.md ADR-065). ``_validate`` probes
+        ``Q(x)`` at the origin as well, a separate check left where it was.
+        """
+        if self.dynamics_noise_model is None:
+            raise TypeError(
+                "dynamics_noise is required when no dynamics_noise_model supplies it"
+            )
+        return self.dynamics_noise_model.noise_at(self.prior.mean)
 
     def _sensor_noise_at_prior(self) -> Float64[Array, "m m"]:
         """The sensor's ``R`` at the prior mean, for a model given no observation noise.
@@ -311,12 +337,8 @@ class LinearGaussianModel:
 
         # dynamics_noise_model (optional): state-dependent Q(x). CallableProcessNoise
         # check its own shape (no n), so probe it here, where n is known.
+        # _validate_noise_sources checked its kind.
         if self.dynamics_noise_model is not None:
-            if not isinstance(self.dynamics_noise_model, DynamicsNoise):
-                raise TypeError(
-                    f"dynamics_noise_model must be a DynamicsNoise, "
-                    f"got {type(self.dynamics_noise_model).__name__}"
-                )
             q_probe = jnp.asarray(self.dynamics_noise_model.noise_at(jnp.zeros(n)))
             validate_covariance(q_probe, "dynamics_noise_model.noise_at(x)")
             if q_probe.shape != (n, n):

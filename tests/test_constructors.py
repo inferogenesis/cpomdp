@@ -286,6 +286,83 @@ def test_correct_still_builds_with_an_agreeing_fixed_sensor():
     assert spec.build(CORRECT).observation_model is sensor
 
 
+# --- a noise left to its object -------------------------------------------------------
+#
+# The model derives an omitted noise from its object at the prior mean. The spec holds
+# the None and passes it through, so the rule lives in one place.
+
+
+# Off the origin, where the model probes Q(x) itself. _noise_at and _process_at double
+# here, so a noise read at the wrong point shows.
+_OFF_ORIGIN = [1.0, 0.0]
+
+
+def _spec_leaving(field: str, **noise_objects) -> ModelSpec:
+    return ModelSpec(
+        dynamics_matrix=[[1.0, DT], [0.0, 1.0]],
+        observation_matrix=[[1.0, 0.0]],
+        dynamics_noise=(
+            None if field == "dynamics_noise" else [[1e-4, 0.0], [0.0, 1e-4]]
+        ),
+        observation_noise=None if field == "observation_noise" else [[1e-2]],
+        prior_mean=_OFF_ORIGIN,
+        prior_cov=[[1.0, 0.0], [0.0, 1.0]],
+        control_matrix=CONTROL,
+        version="spec-v1",
+        **noise_objects,
+    )
+
+
+def test_a_spec_may_leave_the_observation_noise_to_its_sensor():
+    sensor = CallableSensor([[1.0, 0.0]], _noise_at, ())
+    spec = _spec_leaving("observation_noise", observation_model=sensor)
+    assert spec.observation_noise is None
+    np.testing.assert_allclose(spec.build().observation_noise, [[2e-2]])
+
+
+def test_a_spec_may_leave_the_dynamics_noise_to_its_process_noise():
+    process = CallableProcessNoise(_process_at, ())
+    spec = _spec_leaving("dynamics_noise", dynamics_noise_model=process)
+    assert spec.dynamics_noise is None
+    np.testing.assert_allclose(spec.build().dynamics_noise, np.eye(2) * 2e-3)
+
+
+@pytest.mark.parametrize("field", ["observation_noise", "dynamics_noise"])
+def test_a_spec_leaving_a_noise_with_no_object_fails_at_its_first_build(field):
+    spec = _spec_leaving(field)
+    with pytest.raises(TypeError, match=f"{field} is required"):
+        spec.build()
+
+
+@pytest.mark.parametrize(
+    ("field", "noise_objects"),
+    [
+        (
+            "observation_noise",
+            {"observation_model": CallableSensor([[1.0, 0.0]], _noise_at, ())},
+        ),
+        (
+            "observation_noise",
+            {
+                "observation_model": FixedSensor(
+                    [[1.0, 0.0]], observation_noise=[[1e-2]]
+                )
+            },
+        ),
+        (
+            "dynamics_noise",
+            {"dynamics_noise_model": CallableProcessNoise(_process_at, ())},
+        ),
+        ("dynamics_noise", {"dynamics_noise_model": _FixedProcessNoise()}),
+    ],
+    ids=["state-dependent-R", "fixed-R", "state-dependent-Q", "fixed-Q"],
+)
+def test_perturbing_a_noise_the_spec_leaves_out_does_not_build(field, noise_objects):
+    spec = _spec_leaving(field, **noise_objects)
+    with pytest.raises(ValueError, match=f"declares no {field}"):
+        spec.build(Perturbation("noisy", field, 0.5))
+
+
 # --- the spec compares and hashes rather than raising -------------------------------
 
 

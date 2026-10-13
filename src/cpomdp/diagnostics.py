@@ -27,10 +27,17 @@ Four conditions, in the order they bite:
 ``epistemic_varies``
     The per-step epistemic value differs across those means. Stronger than
     ``non_constant``: the epistemic term is a log-determinant, a single scalar summary,
-    and a covariance can move along a contour of it without the scalar noticing. For a
-    scalar observation the two coincide, since the map is then strictly monotone in the
-    variance. ``loewner_comparable`` reports the cheap sufficient condition — noise
-    covariances ordered by ``≺`` always separate the determinant.
+    and a covariance can move along a contour of it without the scalar noticing. With
+    a fixed ``Q`` and a scalar observation the two coincide, since the map is then
+    strictly monotone in the variance. ``loewner_comparable`` reports the cheap
+    sufficient condition — noise covariances ordered by ``≺`` always separate the
+    determinant.
+
+A state-dependent ``Q(x)`` moves the predicted covariance with the action too, so the
+epistemic value can vary with ``R`` held still. ``process_non_constant`` reports it,
+and ``flattens`` needs neither noise to move. A ``Q(x)`` that is not a covariance at a
+sampled mean raises instead of being reported. That is a broken model, not a condition
+on the sensor.
 
 Sampling is what it is: these answer "over the actions I asked about", not "over every
 reachable state". A negative is evidence, not proof.
@@ -44,6 +51,8 @@ import jax
 import numpy as np
 from jaxtyping import Float64
 from numpy.typing import ArrayLike
+
+from cpomdp._validation import validate_covariance
 
 if TYPE_CHECKING:
     # Annotation-only: every diagnostic here reads its argument's fields by duck typing,
@@ -194,6 +203,9 @@ class SensorReport:
         epistemic_range: its smallest and largest sampled values, in nats.
         loewner_comparable: whether the extreme pair of sampled ``R`` is strictly
             ordered — the cheap sufficient condition for the epistemic value to move.
+        process_non_constant: whether ``Q`` took more than one value across the
+            samples. Always ``False`` for a fixed ``Q``.
+        process_noise_spread: the largest pairwise distance between the sampled ``Q``.
     """
 
     n_samples: int
@@ -207,16 +219,20 @@ class SensorReport:
     epistemic_varies: bool
     epistemic_range: tuple[float, float]
     loewner_comparable: bool
+    process_non_constant: bool
+    process_noise_spread: float
 
     @property
     def flattens(self) -> bool:
-        """Whether the sampled evidence says the sensor is a constant in disguise.
+        """Whether the sampled evidence says the noise is a constant in disguise.
 
-        True when ``R`` never moved across the sampled means: the covariance recursion
-        then never consults the action, so a fixed noise schedule reproduces the agent
-        and the epistemic term cannot tell two policies apart.
+        True when neither ``R`` nor ``Q`` moved across the sampled means: the covariance
+        recursion then never consults the action, so a fixed noise schedule reproduces
+        the agent and the epistemic term cannot tell two policies apart. A ``Q(x)`` that
+        moves keeps it ``False`` with ``R`` fixed, since the action then reaches the
+        recursion through ``Q``.
         """
-        return not self.non_constant
+        return not (self.non_constant or self.process_non_constant)
 
     def summary(self) -> str:
         """A few lines a human can read, one per condition."""
@@ -231,6 +247,8 @@ class SensorReport:
                 f"({len(self.indefinite_at)} failing sample(s))",
                 f"  R non-constant    {mark[self.non_constant]}  "
                 f"(spread {self.noise_spread:.3e})",
+                f"  Q non-constant    {mark[self.process_non_constant]}  "
+                f"(spread {self.process_noise_spread:.3e})",
                 f"  epistemic varies  {mark[self.epistemic_varies]}  "
                 f"({lo:.6f} .. {hi:.6f} nats)",
                 f"  Loewner-ordered   {mark[self.loewner_comparable]}",
@@ -251,6 +269,40 @@ def _linearizations(
     return [np.asarray(observation.linearize(mu)[1], dtype=float) for mu in means]
 
 
+def _process_noises(
+    process, dynamics_noise: ArrayLike, means: np.ndarray
+) -> list[np.ndarray]:
+    """Each mean's ``Q``, taken at that mean when the model carries a ``Q(x)``.
+
+    The EFE kernel adds ``Q`` at the predicted mean, so the probe adds the same one. The
+    model checks ``Q(x)`` at the origin only, so each is checked here as well, as
+    ``harness.World`` checks the ``Q`` at every state it reaches.
+
+    Raises:
+        ValueError: If a sampled ``Q`` is not a covariance.
+    """
+    if process is None:
+        return [np.asarray(dynamics_noise, dtype=float)] * len(means)
+    noises = []
+    for mu in means:
+        noise = process.noise_at(mu)
+        at = tuple(float(v) for v in mu)
+        validate_covariance(
+            noise, f"dynamics_noise_model.noise_at(x) at the sampled mean {at}"
+        )
+        noises.append(np.asarray(noise, dtype=float))
+    return noises
+
+
+def _spread(matrices: list[np.ndarray]) -> float:
+    """The largest distance, entry by entry, between any two of ``matrices``."""
+    spread = 0.0
+    for i in range(len(matrices)):
+        for j in range(i + 1, len(matrices)):
+            spread = max(spread, float(np.max(np.abs(matrices[i] - matrices[j]))))
+    return spread
+
+
 def probe_model(
     model: "LinearGaussianModel | ProbeBackend",
     belief: "Belief",
@@ -263,7 +315,8 @@ def probe_model(
     Each action is pushed through the prediction step to get ``(μ⁻, Σ⁻)``; the sensor is
     linearized at each ``μ⁻`` and the four conditions are evaluated over the resulting
     sample. This is the reachable set the conditions are about — vary ``actions`` to
-    widen it.
+    widen it. A state-dependent ``Q(x)`` enters ``Σ⁻`` at each ``μ⁻``, where the EFE
+    kernel evaluates it.
 
     Args:
         model: a [`LinearGaussianModel`][cpomdp.LinearGaussianModel], or a backend
@@ -278,7 +331,8 @@ def probe_model(
         A [`SensorReport`][cpomdp.SensorReport].
 
     Raises:
-        ValueError: If ``actions`` is empty.
+        ValueError: If ``actions`` is empty, or if a state-dependent ``Q(x)`` is not a
+            covariance at one of the sampled means.
     """
     if len(actions) == 0:
         raise ValueError("probe_model needs at least one action to predict under.")
@@ -292,6 +346,7 @@ def probe_model(
         noises = [
             np.asarray(backend.observation_noise_at(mu), dtype=float) for mu in means
         ]
+        process_spread = 0.0  # the graph's transitions carry a fixed Q
     else:  # a flat LinearGaussianModel
         observation_matrix = np.asarray(model.observation_matrix, dtype=float)
         dynamics_matrix = np.asarray(model.dynamics_matrix, dtype=float)
@@ -310,10 +365,12 @@ def probe_model(
                     for a in actions
                 ]
             )
-        cov = dynamics_matrix @ prior_cov @ dynamics_matrix.T + np.asarray(
-            model.dynamics_noise, dtype=float
+        propagated = dynamics_matrix @ prior_cov @ dynamics_matrix.T
+        process_noises = _process_noises(
+            model.dynamics_noise_model, model.dynamics_noise, means
         )
-        covs = [cov] * len(actions)
+        covs = [propagated + q for q in process_noises]
+        process_spread = _spread(process_noises)
         fixed = np.asarray(model.observation_noise, dtype=float)
         noises = _linearizations(
             model.observation_model, observation_matrix, means
@@ -328,10 +385,7 @@ def probe_model(
         if not is_positive_definite(r)
     )
 
-    spread = 0.0
-    for i in range(len(noises)):
-        for j in range(i + 1, len(noises)):
-            spread = max(spread, float(np.max(np.abs(noises[i] - noises[j]))))
+    spread = _spread(noises)
 
     epistemics = [
         epistemic_value(cov, observation_matrix, r)
@@ -360,6 +414,8 @@ def probe_model(
         epistemic_varies=bool(finite) and (hi - lo) > tol,
         epistemic_range=(lo, hi),
         loewner_comparable=comparable,
+        process_non_constant=process_spread > tol,
+        process_noise_spread=process_spread,
     )
 
 

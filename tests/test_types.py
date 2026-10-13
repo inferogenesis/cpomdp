@@ -5,6 +5,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
+from cpomdp.dynamics import CallableProcessNoise
 from cpomdp.observation import CallableSensor, FixedSensor
 from cpomdp.types import Belief, LinearGaussianModel
 
@@ -421,3 +422,82 @@ class TestAnOmittedObservationNoiseIsReadFromTheSensor:
             LinearGaussianModel(
                 **_without_observation_noise(observation_model=sensor, prior=[2.0, 0.0])
             )
+
+
+def _rising_process_noise(x, params):
+    return jnp.diag(jnp.array([1.0 + x[0] ** 2, 0.1]))
+
+
+def _without_dynamics_noise(**overrides):
+    kwargs = _valid_kwargs(**overrides)
+    del kwargs["dynamics_noise"]
+    return kwargs
+
+
+class TestAnOmittedDynamicsNoiseIsReadFromTheProcessNoise:
+    """The same rule for Q. The plain field is the process Q at the prior mean."""
+
+    def test_a_state_dependent_process_noise_supplies_its_q_at_the_prior_mean(self):
+        process = CallableProcessNoise(_rising_process_noise, ())
+        model = LinearGaussianModel(
+            **_without_dynamics_noise(
+                dynamics_noise_model=process, prior=_OFF_ORIGIN_PRIOR
+            )
+        )
+        np.testing.assert_array_equal(model.dynamics_noise, [[5.0, 0.0], [0.0, 0.1]])
+
+    def test_omitting_it_builds_the_model_that_passing_it_at_the_prior_mean_does(self):
+        process = CallableProcessNoise(_rising_process_noise, ())
+        omitted = LinearGaussianModel(
+            **_without_dynamics_noise(
+                dynamics_noise_model=process, prior=_OFF_ORIGIN_PRIOR
+            )
+        )
+        passed = LinearGaussianModel(
+            **_valid_kwargs(
+                dynamics_noise_model=process,
+                prior=_OFF_ORIGIN_PRIOR,
+                dynamics_noise=[[5.0, 0.0], [0.0, 0.1]],
+            )
+        )
+        omitted_leaves, omitted_structure = jax.tree_util.tree_flatten(omitted)
+        passed_leaves, passed_structure = jax.tree_util.tree_flatten(passed)
+        assert omitted_structure == passed_structure
+        for a, b in zip(omitted_leaves, passed_leaves, strict=True):
+            np.testing.assert_array_equal(a, b)
+
+    def test_a_fixed_process_noise_supplies_its_own_q(self):
+        model = LinearGaussianModel(
+            **_without_dynamics_noise(dynamics_noise_model=_AgreeingFixedProcessNoise())
+        )
+        np.testing.assert_array_equal(model.dynamics_noise, [[0.1, 0.0], [0.0, 0.1]])
+
+    def test_with_no_process_noise_object_it_is_still_required(self):
+        with pytest.raises(TypeError, match="dynamics_noise"):
+            LinearGaussianModel(**_without_dynamics_noise())
+
+    def test_passed_beside_a_state_dependent_q_it_is_kept_and_not_warned_on(self):
+        process = CallableProcessNoise(_rising_process_noise, ())
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            model = LinearGaussianModel(
+                **_valid_kwargs(dynamics_noise_model=process, prior=_OFF_ORIGIN_PRIOR)
+            )
+        np.testing.assert_array_equal(model.dynamics_noise, [[0.1, 0.0], [0.0, 0.1]])
+
+    def test_a_process_noise_of_the_wrong_kind_is_named_rather_than_asked_for_a_q(self):
+        with pytest.raises(TypeError, match="DynamicsNoise"):
+            LinearGaussianModel(
+                **_without_dynamics_noise(dynamics_noise_model="not a noise")
+            )
+
+    def test_both_noises_can_be_omitted_together(self):
+        kwargs = _without_dynamics_noise(
+            observation_model=CallableSensor([[1.0, 0.0]], _rising_noise, ()),
+            dynamics_noise_model=CallableProcessNoise(_rising_process_noise, ()),
+            prior=_OFF_ORIGIN_PRIOR,
+        )
+        del kwargs["observation_noise"]
+        model = LinearGaussianModel(**kwargs)
+        np.testing.assert_array_equal(model.observation_noise, [[5.0]])
+        np.testing.assert_array_equal(model.dynamics_noise, [[5.0, 0.0], [0.0, 0.1]])

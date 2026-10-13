@@ -11,6 +11,7 @@ from numpy.typing import ArrayLike
 __all__ = [
     "UNVERSIONED",
     "concrete",
+    "require_fixed_noise",
     "validate_covariance",
     "validate_declared",
     "validate_finite",
@@ -19,6 +20,49 @@ __all__ = [
 UNVERSIONED = (
     "version must be a non-empty string — the {subject} is declared and versioned"
 )
+
+_NOISE_SLOTS = ("observation_model", "dynamics_noise_model")
+
+
+class _CarriesNoise(Protocol):
+    """A model with the two optional noise objects, each flagging ``is_fixed``.
+
+    Named structurally because this module imports nothing first-party.
+    """
+
+    @property
+    def observation_model(self) -> object: ...
+
+    @property
+    def dynamics_noise_model(self) -> object: ...
+
+
+def require_fixed_noise(
+    model: _CarriesNoise,
+    reason: str,
+    *,
+    slots: tuple[str, ...] = _NOISE_SLOTS,
+) -> None:
+    """Refuse a model carrying state-dependent noise in any of ``slots``.
+
+    For a consumer whose arithmetic holds ``R`` and ``Q`` constant. Built over ``R(x)``
+    or ``Q(x)`` it would read the plain fields, which are then nominal values, and
+    compute against a constant where the model varies (DECISIONS.md ADR-064 for
+    ``R``, ADR-065 for ``Q``).
+
+    Args:
+        model: The model the consumer was handed.
+        reason: What the consumer needs the constant for. It finishes the message.
+        slots: The noise objects to check, in order. Both by default. Name one when
+            the consumer reads only that noise.
+
+    Raises:
+        ValueError: Naming the first slot that carries a state-dependent object.
+    """
+    for slot in slots:
+        carried = getattr(model, slot)
+        if carried is not None and not carried.is_fixed:
+            raise ValueError(f"the model's {slot} is state-dependent; {reason}")
 
 
 def validate_covariance(

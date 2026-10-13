@@ -17,6 +17,7 @@ import jax.numpy as jnp
 import numpy as np
 from numpy.typing import ArrayLike
 
+from cpomdp._validation import require_fixed_noise
 from cpomdp.backends.base import validate_step_inputs
 from cpomdp.types import Belief, LinearGaussianModel
 
@@ -132,13 +133,11 @@ class RxInferBackend:
     """
 
     def __init__(self, model: LinearGaussianModel) -> None:
-        for slot in ("observation_model", "dynamics_noise_model"):
-            carried = getattr(model, slot)
-            if carried is not None and not carried.is_fixed:
-                raise ValueError(
-                    f"the model's {slot} is state-dependent, and the RxInfer model "
-                    f"filters on one fixed Q and R. Use KalmanBackend for R(x) or Q(x)."
-                )
+        require_fixed_noise(
+            model,
+            "the RxInfer model filters on one fixed Q and R. Use KalmanBackend for "
+            "R(x) or Q(x).",
+        )
         self.model = model
         self._jl = _julia()
 

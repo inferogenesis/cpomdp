@@ -358,6 +358,14 @@ no use of the readings beats it.
   saying so. `AdditivityCheck` already refused through `predicted_belief`. A direct call
   did not. `RxInferBackend` refuses a state-dependent `Q(x)` too, since its Julia model
   takes one fixed `Q` as well, and it refuses before Julia starts.
+- `probe_model` added the plain `dynamics_noise` to every predicted covariance, whatever
+  `Q(x)` the model carried. The EFE kernel adds `Q` at the predicted mean, so a `Q(x)`
+  model under a fixed sensor reported a constant epistemic value the kernel never
+  computes. The probe now takes `Q` at each predicted mean as the kernel does. Where a
+  sampled `Q` is not a covariance it raises, instead of dropping that sample from
+  `epistemic_range`. `SensorReport` gains `process_non_constant` and
+  `process_noise_spread`, and `flattens` needs both noises constant. Under `Q(x)` the
+  action reaches the recursion with `R` fixed.
 
 ### Changed
 
@@ -382,6 +390,19 @@ no use of the readings beats it.
   back unchanged and meets the restatement guard above by construction. With no sensor
   the field is still required. A value passed beside a state-dependent sensor is kept as
   the model's nominal `R`. No warning fires when it differs from the derived one.
+- Refusing state-dependent noise is one function, `require_fixed_noise`, in the internal
+  `_validation` module. The closed forms in `control` and `scoring`, the free energy,
+  `RxInferBackend` and the steady-state `KalmanBackend` each held a copy of it. The
+  `control` and `scoring` messages are unchanged. The free energy's refusal, new in this
+  release, takes its own wording. The steady-state refusal now names the slot that
+  varies.
+- `LinearGaussianModel`'s `dynamics_noise` is optional when a `dynamics_noise_model` is
+  given, on the rule `observation_noise` follows. Omitted, it is the process noise's `Q`
+  at `prior.mean` (ADR-065). With no process-noise object the field is still required.
+- `ModelSpec` takes `observation_noise` and `dynamics_noise` as `None` beside the
+  matching noise object and passes the `None` to the model, which derives the value
+  (ADR-066). A perturbation naming a noise the spec leaves out is refused, as one naming
+  an absent `control_matrix` already was.
 - The `symbolic` CI job reconciles the three symbolic suites against
   `research/registered_checks.toml` instead of comparing three hand-typed strings. The
   strings said `23 registered, 23 tested here, none fired` and two more like it. They
