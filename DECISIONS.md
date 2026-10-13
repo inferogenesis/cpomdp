@@ -4382,6 +4382,13 @@ over the means a set of actions reaches. With the plain `Q` its predicted covari
 was one the EFE kernel never forms. A `Q(x)` model under a fixed sensor then read as
 having a constant epistemic value. The kernel's varied with the action.
 
+Two further changes follow from reading `Q(x)` there. A `Q` that is not a covariance at
+a sampled mean raises, as `harness.World` raises at a state it reaches. Otherwise that
+sample's epistemic value is a NaN the range drops with nothing said. `flattens` reads
+`Q` as well as `R`, since a moving `Q` lets the action reach the recursion with `R`
+fixed. `SensorReport` gains `process_non_constant` and `process_noise_spread` to carry
+it.
+
 ### Consequences
 
 - The fixed path is untouched. The filter and the kernel read `Q` directly when no

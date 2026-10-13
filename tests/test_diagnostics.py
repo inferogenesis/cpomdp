@@ -145,6 +145,8 @@ class TestProbeFlatModel:
         report = probe_model(model, Belief([0.0], [[1.0]]), ACTIONS)
         assert report.flattens
         assert not report.non_constant
+        assert not report.process_non_constant
+        assert report.process_noise_spread == 0.0
         assert not report.epistemic_varies
         assert report.epistemic_range[0] == pytest.approx(report.epistemic_range[1])
 
@@ -167,6 +169,25 @@ class TestProbeFlatModel:
         ]
         assert report.epistemic_varies
         assert report.epistemic_range == pytest.approx((min(expected), max(expected)))
+        # R never moved and Q did, so the recursion consults the action: not flat.
+        assert not report.non_constant
+        assert report.process_non_constant
+        assert not report.flattens
+
+    def test_a_process_noise_that_stops_being_a_covariance_is_refused(self):
+        # Q(x) is checked at the origin only, when the model is built. A reachable mean
+        # where it has gone indefinite would make S indefinite there and drop that
+        # sample from the epistemic range with nothing said.
+        model = LinearGaussianModel(
+            dynamics_matrix=[[1.0]],
+            observation_matrix=[[1.0]],
+            observation_noise=[[1.0]],
+            prior=Belief([0.0], [[0.01]]),
+            control_matrix=[[1.0]],
+            dynamics_noise_model=CallableProcessNoise(goes_indefinite, None),
+        )
+        with pytest.raises(ValueError, match=r"dynamics_noise_model\.noise_at"):
+            probe_model(model, Belief([0.0], [[0.01]]), ACTIONS)
 
     def test_noise_the_control_cannot_reach_flattens(self):
         """Declared state-dependent, but no action moves the mean off the prior."""
@@ -198,7 +219,8 @@ class TestProbeFlatModel:
         for line in (
             "full row rank",
             "positive def",
-            "non-constant",
+            "R non-constant",
+            "Q non-constant",
             "epistemic varies",
         ):
             assert line in text

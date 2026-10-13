@@ -361,7 +361,11 @@ no use of the readings beats it.
 - `probe_model` added the plain `dynamics_noise` to every predicted covariance, whatever
   `Q(x)` the model carried. The EFE kernel adds `Q` at the predicted mean, so a `Q(x)`
   model under a fixed sensor reported a constant epistemic value the kernel never
-  computes. The probe now takes `Q` at each predicted mean as the kernel does.
+  computes. The probe now takes `Q` at each predicted mean as the kernel does. Where a
+  sampled `Q` is not a covariance it raises, instead of dropping that sample from
+  `epistemic_range`. `SensorReport` gains `process_non_constant` and
+  `process_noise_spread`, and `flattens` needs both noises constant. Under `Q(x)` the
+  action reaches the recursion with `R` fixed.
 
 ### Changed
 
