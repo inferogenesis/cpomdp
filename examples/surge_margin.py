@@ -81,15 +81,17 @@ no information to go and get, so the economic term wins. Real surge margin is se
 cost of being wrong, which is a pragmatic quantity. The ambiguity term is not a safety
 factor, and this demo is the cleanest way to see that it is not.
 
-The bare command renders a three-panel figure:
+The bare command renders a four-panel figure:
 
-- LEFT and MIDDLE: EFE and its split across the valve grid, one agent each at a shared
-  y-scale, surge line marked. The twin's flat epistemic line against the `R(x)`
-  agent's rising one, and the `G` argmin moving off the pragmatic argmin.
-- RIGHT: standoff against meter quality, first step and settled, with the library
-  `Agent`'s closed-loop point on the settled curve. A flat line (fixed `R`) against two
-  curves. Their height is set by `Λ` through the law, so read their shape and not their
-  height.
+- TOP: EFE and its split across the valve grid for the fixed-`R` twin and the DP
+  meter, at a shared y-scale with the surge line marked. The twin's flat epistemic line
+  against the DP meter's rising one, and the `G` argmin moving off the pragmatic argmin.
+- BOTTOM LEFT: the same for a Coriolis meter. Its epistemic line rises toward surge, and
+  the `G` argmin lands past the surge line.
+- BOTTOM RIGHT: standoff against meter quality, first step and settled, with the
+  library `Agent`'s closed-loop point on the settled curve and the Coriolis meter's
+  settled margin below the surge line. The DP curves' height is set by `Λ` through the
+  law, so read their shape and not their height.
 
 Nothing here is a citable number. See `examples/README.md`.
 
@@ -1114,12 +1116,13 @@ def check() -> None:
 
 
 def render(out_path: Path) -> Path:
-    """Draw the three-panel figure and write it.
+    """Draw the four-panel figure and write it.
 
-    Two EFE panels through the shared gallery helper, one per agent, so the flat
-    epistemic line and the rising one sit side by side at the same scale. The third
-    panel is the meter-quality ladder, with the first step against where the loop
-    settles.
+    Three EFE panels through the shared gallery helper at one y-scale: the fixed-`R`
+    twin's flat epistemic line, the DP meter's rising one, and the Coriolis meter's
+    falling one. The fourth panel is the meter-quality ladder, the first step against
+    where the loop settles, with the Coriolis meter's settled margin below the surge
+    line.
 
     Args:
         out_path: where the PNG goes.
@@ -1132,9 +1135,12 @@ def render(out_path: Path) -> Path:
 
     twin_prag, twin_epi, twin_g = _sweep(live=False)
     live_prag, live_epi, live_g = _sweep()
+    coriolis_prag, coriolis_epi, coriolis_g = _sweep(meter="coriolis")
     ladder = _meter_ladder()
 
-    fig, (twin_ax, live_ax, right) = plt.subplots(1, 3, figsize=(17.5, 5.0))
+    fig, ((twin_ax, live_ax), (coriolis_ax, right)) = plt.subplots(
+        2, 2, figsize=(13.0, 11.0)
+    )
     fig.patch.set_facecolor(gallery.PAPER.bg)
 
     _panel(
@@ -1151,11 +1157,20 @@ def render(out_path: Path) -> Path:
         live_prag,
         live_epi,
         live_g,
-        f"R(Q) live, e_ref = {E_REF}",
+        f"DP meter, R(Q) live, e_ref = {E_REF}",
         "epistemic rises away from surge and holds\nthe valve off the economic optimum",
     )
-    for ax in (twin_ax, live_ax):
-        ax.set_ylim(_shared_ylim(twin_g, live_g, twin_epi, live_epi))
+    _panel(
+        coriolis_ax,
+        coriolis_prag,
+        coriolis_epi,
+        coriolis_g,
+        f"Coriolis meter, R(Q) live, e_ref = {E_REF}",
+        "epistemic rises toward surge and pulls\nthe valve past the surge line",
+    )
+    ylim = _shared_ylim(twin_g, live_g, coriolis_g, twin_epi, live_epi, coriolis_epi)
+    for ax in (twin_ax, live_ax, coriolis_ax):
+        ax.set_ylim(ylim)
         _mark_surge(ax)
 
     e_refs = [e for e, _, _ in ladder]
@@ -1166,7 +1181,7 @@ def render(out_path: Path) -> Path:
         color=gallery.EPISTEMIC_C,
         mfc="white",
         lw=1.6,
-        label="R(Q) agent, first step",
+        label="DP meter, first step",
     )
     right.plot(
         e_refs,
@@ -1174,7 +1189,7 @@ def render(out_path: Path) -> Path:
         "-o",
         color=gallery.EPISTEMIC_C,
         lw=2.2,
-        label="R(Q) agent, settled (law)",
+        label="DP meter, settled (law)",
     )
     right.plot(
         [E_REF],
@@ -1182,7 +1197,7 @@ def render(out_path: Path) -> Path:
         "*",
         color=gallery.VERMILLION,
         ms=13,
-        label="library Agent, closed loop",
+        label="library Agent, DP meter, closed loop",
     )
     right.plot(
         e_refs,
@@ -1191,6 +1206,26 @@ def render(out_path: Path) -> Path:
         color=gallery.PRAGMATIC_C,
         lw=2.2,
         label="fixed R twin",
+    )
+    right.plot(
+        [E_REF],
+        [_settled_law(meter="coriolis")],
+        "D",
+        color=gallery.VERMILLION,
+        ms=8,
+        label="Coriolis meter, settled (law)",
+    )
+    right.axhline(0.0, color=gallery.VERMILLION, lw=1.4, ls="--", zorder=1)
+    right.annotate(
+        "surge",
+        xy=(1.0, 0.0),
+        xycoords=("axes fraction", "data"),
+        xytext=(-4, 4),
+        textcoords="offset points",
+        ha="right",
+        color=gallery.VERMILLION,
+        fontsize=9,
+        fontweight="bold",
     )
     right.set_xscale("log")
     right.set_xticks(e_refs)
@@ -1204,9 +1239,9 @@ def render(out_path: Path) -> Path:
         "the control line moves, or it does not", fontsize=12, fontweight="bold"
     )
     right.annotate(
-        "a worse meter runs CLOSER to surge, first step and settled alike:\n"
-        "the ambiguity term is not a safety factor.\n"
-        "Read the shape, not the height: Λ sets the height",
+        "a worse DP meter runs CLOSER to surge, first step and settled alike,\n"
+        "and a Coriolis meter settles past it: the ambiguity term is not a\n"
+        "safety factor. Read the shape, not the height: Λ sets the height",
         xy=(0.5, -0.30),
         xycoords="axes fraction",
         ha="center",
@@ -1215,14 +1250,17 @@ def render(out_path: Path) -> Path:
         color="#333333",
     )
     right.grid(True, alpha=0.25)
-    right.legend(loc="center left", fontsize=8.5, framealpha=0.9)
+    # Between the surge line and the twin's line, the one band no curve crosses.
+    right.legend(
+        loc="lower right", bbox_to_anchor=(1.0, 0.1), fontsize=8.5, framealpha=0.9
+    )
 
     fig.tight_layout()
     return gallery.save_figure(fig, out_path, dpi=150, tight=True)
 
 
 def _shared_ylim(*series) -> tuple[float, float]:
-    """One y-range across both EFE panels, so the flat line reads as flat.
+    """One y-range across the EFE panels, so the flat line reads as flat.
 
     The headroom is uneven on purpose. The epistemic line runs along the top of the
     data, and the shared legend sits upper right, so without room above it the legend
