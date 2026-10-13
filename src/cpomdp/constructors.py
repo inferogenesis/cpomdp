@@ -19,6 +19,7 @@ to either is a change to a line of source.
 from dataclasses import dataclass
 from enum import Enum
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 from numpy.typing import ArrayLike
@@ -117,11 +118,16 @@ class ModelSpec:
     unchanged. They are objects rather than arrays, no perturbation names them, and a
     model that carries one carries the same one every build.
 
+    Either noise may be left as ``None`` beside its object. The spec holds the
+    ``None`` and the model derives the value at each build (DECISIONS.md ADR-066).
+
     Args:
         dynamics_matrix: State to next state — A, shape ``(n, n)``.
         observation_matrix: State to reading — C, shape ``(m, n)``.
-        dynamics_noise: Process-noise covariance — Q, shape ``(n, n)``.
-        observation_noise: Reading-noise covariance — R, shape ``(m, m)``.
+        dynamics_noise: Process-noise covariance — Q, shape ``(n, n)``. ``None`` to
+            leave it to ``dynamics_noise_model``.
+        observation_noise: Reading-noise covariance — R, shape ``(m, m)``. ``None`` to
+            leave it to ``observation_model``.
         prior_mean: Centre of the initial belief, shape ``(n,)``.
         prior_cov: Covariance of the initial belief, shape ``(n, n)``.
         control_matrix: Action to state — B, shape ``(n, p)``. ``None`` for a model
@@ -134,8 +140,8 @@ class ModelSpec:
 
     dynamics_matrix: np.ndarray
     observation_matrix: np.ndarray
-    dynamics_noise: np.ndarray
-    observation_noise: np.ndarray
+    dynamics_noise: np.ndarray | None
+    observation_noise: np.ndarray | None
     prior_mean: np.ndarray
     prior_cov: np.ndarray
     version: str
@@ -149,8 +155,8 @@ class ModelSpec:
         *,
         dynamics_matrix: ArrayLike,
         observation_matrix: ArrayLike,
-        dynamics_noise: ArrayLike,
-        observation_noise: ArrayLike,
+        dynamics_noise: ArrayLike | None = None,
+        observation_noise: ArrayLike | None = None,
         prior_mean: ArrayLike,
         prior_cov: ArrayLike,
         version: str,
@@ -162,17 +168,18 @@ class ModelSpec:
         for name, value in (
             ("dynamics_matrix", dynamics_matrix),
             ("observation_matrix", observation_matrix),
-            ("dynamics_noise", dynamics_noise),
-            ("observation_noise", observation_noise),
             ("prior_mean", prior_mean),
             ("prior_cov", prior_cov),
         ):
             object.__setattr__(self, name, _frozen(value))
-        object.__setattr__(
-            self,
-            "control_matrix",
-            None if control_matrix is None else _frozen(control_matrix),
-        )
+        for name, optional in (
+            ("dynamics_noise", dynamics_noise),
+            ("observation_noise", observation_noise),
+            ("control_matrix", control_matrix),
+        ):
+            object.__setattr__(
+                self, name, None if optional is None else _frozen(optional)
+            )
         object.__setattr__(self, "observation_model", observation_model)
         object.__setattr__(self, "dynamics_noise_model", dynamics_noise_model)
         object.__setattr__(self, "structure", structure)
@@ -221,8 +228,10 @@ class ModelSpec:
     def build(self, perturbation: Perturbation = CORRECT) -> LinearGaussianModel:
         """A model built from these parameters, with ``perturbation`` applied.
 
-        Every array is copied, so two models built from one spec share no leaf and
-        neither can be reached from the other.
+        Every declared array is copied, so two models built from one spec share none
+        of them and neither can be reached from the other through one. A carried
+        object is shared, as is a noise derived from it, which can be the object's
+        own array.
 
         Args:
             perturbation: The named change to apply. Defaults to ``CORRECT``, which
@@ -232,15 +241,18 @@ class ModelSpec:
             A ``LinearGaussianModel``, validated by its own constructor.
 
         Raises:
-            ValueError: If the perturbation names ``control_matrix`` on a spec that
-                declares none, or if the result fails the model's own validation, as a
-                covariance scaled to zero or below does.
+            ValueError: If the perturbation names a parameter this spec leaves as
+                ``None`` (``control_matrix``, or a noise left to its object), or if the
+                result fails the model's own validation, as a covariance scaled to zero
+                or below does.
+            TypeError: If the spec leaves a noise out with no object to read it from.
+                The model raises it, at the first build.
         """
         parameter = perturbation.parameter
-        if parameter == "control_matrix" and self.control_matrix is None:
+        if parameter is not None and getattr(self, parameter) is None:
             raise ValueError(
-                f"{perturbation.name!r} perturbs control_matrix, and this spec "
-                f"declares no control_matrix to perturb"
+                f"{perturbation.name!r} perturbs {parameter}, and this spec "
+                f"declares no {parameter} to perturb"
             )
         self._reject_shadowed(perturbation)
         scale = 1.0 + perturbation.magnitude
@@ -254,16 +266,12 @@ class ModelSpec:
         return LinearGaussianModel(
             dynamics_matrix=jnp.array(value("dynamics_matrix")),
             observation_matrix=jnp.array(value("observation_matrix")),
-            dynamics_noise=jnp.array(value("dynamics_noise")),
-            observation_noise=jnp.array(value("observation_noise")),
+            dynamics_noise=_copied(value("dynamics_noise")),
+            observation_noise=_copied(value("observation_noise")),
             prior=Belief(
                 mean=jnp.array(self.prior_mean), cov=jnp.array(self.prior_cov)
             ),
-            control_matrix=(
-                None
-                if self.control_matrix is None
-                else jnp.array(value("control_matrix"))
-            ),
+            control_matrix=_copied(value("control_matrix")),
             observation_model=self.observation_model,
             dynamics_noise_model=self.dynamics_noise_model,
             structure=self.structure,
@@ -454,3 +462,8 @@ def _frozen(value: ArrayLike) -> np.ndarray:
     array = np.array(value, dtype=float)
     array.setflags(write=False)
     return array
+
+
+def _copied(array: np.ndarray | None) -> jax.Array | None:
+    """A fresh JAX copy of ``array``, or ``None`` for a parameter left out."""
+    return None if array is None else jnp.array(array)

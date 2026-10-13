@@ -4392,3 +4392,37 @@ having a constant epistemic value. The kernel's varied with the action.
   derivation reads it before anything else is validated.
 - The derived value is fixed at construction, with the `dataclasses.replace`
   consequence ADR-064 records.
+
+## ADR-066 — `ModelSpec` may leave a noise to its object, as the model does
+
+**Date:** 2026-10-12
+**Status:** Accepted
+**Extends:** ADR-064 and ADR-065. Takes up the last consequence of ADR-064, which left
+`ModelSpec` requiring `observation_noise`.
+**Phase:** issue #128
+
+### Decision
+
+`ModelSpec` accepts `observation_noise` and `dynamics_noise` as `None` beside the
+matching noise object, and stores the `None`. `build` passes it to
+`LinearGaussianModel`, which derives the value. The spec derives nothing itself. The
+rule lives in the model alone, so a spec cannot drift from it.
+
+A spec that leaves a noise out with no object to read it from still constructs. Its
+first build raises the model's `TypeError`. Checking at the spec would restate the
+model's rule in a second place. The spec already leaves every content check to the
+build.
+
+A perturbation of a field the spec leaves as `None` is refused at build. The message
+is the one `control_matrix` already had, that the spec declares none to perturb, and
+the check now covers all three optional arrays. `_reject_shadowed` would refuse the
+perturbation anyway, since an omitted noise always sits beside its object. Its message
+for a fixed object says the field restates the object. With no field that is untrue.
+
+### Consequences
+
+- `ModelSpec.dynamics_noise` and `ModelSpec.observation_noise` are
+  `np.ndarray | None`. Nothing in the tree reads them off a spec.
+- Two builds share a noise derived from a fixed object, which returns its own array.
+  They already shared that object, so nothing new is reachable. `build`'s docstring now
+  says which arrays are copied rather than claiming every leaf is.

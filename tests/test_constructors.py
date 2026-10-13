@@ -286,6 +286,62 @@ def test_correct_still_builds_with_an_agreeing_fixed_sensor():
     assert spec.build(CORRECT).observation_model is sensor
 
 
+# --- a noise left to its object -------------------------------------------------------
+#
+# The model derives an omitted noise from its object at the prior mean. The spec holds
+# the None and passes it through, so the rule lives in one place.
+
+
+def _spec_leaving(field: str, **noise_objects) -> ModelSpec:
+    return ModelSpec(
+        dynamics_matrix=[[1.0, DT], [0.0, 1.0]],
+        observation_matrix=[[1.0, 0.0]],
+        dynamics_noise=(
+            None if field == "dynamics_noise" else [[1e-4, 0.0], [0.0, 1e-4]]
+        ),
+        observation_noise=None if field == "observation_noise" else [[1e-2]],
+        prior_mean=[0.0, 0.0],
+        prior_cov=[[1.0, 0.0], [0.0, 1.0]],
+        control_matrix=CONTROL,
+        version="spec-v1",
+        **noise_objects,
+    )
+
+
+def test_a_spec_may_leave_the_observation_noise_to_its_sensor():
+    sensor = CallableSensor([[1.0, 0.0]], _noise_at, ())
+    spec = _spec_leaving("observation_noise", observation_model=sensor)
+    assert spec.observation_noise is None
+    np.testing.assert_array_equal(spec.build().observation_noise, [[1e-2]])
+
+
+def test_a_spec_may_leave_the_dynamics_noise_to_its_process_noise():
+    process = CallableProcessNoise(_process_at, ())
+    spec = _spec_leaving("dynamics_noise", dynamics_noise_model=process)
+    assert spec.dynamics_noise is None
+    np.testing.assert_array_equal(spec.build().dynamics_noise, np.eye(2) * 1e-3)
+
+
+def test_a_spec_leaving_a_noise_with_no_object_fails_at_its_first_build():
+    spec = _spec_leaving("observation_noise")
+    with pytest.raises(TypeError, match="observation_noise is required"):
+        spec.build()
+
+
+@pytest.mark.parametrize(
+    "sensor",
+    [
+        CallableSensor([[1.0, 0.0]], _noise_at, ()),
+        FixedSensor([[1.0, 0.0]], observation_noise=[[1e-2]]),
+    ],
+    ids=["state-dependent", "fixed"],
+)
+def test_perturbing_a_noise_the_spec_leaves_out_does_not_build(sensor):
+    spec = _spec_leaving("observation_noise", observation_model=sensor)
+    with pytest.raises(ValueError, match="declares no observation_noise"):
+        spec.build(Perturbation("noisy", "observation_noise", 0.5))
+
+
 # --- the spec compares and hashes rather than raising -------------------------------
 
 

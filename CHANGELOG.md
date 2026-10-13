@@ -394,6 +394,10 @@ no use of the readings beats it.
 - `LinearGaussianModel`'s `dynamics_noise` is optional when a `dynamics_noise_model` is
   given, on the rule `observation_noise` follows. Omitted, it is the process noise's `Q`
   at `prior.mean` (ADR-065). With no process-noise object the field is still required.
+- `ModelSpec` takes `observation_noise` and `dynamics_noise` as `None` beside the
+  matching noise object and passes the `None` to the model, which derives the value
+  (ADR-066). A perturbation naming a noise the spec leaves out is refused, as one naming
+  an absent `control_matrix` already was.
 - The `symbolic` CI job reconciles the three symbolic suites against
   `research/registered_checks.toml` instead of comparing three hand-typed strings. The
   strings said `23 registered, 23 tested here, none fired` and two more like it. They
