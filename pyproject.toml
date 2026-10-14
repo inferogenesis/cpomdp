@@ -1,6 +1,6 @@
 [project]
 name = "cpomdp"
-version = "0.4.4"
+version = "0.5.0"
 description = "Continuous active inference for Python — the continuous-state sibling of pymdp."
 readme = "README.md"
 requires-python = ">=3.11"

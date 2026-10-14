@@ -6,26 +6,21 @@ in `DECISIONS.md` (ADRs); this file is the roadmap.
 Conventions: `[x]` done, `[ ]` open, `[~]` partial. **⛔** marks a PR that cannot merge
 until GATE-D4 passes.
 
-Window: v0.4.4 → v0.5. Every remaining change for Papers 2 and 3, as merge-sized pull
-requests. Eleven PRs across two tags. Module and symbol names below are proposals. Each
-PR's ADR fixes them.
+Window: v0.5.0 → v0.6. Every remaining change for Papers 2 and 3, as merge-sized pull
+requests, across two tags. Module and symbol names below are proposals. Each PR's ADR
+fixes them.
 
 ---
 
-## Where this stands — v0.4.4, released 2026-08-04
+## Where this stands — v0.5.0, released 2026-10-15
 
-**Shipped ahead of schedule.** Toolbox **A** (multi-step EFE) was scheduled at v0.5.
-Toolbox **G-B** (exhaustive enumerator with a completeness certificate) was Paper 3's,
-scheduled at v0.6. Both landed at v0.4.4: `cpomdp.enumeration`, `FiniteActionSet`,
-`EnumeratedEfeSearch`, `CompletenessCertificate`, `IncompleteEnumerationError` (ADR-030,
-ADR-031). R10 is measured. `H* = 7`, exhaustive over the declared `{0, ±1, ±2}`, H = 1
-anchors pinned at `Δε = 1.7232`, `Δc = 4.4910`, `ΔG = +2.7678` nats to `1e-4` (ADR-033).
+**Shipped in v0.5.0.** PR-1, PR-1b, PR-2, PR-3, PR-4, PR-7a and PR-7, cut from `main`
+ahead of the gate so the November workshop installs the optional noises (ADR-067). Their
+sections below stay until the reset after the gate. The open PRs build on them.
 
-**Scheduled and not shipped.** v0.4.3 shipped `cpomdp.diagnostics`,
-`tests/test_theorem.py` and the FFG positive-definiteness fixes. It did not ship toolbox
-**B** (the scoring harness) or **G-A** / **G-D** (the Paper 3 hedge), all three of which
-the original Phase 0 assumed it would. Those three, plus **C**, **C′**, **D**, **E**,
-**F1–F6** and **G-C**, are the whole of what follows.
+**Open for the gate, v0.5.1.** PR-5 is partway. PR-7b has one item left. PR-6 and PR-8a
+to PR-8c have not started. PR-8a waits on the hand derivation, whose part 1 landed on
+2026-10-11.
 
 **Blast radius, and it shrank.** D3 was always gate-independent in content. With A and
 R10 banked at v0.4.4, a gate failure now costs Part 2's numbers and nothing else. R1–R5,

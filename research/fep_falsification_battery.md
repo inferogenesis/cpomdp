@@ -825,7 +825,7 @@ both cells. The fourth D3 falsifier is discharged and PR-2's merge gate is met.
 | **v0.4.2 ✓** | P1 witness | A1–A3, B1–B5 |
 | **v0.4.3 ✓** | `cpomdp.diagnostics`, per-claim theorem suite, FFG PD fixes. **Not** the scoring harness | — |
 | **v0.4.4 ✓** | multi-step EFE, exhaustive enumerator + completeness certificate | D3's measurement |
-| **v0.5.0** | PR-1 warrant vocabulary · PR-2 R10 hardening · PR-3 World/Agent seam · PR-4 scoring harness · PR-7 reference filter + rule family | E3 |
+| **v0.5.0 ✓** | PR-1 warrant vocabulary · PR-2 R10 hardening · PR-3 World/Agent seam · PR-4 scoring harness · PR-7 reference filter + rule family | E3 |
 | **v0.5.1** | PR-5 control bracket + Part 1 results · PR-8 **GATE-D4** | C1–C5, E1 signature, D3 completion, D4 |
 | **v0.6** | PR-9 window harness + Part 2 results · PR-10 Paper 3 Part 2 · PR-11 release | C6, D1, D2, E1 R(x) leg. R1–R10 all print and assert |
 | **further** | rival harness, parameter estimation, point-process and rate-distortion modules | E2, F2, F3 |

@@ -207,7 +207,7 @@ You can swap the inference engine if you want to. `KalmanBackend` is the default
 
 ## Status
 
-Still pre-1.0. v0.4 secures the public API around the factor-graph backend and the enumeration layer. If you have a request or a suggestion that would make the front-facing API more usable, open a GitHub issue, I am happy to listen. Until 1.0, a minor version is where breaking changes can land.
+Still pre-1.0. v0.5 renames the model's arguments to `observation_matrix` and `observation_noise` and makes every argument after `dynamics` keyword-only. Python 3.11 is the new floor. The [changelog](https://github.com/inferogenesis/cpomdp/blob/main/CHANGELOG.md) lists each break. v0.5 also adds the vocabulary a check uses to say what it is entitled to claim, and the anti-surge application. If you have a request or a suggestion that would make the front-facing API more usable, open a GitHub issue, I am happy to listen. Until 1.0, a minor version is where breaking changes can land.
 
 ## Development
 
