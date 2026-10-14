@@ -219,24 +219,16 @@ and Surge Simulation for Active Inference Based Control* (ASME Turbo Expo 2024,
 [GT2024-124905](https://doi.org/10.1115/GT2024-124905)). Every modelling choice here is
 mine, and nothing below is a claim about what that paper did.
 
-Anti-surge control on a centrifugal compressor holds a margin above the surge line, and
-the flow it holds that margin on is measured with a differential-pressure element. A DP
-element obeys `Q = k·√ΔP`, and the transmitter's error is roughly flat across its span.
-Propagate one through the other and the flow variance is
+Anti-surge control holds a compressor's flow a margin above the surge line, and that
+flow is measured with a differential-pressure element. The square-root law and a flat
+transmitter error give the meter a flow variance of
 
 ```text
 R(Q) = e_ref²·Q_ref⁴ / Q²
 ```
 
-cpomdp takes that noise as it comes. `CallableSensor` carries `R(Q)` as a
-state-dependent observation noise, and the state stays continuous, with no grid over
-flow. Two approximations remain. `R(Q)` is a first-order propagation through the square
-root. The filter plugs in `R` at the predicted mean, which is the approximation the
-inference-gap work measures. The full derivation, its one calibration constant and the
-list of what is not modelled are in
-[the derivation note](../docs/guides/surge_margin_derivation.md).
-
-Two agents differ in one line:
+`CallableSensor` carries it as a state-dependent observation noise, with no grid over
+flow. Two agents differ in one line:
 
 ```python
 # the conventional setup: R frozen at the operating point
@@ -248,72 +240,16 @@ observation_model = CallableSensor(C, _dp_meter_noise, params)   # R = R(m)
 
 ![Four panels. Top left, the fixed-R agent: its epistemic curve is a flat horizontal line, so the minimum of G sits exactly on the minimum of the pragmatic term. Top right, the DP meter: its epistemic curve rises away from the surge line and pulls the minimum of G off the economic optimum. Bottom left, a Coriolis meter: its epistemic curve rises toward the surge line and the minimum of G lands past it. Bottom right, the standoff against meter uncertainty: a dashed curve where the DP agent's first step aims, a solid curve below it where the loop settles with a star where the library's own Agent settled, a flat line for the fixed-R twin at the preference, and a single diamond for the Coriolis meter just below the surge line.](../docs/assets/surge_margin.png)
 
-The fixed twin's `argmin G` is exactly its `argmin pragmatic`. Its surge control line is
-whatever preference was set to and nothing else. Koudahl, Kouw and de Vries proved that
-for fixed-noise linear Gaussian state space models, where EFE minimisation reduces to KL
-control and the exploratory drive does no work
-([Entropy 23(12):1565](https://doi.org/10.3390/e23121565)). This repo records it as
-ADR-003, and here it is in industry terms. The `R(Q)` agent is held off that optimum by
-the ambiguity term, and how far moves with the quality of the meter.
+The fixed twin's `argmin G` is exactly its `argmin pragmatic`, so its surge control line
+is whatever preference was set to. Koudahl, Kouw and de Vries proved that collapse for
+fixed-noise linear Gaussian state space models
+([Entropy 23(12):1565](https://doi.org/10.3390/e23121565)), and this repo records it as
+ADR-003. The `R(Q)` agent is held off that optimum on the safe side. A worse meter moves
+it closer to surge. Swap in a Coriolis meter at the same accuracy at design flow and the
+offset flips sign. The library's own `Agent` then settles past the surge line. The
+ambiguity term is not a safety factor.
 
-### Where it settles, and why
-
-The standoff has a closed form. One EFE step moves only the predicted mean, so setting
-`dG/dm` to zero gives
-
-```text
-Λ·(m − g) = −ℓ'(m)·(κ + Λ·R) / 2        κ = P⁻ / (P⁻ + R),  the Kalman gain
-```
-
-For a DP meter `ℓ' = −2/Q`, so the agent sits exactly `κ/(ΛQ) + R/Q` above its
-preference. Every grid argmin in the demo lands within one grid step of this root.
-
-The first part is epistemic, and the economic weight `Λ` sets its scale. The second is
-pragmatic. The preference is over readings, a noisier reading costs expected pragmatic
-value, and a DP meter's reading is quieter at higher flow. A worse meter lowers κ and
-shrinks the first part. It raises `R` and grows the second. The first wins, so a worse
-meter still moves the agent closer to surge, and the check asserts that direction for
-the first step and for the settled loop.
-
-κ also depends on how sure the agent already is. The first decision is taken from a
-broad prior, so its κ is near one and it aims well out. A loop that has run a while
-holds a tighter belief, its κ is smaller, and it settles much nearer the preference.
-Run in closed loop, the library's own `Agent` settles where the law puts it with κ at
-the filter's steady state. `--check` prints the first step and the settled margin side
-by side. The settled offset is the one an operator would see. Its κ is small enough
-that the pragmatic part is no longer negligible at the worse meters.
-
-### The direction is the wrong way round, and that is the result
-
-A worse meter moves this agent **closer** to surge, not further, on the first step and
-once settled. A meter that resolves nothing offers no information worth travelling for,
-so the epistemic term flattens and the economics win.
-
-Swap the meter and it gets worse. A Coriolis meter's error is a constant percentage of
-rate, so its absolute noise is smallest at low flow. Give the same agent one, at the
-same accuracy at design flow, and the offset flips sign. The information term now pulls
-toward surge. In closed loop the library's own `Agent` settles past the surge line.
-Nothing in the agent changed. Only the sensor did.
-
-Real surge margin runs the other way because it prices the cost of *being wrong*, and
-that is a pragmatic quantity. So the demo is a clean negative result: the EFE ambiguity
-term is not a safety factor, and with the wrong meter it works against one. Anyone
-reaching for it as a safety factor is reading it as a risk term when it is an
-information term. Surge protection has to be priced in the preference or held by a
-hard limit.
-
-### What the row labels are entitled to claim
-
-Every row samples a sweep over a continuous valve range, which is a finite grid over an
-infinite domain. So each reports `CORROBORATED` and none is `PROVED` at any grid
-resolution. The monotonicity row is `BOUNDED` against the sweep's own step size: a
-standoff that moved by less than one grid cell did not measurably move. The
-`ℓ'(m) = −2/Q` row is `EXACT`, being autodiff against a closed form at machine
-precision, and it is a statement about the sensor rather than a measured inference gap.
-The law, closed-loop and Coriolis rows are `BOUNDED` by the same grid step. The closed
-loop runs noise-free, for each meter at the default accuracy. The rest of the settled
-ladder comes from the law.
-
-`--check` prints both ladders, the `probe_model` verdict and the eleven falsifiers. It
-asserts that none of them fired and that `Λ` moves the standoff further than the meter
-does, with no plotting deps.
+[The Applications page](../docs/guides/surge_margin.md) has the results and what they
+mean for anti-surge. [The derivation](../docs/guides/surge_margin_derivation.md) derives
+`R(Q)` and the closed-form law for where the agent stands, and lists what the demo does
+not model. `--check` asserts the eleven falsifiers behind both, with no plotting deps.

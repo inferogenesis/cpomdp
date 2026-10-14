@@ -1,8 +1,9 @@
 # The DP flow meter gives you `R(x)` for free
 
-Supporting note for [`examples/surge_margin.py`](https://github.com/inferogenesis/cpomdp/blob/main/examples/surge_margin.py).
-It derives the sensor model that demo runs on, fixes its one calibration constant, and
-records what the demo does not model.
+Supporting note for [the anti-surge application](surge_margin.md), which leads with
+the results. It derives the sensor model that
+[`examples/surge_margin.py`](https://github.com/inferogenesis/cpomdp/blob/main/examples/surge_margin.py)
+runs on, fixes its one calibration constant, and records what the demo does not model.
 
 Nothing here is a citable result. The example gallery's numbers are showcases, and this
 note inherits that status.
@@ -30,6 +31,9 @@ the square root:
 ```text
 σ_Q = |dQ/dΔP|·σ_ΔP = (k / 2√ΔP)·σ_ΔP = k²σ_ΔP / (2Q)
 ```
+
+That is a first-order propagation. It holds while `σ_ΔP` is small against `ΔP`, which is
+least true at low flow.
 
 So the variance of the flow measurement is
 
@@ -254,6 +258,20 @@ only at order σ², and the third cumulant separates them above that. It is posi
 locally, because `c₄ < 0` turns the series over at larger spread. Both are recorded in
 `research/gate_d4_registration.md`.
 
+## What the checks are entitled to claim
+
+Every row samples a sweep over a continuous valve range, which is a finite grid over an
+infinite domain. So each reports `CORROBORATED` and none is `PROVED` at any grid
+resolution. The monotonicity row is `BOUNDED` against the sweep's own step size: a
+standoff that moved by less than one grid cell did not measurably move. The
+`ℓ'(m) = −2/Q` row is `EXACT`, being autodiff against a closed form at machine
+precision, and it is a statement about the sensor rather than a measured inference gap.
+The law, closed-loop and Coriolis rows are `BOUNDED` by the same grid step.
+
+`--check` prints both ladders, the `probe_model` verdict and the eleven falsifiers. It
+asserts that none of them fired and that `Λ` moves the standoff further than the meter
+does, with no plotting deps.
+
 ## What this does not model
 
 The demo and anything written about it quote the same list:
@@ -263,6 +281,9 @@ The demo and anything written about it quote the same list:
 - No cubic compressor characteristic.
 - No speed line, and no travel along one.
 - A local linearisation about a single operating point.
+- `R(Q)` is a first-order propagation through the square root. The filter plugs in `R`
+  at the predicted mean, which is the approximation the inference-gap work measures. The
+  demo measures neither.
 - Horizon-1 EFE only. No multi-step planning.
 - The surge point `Q_s` is known and fixed. Treating it as an unknown latent is the
   interesting version of this problem and is not what the demo does.
@@ -291,9 +312,9 @@ The demo and anything written about it quote the same list:
   The demo's claim is the *direction* of the offset, not its size.
 - The ladders' first steps are taken from a prior with σ = 2% of design flow, and the
   prior's width scales them as much as `Λ` does.
-- The closed loop is noise-free, and only the default meter runs through the library's
-  `Agent`. A noisy loop fluctuates about the point it finds. The settled margins for the
-  rest of the meter ladder come from the law.
+- The closed loop is noise-free, and only the default accuracy runs through the
+  library's `Agent`, once for each meter. A noisy loop fluctuates about the point it
+  finds. The settled margins for the rest of the meter ladder come from the law.
 
 The demo is a statement about what a state-dependent sensor does to action selection. It
 is not a compressor model.
