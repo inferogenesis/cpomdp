@@ -62,7 +62,7 @@ So the honest form of the prohibition is narrower than "execution cannot prove u
 
 *`BOUNDED` available now (v0.4.2).* Claims computed inside the agent's own closed-form Gaussian recursion, which touch no grid: Theorem 1(i)'s covariance separation, Corollary 1's scalar epistemic separation, Example 1's closed-form level set, the typed structural guard. The programme already treats fixed-R and R(x) as its two *exhibited* model classes, with the deferred Hierarchical Gaussian Filter offered as "a second `BOUNDED` witness", which presupposes a first. Battery tests B1–B5 sit here legitimately at v0.4.2.
 
-*`BOUNDED` gated on GATE-D4 (v0.4.5).* Any number routed through the exact reference filter, which is where the certified discretisation bound lives: the absolute inference gap under R(x), the fidelity ladder, the scaling exponent. In battery terms C6, D1, D2, and the reference-dependent parts of D3.
+*`BOUNDED` gated on GATE-D4 (v0.5.1).* Any number routed through the exact reference filter, which is where the certified discretisation bound lives: the absolute inference gap under R(x), the fidelity ladder, the scaling exponent. In battery terms C6, D1, D2, and the reference-dependent parts of D3.
 
 The gate's failure clause is likewise scoped: if the bound is not statable at the pre-agreed factor, *Part 2's numbers* become uncertified and the paper is a different paper. That is existential for Part 2 and correctly gated at GATE-D4 rather than discovered at drafting. It is not a claim that the tier as a category is empty today.
 

@@ -4433,3 +4433,42 @@ for a fixed object says the field restates the object. With no field that is unt
 - Two builds share a noise derived from a fixed object, which returns its own array.
   They already shared that object, so nothing new is reachable. `build`'s docstring now
   says which arrays are copied rather than claiming every leaf is.
+
+## ADR-067 — v0.5.0 is cut from `main` ahead of GATE-D4, which moves to v0.5.1
+
+**Date:** 2026-10-14
+**Status:** Accepted
+**Phase:** v0.5.0 (release)
+
+### Decision
+
+v0.5.0 is cut from `main` now, before GATE-D4 is evaluated. It carries everything since
+v0.4.4: the warrant vocabulary and the `slogdet` oracle audit, the chunked enumerator,
+R10 hardening, the World/Agent seam and its constructors, the Paper 2 scoring harness,
+the printed scheme's failure probes, the exact reference filter and its rule ladder,
+`observation_noise` and `dynamics_noise` made optional (ADR-064, ADR-065), and the
+anti-surge application.
+
+The tag that carries GATE-D4 becomes v0.5.1, still cut at PR-8's merge whatever the
+outcome. The tag Papers 2 and 3 pin becomes v0.6.
+
+The November workshop installs from PyPI. It should get the optional noises, and the
+gate waits on a hand derivation with no date yet. Holding a release for the gate would
+hold the workshop back with it.
+
+It is a minor release. Eleven changes since v0.4.4 break callers, among
+them the `sensor_model` and `sensor_noise` renames, keyword-only constructor arguments
+and Python 3.11 as the floor. Before 1.0 a breaking change lands in a minor version. A
+patch number would break anyone pinned to `~=0.4.4`.
+
+### Consequences
+
+- v0.5.0 certifies nothing. The exact reference filter ships in it, and every number
+  routed through that filter stays gated on GATE-D4, as the warrant ledger says.
+- `GATE-D4` keeps its name. It was named apart from any tag for a move like this one.
+- Earlier ADRs keep their `Phase: v0.4.5` lines. They name the tag as planned when they
+  were written. The work they describe ships in v0.5.0.
+- The battery, the warrant ledger and `warrant_numbers.md` read v0.5.0 for shipped work,
+  v0.5.1 for GATE-D4 and what precedes it, and v0.6 for the papers' tag. The ledger's
+  opening line is dated against v0.4.4 and keeps its wording.
+- A breaking change before the gate makes the gate's tag v0.6.0 and the papers' tag v0.7.

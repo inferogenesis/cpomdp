@@ -402,7 +402,7 @@ The conditioning of the H=7 walk clears the numerical-hygiene bars (recorded abo
 against `COND_CEILING = 1e8`. An independent NumPy kernel (slogdet `ln det`, where the shipped
 kernel uses Cholesky) reproduces `G(walk_7)` and `G(reach_7)` within `atol = 1e-9`.
 
-### The oracle audit anchors (v0.4.5)
+### The oracle audit anchors (v0.5.0)
 
 That NumPy kernel kept only `slogdet`'s log-magnitude. It therefore accepted a covariance
 block with an even number of negative eigenvalues, where the shipped kernel's Cholesky
@@ -437,7 +437,7 @@ inherits about `8.5e-9` of absolute slack from the pair above. Rounded up from t
 An anchor is not a warrant. It records that a number did not move. Whether the number was
 right is what the negative-eigenvalue rejection decides.
 
-### The flip separation bar (v0.4.5)
+### The flip separation bar (v0.5.0)
 
 `H* = 7` rested on `G(walk) < G(reach)`, a bare inequality between two computed floats.
 Nothing said how far apart they had to be. The registered claim was decided by exhaustive

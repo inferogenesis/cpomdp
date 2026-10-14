@@ -55,7 +55,7 @@ collapses all three to the floor.
   exhibits one coexisting with no Def-1 schedule (observation-independence fails). The
   biconditional is false in general and holds here only by the fixed-R triviality.
 
-**A3 · structural, not accidental** · FALSIFY · P1 eq. (4) sweep · tier `EXACT` · **v0.4.2 ✓ / trivial v0.5 hardening**
+**A3 · structural, not accidental** · FALSIFY · P1 eq. (4) sweep · tier `EXACT` · **v0.4.2 ✓ / trivial v0.6 hardening**
 
 - Predict: survives arbitrary perturbation of A, B, C, Q and of the *value* of fixed R.
   Breaks only when R gains a state argument or control turns multiplicative.
@@ -91,7 +91,7 @@ collapses all three to the floor.
 - Does not buy: the title's claim rests on H3′, not H3. Keep the distinction
   load-bearing.
 
-**B3 · the Rmk-4 knife-edge, dual effect *without* epistemic value** · FALSIFY · Ex 1 · tier `BOUNDED` · **v0.4.2–v0.5, analytic, no new capability**
+**B3 · the Rmk-4 knife-edge, dual effect *without* epistemic value** · FALSIFY · Ex 1 · tier `BOUNDED` · **v0.4.2–v0.6, analytic, no new capability**
 
 - Predict: `R(x) = diag(r(x₁), s(x₁))` tracing `(1 + 1/r)(1 + 1/s) = const`. Every
   per-step epistemic value equals `½ ln 3` for every policy while Σ⁺ₖ varies. Parts
@@ -138,7 +138,7 @@ collapses all three to the floor.
 
 Off-diagonal cells carry the claim. The calibration zero validates nothing on its own.
 
-**C1 · calibration zero** · calibration · R1 · toolbox B, F · tier `EXACT` · **PR-5 · v0.4.5**
+**C1 · calibration zero** · calibration · R1 · toolbox B, F · tier `EXACT` · **PR-5 · v0.5.1**
 
 - Predict: p = p\*, exact filter → misspecification and inference gap both below `1e-12`.
 - Falsify: a nonzero floor top-left. Textbook zero (Kalman is the exact Bayesian filter
@@ -146,7 +146,7 @@ Off-diagonal cells carry the claim. The calibration zero validates nothing on it
   status; the contribution is the cross.
 - Does not buy: necessary calibration, not a result.
 
-**C2 · misspecification isolation** · FALSIFY · R2 · toolbox B constructors · tier `EXACT`/`BOUNDED` · **PR-5 · v0.4.5**
+**C2 · misspecification isolation** · FALSIFY · R2 · toolbox B constructors · tier `EXACT`/`BOUNDED` · **PR-5 · v0.5.1**
 
 - Predict: parameter-perturb the model, keep inference exact → `D_KL[p* ‖ p]` positive
   and stable across a **declared** seed set, inference gap below `1e-12`.
@@ -154,7 +154,7 @@ Off-diagonal cells carry the claim. The calibration zero validates nothing on it
   falsifies separability, the core metrological claim.
 - Does not buy: this cell, not C1, is what makes the instrument an instrument.
 
-**C3 · inference-gap isolation** · FALSIFY · R3 · toolbox B degraded variants · tier `EXACT`/`BOUNDED` · **PR-5 · v0.4.5**
+**C3 · inference-gap isolation** · FALSIFY · R3 · toolbox B degraded variants · tier `EXACT`/`BOUNDED` · **PR-5 · v0.5.1**
 
 - Predict: p = p\*, degrade inference (frozen gain / wrong fixed R / diagonal-only
   covariance) → inference gap positive, misspecification below `1e-12`.
@@ -162,7 +162,7 @@ Off-diagonal cells carry the claim. The calibration zero validates nothing on it
 - Does not buy: with C2, the two-term separability the one-term accounting cannot
   represent.
 
-**C4 · additivity** · FALSIFY · R4 · toolbox F · tier `EXACT` · **PR-5 · v0.4.5**
+**C4 · additivity** · FALSIFY · R4 · toolbox F · tier `EXACT` · **PR-5 · v0.5.1**
 
 - Predict: `H(p*) + misspecification + inference gap` reconstruct measured `E[F]` within
   the four-term bound.
@@ -170,7 +170,7 @@ Off-diagonal cells carry the claim. The calibration zero validates nothing on it
   exists, or a term is mis-estimated. Each is a real result about the accounting.
 - Does not buy: closure of *this* decomposition on *this* model class.
 
-**C5 · incompleteness demonstration** · DEMARCATE · R2 + R3 at a matched total · tier `EXACT`/`BOUNDED` · **PR-5 · v0.4.5**
+**C5 · incompleteness demonstration** · DEMARCATE · R2 + R3 at a matched total · tier `EXACT`/`BOUNDED` · **PR-5 · v0.5.1**
 
 - Predict: two agents the collapsed accounting scores *identically* at the same total
   surprise, one misspecified-but-exact and one correct-but-approximate, matched to equal
@@ -183,7 +183,7 @@ Off-diagonal cells carry the claim. The calibration zero validates nothing on it
 - Does not buy: demarcates incompleteness. It does not falsify the FEP. Frame as
   incompleteness of the received accounting, **never** as refuting the FEP.
 
-**C6 · breaking the calibration zero under R(x)** · FALSIFY · R6 · toolbox C · tier `BOUNDED` · **PR-9 · v0.5**, gated on GATE-D4
+**C6 · breaking the calibration zero under R(x)** · FALSIFY · R6 · toolbox C · tier `BOUNDED` · **PR-9 · v0.6**, gated on GATE-D4
 
 - Mechanism: under R(x) the exact posterior is non-Gaussian and every tractable rule is
   a Gaussian surrogate, so the gap is strictly positive by theorem. The correct/exact
@@ -211,7 +211,7 @@ Protocol: register the diagnosis, not the conclusion. Never discover a threshold
 raising a parameter until the result fires. Require the sign flip at the registered point
 *and* one step below.
 
-**D1 · fidelity-ladder ordering** · SEVERE · R7 · toolbox C, D · tier `BOUNDED` · **PR-9 · v0.5**, gated on GATE-D4
+**D1 · fidelity-ladder ordering** · SEVERE · R7 · toolbox C, D · tier `BOUNDED` · **PR-9 · v0.6**, gated on GATE-D4
 
 - Predict: along plug-in `R(μ⁻)` → Spinello–Stilwell iterated → belief-smoothed
   `E[R(x)]` → exact reference, the inference gap decreases at a certified tolerance, ε
@@ -447,7 +447,7 @@ certificate, its provenance and the ancestry test are the suite's own and are
 unchanged by where the ids are reconciled. A moved result amends this file before it
 touches that test.
 
-**D2 · scaling exponent** · SEVERE · R8 · toolbox C, F · tier `BOUNDED` · **PR-9 · v0.5**, gated on GATE-D4
+**D2 · scaling exponent** · SEVERE · R8 · toolbox C, F · tier `BOUNDED` · **PR-9 · v0.6**, gated on GATE-D4
 
 - Predict: `gap ∝ (curvature of R) × (belief spread)²`. Sweep both factors
   independently, fit the exponent, require it inside a pre-registered interval **around
@@ -464,7 +464,7 @@ touches that test.
   exponent contaminated by higher-order terms at large spread.
 - Does not buy: bears on the surrogate-vs-exact geometry only, not on the FEP's core.
 
-**D3 · crossover horizon H\*** · SEVERE · R10 · toolbox A, E · tier `BOUNDED` · **v0.4.4 ✓ measured, PR-2 + PR-5 · v0.4.5 complete**
+**D3 · crossover horizon H\*** · SEVERE · R10 · toolbox A, E · tier `BOUNDED` · **v0.4.4 ✓ measured, PR-2 + PR-5 · v0.5.1 complete**
 
 - Predict: sweep H; there exists H\* at which the accumulated epistemic pull overtakes
   the pragmatic gradient, so reach becomes walk. Sign flip asserted at H\* **and**
@@ -691,7 +691,7 @@ now, at two spacings, subdividing offered the optimum nothing it took.
 **Both axes now report.** Extension `PASS` at `H* = 6`, refinement `PASS` at `H* = 7` on
 both cells. The fourth D3 falsifier is discharged and PR-2's merge gate is met.
 
-**D4 · certified discretisation bound · GATE-D4** · SEVERE · R9 · toolbox C · tier `BOUNDED` · **PR-8 · v0.4.5, hard gate**
+**D4 · certified discretisation bound · GATE-D4** · SEVERE · R9 · toolbox C · tier `BOUNDED` · **PR-8 · v0.5.1, hard gate**
 
 - Predict: the reference filter's error is stated as a number, small relative to R6's
   signal by a **pre-agreed factor**. The factor is written down *before* the bound is
@@ -702,7 +702,7 @@ both cells. The fourth D3 falsifier is discharged and PR-2's merge gate is met.
   from an enumeration.
 - Falsify: the bound is not statable at the pre-agreed factor. `BOUNDED` collapses to
   `COMPUTED`, Part 2's numbers become uncertified, and the response is a different paper.
-- Gate mechanics: v0.4.5 is cut at PR-8's merge whatever the outcome, so a re-scoped
+- Gate mechanics: v0.5.1 is cut at PR-8's merge whatever the outcome, so a re-scoped
   paper cites a release rather than a commit. C6, D1 and D2 do not merge against an
   uncertified reference.
 - Does not buy: certification of the instrument, not a claim about agents. Existential
@@ -712,7 +712,7 @@ both cells. The fourth D3 falsifier is discharged and PR-2's merge gate is met.
 
 ## E — Is the FEP doing independent work?
 
-**E1 · vs dual control** · DEMARCATE · R5 · toolbox E · tier `EXACT` signature / `BOUNDED` leg · **PR-5 · v0.4.5 (signature), v0.5 (R(x) leg)**
+**E1 · vs dual control** · DEMARCATE · R5 · toolbox E · tier `EXACT` signature / `BOUNDED` leg · **PR-5 · v0.5.1 (signature), v0.6 (R(x) leg)**
 
 - Two regimes, kept apart. (a) Fixed-R control signature, where certainty equivalence
   *holds*: certify `J_CE = J*` exactly by separation, bracket width `= J_LQG − J_LQR` in
@@ -741,7 +741,7 @@ both cells. The fourth D3 falsifier is discharged and PR-2's merge gate is met.
 - Does not buy: separates "the FEP predicts the trade-off" from "the FEP re-labels a
   trade-off already tuned by hand". Both publishable; only one supports independence.
 
-**E3 · observational equivalence, why the battery is in silico** · DEMARCATE · toolbox B seam · **PR-3 · v0.4.5**
+**E3 · observational equivalence, why the battery is in silico** · DEMARCATE · toolbox B seam · **PR-3 · v0.5.0**
 
 - Build: the `World`/`Agent` seam, where the type system makes it impossible for the
   agent to read the world's parameters (the discipline of `IncompatibleLinearizationError`).
@@ -825,6 +825,7 @@ both cells. The fourth D3 falsifier is discharged and PR-2's merge gate is met.
 | **v0.4.2 ✓** | P1 witness | A1–A3, B1–B5 |
 | **v0.4.3 ✓** | `cpomdp.diagnostics`, per-claim theorem suite, FFG PD fixes. **Not** the scoring harness | — |
 | **v0.4.4 ✓** | multi-step EFE, exhaustive enumerator + completeness certificate | D3's measurement |
-| **v0.4.5** | PR-1 warrant vocabulary · PR-2 R10 hardening · PR-3 World/Agent seam · PR-4 scoring harness · PR-5 control bracket + Part 1 results · PR-7 reference filter + rule family · PR-8 **GATE-D4** | C1–C5, E3, E1 signature, D3 completion, D4 |
-| **v0.5** | PR-9 window harness + Part 2 results · PR-10 Paper 3 Part 2 · PR-11 release | C6, D1, D2, E1 R(x) leg. R1–R10 all print and assert |
+| **v0.5.0** | PR-1 warrant vocabulary · PR-2 R10 hardening · PR-3 World/Agent seam · PR-4 scoring harness · PR-7 reference filter + rule family | E3 |
+| **v0.5.1** | PR-5 control bracket + Part 1 results · PR-8 **GATE-D4** | C1–C5, E1 signature, D3 completion, D4 |
+| **v0.6** | PR-9 window harness + Part 2 results · PR-10 Paper 3 Part 2 · PR-11 release | C6, D1, D2, E1 R(x) leg. R1–R10 all print and assert |
 | **further** | rival harness, parameter estimation, point-process and rate-distortion modules | E2, F2, F3 |
