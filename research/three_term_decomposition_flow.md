@@ -92,8 +92,8 @@ the exact step are one computation.
 
 `ThreeTermEvaluator` holds `p*`. It is the experimenter's object, never an agent's, so
 it is the one place the true model and a cell's model are in hand together. `score`
-takes a cell, a `DrivenRun` and the sequence that drove it, and refuses a sequence
-whose version the run did not record.
+takes a cell and a `DrivenRun`, and reads the actions from the run, which carries the
+sequence that drove it.
 
 Three filters walk the readings side by side: the exact filter under `p*`, the exact
 filter under the cell's model, and the cell's own filter. At each step the two
@@ -126,7 +126,7 @@ predictive `S`, the exact posterior `Σ` under the cell's model, and the cell fi
 own `Σ`. An ill-conditioned matrix can manufacture or destroy twelve orders (ledger
 section 4), so the reading is carried beside the number rather than looked up later.
 
-One implementation serves the rollout and the score. `condition_numbers` moved into
+One implementation serves the rollout and the score. `_condition_numbers` moved into
 `cpomdp.diagnostics` and `rollout_conditioning` calls it, so a rollout and a cell
 read the same number for the same matrix.
 

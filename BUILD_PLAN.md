@@ -105,8 +105,8 @@ over an infinite domain, so it samples. A *policy enumeration* over a declared f
 enumerates.
 v0.4.4 already encodes this: `EFESelector` prints `CORROBORATED`, `EnumeratedEfeSearch`
 prints `PROVED`. PR-1 extended the vocabulary to checks, added the missing third level,
-and shipped it as `warrantlib`, re-exported as `cpomdp.warrant` (ADR-035, ADR-039).
-Import it; do not restate it.
+and shipped it as `warrantlib` (ADR-035, ADR-039). cpomdp's top level re-exports
+`Warrant` alone (ADR-069). Import the rest from `warrantlib`. Do not restate it.
 
 ---
 
@@ -284,7 +284,7 @@ can link to it.
 Do this first. Everything downstream self-labels off it, and a registered number depends
 on the audit half.
 
-- [x] Promote `SearchWarrant` to a shared `Warrant` enum (`cpomdp/warrant.py`) and add
+- [x] Promote `SearchWarrant` to a shared `Warrant` enum (now in `warrantlib`) and add
       **`CERTIFIED`** for Prover 3 · validated. Keep `SearchWarrant` as an alias so
       `EFESelector.warrant` and `EnumeratedEfeSearch.warrant` keep their labels
       unchanged. Without `CERTIFIED`, every reference-filter number either borrows
@@ -313,8 +313,8 @@ on the audit half.
       on the headline number at **H = 7**, past the H = 3 regime where the
       range-dependent noise branch makes this bite. Confirm it, do not assume it.
       **Outcome: it was not fixed.** Both epistemic terms now route through
-      `diagnostics.logdet_pd`, and the H = 7 anchors are bit-identical across the change,
-      so the guard corrected an exposure rather than a number.
+      `diagnostics._host_logdet_pd`, and the H = 7 anchors are bit-identical across the
+      change, so the guard corrected an exposure rather than a number.
 - [x] Add a test that a matrix with an even number of negative eigenvalues
       (`diag(-1, -2)` is the canonical one) is rejected on **both** paths. Two paths that
       both discard the sign agree wrongly, which is the worst outcome available and is
