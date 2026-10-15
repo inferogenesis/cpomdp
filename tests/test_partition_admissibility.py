@@ -6,8 +6,9 @@ ambiguity the agent reduces is cut, so the epistemic term dies while a drift eye
 still passes. Relevance is a *declared* physics property — the modeller flags the
 information-bearing edges (gradient rides receptor→CheA→CheY; methylation carries none),
 because a structural derivation would wrongly flag CheA→CheB (observed and coupled, yet
-gradient-blind). So a per-edge ``efe_relevant`` flag on ``Coupling`` drives the guard,
-which fires at ``FfgEfeSelector`` construction (the EFE path), never on pure filtering.
+gradient-blind). So a per-edge ``efe_relevant`` flag on ``Coupling`` drives the guard.
+It fires on every EFE path (the selector, the rollouts and the searches), never on pure
+filtering.
 """
 
 import jax.numpy as jnp
