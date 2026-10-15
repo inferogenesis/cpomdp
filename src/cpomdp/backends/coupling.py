@@ -763,8 +763,11 @@ class CouplingGraphBackend:
         The joint carried by ``infer_states`` makes every node exact, so a chosen node's
         belief is a slice, no re-inference (issue #25: the target latent need not be the
         root).
+
+        Raises:
+            ValueError: If ``node`` is not a node of the graph.
         """
-        block = self._block(node)
+        block = self._block(self._checked_node(node))
         return Belief(mean=belief.mean[block], cov=belief.cov[block, block])
 
     def readout(self, belief: Belief) -> Belief:
@@ -776,8 +779,26 @@ class CouplingGraphBackend:
 
         Lets a caller (e.g. the EFE selector) turn a node index into the joint-state
         block the epistemic term targets — ``info_node`` node → ``block`` (issue #26).
+
+        Raises:
+            ValueError: If ``node`` is not a node of the graph.
         """
+        node = self._checked_node(node)
         return range(self._offsets[node], self._offsets[node + 1])
+
+    def _checked_node(self, node: int) -> int:
+        """``node``, refused unless it indexes a node of the graph.
+
+        A negative index would otherwise wrap or slice to an empty block, and an
+        epistemic term aimed at an empty block is silently zero.
+        """
+        node_count = len(self.graph.dims)
+        if not 0 <= node < node_count:
+            raise ValueError(
+                f"node {node} is not a node of this graph, whose nodes are "
+                f"0..{node_count - 1}"
+            )
+        return node
 
     def severed_efe_edges(self) -> tuple[Coupling, ...]:
         """The EFE-relevant edges this carry partition cuts (ADR-018 diagnostic).
