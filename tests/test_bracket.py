@@ -231,7 +231,7 @@ class TestClosedLoopCost:
         # step of a short plan is not optimal for that plan.
         plan = lqr_schedule(3)
         steady = LQRController(
-            plan.model, goal_precision=GOAL_PRECISION, effort_penalty=EFFORT_PENALTY
+            plan.model, precision=GOAL_PRECISION, effort=EFFORT_PENALTY
         ).gain
         gains = kalman_schedule(plan.model, horizon=3).gains
         matched = closed_loop_cost(plan, gains, goal=GOAL)

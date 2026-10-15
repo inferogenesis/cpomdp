@@ -105,11 +105,12 @@ from cpomdp.backends.base import InadmissiblePartitionError
 from cpomdp.types import Belief, LinearGaussianModel
 
 if TYPE_CHECKING:
-    # Type-only imports: the kernel reads preference.goal/.precision and the backend's
-    # predict/observation methods by duck-typing, so it does NOT depend on selection or
-    # on a backend at runtime. Its one runtime import from the backends package is the
-    # exception the graph rollouts raise, and `backends.base` imports nothing that
-    # imports this module, so EFESelector / FfgEfeSelector import it without a cycle.
+    # Type-only imports: the kernel reads preference.target/.precision and the
+    # backend's predict/observation methods by duck-typing, so it does NOT depend on
+    # selection or on a backend at runtime. Its one runtime import from the backends
+    # package is the exception the graph rollouts raise, and `backends.base` imports
+    # nothing that imports this module, so EFESelector / FfgEfeSelector import it
+    # without a cycle.
     from cpomdp.backends.base import EfeBackend
     from cpomdp.selection import Preference
 
@@ -226,7 +227,7 @@ def expected_free_energy(
         belief.cov,
         control_matrix,
         action,
-        preference.goal,
+        preference.target,
         preference.precision,
     )
     return step.g, {"pragmatic": step.pragmatic, "epistemic": step.epistemic}
@@ -257,7 +258,7 @@ def policy_efe(
             "effect on a control-free (pure-tracking) model."
         )
     control_matrix = model.control_matrix
-    goal, precision = preference.goal, preference.precision
+    goal, precision = preference.target, preference.precision
     policy = jnp.asarray(policy, dtype=float)
     body = _rollout_body(model, control_matrix, goal, precision)
 
@@ -308,7 +309,7 @@ def policy_efe_trace(
             "effect on a control-free (pure-tracking) model."
         )
     control_matrix = model.control_matrix
-    goal, precision = preference.goal, preference.precision
+    goal, precision = preference.target, preference.precision
     policy = jnp.asarray(policy, dtype=float)
     body = _rollout_body(model, control_matrix, goal, precision)
 
@@ -419,7 +420,7 @@ def _policy_efe_ffg(
     A search checks its target once at construction and then scores every policy in
     the set, so the per-policy call skips the host-side check.
     """
-    goal, precision = preference.goal, preference.precision
+    goal, precision = preference.target, preference.precision
     policy = jnp.asarray(policy, dtype=float)
     body = _ffg_rollout_body(backend, goal, precision, info_block)
 
@@ -472,7 +473,7 @@ def policy_efe_ffg_trace(
         ValueError: If ``info_block`` is empty, repeats an index, or names an index
             outside the joint state.
     """
-    goal, precision = preference.goal, preference.precision
+    goal, precision = preference.target, preference.precision
     policy = jnp.asarray(policy, dtype=float)
     checked = _checked_info_block(backend, info_block)
     body = _ffg_rollout_body(backend, goal, precision, checked)

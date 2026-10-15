@@ -210,7 +210,7 @@ def test_kalman_backend_model_is_read_only():
     "build",
     [
         ScoredAgent,
-        lambda m: LQRController(m, goal_precision=np.eye(2), effort_penalty=np.eye(1)),
+        lambda m: LQRController(m, precision=np.eye(2), effort=np.eye(1)),
         ChainBackend,
         lambda m: WrongFixedRBackend(m, magnitude=0.5),
         lambda m: DiagonalCovarianceBackend(KalmanBackend(m)),
@@ -240,6 +240,13 @@ def test_state_goal_off_equilibrium_is_refused():
     # Unrefused, the regulator settles at x = 0.8432 for a target of 1.
     with pytest.raises(ValueError, match="equilibrium"):
         Agent(_damped_model(), StateGoal([1.0]))
+
+
+def test_a_state_goal_effort_of_the_wrong_size_is_named_as_typed():
+    # The controller's refusal used to name effort_penalty, a name the caller never
+    # typed.
+    with pytest.raises(ValueError, match="effort must be 1x1"):
+        Agent(_reaching_model(), StateGoal(GOAL, effort=np.eye(3)))
 
 
 def test_state_goal_at_equilibrium_is_accepted():
@@ -469,17 +476,13 @@ class TestRegimeDispatch:
 
     def test_a_preference_of_the_wrong_length_for_lqr_is_refused(self):
         model = _reaching_model()
-        sel = LQRSelector(
-            LQRController(model, goal_precision=jnp.eye(2), effort_penalty=jnp.eye(1))
-        )
+        sel = LQRSelector(LQRController(model, precision=jnp.eye(2), effort=jnp.eye(1)))
         with pytest.raises(ValueError, match="state, a vector of length 2"):
             Agent(model, Preference([1.0]), selector=sel)
 
     def test_lqr_selector_takes_a_state_preference(self):
         model = _reaching_model()
-        controller = LQRController(
-            model, goal_precision=jnp.eye(2), effort_penalty=jnp.eye(1)
-        )
+        controller = LQRController(model, precision=jnp.eye(2), effort=jnp.eye(1))
         agent = Agent(model, Preference(GOAL), selector=LQRSelector(controller))
         np.testing.assert_array_equal(
             agent.sample_action(), controller.action(model.prior.mean, GOAL)
@@ -638,9 +641,9 @@ def test_state_goal_path_is_byte_identical_to_lqr():
     agent = Agent(model, StateGoal(GOAL))
     agent.infer_states([0.3])  # advance the belief off the prior
     action = agent.sample_action()
-    expected = LQRController(
-        model, goal_precision=jnp.eye(2), effort_penalty=jnp.eye(1)
-    ).action(agent.belief.mean, jnp.asarray(GOAL, dtype=float))
+    expected = LQRController(model, precision=jnp.eye(2), effort=jnp.eye(1)).action(
+        agent.belief.mean, jnp.asarray(GOAL, dtype=float)
+    )
     np.testing.assert_array_equal(action, expected)
 
 

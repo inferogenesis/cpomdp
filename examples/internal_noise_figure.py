@@ -40,7 +40,7 @@ OBSERVATION_MATRIX = [[1.0]]
 OBSERVATION_NOISE = [[0.3]]  # the SAME on both panels
 DYNAMICS_NOISE = [[0.2]]
 BELIEF = Belief(mean=[0.0], cov=[[0.4]])
-GOAL = Preference(goal=[0.0], precision=[[0.15]])
+GOAL = Preference(target=[0.0], precision=[[0.15]])
 ACTIONS = jnp.linspace(-2.5, 3.5, 400)
 BUMP = 1.2  # Q(x) is noisiest here — internal processing is least precise
 

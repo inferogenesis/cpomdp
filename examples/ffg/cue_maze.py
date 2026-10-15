@@ -430,7 +430,7 @@ def preference(n_dims: int = 2) -> Preference:
     into it. Anything the agent gains by standing on the cue is epistemic.
     """
     weights = [GOAL_PRECISION] * n_dims + [INFO_PRECISION]
-    return Preference(goal=[0.0] * (n_dims + 1), precision=np.diag(weights).tolist())
+    return Preference(target=[0.0] * (n_dims + 1), precision=np.diag(weights).tolist())
 
 
 def true_goal(n_dims: int = 2) -> np.ndarray:

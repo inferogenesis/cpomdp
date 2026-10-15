@@ -244,7 +244,7 @@ def build_preference(precision: float) -> Preference:
     location — no per-step rebuild (ADR-013).
     """
     block = jax.scipy.linalg.block_diag(jnp.zeros((2, 2)), precision * jnp.eye(2))
-    return Preference(goal=jnp.zeros(4), precision=block)
+    return Preference(target=jnp.zeros(4), precision=block)
 
 
 def _candidate_grid() -> jnp.ndarray:
@@ -285,7 +285,7 @@ def simulate(regime, backend_cls=KalmanBackend, *, seed=7):
     if regime["kind"] == "lqr":
         goal_precision = jnp.diag(jnp.array([LQR_GOAL_PRECISION] * 2 + [0.0, 0.0]))
         controller = LQRController(
-            model, goal_precision=goal_precision, effort_penalty=jnp.eye(2) * LQR_EFFORT
+            model, precision=goal_precision, effort=jnp.eye(2) * LQR_EFFORT
         )
     else:
         preference = build_preference(regime["precision"])
