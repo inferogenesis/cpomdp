@@ -92,6 +92,6 @@ nav:
       - Expected free energy: api/efe.md
       - Diagnostics: api/diagnostics.md
       - Warrant: api/warrant.md
-      - Control (internal): api/control.md
+      - Control: api/control.md
   - References: references.md
   - Changelog: changelog.md

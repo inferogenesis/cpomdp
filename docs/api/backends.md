@@ -13,3 +13,7 @@ The inference engine is swappable behind the `InferenceBackend` protocol. `Kalma
 ::: cpomdp.CouplingGraphBackend
 
 ::: cpomdp.IncompatibleLinearizationError
+
+A carry partition that severs an edge the model flags as EFE-load-bearing filters fine. The EFE selectors, rollouts and searches refuse it with `InadmissiblePartitionError`.
+
+::: cpomdp.InadmissiblePartitionError

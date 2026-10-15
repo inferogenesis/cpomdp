@@ -34,12 +34,13 @@ reports back a ``SensorReport``.
 import jax as _jax
 
 from cpomdp.agent import Agent
-from cpomdp.backends.base import InferenceBackend
+from cpomdp.backends.base import InadmissiblePartitionError, InferenceBackend
 from cpomdp.backends.coupling import (
     CouplingGraphBackend,
     IncompatibleLinearizationError,
 )
 from cpomdp.backends.kalman import KalmanBackend
+from cpomdp.control import LQRController
 from cpomdp.diagnostics import SensorReport, probe_model
 from cpomdp.dynamics import CallableProcessNoise, DynamicsNoise
 from cpomdp.efe import expected_free_energy
@@ -87,9 +88,11 @@ __all__ = [
     "GaussianCoupling",
     "GaussianObservation",
     "GaussianTransition",
+    "InadmissiblePartitionError",
     "IncompatibleLinearizationError",
     "InferenceBackend",
     "KalmanBackend",
+    "LQRController",
     "LQRSelector",
     "LinearGaussianModel",
     "ModelStructure",

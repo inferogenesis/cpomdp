@@ -1,11 +1,8 @@
 # Control
 
-Steady-state LQR action selection: the action-side dual of the Kalman filter. The `Agent` builds one of these for you when you give it a goal; you rarely touch it directly.
+Steady-state LQR action selection, the action-side dual of the Kalman filter. Under a fixed sensor it is the action expected free energy chooses [@koudahl2021epistemics]. The `Agent` builds one when you give it a `StateGoal`. Build one yourself to hand an `LQRSelector` to `Agent(selector=...)`.
 
-!!! note "Internal — not part of the public API"
-    `LQRController` is not exported from `cpomdp` and carries no stability promise; the `Agent` constructs it for you. It's documented here for the architecture it illustrates — LQR as the fixed-sensor reduction of active inference [@koudahl2021epistemics] (ADR-003). Build agents with `StateGoal`, not this directly.
-
-::: cpomdp.control.LQRController
+::: cpomdp.LQRController
 
 ## The finite-horizon schedule
 
