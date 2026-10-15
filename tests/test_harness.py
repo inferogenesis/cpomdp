@@ -7,6 +7,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
+from cpomdp.backends.degraded import WrongFixedRBackend
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.dynamics import CallableProcessNoise
 from cpomdp.harness import ScoredAgent, World
@@ -200,8 +201,11 @@ def test_world_exposes_no_generative_parameter():
     assert not parameters & exposed
 
 
-def test_scored_agent_accepts_no_world():
-    parameters = inspect.signature(ScoredAgent.__init__).parameters
+@pytest.mark.parametrize(
+    "constructor", [ScoredAgent.__init__, ScoredAgent.from_backend]
+)
+def test_scored_agent_accepts_no_world(constructor):
+    parameters = inspect.signature(constructor).parameters
     annotations = {str(p.annotation) for p in parameters.values()}
     assert "world" not in parameters
     assert not [a for a in annotations if "World" in a]
@@ -273,18 +277,21 @@ def test_the_agent_starts_at_its_own_prior():
 
 def test_a_backend_is_accepted_and_carries_its_own_model():
     model = _model(damping=0.8)
-    agent = ScoredAgent(backend=KalmanBackend(model))
+    agent = ScoredAgent.from_backend(KalmanBackend(model))
     assert agent.model is model
 
 
-def test_a_model_and_a_backend_that_disagree_do_not_construct():
-    with pytest.raises(ValueError, match="one model"):
-        ScoredAgent(_model(), backend=KalmanBackend(_model(damping=0.8)))
+def test_a_degraded_backend_is_scored_under_the_model_it_degrades():
+    model = _model(damping=0.8)
+    agent = ScoredAgent.from_backend(WrongFixedRBackend(model, magnitude=0.5))
+    assert agent.model is model
 
 
-def test_no_model_and_no_backend_does_not_construct():
-    with pytest.raises(ValueError, match="model or a backend"):
-        ScoredAgent()
+def test_a_model_and_a_backend_cannot_both_be_passed():
+    # Each front door takes one input, so there is nothing to disagree.
+    model = _model()
+    with pytest.raises(TypeError):
+        ScoredAgent(model, backend=KalmanBackend(model))  # ty: ignore[unknown-argument]
 
 
 # --- the world simulates p*, and only p* --------------------------------------------

@@ -407,7 +407,9 @@ no use of the readings beats it.
   `CouplingGraphBackend` included, and plans under `backend.model`. The `backend=`
   argument is gone. Passing both let the agent plan on one model and filter on another
   without raising: with `R = 1` against `R = 100` the posterior was 0.020 where it should
-  be 1.005.
+  be 1.005. `ScoredAgent` takes the same two forms, `ScoredAgent(model)` and
+  `ScoredAgent.from_backend(backend)`. It refused a backend built from another model,
+  and now cannot be given one.
 - **Breaking:** `Agent` refuses a built-in `selector=` that reads its target in the other
   space from the objective. The EFE selectors and the search drivers score a predicted
   observation, so `Agent(model, StateGoal(target), selector=EFESelector(...))` pursued
