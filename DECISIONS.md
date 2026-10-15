@@ -4531,3 +4531,107 @@ because a push that has not reached the reading within that many steps never wil
 - Reading the target does not make it win. On the velocity-noise plant at the default
   precision of 1, the agent at the prior stays at rest for any target. The information
   term outweighs the pull. At a precision of 100 it pushes toward the target.
+
+## ADR-069 — a name is private until a user needs it
+
+**Date:** 2026-10-15
+**Status:** Accepted
+**Extends:** ADR-021, which made the top-level names the documented entry point and kept
+every deep path working.
+**Supersedes:** ADR-047's consequence that "the import paths are `cpomdp.harness` and
+`cpomdp.constructors`", for the paths only, since the seam it built is unchanged. ADR-039's
+decision that "`cpomdp.warrant` stays, as a re-export", and with it ADR-042's Decision 4.
+ADR-036's consequence that `_BlockReducer` is the seam for what a caller wants over every
+policy.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+Nothing said which import paths a user could build on. Every module without a leading
+underscore was importable, and v0.5.0 was about to publish roughly 97 names no release
+had carried: the harness, the constructor cross and its scoring, the additivity check,
+the error on a difference, the reference filter, the degraded backends and the control
+bracket. Most had no API page. The research boundary they sit on is still moving
+(ADR-052), and a break to any of them after release would be a break to cpomdp.
+
+### Decision
+
+A name is private until a user needs it to work with cpomdp. Promoting a private name
+later breaks no caller. Withdrawing a public one breaks every caller, so the surface
+starts small.
+
+- **Public:** the names in `cpomdp.__all__`, and the names in the `__all__` of the
+  documented modules the README teaches: `cpomdp.efe`, `cpomdp.enumeration`,
+  `cpomdp.diagnostics`, `cpomdp.control` and `cpomdp.backends.rxinfer`. Before 1.0 a
+  break to one lands only in a minor version, listed in the changelog with what
+  replaces it.
+- **Private:** any path with a leading underscore on it. No promise.
+- **Implementation modules:** every other module without a leading underscore, such as
+  `cpomdp.types`, `cpomdp.selection`, `cpomdp.crossover`, `cpomdp.ffg.chain` and
+  `cpomdp.backends.base`. They stay importable, since ADR-021 kept them working, and the
+  path carries no promise. A name a user needs from one is reached through the top
+  level.
+
+What that moves:
+
+- The research apparatus goes to `cpomdp._lab`, which stays in the wheel because the
+  test suite and the research package build on it. The control bracket goes with it.
+  The finite-horizon regulator and its Kalman schedule stay in `cpomdp.control`.
+- `cpomdp.warrant` is removed. warrantlib is the vocabulary's one home, and cpomdp's
+  top level keeps only `Warrant`, the type `EFESelector.warrant` returns. ADR-039 kept
+  the module so that import paths from before the split would keep working. No release
+  carried it or the top-level names it backed, so removing them breaks no published
+  caller, and keeping them would promise twelve names twice.
+- Helpers that are implementation detail take a leading underscore.
+- `LQRController` and `InadmissiblePartitionError` join the top level. `LQRSelector`
+  cannot be built without the first. `FfgEfeSelector`, the graph EFE rollouts and both
+  searches' `over_backend` raise the second.
+- `ChunkedEfeSearch.reduce` stops taking a reducer. ADR-036 named `_BlockReducer` the
+  seam for anything a caller wants over every policy. No release carried the chunked
+  search and the reducer's type was private, so the seam closes before anyone builds on
+  it. The search keeps it for its own folds.
+
+### Consequences
+
+- About 22 test files and six research modules import from `cpomdp._lab`.
+  `tests/test_module_boundary.py` names the seam, the evaluator and the reference by
+  their new paths and holds the same boundary.
+- The protected records that cite `cpomdp.reference` and `cpomdp.resolution` gain dated
+  amendments naming the new paths. Their original lines stand.
+- The 0.5.0 changelog keeps the apparatus under Added, at its private paths, so the
+  record of what landed stays whole.
+- Promoting a piece of `_lab` later is additive: a public module re-exports it and an
+  API page documents it.
+- `EfeBackend` annotates `FfgEfeSelector` and `policy_efe_ffg` and carries no promise. A
+  user passes a `CouplingGraphBackend`, which is public. The protocol is needed only to
+  write a graph backend of one's own, and that user is who would promote it, as a user
+  of `LQRSelector` promoted `LQRController`.
+- `cpomdp.crossover` backs the crossover falsifiers and one gallery example. It has no
+  API page and carries no promise.
+
+## ADR-070 — cpomdp's warrantlib floor is 0.3
+
+**Date:** 2026-10-15
+**Status:** Accepted
+**Supersedes:** ADR-042's consequence that cpomdp's floor stays at `>=0.2`.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+ADR-042 kept cpomdp at `warrantlib>=0.2` because nothing under `src/cpomdp` constructs a
+report. That premise was wrong. `cpomdp.enumeration` builds the completeness
+certificates warrantlib 0.3 introduced, and against 0.2 the modules that build them
+failed to import. No release carried the `>=0.2` floor, so no install met it.
+
+### Decision
+
+cpomdp requires `warrantlib>=0.3,<0.4`. The cap is there because warrantlib's minor
+versions break before 1.0, as cpomdp's do.
+
+### Consequences
+
+- ADR-040's publish-ordering race does not re-arm for 0.5.0. warrantlib 0.3.0 has been
+  on PyPI since 2026-08-26, published on its own as ADR-040 prescribes.
+- The next floor change meets the race again, with the two options ADR-040 lists.
+- A warrantlib 0.4 reaches cpomdp users only through a cpomdp release that lifts the
+  cap.

@@ -18,7 +18,7 @@ slow, so it is deselected on pull requests. Scoring two known policies costs a b
 build and fourteen propagation steps, which keeps the headline gated on every run.
 
 `TestOracleRejectsNonPd` checks the route and not the guard: that the oracle reaches
-`diagnostics.logdet_pd` for both halves of its epistemic term, and that the kernel
+`diagnostics._host_logdet_pd` for both halves of its epistemic term, and that the kernel
 rejects the same matrix. `tests/test_diagnostics.py::TestLogdetPd` tests the guard.
 """
 
@@ -102,7 +102,7 @@ class TestOracleRejectsNonPd:
     def test_oracle_logdet_is_nan_on_non_pd(self):
         # The name as the oracle binds it, so an import swapped back to a bare slogdet
         # fails here. What the guard does on its own is `TestLogdetPd`'s subject.
-        assert np.isnan(crossover.logdet_pd(NOT_PD))
+        assert np.isnan(crossover._host_logdet_pd(NOT_PD))
 
     def test_kernel_logdet_is_nan_on_non_pd(self):
         assert bool(jnp.isnan(kernel_logdet_pd(jnp.asarray(NOT_PD))))
@@ -112,7 +112,7 @@ class TestOracleRejectsNonPd:
         # kernel reads its answer off a Cholesky factor under jit. Point the demo at
         # `efe._logdet_pd` and this stops being a check.
         matrix = np.array([[2.0, 0.5], [0.5, 1.5]])
-        oracle = crossover.logdet_pd(matrix)
+        oracle = crossover._host_logdet_pd(matrix)
         kernel = float(kernel_logdet_pd(jnp.asarray(matrix)))
         np.testing.assert_allclose(oracle, kernel, rtol=1e-12)
 
@@ -122,13 +122,13 @@ class TestOracleRejectsNonPd:
         # policy must reach it twice per step. One call per step means half the term is
         # still bare.
         calls = []
-        guarded = crossover.logdet_pd
+        guarded = crossover._host_logdet_pd
 
         def counting(matrix):
             calls.append(matrix)
             return guarded(matrix)
 
-        monkeypatch.setattr(crossover, "logdet_pd", counting)
+        monkeypatch.setattr(crossover, "_host_logdet_pd", counting)
         crossover._numpy_score(crossover._walk(crossover.FLIP_H))
         assert len(calls) == 2 * crossover.FLIP_H
 

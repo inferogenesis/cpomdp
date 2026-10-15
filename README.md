@@ -41,7 +41,7 @@ Each body sits at its **true** hidden state. The blue `+` is where it believes i
 
 The four differ in **one number only**, the **goal precision Λ** each is built with. They all minimise the same Expected Free Energy `G = pragmatic − epistemic`. The pragmatic (goal) term scales with Λ and the epistemic (information) term does not, so Λ alone tips the balance. **Classic LQR** and a **sharp Λ** beeline to the agent's current food guess and never detour. A **balanced Λ** detours to the beacon, learns where the food really is, *then* heads there with confidence. A **weak Λ** is so over-curious it parks at the beacon and never eats. One real knob, the precision you'd actually pass. Four behaviours.
 
-![Four bacilli learning where the food is, under different goal precisions Λ, via continuous active inference](docs/assets/bacillus_uncertain_food.gif)
+![Four bacilli learning where the food is, under different goal precisions Λ, via continuous active inference](https://raw.githubusercontent.com/inferogenesis/cpomdp/348b9eb50417d43bc0e9d4e1520c1c2eb934d36b/docs/assets/bacillus_uncertain_food.gif)
 
 Reproduce it with [`examples/bacillus_uncertain_food.py`](https://github.com/inferogenesis/cpomdp/blob/main/examples/bacillus_uncertain_food.py) (`pip install "cpomdp[examples]"`).
 
@@ -51,7 +51,7 @@ An agent on an open plane wants a goal it cannot locate. Its prior points the wr
 
 Run the same world once per planning horizon. At `H = 2` the agent walks straight to the spot it already believed in and settles there. It never checks. At `H = 14` it walks *away* from that spot, reads the beacon, finds out it was wrong, and then goes to the real goal. Only `H` changed.
 
-![One agent run once per planning horizon: at short horizons it settles where its prior said, and past a crossing it detours to the beacon, learns where the goal really is, and goes there](docs/assets/crossover_horizon.gif)
+![One agent run once per planning horizon: at short horizons it settles where its prior said, and past a crossing it detours to the beacon, learns where the goal really is, and goes there](https://raw.githubusercontent.com/inferogenesis/cpomdp/011d8b9d42536353f73e2cfbade6ce88d7dfc679/docs/assets/crossover_horizon.gif)
 
 The margin between the two plans, `ΔG(H) = G(detour) − G(direct)` in nats, crosses zero exactly once. The epistemic pull is flat, because sensing once is worth what sensing once is worth. The pragmatic gradient decays under it. Freeze `R` at a constant and the sweep never crosses at any horizon, so the behaviour belongs to the state-dependent sensor and the horizon together.
 
@@ -190,14 +190,14 @@ Those labels reach a test run. `pip install "warrantlib[pytest]"` adds a plugin,
 
 Registered and tested here are separate counts because they answer separate questions. Registering seventy falsifiers and testing sixty of them is a different claim from testing all seventy, and one number cannot carry both.
 
-A count is still the weaker guard, though, and this repository used to lean on three of them. [research/registered_checks.toml](research/registered_checks.toml) declares every check each suite is registered to report. Each declared id becomes a pytest item because the manifest declares it, not because a suite reported it, so a check that stops reporting still has a row and the row fails naming it. A second item per suite catches the other direction. A renamed check therefore reports as one drop and one addition, where a count of them would have stayed at seventy and passed.
+A count is still the weaker guard, though, and this repository used to lean on three of them. [research/registered_checks.toml](https://github.com/inferogenesis/cpomdp/blob/main/research/registered_checks.toml) declares every check each suite is registered to report. Each declared id becomes a pytest item because the manifest declares it, not because a suite reported it, so a check that stops reporting still has a row and the row fails naming it. A second item per suite catches the other direction. A renamed check therefore reports as one drop and one addition, where a count of them would have stayed at seventy and passed.
 
 ```bash
 uv run pytest research/registered_checks.toml --warrant-detail
 uv run python -m warrantlib.manifest --check research/registered_checks.toml
 ```
 
-[research/warrant_ledger.md](research/warrant_ledger.md) is the canonical table, and every other document points at it. [warrant_numbers.md](warrant_numbers.md) records the declared numbers those claims are measured against. The vocabulary itself is [packages/warrantlib](packages/warrantlib), published separately and re-exported as `cpomdp.warrant`, documented at [cpomdp.inferogenesis.com/api/warrant](https://cpomdp.inferogenesis.com/api/warrant/).
+[research/warrant_ledger.md](https://github.com/inferogenesis/cpomdp/blob/main/research/warrant_ledger.md) is the canonical table, and every other document points at it. [warrant_numbers.md](https://github.com/inferogenesis/cpomdp/blob/main/warrant_numbers.md) records the declared numbers those claims are measured against. The vocabulary itself is [warrantlib](https://pypi.org/project/warrantlib/), published separately, with `Warrant` re-exported at cpomdp's top level, and documented at [cpomdp.inferogenesis.com/api/warrant](https://cpomdp.inferogenesis.com/api/warrant/).
 
 Treat this as experimental. It may move out of cpomdp into a standalone inferogenesis tool before the 1.0 release, which is undecided.
 
@@ -209,6 +209,8 @@ You can swap the inference engine if you want to. `KalmanBackend` is the default
 
 Still pre-1.0. v0.5 renames the model's arguments to match its fields, `observation_matrix` and `observation_noise` among them, and makes every argument after `dynamics_matrix` keyword-only. Python 3.11 is the new floor. The [changelog](https://github.com/inferogenesis/cpomdp/blob/main/CHANGELOG.md) lists each break. v0.5 also adds the vocabulary a check uses to say what it is entitled to claim, and the anti-surge application. If you have a request or a suggestion that would make the front-facing API more usable, open a GitHub issue, I am happy to listen. Until 1.0, a minor version is where breaking changes can land.
 
+The public API is every name in `cpomdp.__all__`, plus the names in the `__all__` of `cpomdp.efe`, `cpomdp.enumeration`, `cpomdp.diagnostics`, `cpomdp.control` and `cpomdp.backends.rxinfer`. Those are what the changelog's breaking-change rule covers. A path with a leading underscore on it, such as `cpomdp._lab`, is private and can change in any release. Modules like `cpomdp.types` stay importable, and the top-level name is still the one to use.
+
 ## Development
 
 I designed and built cpomdp. The architecture, the conditionally-linear-Gaussian formulation, the API, and every decision in [DECISIONS.md](https://github.com/inferogenesis/cpomdp/blob/main/DECISIONS.md) are mine. The design draws on my day-to-day work as a full-time software engineer and on hands-on expertise integrating and developing large machine-learning models at scale using event-driven microservice architecture.
@@ -217,7 +219,7 @@ I used AI coding assistants (Claude Opus 4.8, and Opus 5 from v0.4) as tools und
 
 ## Contributions
 
-If you would like to contribute either your dev time or help steer the direction of the toolbox, please add a GitHub issue or discussion thread. I am monitoring this repository closely and would love to collaborate. [CONTRIBUTING.md](CONTRIBUTING.md) covers the setup, the hooks, and the bar a PR has to clear.
+If you would like to contribute either your dev time or help steer the direction of the toolbox, please add a GitHub issue or discussion thread. I am monitoring this repository closely and would love to collaborate. [CONTRIBUTING.md](https://github.com/inferogenesis/cpomdp/blob/main/CONTRIBUTING.md) covers the setup, the hooks, and the bar a PR has to clear.
 
 If you notice a better method in something I've already done or are just curious and want to chat I am more than happy to talk through my decision processes and improve on my work. I intend to blog my construction of cpomdp provided it doesn't interfere with developing it.
 

@@ -26,9 +26,7 @@ import numpy as np
 from jaxtyping import Array
 from numpy.typing import ArrayLike
 
-from cpomdp._validation import require_fixed_noise
-from cpomdp.backends.kalman import KalmanBackend
-from cpomdp.scoring import (
+from cpomdp._lab.scoring import (
     CrossCell,
     StepUpdate,
     _affine_in_observation,
@@ -37,6 +35,8 @@ from cpomdp.scoring import (
     observation_predictive,
     predicted_belief,
 )
+from cpomdp._validation import require_fixed_noise
+from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.types import Belief, LinearGaussianModel
 
 __all__ = [

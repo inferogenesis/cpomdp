@@ -309,17 +309,16 @@ class TestReducerSeam:
         g, _, _ = _front_loaded(model, action_set, 3, _belief(), _pref())
         baseline = float(np.median(g))
 
-        result = ChunkedEfeSearch(model, action_set, horizon=3, chunk=chunk).reduce(
-            _belief(), _pref(), reducer=self._BelowBaseline(baseline)
-        )
+        search = ChunkedEfeSearch(model, action_set, horizon=3, chunk=chunk)
+        _, extra = search._reduce(_belief(), _pref(), self._BelowBaseline(baseline))
 
-        assert int(result.extra) == int(np.count_nonzero(g < baseline))
+        assert int(extra) == int(np.count_nonzero(g < baseline))
 
-    def test_no_reducer_leaves_the_slot_empty(self):
-        result = ChunkedEfeSearch(
+    def test_no_reducer_leaves_the_carry_empty(self):
+        search = ChunkedEfeSearch(
             _model(), _finite_set([-1.0, 0.0, 1.0]), horizon=3, chunk=7
-        ).reduce(_belief(), _pref())
-        assert result.extra is None
+        )
+        assert search._reduce(_belief(), _pref(), None)[1] is None
 
 
 class TestGuards:

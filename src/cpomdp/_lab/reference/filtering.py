@@ -30,9 +30,9 @@ import jax.numpy as jnp
 from jax.scipy.special import logsumexp
 from numpy.typing import ArrayLike
 
-from cpomdp.reference.likelihood import ObservationLikelihood
-from cpomdp.reference.quadrature import GridDensity
-from cpomdp.reference.transition import TransitionKernel
+from cpomdp._lab.reference.likelihood import ObservationLikelihood
+from cpomdp._lab.reference.quadrature import GridDensity
+from cpomdp._lab.reference.transition import TransitionKernel
 
 __all__ = ["condition", "filter_sequence", "predict"]
 

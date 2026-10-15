@@ -6,7 +6,7 @@ from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
 from cpomdp._validation import require_fixed_noise
-from cpomdp.backends.base import validate_step_inputs
+from cpomdp.backends.base import _validate_step_inputs
 from cpomdp.types import Belief, LinearGaussianModel
 
 __all__ = ["KalmanBackend"]
@@ -171,15 +171,15 @@ class KalmanBackend:
             ValueError: If ``observation`` is not shape ``(m,)``, ``prior`` is not
                 a belief over the model's ``n``-D state, the model has a control
                 matrix but ``action`` is ``None``, or ``action`` is not shape
-                ``(p,)``. (All enforced in ``_validate_inputs``.)
+                ``(p,)``. (All enforced in ``_validate_step_inputs``.)
         """
         model = self.model
-        observation, action = validate_step_inputs(model, observation, prior, action)
+        observation, action = _validate_step_inputs(model, observation, prior, action)
         control_matrix = model.control_matrix
         if control_matrix is None:
             control_term = jnp.zeros(model.n_states)
         else:
-            # validate_step_inputs guarantees a non-None action when control exists
+            # _validate_step_inputs guarantees a non-None action when control exists
             assert action is not None
             control_term = control_matrix @ action
 

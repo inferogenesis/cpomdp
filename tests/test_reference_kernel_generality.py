@@ -14,10 +14,10 @@ makes `Q(x)` a supported surface: the double is a test fixture, not an export.
 import numpy as np
 import pytest
 
-from cpomdp.reference.filtering import filter_sequence, predict
-from cpomdp.reference.likelihood import FixedNoiseLikelihood
-from cpomdp.reference.quadrature import QuadratureGrid, gaussian_on
-from cpomdp.reference.transition import LinearGaussianKernel, TransitionKernel
+from cpomdp._lab.reference.filtering import filter_sequence, predict
+from cpomdp._lab.reference.likelihood import FixedNoiseLikelihood
+from cpomdp._lab.reference.quadrature import QuadratureGrid, gaussian_on
+from cpomdp._lab.reference.transition import LinearGaussianKernel, TransitionKernel
 
 
 class QuadraticProcessNoiseKernel:

@@ -15,18 +15,22 @@ the NumPy oracle the headline `H* = 7` is checked against.
 The `H = 7` numbers did not move. They are bit-identical across the guard, so it corrected
 an exposure rather than a result.
 
-A world and an agent that cannot reach one another. `cpomdp.harness` separates the process
-that produces observations from the model an agent filters with, so how wrong that model
-is about the process becomes measurable rather than zero by construction. Actions arrive
-from a declared sequence. The agents do not choose them, which is what leaves several of
-them comparable under one trajectory and what cuts the control loop, and every run carries
-that second fact rather than leaving it to a comment.
+The research apparatus this release adds lives in `cpomdp._lab`, a private package. The
+test suite and the unpublished research package build on it, and none of it is public
+API (ADR-069).
 
-`cpomdp.constructors` declares the two axes a model can be wrong along, one for what its
-parameters get wrong and one for what its filter does. Both are versioned, so a cell added
-after results are seen shows up in the diff.
+A world and an agent that cannot reach one another. `cpomdp._lab.harness` separates the
+process that produces observations from the model an agent filters with, so how wrong
+that model is about the process becomes measurable rather than zero by construction.
+Actions arrive from a declared sequence. The agents do not choose them, which is what
+leaves several of them comparable under one trajectory and what cuts the control loop,
+and every run carries that second fact rather than leaving it to a comment.
 
-The cross gets its two numbers. `cpomdp.scoring` scores every cell of the declared
+`cpomdp._lab.constructors` declares the two axes a model can be wrong along, one for
+what its parameters get wrong and one for what its filter does. Both are versioned, so a
+cell added after results are seen shows up in the diff.
+
+The cross gets its two numbers. `cpomdp._lab.scoring` scores every cell of the declared
 constructor cross with two divergences, what the model gets wrong and what the filter
 gets wrong, and nothing else: the result has no slot for an entropy, so the one term
 the ledger forbids reaching by subtraction cannot be reached that way. Every separation
@@ -37,67 +41,74 @@ scored against one reference is read at the error on the difference, which the s
 reference makes far smaller than the sum of the two bars.
 
 The control bracket. `cpomdp.control` grows a finite-horizon regulator beside the
-steady-state one, and with it the two costs every controller under one plan sits between:
-the plan with the state observed exactly, and the best any controller that has to infer
-the state from readings can do. Their difference is the price of inference under that
-plan, and the width is the object reported, since either end alone is a number in cost
-units that nothing calibrates. Both ends are closed forms. The ceiling is reached twice,
-by the separation principle and by propagating the joint second moment of state and
-estimate, and the two share no arithmetic past the Riccati recursions, so their agreement
-to machine precision is the fixed-noise signature: certainty equivalence is optimal, and
-no use of the readings beats it.
+steady-state one. The private `cpomdp._lab.bracket` holds the two costs every controller
+under one plan sits between: the plan with the state observed exactly, and the best any
+controller that has to infer the state from readings can do. Their difference is the
+price of inference under that plan, and the width is the object reported, since either
+end alone is a number in cost units that nothing calibrates. Both ends are closed forms.
+The ceiling is reached twice, by the separation principle and by propagating the joint
+second moment of state and estimate, and the two share no arithmetic past the Riccati
+recursions, so their agreement to machine precision is the fixed-noise signature:
+certainty equivalence is optimal, and no use of the readings beats it.
 
 ### Added
 
-- `cpomdp.harness` — a world and an agent held apart, so what an agent's model gets wrong
-  about the process is a measurable quantity rather than zero by construction. `World`
-  runs the process and hands out observations, exposing no accessor that returns its
-  model or a parameter of it. `ScoredAgent` runs its own model and has no constructor
-  slot for a `World`. `drive` advances one world per step and folds the same reading into
-  every agent, over an `ExogenousActionSequence` declared before the run. Imposing the
-  actions is what makes the entropy of the true process cancel between agents, and it
-  cuts the control loop: `DrivenRun.control_loop` carries that as a `ModellingChoice`
-  with no default, saying what was chosen and where the choice is contestable. A
-  state-dependent `R(x)` is read at the state that produced the reading, and `Q(x)` at
-  the predicted mean, rather than at the point the filter evaluates them: the filter
-  drops a Jensen term the world must not drop too, since the distance between them is
-  the inference gap under study (ADR-048, superseding ADR-047's refusal). Both are
-  re-checked on every step, because construction probes them at one state only. The two
-  fail differently and the check follows that: the sensor draw is cholesky, so a noise
-  that loses definiteness returns NaN, while the dynamics draw is svd and returns a
-  finite state drawn from `|Q|`. An indefinite `Q(x)` is refused; a noiseless state
+- `LQRController` and `InadmissiblePartitionError` are exported at the top level, and
+  each has an API page. `LQRSelector` cannot be built without the first, and the graph
+  EFE selector raises the second (ADR-069).
+- `cpomdp._lab.harness` — a world and an agent held apart, so what an agent's model gets
+  wrong about the process is a measurable quantity rather than zero by construction.
+  `World` runs the process and hands out observations, exposing no accessor that returns
+  its model or a parameter of it. `ScoredAgent` runs its own model and has no
+  constructor slot for a `World`. `drive` advances one world per step and folds the same
+  reading into every agent, over an `ExogenousActionSequence` declared before the run.
+  Imposing the actions is what makes the entropy of the true process cancel between
+  agents, and it cuts the control loop: `DrivenRun.control_loop` carries that as a
+  `ModellingChoice` with no default, saying what was chosen and where the choice is
+  contestable. A state-dependent `R(x)` is read at the state that produced the reading,
+  and `Q(x)` at the predicted mean, rather than at the point the filter evaluates them:
+  the filter drops a Jensen term the world must not drop too, since the distance between
+  them is the inference gap under study (ADR-048, superseding ADR-047's refusal). Both
+  are re-checked on every step, because construction probes them at one state only. The
+  two fail differently and the check follows that: the sensor draw is cholesky, so a
+  noise that loses definiteness returns NaN, while the dynamics draw is svd and returns
+  a finite state drawn from `|Q|`. An indefinite `Q(x)` is refused; a noiseless state
   direction stays legal.
-- `cpomdp.constructors` — the two axes a model can be wrong along, each declared and
-  versioned. `ModelSpec` holds parameters and builds a fresh model per call, sharing no
-  array between builds, so two models that agree do so by value rather than by pointing
-  at one object. `Perturbation` names a parameter and scales it. `InferenceRule` names
-  one of four ways to infer. Both are records rather than functions, so a declared set
-  can be read in a diff. A scale the filter would not read is refused rather than built,
-  since the cell would otherwise report a label for a model identical to the correct one.
-- `cpomdp.backends.degraded` — `WrongFixedRBackend` and `DiagonalCovarianceBackend`, two
+- `cpomdp._lab.constructors` — the two axes a model can be wrong along, each declared
+  and versioned. `ModelSpec` holds parameters and builds a fresh model per call, sharing
+  no array between builds, so two models that agree do so by value rather than by
+  pointing at one object. `Perturbation` names a parameter and scales it.
+  `InferenceRule` names one of four ways to infer. Both are records rather than
+  functions, so a declared set can be read in a diff. A scale the filter would not read
+  is refused rather than built, since the cell would otherwise report a label for a
+  model identical to the correct one.
+- `cpomdp._lab.degraded` — `WrongFixedRBackend` and `DiagonalCovarianceBackend`, two
   filters that infer worse than the model they are built for and name how. Each keeps
   `model` pointing at the model being scored, so a degradation is never an anonymous
   mismatch between two models.
-- `cpomdp.scoring` — the three-term evaluator. `build_cross` enumerates the declared
-  model and inference axes in full and carries a `ProductCompletenessCertificate` at
-  `PROVED`, refusing a cross that comes up short. `Decomposition` holds a
-  misspecification term and an inference gap, both KL divergences in nats and both in
-  closed form on a linear-Gaussian model. `gaussian_kl` is built from non-negative parts
-  and subtracts nothing, so a reading near zero is a small divergence rather than a
-  cancellation. `ThreeTermEvaluator.score` walks a driven run and returns a `CellScore`
-  with a `RunConditioning` beside it: the condition number of every predictive and
-  posterior covariance the terms factored, per step. `score_cross` scores every cell,
-  reports the cell where both terms move, and refuses to name a separation without one.
-  A `Separation` is the pinned term, the moving term and their ratio, and `render`
-  prints no separation without its ratio and its worst conditioning on the same line.
-- `cpomdp.additivity` — whether `E[F] = H(p*) + D₁ + D₂` closes, with both sides
+- `cpomdp._lab.scoring` — the three-term evaluator. `build_cross` enumerates the
+  declared model and inference axes in full and carries a
+  `ProductCompletenessCertificate` at `PROVED`, refusing a cross that comes up short.
+  `Decomposition` holds a misspecification term and an inference gap, both KL
+  divergences in nats and both in closed form on a linear-Gaussian model. `gaussian_kl`
+  is built from non-negative parts and subtracts nothing, so a reading near zero is a
+  small divergence rather than a cancellation. `ThreeTermEvaluator.score` walks a driven
+  run and returns a `CellScore` with a `RunConditioning` beside it: the condition number
+  of every predictive and posterior covariance the terms factored, per step. The run
+  carries the sequence that drove it, and the score reads the actions from there, so
+  readings cannot be scored against another sequence that reuses the tag.
+  `score_cross` scores every cell, reports the cell where both terms move, and refuses
+  to name a separation without one. A `Separation` is the pinned term, the moving term
+  and their ratio, and `render` prints no separation without its ratio and its worst
+  conditioning on the same line.
+- `cpomdp._lab.additivity` — whether `E[F] = H(p*) + D₁ + D₂` closes, with both sides
   measured on their own. `AdditivityCheck` takes an `EntropyEstimator` explicitly and is
   the only object that estimates one; `GaussianEntropy` is the closed form and
   `MonteCarloEntropy` samples with a standard-error bar. `variational_free_energy` is
   computed term by term from the cell filter's belief, never through the identity. The
   residual's bound is four terms, `δ_F + δ_H + δ₁ + δ₂`, and a worked case shows it
   failing to close when `δ_F` is dropped.
-- `cpomdp.resolution` — the error on a difference. A `Bar` is split into a signed
+- `cpomdp._lab.resolution` — the error on a difference. A `Bar` is split into a signed
   common-mode part, what the reference's error puts on the value, and an own part. Two
   values against one reference subtract the first in their difference, so
   `resolution_threshold` reads `|Δ common-mode| + Σ own` rather than the sum of the two
@@ -105,54 +116,54 @@ no use of the readings beats it.
   `BELOW`, `ABOVE` or `NOT_RESOLVED`, the measured tie that is neither confirmation nor
   refutation. The module imports nothing first-party, asserted in the boundary test, so
   the seam and the reference filter reach it without reaching the evaluator.
-- `cpomdp.control` — the finite-horizon schedule and the control bracket.
-  `finite_horizon_lqr` runs the control Riccati recursion backward a declared number of
-  steps from a zero terminal cost and keeps every gain, where `LQRController` iterates to
-  a fixed point and keeps one. `FiniteHorizonLQR.first_gain` is the gain a
-  receding-horizon planner at horizon `H` applies at every step; the steady-state gain is
-  its limit and differs from it at every finite `H`, by an amount that shrinks with `H`
-  and reads as an error when the horizons are not matched. `kalman_schedule` writes the
-  exact filter's gains and covariances down before a reading exists, since under fixed
-  noise they never see one. `full_information_cost` is `J_lower`, the plan priced with
-  the state observed. `CertaintyEquivalentController` acts on the estimate as if it were
-  the state, and `closed_loop_cost` prices it, or any data-independent gain sequence, by
-  propagating the joint second moment of state and estimate; nothing is sampled.
-  `optimal_cost` is `J*` by the separation principle, and the two reach one number by
-  different arithmetic. `control_bracket` returns the floor and ceiling as a
+- `cpomdp.control` — the finite-horizon schedule. `finite_horizon_lqr` runs the control
+  Riccati recursion backward a declared number of steps from a zero terminal cost and
+  keeps every gain, where `LQRController` iterates to a fixed point and keeps one.
+  `FiniteHorizonLQR.first_gain` is the gain a receding-horizon planner at horizon `H`
+  applies at every step; the steady-state gain is its limit and differs from it at every
+  finite `H`, by an amount that shrinks with `H` and reads as an error when the horizons
+  are not matched. `kalman_schedule` writes the exact filter's gains and covariances
+  down before a reading exists, since under fixed noise they never see one. The Control
+  page of the API reference opens the schedule in plain terms.
+- `cpomdp._lab.bracket` — the control bracket, private until its leg under
+  state-dependent noise lands. `full_information_cost` is `J_lower`, the plan priced
+  with the state observed. `CertaintyEquivalentController` acts on the estimate as if it
+  were the state, and `closed_loop_cost` prices it, or any data-independent gain
+  sequence, by propagating the joint second moment of state and estimate; nothing is
+  sampled. `optimal_cost` is `J*` by the separation principle, and the two reach one
+  number by different arithmetic. `control_bracket` returns the floor and ceiling as a
   `ControlBracket`, and `control_efficiency` reads `η_ctrl` from it: the share of the
   width an agent recovers, within-model, with a bar that is the agent's own divided by
   the width, the floor below which `η_ctrl` cannot be told from zero. A goal the
   dynamics do not hold, a noise that depends on the state, and a bracket of zero width
-  are all refused. The Control page of the API reference opens the schedule and the
-  bracket in plain terms.
-- `cpomdp.reference` — the exact reference filter's substrate, reached by module path
-  and not re-exported at the package top. `QuadratureGrid` and `GridDensity` are a
+  are all refused.
+- `cpomdp._lab.reference` — the exact reference filter's substrate, reached by module
+  path and not re-exported at the package top. `QuadratureGrid` and `GridDensity` are a
   declared lattice and log-values on it, and `gaussian_on` is the one place a Gaussian
   is put on that lattice. `averaged_inference_gap` sweeps an observation box and returns
-  an `InferenceGap`: the rule's expected divergence from the exact posterior under
-  `p*`, beside the predictive mass the box caught and the worst edge ratio. A rule may
-  answer `Void` for a reading it could not converge on. The sweep then reports that
-  node as NaN, sums its weight into `voided_mass`, and averages the answered readings
-  normalised to their own mass, the conditional reading a clipped box already gets
-  (ADR-060).
-- `cpomdp.reference.ladder` — the rule ladder. A `Rung` is a factory: the likelihood a
-  reading is conditioned on goes in, and the `rule(prior, observation)` callable the
-  gap measures comes out, with everything the rung reads from the model closed over at
-  construction. All five of ADR-056's rungs are built: `PLUG_IN`, the Kalman update
-  with the noise read once at the prior mean; `SINGLE_STEP` and `ITERATED`, the
-  Spinello–Stilwell scheme under ADR-057's modification at a budget of one and at
-  ADR-058's budget and tolerance, with the noise's slope taken by automatic
+  an `InferenceGap`: the rule's expected divergence from the exact posterior under `p*`,
+  beside the predictive mass the box caught and the worst edge ratio. A rule may answer
+  `Void` for a reading it could not converge on. The sweep then reports that node as
+  NaN, sums its weight into `voided_mass`, and averages the answered readings normalised
+  to their own mass, the conditional reading a clipped box already gets (ADR-060).
+- `cpomdp._lab.reference.ladder` — the rule ladder. A `Rung` is a factory: the
+  likelihood a reading is conditioned on goes in, and the `rule(prior, observation)`
+  callable the gap measures comes out, with everything the rung reads from the model
+  closed over at construction. All five of ADR-056's rungs are built: `PLUG_IN`, the
+  Kalman update with the noise read once at the prior mean; `SINGLE_STEP` and
+  `ITERATED`, the Spinello–Stilwell scheme under ADR-057's modification at a budget of
+  one and at ADR-058's budget and tolerance, with the noise's slope taken by automatic
   differentiation and one observation channel only (ADR-062); `BELIEF_SMOOTHED`, the
   Kalman update with the noise averaged under the prior on its own grid (ADR-061); and
-  `EXACT_RUNG`, the reference at the top. `LADDER` is the declared `v1` set of the
-  five, in the order the battery's D1 leg is registered over. `iterated_update` runs
-  the scheme on one reading at any budget and returns its count, so the cost of an
-  iterating rung is read off a result and not a loop body. `RuleLadder` is the
-  declared, versioned set the rungs sit in, refused without an exact rung the same
-  way an `InferenceSet` is refused without an exact cell. The Gaussian
-  rungs read the channel through `GaussianChannel`, a second small protocol beside
-  `ObservationLikelihood` that adds the observation matrix and `observation_noise_at`,
-  so the exact rung is not asked for either.
+  `EXACT_RUNG`, the reference at the top. `LADDER` is the declared `v1` set of the five,
+  in the order the battery's D1 leg is registered over. `iterated_update` runs the
+  scheme on one reading at any budget and returns its count, so the cost of an iterating
+  rung is read off a result and not a loop body. `RuleLadder` is the declared, versioned
+  set the rungs sit in, refused without an exact rung the same way an `InferenceSet` is
+  refused without an exact cell. The Gaussian rungs read the channel through
+  `GaussianChannel`, a second small protocol beside `ObservationLikelihood` that adds
+  the observation matrix and `observation_noise_at`, so the exact rung is not asked for
+  either.
 - `research.explorations.threshold` — GATE-D4's threshold `T` takes a value. The
   reference engine's error field is measured across the fit window at the binding
   cell, its shift on the fitted exponent replaces the registered `σ_p`, and
@@ -162,7 +173,7 @@ no use of the readings beats it.
 - `research.checks.ladder` — the ladder's first reading. Five rungs on `d4-family-v1`
   at the binding cell, at the fifteen spreads and on the two lattices `T` was registered
   under, each gap with a bar measured by refinement and carried whole as its own. One
-  row per adjacent pair resolves the ordering through `cpomdp.resolution` at every
+  row per adjacent pair resolves the ordering through `cpomdp._lab.resolution` at every
   spread, `NOT_RESOLVED` where the bars overlap, and every ordering row is `COMPUTED`
   since the bar is measured and not certified. Two rows read route 6 off the same
   numbers, one reports the R6 signal beside `T` with no verdict on the gate, and the
@@ -265,7 +276,9 @@ no use of the readings beats it.
   `research/c4_hand_derivation.md` landed 2026-08-17, after the suites citing it, which
   ADR-037 already discloses (ADR-041).
 - `warrantlib` — the vocabulary every check labels itself from, published as its own
-  distribution and re-exported as `cpomdp.warrant` so existing import paths keep working.
+  distribution. cpomdp's top level re-exports `Warrant` alone, the type its selectors
+  and searches report. `cpomdp.enumeration` keeps `CompletenessCertificate`, which v0.4.4
+  shipped there. The rest is imported from warrantlib (ADR-069).
   It depends on the standard library alone, so a suite can label its findings without a
   numerical stack; cpomdp depends on it and adds nothing to it (ADR-039). `Warrant` carries the
   prover class (`PROVED`, `CERTIFIED`, `CORROBORATED`), `Outcome` what a registered
@@ -277,7 +290,7 @@ no use of the readings beats it.
   without a reader knowing the ordering. The prover sub-modes read the same way in prose:
   `Prover 3 · sample`, `Prover 3 · enumeration`, `Prover 3 · validated`. The canonical
   table is at `research/warrant_ledger.md`.
-- `cpomdp.SymbolicReduction` — evidence for a `PROVED` claim decided by argument rather
+- `warrantlib.SymbolicReduction` — evidence for a `PROVED` claim decided by argument rather
   than by enumeration (Provers 1 and 2). A CAS establishes that one expression equals
   another and has nothing to say about whether those are the expressions the analytic
   claim is about, which the warrant ledger records as a human obligation. The type carries
@@ -290,10 +303,11 @@ no use of the readings beats it.
 - `check_summary` prints `n registered, m tested here, k fired`, then counts per
   `(warrant × outcome)`. Registering four falsifiers and testing two is a different claim
   from testing four, and one number cannot carry both.
-- `cpomdp.diagnostics.logdet_pd` — `ln det` behind a Cholesky positive-definiteness guard,
-  NaN otherwise. `slogdet` reports a sign separately, so reading only the magnitude returns
-  `ln 2` for `diag(-1, -2)`, a plausible number for a matrix whose log-determinant does not
-  exist. `epistemic_value` and the crossover demo's oracle both route through it.
+- A host-side `ln det` behind a Cholesky positive-definiteness guard, private to
+  `cpomdp.diagnostics`, NaN otherwise. `slogdet` reports a sign separately, so reading
+  only the magnitude returns `ln 2` for `diag(-1, -2)`, a plausible number for a matrix
+  whose log-determinant does not exist. `epistemic_value` and the crossover demo's
+  oracle both route through it.
 - `examples/ffg/crossover.py` gains `flip_margin_error`, the error the already-declared
   `COND_CEILING` allows on a difference of two scores. `H* = 7` rested on a bare inequality
   between two computed floats with nothing said about how far apart they had to be. The
@@ -368,7 +382,12 @@ no use of the readings beats it.
   so four API pages shipped a raw key where a reference should have been and no page
   carried a bibliography at all. Enabling the extension fixes every citation in the tree
   at once. No prose contained `[^` beforehand, so nothing existing changes meaning.
-- `cpomdp.additivity.variational_free_energy` and `RxInferBackend` refuse a
+- The README is the PyPI page, and its two figures and five links were relative paths,
+  which PyPI does not resolve. They are absolute now, so the page renders the same on
+  PyPI, on GitHub and on the docs site. The figures are pinned to the commit that last
+  changed them, so a later rename on `main` cannot break a published page, and the docs
+  site still serves its own copies.
+- `cpomdp._lab.additivity.variational_free_energy` and `RxInferBackend` refuse a
   state-dependent sensor. Both read the plain `observation_noise` whatever the model
   carried, so a model with `R(x)` was priced or filtered against a constant without
   saying so. `AdditivityCheck` already refused through `predicted_belief`. A direct call
@@ -442,9 +461,14 @@ no use of the readings beats it.
   there is the same for every target. An explicit horizon too short for the target to
   move the scores is refused, naming the shortest that works. Single integrators keep
   horizon 1 (ADR-068).
-- `cpomdp.diagnostics.condition_numbers` — the batched condition number
-  `rollout_conditioning` computed inline, now a function of its own so a rollout and a
-  scored cell read the same number for the same matrix.
+- The batched condition number `rollout_conditioning` computed inline is now a private
+  function of its own, so a rollout and a scored cell read the same number for the same
+  matrix.
+- **Breaking:** `validate_step_inputs` and `rxinfer_chemotaxis_tree_root` are private, as
+  `_validate_step_inputs` and `_rxinfer_chemotaxis_tree_root`. v0.4.4 exported them from
+  `cpomdp.backends.base` and `cpomdp.backends.rxinfer`. The first is the shape check the
+  built-in backends share and the second is the RxInfer test oracle, and a cpomdp user
+  calls neither (ADR-069). `import cpomdp` no longer leaves `cpomdp.jax` behind.
 - **Breaking:** a *fixed* `observation_model` or `dynamics_noise_model` must now restate
   the model's `observation_noise` / `dynamics_noise` exactly, and a sensor's linearized
   observation matrix must equal `observation_matrix`. `LinearGaussianModel` previously
@@ -491,18 +515,17 @@ no use of the readings beats it.
   Python 3.10 reaches end of life in October 2026, which is what makes the trade cheap
   rather than what makes it right (ADR-045). The published warrantlib 0.2.0 keeps its
   `>=3.10` metadata, so an existing 3.10 install resolves as it always did.
-- `cpomdp-research` requires `warrantlib>=0.3`, for `CheckReport.check_id`. cpomdp's own
-  floor stays at `>=0.2`: nothing under `src/cpomdp` constructs a report, and moving the
-  floor would re-arm ADR-040's publish-ordering race for no gain.
+- `cpomdp-research` requires `warrantlib>=0.3`, for `CheckReport.check_id`.
 - The crossover falsifiers name their action mode. `H* = 7` is an open-loop number: the
   sweep scores whole length-H sequences with no re-planning, driving neither
   `RecedingHorizonSelector` nor `OpenLoopSelector`. The same statistic under a
   receding-horizon driver is a different quantity and is unmeasured. The declaration now
   travels with the number in the `PROVED` details, in `warrant_numbers.md`, in the ledger
   and in the README, and a test asserts it so the qualifier cannot be dropped silently.
-- cpomdp requires `warrantlib>=0.2`, up from `>=0.1`. `cpomdp.warrant` re-exports
-  `Provenance`, so an installed 0.1 fails at `import cpomdp`. Breaking for anyone pinning
-  warrantlib 0.1.
+- cpomdp requires `warrantlib>=0.3,<0.4`, up from `>=0.1`. The tree builds the
+  completeness certificates 0.3 introduced, and against 0.2 the modules that build them
+  failed to import. The cap is there because warrantlib's minor versions break before
+  1.0, as cpomdp's do. Breaking for anyone pinning warrantlib below 0.3 (ADR-070).
 - **Breaking:** the model's fields are `dynamics_matrix`, `control_matrix`,
   `observation_model` and `dynamics_noise_model` (were `dynamics`, `control`,
   `observation`, `process_noise`). One rule now covers every field: `_matrix` is a linear

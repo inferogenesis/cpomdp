@@ -7,10 +7,10 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from cpomdp.backends.degraded import WrongFixedRBackend
+from cpomdp._lab.degraded import WrongFixedRBackend
+from cpomdp._lab.harness import ScoredAgent, World
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.dynamics import CallableProcessNoise
-from cpomdp.harness import ScoredAgent, World
 from cpomdp.observation import CallableSensor, FixedSensor
 from cpomdp.types import Belief, LinearGaussianModel
 

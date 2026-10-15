@@ -2,11 +2,11 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from cpomdp.backends.base import InferenceBackend
-from cpomdp.backends.degraded import (
+from cpomdp._lab.degraded import (
     DiagonalCovarianceBackend,
     WrongFixedRBackend,
 )
+from cpomdp.backends.base import InferenceBackend
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.dynamics import CallableProcessNoise
 from cpomdp.observation import CallableSensor

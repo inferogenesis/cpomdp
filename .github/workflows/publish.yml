@@ -3,9 +3,10 @@ name: publish
 on:
   release:
     types: [published]
-  # Publish warrantlib on its own, with no cpomdp release attached. cpomdp's next
-  # release carries `Requires-Dist: warrantlib>=0.1`, so warrantlib has to be on PyPI
-  # before that release goes out or the install cannot resolve. The two publish jobs
+  # Publish warrantlib on its own, with no cpomdp release attached. A cpomdp release
+  # names a warrantlib floor in `Requires-Dist` (`>=0.3,<0.4` from 0.5.0), so that
+  # warrantlib has to be on PyPI before the release goes out or the install cannot
+  # resolve. The two publish jobs
   # run in parallel with no ordering between them, which is not something to discover
   # on the release that needs it.
   workflow_dispatch:

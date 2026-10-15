@@ -7,8 +7,8 @@ the two ways it declines a reading.
 
 import pytest
 
-from cpomdp.reference.gap import Void
-from cpomdp.reference.quadrature import GridDensity, QuadratureGrid, gaussian_on
+from cpomdp._lab.reference.gap import Void
+from cpomdp._lab.reference.quadrature import GridDensity, QuadratureGrid, gaussian_on
 from research.spinello_stilwell import gap_rescaling
 from research.spinello_stilwell.invariance import CASE
 
@@ -35,7 +35,7 @@ def test_it_reports_no_warrant():
 
 
 def test_the_budget_it_runs_at_is_the_rung_s():
-    from cpomdp.reference.ladder import CONVERGENCE_TOLERANCE, ITERATION_BUDGET
+    from cpomdp._lab.reference.ladder import CONVERGENCE_TOLERANCE, ITERATION_BUDGET
 
     assert gap_rescaling.declared_budget() == (ITERATION_BUDGET, CONVERGENCE_TOLERANCE)
 

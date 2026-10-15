@@ -259,7 +259,7 @@ class ScoredAgent:
 
         Raises:
             ValueError: On a shape mismatch in ``observation`` or ``action``, enforced
-                by the backend's ``validate_step_inputs``.
+                by the backend's ``_validate_step_inputs``.
         """
         self.belief = self._backend.infer_states(observation, self.belief, action)
         return self.belief
@@ -347,7 +347,8 @@ class DrivenRun:
             folded these, in this order.
         states: The true states the world passed through, shape ``(k, n)``.
         beliefs: Each agent's belief after each step, keyed by the agent's name.
-        action_sequence_version: The version of the sequence that drove the run.
+        action_sequence: The sequence that drove the run. A score reads its actions
+            from here, so it cannot pair the readings with another sequence.
         control_loop: The declaration that the loop was cut. Required, so a run cannot
             hand back numbers without it.
     """
@@ -355,8 +356,13 @@ class DrivenRun:
     observations: Float64[Array, "k m"]
     states: Float64[Array, "k n"]
     beliefs: Mapping[str, tuple[Belief, ...]]
-    action_sequence_version: str
+    action_sequence: ExogenousActionSequence
     control_loop: ModellingChoice
+
+    @property
+    def action_sequence_version(self) -> str:
+        """The version of the sequence that drove the run."""
+        return self.action_sequence.version
 
     @property
     def final_beliefs(self) -> Mapping[str, Belief]:
@@ -412,6 +418,6 @@ def drive(
         beliefs=MappingProxyType(
             {name: tuple(beliefs) for name, beliefs in trajectories.items()}
         ),
-        action_sequence_version=sequence.version,
+        action_sequence=sequence,
         control_loop=SEVERED_CONTROL_LOOP,
     )

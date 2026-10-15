@@ -377,6 +377,13 @@ single-step rung. Averaging `R` under the prior does not recover what rung one
 discards, since `E[R(x)]` carries no `∇σ` either. The blindness Q6 names is the
 fourth rung's too.
 
+### AMENDMENT 2026-10-15: the propagation moved to `cpomdp._lab.resolution`
+
+The ROUTE of 2026-09-12 resolves each pair "through `cpomdp.resolution`". That module
+now lives in `cpomdp._lab.resolution`, with the rest of the research apparatus in a
+private package (DECISIONS.md ADR-069). The move changed no code, and no reading here
+depends on the path.
+
 ## Q6. What rung one is blind to
 
 The term rung one discards, `(1/2σ²)∇ᵀσ∇σ`, is non-zero exactly when the noise varies
@@ -485,6 +492,13 @@ would erase the reading of the rule where its weight lies.
 
 Landed in `src/cpomdp/reference/gap.py`, pinned by two tests in
 `tests/test_reference_gap.py`.
+
+### AMENDMENT 2026-10-15: the gap evaluator moved to `src/cpomdp/_lab/reference/gap.py`
+
+The RESOLVED entry of 2026-09-10 says the routing landed in `src/cpomdp/reference/gap.py`.
+The file now lives at `src/cpomdp/_lab/reference/gap.py`, with the rest of the research
+apparatus in a private package (DECISIONS.md ADR-069). The move changed no code, and the
+two tests in `tests/test_reference_gap.py` still pin it.
 
 ## Q8. Rung two has no published numerical validation
 

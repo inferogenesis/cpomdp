@@ -3,8 +3,8 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from cpomdp.reference.quadrature import QuadratureGrid
-from cpomdp.reference.transition import LinearGaussianKernel, TransitionKernel
+from cpomdp._lab.reference.quadrature import QuadratureGrid
+from cpomdp._lab.reference.transition import LinearGaussianKernel, TransitionKernel
 
 
 def _log_normal(residual, var):

@@ -19,10 +19,10 @@ from cpomdp import (
     probe_model,
 )
 from cpomdp.diagnostics import (
+    _host_logdet_pd,
     epistemic_value,
     is_positive_definite,
     loewner_order,
-    logdet_pd,
 )
 from cpomdp.dynamics import CallableProcessNoise
 
@@ -74,8 +74,10 @@ class TestPositiveDefinite:
 
 class TestLogdetPd:
     def test_matches_the_closed_form(self):
-        assert logdet_pd(2.0 * np.eye(2)) == pytest.approx(np.log(4.0), abs=1e-12)
-        assert logdet_pd(np.diag([3.0, 0.5])) == pytest.approx(np.log(1.5), abs=1e-12)
+        assert _host_logdet_pd(2.0 * np.eye(2)) == pytest.approx(np.log(4.0), abs=1e-12)
+        assert _host_logdet_pd(np.diag([3.0, 0.5])) == pytest.approx(
+            np.log(1.5), abs=1e-12
+        )
 
     @pytest.mark.parametrize(
         "matrix",
@@ -87,7 +89,7 @@ class TestLogdetPd:
         ],
     )
     def test_non_pd_gives_nan(self, matrix):
-        assert np.isnan(logdet_pd(matrix))
+        assert np.isnan(_host_logdet_pd(matrix))
 
     def test_the_sign_shortcut_it_replaces_is_fooled(self):
         # The premise. Without it the rejection above shows only that some matrix
@@ -305,11 +307,11 @@ class TestProbeGraphBackend:
 
 
 def test_condition_numbers_reads_a_stack_and_refuses_anything_else():
-    from cpomdp.diagnostics import condition_numbers
+    from cpomdp.diagnostics import _condition_numbers
 
     stack = np.array([[[4.0, 0.0], [0.0, 1.0]], [[1.0, 1.0], [1.0, 1.0]]])
-    measured = condition_numbers(stack)
+    measured = _condition_numbers(stack)
     assert measured[0] == pytest.approx(4.0)
     assert not np.isfinite(measured[1]) or measured[1] > 1e15
     with pytest.raises(ValueError, match="stack of square matrices"):
-        condition_numbers(np.eye(2))
+        _condition_numbers(np.eye(2))

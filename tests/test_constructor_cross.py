@@ -14,7 +14,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from cpomdp.constructors import (
+from cpomdp._lab.constructors import (
     CORRECT,
     EXACT_INFERENCE,
     ConstructorSet,
@@ -24,9 +24,9 @@ from cpomdp.constructors import (
     ModelSpec,
     Perturbation,
 )
+from cpomdp._lab.scoring import build_cross
 from cpomdp.enumeration import IncompleteEnumerationError
 from cpomdp.observation import CallableSensor
-from cpomdp.scoring import build_cross
 from warrantlib import ProductCompletenessCertificate, Warrant
 
 DT = 0.1

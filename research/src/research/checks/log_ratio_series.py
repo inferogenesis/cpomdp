@@ -32,13 +32,13 @@ Symbolic throughout. No floats, no numerics, no functional form chosen for `R`: 
 log-derivatives `l₁..l₆` stay free symbols and `R̄` stays symbolic and is never set to
 one. A check that passes only at `R̄ = 1` is a check that has lost a variable.
 
-Every identity reports `PROVED` at `EXACT`, carrying a
-[`SymbolicReduction`][cpomdp.SymbolicReduction] that names where the symbolic setup was
-hand derived against the analytic problem. A CAS establishes that one expression equals
-another and cannot establish that those are the expressions the claim is about, which is
-the condition the warrant ledger attaches to Prover 2 being theorem-grade. A refuted
-identity reports `FIRED` at `CORROBORATED`: simplification is incomplete, so a residual
-the CAS could not reduce is evidence that something is wrong rather than proof of what.
+Every identity reports `PROVED` at `EXACT`, carrying a `SymbolicReduction` that names
+where the symbolic setup was hand derived against the analytic problem. A CAS
+establishes that one expression equals another and cannot establish that those are the
+expressions the claim is about, which is the condition the warrant ledger attaches to
+Prover 2 being theorem-grade. A refuted identity reports `FIRED` at `CORROBORATED`:
+simplification is incomplete, so a residual the CAS could not reduce is evidence that
+something is wrong rather than proof of what.
 
 Where this sits against the numeric checks. ``gap_kernel`` implements the same three
 conventions in quadrature (reverse KL, `R` frozen at `R(μ)`, averaged under the true

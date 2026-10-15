@@ -3,7 +3,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from cpomdp.reference.likelihood import (
+from cpomdp._lab.reference.likelihood import (
     FixedNoiseLikelihood,
     GaussianChannel,
     ObservationLikelihood,

@@ -447,6 +447,14 @@ certificate, its provenance and the ancestry test are the suite's own and are
 unchanged by where the ids are reconciled. A moved result amends this file before it
 touches that test.
 
+### AMENDMENT 2026-10-15: the reference filter and the propagation moved to `cpomdp._lab`
+
+The PRE-REGISTRATION and the AMENDMENT of 2026-09-12 name `cpomdp.reference`,
+`cpomdp.reference.ladder` and `cpomdp.resolution`. They now live under `cpomdp._lab`,
+with the rest of the research apparatus in a private package (DECISIONS.md ADR-069).
+The move changed no code, and no reading here depends on the path. The original lines
+stand.
+
 **D2 · scaling exponent** · SEVERE · R8 · toolbox C, F · tier `BOUNDED` · **PR-9 · v0.6**, gated on GATE-D4
 
 - Predict: `gap ∝ (curvature of R) × (belief spread)²`. Sweep both factors

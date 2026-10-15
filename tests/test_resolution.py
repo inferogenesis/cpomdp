@@ -5,7 +5,7 @@ import math
 import numpy as np
 import pytest
 
-from cpomdp.resolution import (
+from cpomdp._lab.resolution import (
     EXACT,
     Bar,
     Bounded,
@@ -17,7 +17,7 @@ from cpomdp.resolution import (
     resolve,
     sum_of_bars,
 )
-from cpomdp.scoring import gaussian_kl
+from cpomdp._lab.scoring import gaussian_kl
 
 
 class TestBar:

@@ -407,8 +407,8 @@ kernel uses Cholesky) reproduces `G(walk_7)` and `G(reach_7)` within `atol = 1e-
 That NumPy kernel kept only `slogdet`'s log-magnitude. It therefore accepted a covariance
 block with an even number of negative eigenvalues, where the shipped kernel's Cholesky
 guard returns NaN. `tests/test_crossover_oracle_audit.py` recorded what the unguarded path
-returned at H=7 before `diagnostics.logdet_pd` was wired in, so that the guard could be
-shown not to move it.
+returned at H=7 before the guard, now `diagnostics._host_logdet_pd`, was wired in, so
+that the guard could be shown not to move it.
 
 The guard moved nothing. All three anchors below compare equal to the unguarded values
 under `==`, not merely within `ORACLE_RTOL`. A positive-definiteness precondition ahead of

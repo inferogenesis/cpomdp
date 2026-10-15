@@ -463,8 +463,8 @@ class Agent:
             The updated belief (also stored on ``self.belief``).
 
         Raises:
-            ValueError: On a shape mismatch in ``observation`` (enforced by the
-                backend; see ``validate_step_inputs``).
+            ValueError: On a shape mismatch in ``observation``, which the backend
+                enforces.
         """
         observation = jnp.asarray(observation, dtype=float)
         self._belief = self._backend.infer_states(

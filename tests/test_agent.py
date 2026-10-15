@@ -2,12 +2,12 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
+from cpomdp._lab.degraded import DiagonalCovarianceBackend, WrongFixedRBackend
+from cpomdp._lab.harness import ScoredAgent
 from cpomdp.agent import Agent
-from cpomdp.backends.degraded import DiagonalCovarianceBackend, WrongFixedRBackend
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.control import LQRController
 from cpomdp.ffg.chain import ChainBackend
-from cpomdp.harness import ScoredAgent
 from cpomdp.observation import CallableSensor
 from cpomdp.selection import (
     EFESelector,

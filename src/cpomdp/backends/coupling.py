@@ -21,11 +21,13 @@ import numpy as np
 from jaxtyping import Float64
 from numpy.typing import ArrayLike
 
-from cpomdp.backends.base import validate_step_inputs
+from cpomdp.backends.base import _validate_step_inputs
 from cpomdp.ffg.factors.linear_gaussian import GaussianTransition, ObservationFactor
 from cpomdp.ffg.graph import Coupling, CouplingGraph
 from cpomdp.ffg.message import CanonicalGaussian
 from cpomdp.types import Belief, LinearGaussianModel
+
+__all__ = ["CouplingGraphBackend", "IncompatibleLinearizationError"]
 
 
 class IncompatibleLinearizationError(ValueError):
@@ -321,7 +323,7 @@ class CouplingGraphBackend:
         return obs.linearize(jnp.zeros(node_dim))[1]  # R (fixed) or R(0) (state-dep.)
 
     def _build_validation_model(self) -> LinearGaussianModel:
-        """A flat model so ``validate_step_inputs`` shape-checks inputs identically.
+        """A flat model so ``_validate_step_inputs`` shape-checks inputs identically.
 
         ``infer_states`` reuses the shared per-step validator (``backends.base``) every
         backend uses, so a caller gets the same errors here as from ``KalmanBackend``.
@@ -495,7 +497,7 @@ class CouplingGraphBackend:
             The posterior *joint* belief over all nodes; slice one node out with
             ``marginal`` / ``readout``.
         """
-        observation, action = validate_step_inputs(
+        observation, action = _validate_step_inputs(
             self._flat_model, observation, prior, action
         )
         if self._is_factored:
@@ -679,7 +681,7 @@ class CouplingGraphBackend:
         moment-forms it) and ``partition_error`` (which measures the mass a partition
         would sever), so the two can never drift.
         """
-        observation, action = validate_step_inputs(
+        observation, action = _validate_step_inputs(
             self._flat_model, observation, prior, action
         )
         return self._assemble_unchecked(observation, prior, action)
@@ -690,7 +692,7 @@ class CouplingGraphBackend:
         """The within-slice joint posterior (Λ, h) without input validation.
 
         The pure numerical core, so a traced rollout (``rollout``) can call it inside a
-        ``lax.scan`` body where the host-side ``validate_step_inputs`` cannot run. Lift
+        ``lax.scan`` body where the host-side ``_validate_step_inputs`` cannot run. Lift
         the joint prior to canonical, ``predict`` through the block-diagonal per-node
         dynamics (the temporal edges), then add the structural coupling precision and
         the per-node observation messages (the within-slice update). ChainBackend sums
@@ -752,7 +754,7 @@ class CouplingGraphBackend:
         control_matrix = self._control
         if control_matrix is None:
             return jnp.zeros(self.n_total)
-        assert action is not None  # validate_step_inputs guarantees this
+        assert action is not None  # _validate_step_inputs guarantees this
         return control_matrix @ action  # b = B·action
 
     def marginal(self, node: int, belief: Belief) -> Belief:

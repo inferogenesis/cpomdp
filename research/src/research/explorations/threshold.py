@@ -9,10 +9,10 @@ refinement difference and `T` is a declaration derived from it. Run it with
 
 Three parts, in the order the registration states them.
 
-**The field.** The plug-in gap of `cpomdp.reference` on `d4-family-v1` at the binding
-cell, on the declared lattice and on a finer one, at fifteen spreads. The relative
-difference is the declared lattice's error, `ε(σ)`. A third lattice at three of the
-spreads says whether that estimate has converged. Where `|ε|` is under the roundoff
+**The field.** The plug-in gap of `cpomdp._lab.reference` on `d4-family-v1` at the
+binding cell, on the declared lattice and on a finer one, at fifteen spreads. The
+relative difference is the declared lattice's error, `ε(σ)`. A third lattice at three of
+the spreads says whether that estimate has converged. Where `|ε|` is under the roundoff
 floor it is read as zero.
 
 **The shift.** An error field enters the D2 fit as a bias on the exponent,
@@ -150,10 +150,10 @@ def measure_gap(spread: float, lattice: Lattice) -> tuple[float, float, float]:
         The gap in nats, the predictive mass the observation box caught, and the
         worst edge ratio across the sweep.
     """
-    from cpomdp.reference.gap import averaged_inference_gap
-    from cpomdp.reference.ladder import PLUG_IN_RUNG
-    from cpomdp.reference.likelihood import StateDependentNoiseLikelihood
-    from cpomdp.reference.quadrature import QuadratureGrid, gaussian_on
+    from cpomdp._lab.reference.gap import averaged_inference_gap
+    from cpomdp._lab.reference.ladder import PLUG_IN_RUNG
+    from cpomdp._lab.reference.likelihood import StateDependentNoiseLikelihood
+    from cpomdp._lab.reference.quadrature import QuadratureGrid, gaussian_on
 
     likelihood = StateDependentNoiseLikelihood(
         [[1.0]],

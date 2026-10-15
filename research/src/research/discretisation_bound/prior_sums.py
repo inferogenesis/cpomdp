@@ -346,7 +346,7 @@ def engine_variance_ratios() -> list[float]:
     Returns:
         One ratio per spread.
     """
-    from cpomdp.reference.quadrature import gaussian_on
+    from cpomdp._lab.reference.quadrature import gaussian_on
 
     ratios = []
     for spread in threshold.SPREADS:

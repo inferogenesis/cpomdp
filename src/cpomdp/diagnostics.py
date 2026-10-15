@@ -91,11 +91,9 @@ __all__ = [
     "ProbeBackend",
     "RolloutConditioning",
     "SensorReport",
-    "condition_numbers",
     "epistemic_value",
     "is_positive_definite",
     "loewner_order",
-    "logdet_pd",
     "probe_model",
     "rollout_conditioning",
 ]
@@ -120,7 +118,7 @@ def is_positive_definite(matrix: ArrayLike) -> bool:
     return True
 
 
-def logdet_pd(matrix: ArrayLike) -> float:
+def _host_logdet_pd(matrix: ArrayLike) -> float:
     """``ln det`` of a symmetric positive-definite matrix, NaN otherwise.
 
     ``slogdet`` splits its answer into a sign and a log-magnitude. Read the magnitude
@@ -157,14 +155,14 @@ def epistemic_value(
     with ``S = C Σ⁻ Cᵀ + R`` the innovation covariance. Computed here on the host for
     reporting; the objective's own copy lives in ``cpomdp.efe``.
 
-    Both log-determinants go through ``logdet_pd``, so a non-positive-definite ``R`` or
-    ``S`` returns NaN and an undefined value stays visibly undefined.
+    Both log-determinants go through ``_host_logdet_pd``, so a non-positive-definite
+    ``R`` or ``S`` returns NaN and an undefined value stays visibly undefined.
     """
     cov = np.asarray(predicted_cov, dtype=float)
     c = np.asarray(observation_matrix, dtype=float)
     r = np.asarray(observation_noise, dtype=float)
     s = c @ cov @ c.T + r
-    return 0.5 * (logdet_pd(s) - logdet_pd(r))
+    return 0.5 * (_host_logdet_pd(s) - _host_logdet_pd(r))
 
 
 def loewner_order(a: ArrayLike, b: ArrayLike) -> str:
@@ -444,7 +442,7 @@ class RolloutConditioning:
     all_positive_definite: bool
 
 
-def condition_numbers(matrices: ArrayLike) -> np.ndarray:
+def _condition_numbers(matrices: ArrayLike) -> np.ndarray:
     """The 2-norm condition number of each matrix in a stack, on the host.
 
     One implementation for every place a conditioning discipline is applied, so the
@@ -460,7 +458,7 @@ def condition_numbers(matrices: ArrayLike) -> np.ndarray:
     stack = np.asarray(matrices, dtype=float)
     if stack.ndim != 3 or stack.shape[1] != stack.shape[2]:
         raise ValueError(
-            f"condition_numbers reads a stack of square matrices, shape (k, n, n), "
+            f"_condition_numbers reads a stack of square matrices, shape (k, n, n), "
             f"got shape {stack.shape}"
         )
     return np.array([np.linalg.cond(m) for m in stack])
@@ -487,9 +485,9 @@ def rollout_conditioning(trace: "PolicyEfeTrace") -> RolloutConditioning:
     sigma_post = np.asarray(trace.sigma_post, dtype=float)
 
     return RolloutConditioning(
-        cond_sigma_pred=condition_numbers(sigma_pred),
-        cond_s=condition_numbers(s),
-        cond_sigma_post=condition_numbers(sigma_post),
+        cond_sigma_pred=_condition_numbers(sigma_pred),
+        cond_s=_condition_numbers(s),
+        cond_sigma_post=_condition_numbers(sigma_post),
         min_eig_sigma_post=np.array([np.linalg.eigvalsh(m).min() for m in sigma_post]),
         all_positive_definite=all(
             is_positive_definite(m)

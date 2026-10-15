@@ -1,6 +1,6 @@
 """Scoring a declared cross of models against a declared cross of ways to infer.
 
-The two axes live in ``cpomdp.constructors``: one for what a model gets
+The two axes live in ``cpomdp._lab.constructors``: one for what a model gets
 wrong about the process, one for what its filter gets wrong about the model. A run
 crosses them. Every separation reported from such a run is a comparison between two of
 its cells, which is a decision only if the cross was visited in full.
@@ -18,13 +18,18 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import ArrayLike
 
+from cpomdp._lab.constructors import (
+    ConstructorSet,
+    InferenceKind,
+    InferenceSet,
+    ModelSpec,
+)
+from cpomdp._lab.harness import DrivenRun
 from cpomdp._validation import require_fixed_noise
 from cpomdp.backends.base import InferenceBackend
 from cpomdp.backends.kalman import KalmanBackend
-from cpomdp.constructors import ConstructorSet, InferenceKind, InferenceSet, ModelSpec
-from cpomdp.diagnostics import condition_numbers
+from cpomdp.diagnostics import _condition_numbers
 from cpomdp.enumeration import IncompleteEnumerationError
-from cpomdp.harness import DrivenRun, ExogenousActionSequence
 from cpomdp.types import Belief, LinearGaussianModel
 from warrantlib import AxisDeclaration, ProductCompletenessCertificate, Warrant
 
@@ -93,7 +98,7 @@ class RunConditioning:
     matrix can manufacture or destroy the twelve orders a separation claims
     (``research/warrant_ledger.md`` section 4). So the numbers travel with the score
     rather than being looked up afterwards. Every field is length-``k``, indexed by
-    step, computed on the host by ``cpomdp.diagnostics.condition_numbers``.
+    step, computed on the host by ``cpomdp.diagnostics._condition_numbers``.
 
     Attributes:
         cond_s_true: of the true predictive covariance ``S*``, which weights the
@@ -784,37 +789,28 @@ class ThreeTermEvaluator:
         """Refuse a true model the closed forms do not describe."""
         require_fixed_noise(self.truth, _FIXED_NOISE_ONLY)
 
-    def score(
-        self, cell: CrossCell, run: DrivenRun, sequence: ExogenousActionSequence
-    ) -> CellScore:
+    def score(self, cell: CrossCell, run: DrivenRun) -> CellScore:
         """The cell's two divergences summed over the run's steps, in nats.
 
         The cell's filter is run afresh from its model's prior over the run's
         readings, so the score depends on the run only through what the world
-        emitted and what drove it. The conditioning of every matrix the terms
-        factored or inverted comes back beside them.
+        emitted and what drove it. The actions are the run's own. The conditioning of
+        every matrix the terms factored or inverted comes back beside them.
 
         Args:
             cell: The model and filter to score.
-            run: The readings, from a world built on ``truth``.
-            sequence: The actions that drove the run. Checked against the version
-                the run recorded, since a run carries the version and not the actions.
+            run: The readings and the actions that drove them, from a world built on
+                ``truth``.
 
         Returns:
             The two terms, each a sum over the run's steps, and their conditioning.
 
         Raises:
-            ValueError: If ``sequence`` is not the one the run recorded, if the run's
-                readings are not the true model's, if the cell's model carries
-                state-dependent noise, or if the cell's filter step is not affine in
-                the reading.
+            ValueError: If the run's readings are not the true model's, if the cell's
+                model carries state-dependent noise, or if the cell's filter step is
+                not affine in the reading.
         """
-        if sequence.version != run.action_sequence_version:
-            raise ValueError(
-                f"the run was driven by sequence {run.action_sequence_version!r} and "
-                f"the sequence passed is {sequence.version!r}; a score needs the "
-                f"actions the run was actually driven by"
-            )
+        sequence = run.action_sequence
         observations = np.asarray(run.observations, dtype=float)
         if observations.shape != (sequence.horizon, self.truth.n_observations):
             raise ValueError(
@@ -870,29 +866,27 @@ class ThreeTermEvaluator:
                 misspecification=misspecification, inference_gap=inference_gap
             ),
             conditioning=RunConditioning(
-                cond_s_true=condition_numbers(s_true),
-                cond_s_model=condition_numbers(s_model),
-                cond_sigma_exact=condition_numbers(sigma_exact),
-                cond_sigma_agent=condition_numbers(sigma_agent),
+                cond_s_true=_condition_numbers(s_true),
+                cond_s_model=_condition_numbers(s_model),
+                cond_sigma_exact=_condition_numbers(sigma_exact),
+                cond_sigma_agent=_condition_numbers(sigma_agent),
             ),
             steps=sequence.horizon,
         )
 
-    def score_cross(
-        self, cross: ConstructorCross, run: DrivenRun, sequence: ExogenousActionSequence
-    ) -> CrossScore:
+    def score_cross(self, cross: ConstructorCross, run: DrivenRun) -> CrossScore:
         """Every cell of ``cross`` scored over one run.
 
         Args:
             cross: The cells and the certificate that all of them were built.
-            run: The readings, from a world built on ``truth``.
-            sequence: The actions that drove the run.
+            run: The readings and the actions that drove them, from a world built on
+                ``truth``.
 
         Returns:
             The scores in cell order, carrying the cross's certificate.
         """
         return CrossScore(
-            cells=tuple(self.score(cell, run, sequence) for cell in cross.cells),
+            cells=tuple(self.score(cell, run) for cell in cross.cells),
             certificate=cross.certificate,
             action_sequence_version=run.action_sequence_version,
         )

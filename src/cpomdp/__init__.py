@@ -31,15 +31,16 @@ action can actually reach: ``probe_model`` samples that reachable set and
 reports back a ``SensorReport``.
 """
 
-import jax
+import jax as _jax
 
 from cpomdp.agent import Agent
-from cpomdp.backends.base import InferenceBackend
+from cpomdp.backends.base import InadmissiblePartitionError, InferenceBackend
 from cpomdp.backends.coupling import (
     CouplingGraphBackend,
     IncompatibleLinearizationError,
 )
 from cpomdp.backends.kalman import KalmanBackend
+from cpomdp.control import LQRController
 from cpomdp.diagnostics import SensorReport, probe_model
 from cpomdp.dynamics import CallableProcessNoise, DynamicsNoise
 from cpomdp.efe import expected_free_energy
@@ -62,18 +63,11 @@ from cpomdp.selection import (
 )
 from cpomdp.structure import ModelStructure
 from cpomdp.types import Belief, LinearGaussianModel
-from warrantlib import (
-    CheckReport,
-    Outcome,
-    SymbolicReduction,
-    Tier,
-    Warrant,
-    check_summary,
-)
+from warrantlib import Warrant
 
 # Float64 throughout — the oracle matches to 1e-9 and JAX defaults to float32.
 # Process-global by necessity; see ADR-004.
-jax.config.update("jax_enable_x64", True)
+_jax.config.update("jax_enable_x64", True)
 
 __version__ = "0.5.0"
 
@@ -84,7 +78,6 @@ __all__ = [
     "CallableGaussianObservation",
     "CallableProcessNoise",
     "CallableSensor",
-    "CheckReport",
     "Coupling",
     "CouplingGraph",
     "CouplingGraphBackend",
@@ -95,22 +88,20 @@ __all__ = [
     "GaussianCoupling",
     "GaussianObservation",
     "GaussianTransition",
+    "InadmissiblePartitionError",
     "IncompatibleLinearizationError",
     "InferenceBackend",
     "KalmanBackend",
+    "LQRController",
     "LQRSelector",
     "LinearGaussianModel",
     "ModelStructure",
     "ObservationGoal",
     "ObservationModel",
-    "Outcome",
     "Preference",
     "SensorReport",
     "StateGoal",
-    "SymbolicReduction",
-    "Tier",
     "Warrant",
-    "check_summary",
     "expected_free_energy",
     "probe_model",
 ]

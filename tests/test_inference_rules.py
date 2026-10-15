@@ -1,14 +1,14 @@
 import numpy as np
 import pytest
 
-from cpomdp.backends.degraded import DiagonalCovarianceBackend, WrongFixedRBackend
-from cpomdp.backends.kalman import KalmanBackend
-from cpomdp.constructors import (
+from cpomdp._lab.constructors import (
     EXACT_INFERENCE,
     InferenceKind,
     InferenceRule,
     InferenceSet,
 )
+from cpomdp._lab.degraded import DiagonalCovarianceBackend, WrongFixedRBackend
+from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.types import Belief, LinearGaussianModel
 
 DT = 0.1

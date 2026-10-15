@@ -49,7 +49,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from cpomdp.crossover import crossover_statistic
-from cpomdp.diagnostics import logdet_pd, rollout_conditioning
+from cpomdp.diagnostics import is_positive_definite, rollout_conditioning
 from cpomdp.efe import policy_efe_ffg, policy_efe_ffg_trace
 from cpomdp.enumeration import (
     ChunkedEfeSearch,
@@ -59,7 +59,7 @@ from cpomdp.enumeration import (
 )
 from cpomdp.selection import Preference
 from cpomdp.types import Belief
-from cpomdp.warrant import (
+from warrantlib import (
     CheckReport,
     Outcome,
     Provenance,
@@ -473,6 +473,16 @@ def mechanism_curve(max_horizon=MAX_H):
 
 
 # --- 3. conditioning + an independent NumPy oracle on the headline number ----------
+def _host_logdet_pd(matrix) -> float:
+    """``ln det`` of a symmetric positive-definite matrix, NaN otherwise.
+
+    ``slogdet`` read only after a Cholesky succeeds, built from public names.
+    """
+    if not is_positive_definite(matrix):
+        return float("nan")
+    return float(np.linalg.slogdet(np.asarray(matrix, dtype=float))[1])
+
+
 def _numpy_score(policy) -> float:
     """Pure-NumPy predict-then-contract score.
 
@@ -504,14 +514,14 @@ def _numpy_score(policy) -> float:
             + observation_matrix.T @ np.linalg.inv(noise) @ observation_matrix
         )
         cov_post_info = np.linalg.inv(post_info)  # info-form posterior, the epistemic
-        # `logdet_pd` is the host guard: slogdet behind a Cholesky, so a block with an
-        # even number of negative eigenvalues returns NaN rather than a plausible
-        # number. The kernel's `_logdet_pd` is a separate implementation that reads its
-        # answer off a Cholesky factor under `jit`. They stay distinct so the agreement
-        # assertion in `check()` compares two routines rather than one.
+        # `_host_logdet_pd` is the host guard: slogdet behind a Cholesky, so a block
+        # with an even number of negative eigenvalues returns NaN rather than a
+        # plausible number. The kernel's `_logdet_pd` is a separate implementation that
+        # reads its answer off a Cholesky factor under `jit`. They stay distinct so the
+        # agreement assertion in `check()` compares two routines rather than one.
         epistemic = 0.5 * (
-            logdet_pd(cov[np.ix_(idx, idx)])
-            - logdet_pd(cov_post_info[np.ix_(idx, idx)])
+            _host_logdet_pd(cov[np.ix_(idx, idx)])
+            - _host_logdet_pd(cov_post_info[np.ix_(idx, idx)])
         )
         total += pragmatic - epistemic
         # Kalman-form contraction for the carry; the mean stays predict-only.
@@ -561,8 +571,8 @@ def conditioning(policy):
     flag -- and their bars are exactly the ones ``tests/test_rollout_hygiene.py`` gates
     on. The headline margin is small in relative terms, so this is where it is shown
     benign. ``min_eig(Σ_post)`` staying above the floor means neither Cholesky guard
-    fires, the kernel's ``_logdet_pd`` or this module's ``logdet_pd``, and the epistemic
-    never goes NaN.
+    fires, the kernel's ``_logdet_pd`` or this module's ``_host_logdet_pd``, and the
+    epistemic never goes NaN.
     """
     backend, belief, preference, info_block = _setup()
     trace = policy_efe_ffg_trace(

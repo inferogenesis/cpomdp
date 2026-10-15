@@ -3,12 +3,12 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from cpomdp.reference.filtering import condition
-from cpomdp.reference.likelihood import (
+from cpomdp._lab.reference.filtering import condition
+from cpomdp._lab.reference.likelihood import (
     FixedNoiseLikelihood,
     StateDependentNoiseLikelihood,
 )
-from cpomdp.reference.quadrature import GridDensity, QuadratureGrid, gaussian_on
+from cpomdp._lab.reference.quadrature import GridDensity, QuadratureGrid, gaussian_on
 
 
 def quadratic_noise(states, params):

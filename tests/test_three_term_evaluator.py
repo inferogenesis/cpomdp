@@ -1,15 +1,13 @@
 """The two divergences a cell is scored by, and the shape that keeps them honest."""
 
-from dataclasses import fields
+from dataclasses import fields, replace
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from cpomdp.backends.degraded import WrongFixedRBackend
-from cpomdp.backends.kalman import KalmanBackend
-from cpomdp.constructors import (
+from cpomdp._lab.constructors import (
     CORRECT,
     EXACT_INFERENCE,
     ConstructorSet,
@@ -19,13 +17,12 @@ from cpomdp.constructors import (
     ModelSpec,
     Perturbation,
 )
-from cpomdp.diagnostics import condition_numbers
-from cpomdp.harness import DrivenRun, ExogenousActionSequence, World, drive
-from cpomdp.observation import CallableSensor
-from cpomdp.reference.gap import averaged_inference_gap
-from cpomdp.reference.likelihood import FixedNoiseLikelihood
-from cpomdp.reference.quadrature import QuadratureGrid, gaussian_on
-from cpomdp.scoring import (
+from cpomdp._lab.degraded import WrongFixedRBackend
+from cpomdp._lab.harness import DrivenRun, ExogenousActionSequence, World, drive
+from cpomdp._lab.reference.gap import averaged_inference_gap
+from cpomdp._lab.reference.likelihood import FixedNoiseLikelihood
+from cpomdp._lab.reference.quadrature import QuadratureGrid, gaussian_on
+from cpomdp._lab.scoring import (
     _SERIES_BELOW,
     ConstructorCross,
     CrossCell,
@@ -40,6 +37,9 @@ from cpomdp.scoring import (
     misspecification_step,
     observation_predictive,
 )
+from cpomdp.backends.kalman import KalmanBackend
+from cpomdp.diagnostics import _condition_numbers
+from cpomdp.observation import CallableSensor
 from cpomdp.types import Belief, LinearGaussianModel
 
 
@@ -452,7 +452,7 @@ def evaluator() -> ThreeTermEvaluator:
 def test_the_calibration_cell_scores_zero_on_both_terms(run, evaluator):
     # R1, and the reading is exactly zero rather than below a bar. The correct model
     # runs the same arithmetic as p*, and the exact rule is the exact step.
-    scored = evaluator.score(_cell(_cross(), "correct", "exact"), run, SEQUENCE)
+    scored = evaluator.score(_cell(_cross(), "correct", "exact"), run)
     assert scored.decomposition == Decomposition(
         misspecification=0.0, inference_gap=0.0
     )
@@ -463,7 +463,7 @@ def test_a_perturbed_model_under_exact_inference_moves_only_misspecification(
 ):
     # C2. The gap is exactly zero because the cell's filter and the exact step under
     # the cell's model are one computation, whatever the model got wrong.
-    scored = evaluator.score(_cell(_cross(), "noisy_sensor", "exact"), run, SEQUENCE)
+    scored = evaluator.score(_cell(_cross(), "noisy_sensor", "exact"), run)
     assert scored.decomposition.misspecification > 0.0
     assert scored.decomposition.inference_gap == 0.0
 
@@ -474,36 +474,39 @@ def test_a_degraded_filter_under_the_correct_model_moves_only_the_gap(
 ):
     # C3. Misspecification reads two exact predictives and never the cell's filter,
     # so degrading the filter cannot reach it.
-    scored = evaluator.score(_cell(_cross(), "correct", rule), run, SEQUENCE)
+    scored = evaluator.score(_cell(_cross(), "correct", rule), run)
     assert scored.decomposition.misspecification == 0.0
     assert scored.decomposition.inference_gap > 0.0
 
 
 def test_the_both_positive_cell_moves_both(run, evaluator):
-    scored = evaluator.score(_cell(_cross(), "noisy_sensor", "wrong_r"), run, SEQUENCE)
+    scored = evaluator.score(_cell(_cross(), "noisy_sensor", "wrong_r"), run)
     assert scored.decomposition.misspecification > 0.0
     assert scored.decomposition.inference_gap > 0.0
 
 
 def test_scoring_is_a_pure_function_of_the_run(run, evaluator):
     cell = _cell(_cross(), "noisy_sensor", "diagonal")
-    first, second = (evaluator.score(cell, run, SEQUENCE) for _ in range(2))
+    first, second = (evaluator.score(cell, run) for _ in range(2))
     assert first.decomposition == second.decomposition
     assert np.array_equal(
         first.conditioning.cond_sigma_agent, second.conditioning.cond_sigma_agent
     )
 
 
-def test_a_sequence_the_run_was_not_driven_by_is_refused(run, evaluator):
-    other = ExogenousActionSequence(SEQUENCE.actions, version="seq-v2")
-    with pytest.raises(ValueError, match="seq-v2"):
-        evaluator.score(_cell(_cross(), "correct", "exact"), run, other)
+def test_the_run_carries_the_actions_it_was_driven_by(run):
+    # A run used to carry the sequence's version alone, so a reused tag scored the
+    # readings against other actions without raising. The score now reads the actions
+    # off the run, and there is no second sequence to pass.
+    assert run.action_sequence is SEQUENCE
 
 
 def test_a_run_of_another_length_is_refused(run, evaluator):
     shorter = ExogenousActionSequence(SEQUENCE.actions[:5], version="seq-v1")
     with pytest.raises(ValueError, match="shape"):
-        evaluator.score(_cell(_cross(), "correct", "exact"), run, shorter)
+        evaluator.score(
+            _cell(_cross(), "correct", "exact"), replace(run, action_sequence=shorter)
+        )
 
 
 def test_a_true_model_with_state_dependent_noise_is_refused():
@@ -515,7 +518,7 @@ def test_a_true_model_with_state_dependent_noise_is_refused():
 
 
 def test_every_matrix_the_terms_inverted_reports_its_conditioning(run, evaluator):
-    scored = evaluator.score(_cell(_cross(), "noisy_sensor", "diagonal"), run, SEQUENCE)
+    scored = evaluator.score(_cell(_cross(), "noisy_sensor", "diagonal"), run)
     conditioning = scored.conditioning
     assert scored.steps == SEQUENCE.horizon
     for column in (
@@ -539,7 +542,7 @@ def test_the_calibration_cell_conditions_both_sides_identically(run, evaluator):
     # The same arithmetic on the same numbers: the two predictives and the two
     # posteriors are the same matrices, so their conditioning is equal bit for bit.
     conditioning = evaluator.score(
-        _cell(_cross(), "correct", "exact"), run, SEQUENCE
+        _cell(_cross(), "correct", "exact"), run
     ).conditioning
     assert np.array_equal(conditioning.cond_s_true, conditioning.cond_s_model)
     assert np.array_equal(conditioning.cond_sigma_exact, conditioning.cond_sigma_agent)
@@ -548,7 +551,7 @@ def test_the_calibration_cell_conditions_both_sides_identically(run, evaluator):
 def test_the_conditioning_is_the_diagnostics_module_reading():
     # One implementation, so a rollout and a score read the same number.
     stack = np.array([[[4.0, 0.0], [0.0, 1.0]], [[1.0, 0.0], [0.0, 1.0]]])
-    np.testing.assert_allclose(condition_numbers(stack), [4.0, 1.0], rtol=1e-14)
+    np.testing.assert_allclose(_condition_numbers(stack), [4.0, 1.0], rtol=1e-14)
 
 
 # --- the cross, its separations, and the cell they are read against ------------------
@@ -556,7 +559,7 @@ def test_the_conditioning_is_the_diagnostics_module_reading():
 
 @pytest.fixture(scope="module")
 def scored_cross(run, evaluator) -> CrossScore:
-    return evaluator.score_cross(_cross(), run, SEQUENCE)
+    return evaluator.score_cross(_cross(), run)
 
 
 def test_the_cross_score_carries_every_cell_and_the_certificate(scored_cross):
@@ -624,7 +627,7 @@ def test_separations_are_refused_without_a_cell_where_both_terms_move(run, evalu
         ),
         InferenceSet((EXACT_INFERENCE,), version="rules-exact-only"),
     )
-    scored = evaluator.score_cross(cross, run, SEQUENCE)
+    scored = evaluator.score_cross(cross, run)
     assert scored.both_positive == ()
     with pytest.raises(ValueError, match="both terms move"):
         _ = scored.separations

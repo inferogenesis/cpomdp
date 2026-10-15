@@ -4,7 +4,7 @@ import jax
 import numpy as np
 import pytest
 
-from cpomdp.harness import (
+from cpomdp._lab.harness import (
     SEVERED_CONTROL_LOOP,
     DrivenRun,
     ExogenousActionSequence,

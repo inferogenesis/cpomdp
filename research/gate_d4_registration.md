@@ -1798,3 +1798,10 @@ run reports the convergence read rather than asserting it, and applies the floor
 PRE-REGISTRATION's description of the code; the registered rules were applied as
 written, and the change was to how a failed read is reported, made after seeing which
 point failed and before seeing `T`.
+
+### AMENDMENT 2026-10-15: the reference filter moved to `cpomdp._lab.reference`
+
+The PRE-REGISTRATION of 2026-09-11 says the filter exists "in `cpomdp.reference`". It
+now lives in `cpomdp._lab.reference`, with the rest of the research apparatus in a
+private package (DECISIONS.md ADR-069). The move changed no code, and nothing measured
+here depends on the path. The refs this file cites hold the old path, and they stand.

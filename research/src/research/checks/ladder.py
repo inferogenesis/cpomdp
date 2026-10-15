@@ -10,8 +10,8 @@ refinement and not certified, and the rows say so.
 Five gaps at fifteen spreads on two lattices. A cell's value is its gap on the declared
 lattice, and its bar is the refinement difference against the fine one, floored at
 roundoff, carried whole as the quantity's own with nothing cancelled between rungs.
-Adjacent pairs are resolved through `cpomdp.resolution` at every spread, and one row
-per pair reads the orders together: `FIRED` on a resolved `BELOW` anywhere,
+Adjacent pairs are resolved through `cpomdp._lab.resolution` at every spread, and one
+row per pair reads the orders together: `FIRED` on a resolved `BELOW` anywhere,
 `NOT_RESOLVED` where the pair resolves nowhere, `NOT_TRIGGERED` otherwise.
 
 Two rows read route 6 off the same numbers: whether the derivative-of-covariance terms
@@ -30,7 +30,7 @@ engine, since both run one engine on one lattice. It renders no verdict on the g
 `cpomdp` is imported inside the functions that need it, as the other suites do, since
 it is not a declared dependency of this package. Unlike the other suites this one is
 not declared in `research/registered_checks.toml`: it runs the reference engine for
-minutes and its numbers move with `cpomdp.reference`, which the symbolic job's path
+minutes and its numbers move with `cpomdp._lab.reference`, which the symbolic job's path
 filter cannot see (ADR-055). `tests/test_ladder_checks.py` pins its ids and its
 recorded outcomes on the slow test path instead.
 
@@ -74,9 +74,9 @@ from warrantlib import (
 )
 
 if TYPE_CHECKING:
-    from cpomdp.reference.gap import ApproximatePosterior
-    from cpomdp.reference.quadrature import QuadratureGrid
-    from cpomdp.resolution import Bar, Bounded, Order
+    from cpomdp._lab.reference.gap import ApproximatePosterior
+    from cpomdp._lab.reference.quadrature import QuadratureGrid
+    from cpomdp._lab.resolution import Bar, Bounded, Order
 
 __all__ = [
     "EDGE_CEILING",
@@ -192,7 +192,7 @@ class Cell:
         common-mode part exists, and claiming it needs the error's shape, which PR-8
         certifies. The conservative reading is the registered one until then.
         """
-        from cpomdp.resolution import Bar
+        from cpomdp._lab.resolution import Bar
 
         refinement = abs(self.declared.gap - self.fine.gap)
         floor = ROUNDOFF_FLOOR * abs(self.declared.gap)
@@ -201,7 +201,7 @@ class Cell:
     @property
     def bounded(self) -> Bounded:
         """The value with its bar, ready to resolve against a neighbour's."""
-        from cpomdp.resolution import Bounded
+        from cpomdp._lab.resolution import Bounded
 
         return Bounded(value=self.value, bar=self.bar)
 
@@ -251,7 +251,7 @@ def _grids(spread: float, lattice: Lattice) -> tuple[QuadratureGrid, QuadratureG
     here rather than shared so the plug-in row's agreement with that engine is a
     check on these grids and not a tautology.
     """
-    from cpomdp.reference.quadrature import QuadratureGrid
+    from cpomdp._lab.reference.quadrature import QuadratureGrid
 
     state_reach = lattice.state_half_width * spread
     predictive = math.sqrt(spread**2 + BASE_NOISE + KAPPA * RIDGE_MEAN**2)
@@ -280,10 +280,10 @@ def measure(report: Callable[[str], None] | None = None) -> Sweep:
     Returns:
         The sweep.
     """
-    from cpomdp.reference.gap import averaged_inference_gap
-    from cpomdp.reference.ladder import LADDER
-    from cpomdp.reference.likelihood import StateDependentNoiseLikelihood
-    from cpomdp.reference.quadrature import gaussian_on
+    from cpomdp._lab.reference.gap import averaged_inference_gap
+    from cpomdp._lab.reference.ladder import LADDER
+    from cpomdp._lab.reference.likelihood import StateDependentNoiseLikelihood
+    from cpomdp._lab.reference.quadrature import gaussian_on
 
     likelihood = StateDependentNoiseLikelihood(
         [[1.0]],
@@ -326,7 +326,7 @@ def compare(sweep: Sweep, lower: str, higher: str) -> tuple[PairAtSpread, ...]:
         One comparison per spread. A spread where either rung voided reads
         ``NOT_RESOLVED`` without resolving, per the registration.
     """
-    from cpomdp.resolution import Order, resolve
+    from cpomdp._lab.resolution import Order, resolve
 
     comparisons = []
     for a, b in zip(sweep.cells[lower], sweep.cells[higher], strict=True):
@@ -368,7 +368,7 @@ def outcome_of(comparisons: Sequence[PairAtSpread]) -> Outcome:
     ``FIRED`` if the pair resolves ``BELOW`` anywhere, ``NOT_RESOLVED`` if it resolves
     nowhere, ``NOT_TRIGGERED`` otherwise.
     """
-    from cpomdp.resolution import Order
+    from cpomdp._lab.resolution import Order
 
     orders = [comparison.order for comparison in comparisons]
     if any(order is Order.BELOW for order in orders):
@@ -411,7 +411,7 @@ def _ordering_row(sweep: Sweep, lower: str, higher: str, key: str) -> CheckRepor
 def _route_6_row(
     sweep: Sweep, lower: str, higher: str, key: str, name: str
 ) -> CheckReport:
-    from cpomdp.resolution import Order
+    from cpomdp._lab.resolution import Order
 
     comparisons = compare(sweep, lower, higher)
     seen = sum(1 for c in comparisons if c.order is not Order.NOT_RESOLVED)
@@ -505,7 +505,7 @@ def _lattice_row(sweep: Sweep) -> CheckReport:
 
 
 def _certificate_row(sweep: Sweep) -> CheckReport:
-    from cpomdp.reference.ladder import LADDER
+    from cpomdp._lab.reference.ladder import LADDER
 
     declared = sweep.names == LADDER.names
     visited = sum(1 for rung in sweep.names if sweep.read_at_every_spread(rung))

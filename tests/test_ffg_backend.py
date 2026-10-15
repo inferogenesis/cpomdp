@@ -1137,7 +1137,7 @@ class TestStateDependentSensing:
 
     def test_rx_backend_still_shape_checks_observations(self):
         # The shared validator stays wired: a wrong-length reading is rejected, R(x) or
-        # not (the state-dependent path must not bypass validate_step_inputs).
+        # not (the state-dependent path must not bypass _validate_step_inputs).
         rx = _build_rx(
             _CHEMOTAXIS_DIMS,
             _CHEMOTAXIS_EDGES,

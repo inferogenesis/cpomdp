@@ -331,9 +331,9 @@ def check_the_two_engines_agree() -> CheckReport:
 
     Sampling a continuum of spreads, so `CORROBORATED` however many spreads are added.
     """
-    from cpomdp.reference.gap import averaged_inference_gap
-    from cpomdp.reference.likelihood import StateDependentNoiseLikelihood
-    from cpomdp.reference.quadrature import QuadratureGrid, gaussian_on
+    from cpomdp._lab.reference.gap import averaged_inference_gap
+    from cpomdp._lab.reference.likelihood import StateDependentNoiseLikelihood
+    from cpomdp._lab.reference.quadrature import QuadratureGrid, gaussian_on
 
     centre = _CROSS_CHECK_FAMILY.prior_mean
     plugin = float(_CROSS_CHECK_FAMILY.noise(np.asarray(centre)))
@@ -371,7 +371,7 @@ def check_the_two_engines_agree() -> CheckReport:
         rows.append(f"σ={spread:.2f} rel {relative:.1e}")
 
     claim = (
-        f"gap_kernel and cpomdp.reference agree on R(x) = 1 + x² within "
+        f"gap_kernel and cpomdp._lab.reference agree on R(x) = 1 + x² within "
         f"{_ENGINE_TOLERANCE:.0e}"
     )
     detail = f"{claim}. worst {worst:.2e} over {', '.join(rows)}"
