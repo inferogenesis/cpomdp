@@ -209,6 +209,8 @@ You can swap the inference engine if you want to. `KalmanBackend` is the default
 
 Still pre-1.0. v0.5 renames the model's arguments to match its fields, `observation_matrix` and `observation_noise` among them, and makes every argument after `dynamics_matrix` keyword-only. Python 3.11 is the new floor. The [changelog](https://github.com/inferogenesis/cpomdp/blob/main/CHANGELOG.md) lists each break. v0.5 also adds the vocabulary a check uses to say what it is entitled to claim, and the anti-surge application. If you have a request or a suggestion that would make the front-facing API more usable, open a GitHub issue, I am happy to listen. Until 1.0, a minor version is where breaking changes can land.
 
+The public API is every name in `cpomdp.__all__`, plus the names in the `__all__` of `cpomdp.efe`, `cpomdp.enumeration`, `cpomdp.diagnostics`, `cpomdp.control` and `cpomdp.backends.rxinfer`. Those are what the changelog's breaking-change rule covers. A path with a leading underscore on it, such as `cpomdp._lab`, is private and can change in any release. Modules like `cpomdp.types` stay importable, and the top-level name is still the one to use.
+
 ## Development
 
 I designed and built cpomdp. The architecture, the conditionally-linear-Gaussian formulation, the API, and every decision in [DECISIONS.md](https://github.com/inferogenesis/cpomdp/blob/main/DECISIONS.md) are mine. The design draws on my day-to-day work as a full-time software engineer and on hands-on expertise integrating and developing large machine-learning models at scale using event-driven microservice architecture.
