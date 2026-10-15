@@ -38,11 +38,11 @@ from cpomdp.enumeration import (
     ChunkedEfeSearch,
     EnumeratedEfeSearch,
     FiniteActionSet,
-    SearchWarrant,
 )
 from cpomdp.observation import CallableSensor
 from cpomdp.selection import Preference
 from cpomdp.types import Belief, LinearGaussianModel
+from warrantlib import Warrant
 
 # Block sizes spanning every shape the loop can take: one lane per block, a block that
 # divides N, blocks that do not, the last block exactly full, and a single block wider
@@ -255,7 +255,7 @@ class TestCompleteness:
         result = search.reduce(_belief(), _pref())
         assert result.visited == 27
         assert result.certificate.complete
-        assert result.certificate.warrant is SearchWarrant.PROVED
+        assert result.certificate.warrant is Warrant.PROVED
 
     def test_the_certificate_names_the_set_it_decided_over(self):
         result = ChunkedEfeSearch(
@@ -432,4 +432,4 @@ class TestCostAndWarrant:
         # Same decision as the front-loaded path, so the same prover class. The block
         # size is a residency choice and carries no evidential weight.
         search = ChunkedEfeSearch(_model(), _finite_set([-1.0, 1.0]), horizon=2)
-        assert search.warrant is SearchWarrant.PROVED
+        assert search.warrant is Warrant.PROVED

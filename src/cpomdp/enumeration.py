@@ -56,15 +56,7 @@ __all__ = [
     "IncompleteEnumerationError",
     "OpenLoopSelector",
     "RecedingHorizonSelector",
-    "SearchWarrant",
 ]
-
-
-# The search vocabulary predates the shared one, and named two of its three levels. It
-# is now that enum, so `SearchWarrant.PROVED` and `Warrant.PROVED` are one object and
-# `EnumeratedEfeSearch.warrant` keeps its return type. A search earns `PROVED` from a
-# full enumeration (Prover 3 · enumeration) and `CORROBORATED` from a grid sample.
-SearchWarrant = Warrant
 
 
 class IncompleteEnumerationError(Exception):
@@ -164,7 +156,7 @@ def _certify(
     return CompletenessCertificate(
         expected=expected,
         visited=visited,
-        warrant=SearchWarrant.PROVED,
+        warrant=Warrant.PROVED,
         action_set_size=action_set.size,
         horizon=horizon,
         action_set_version=action_set.version,
@@ -360,9 +352,9 @@ class EnumeratedEfeSearch:
         return self.n_policies * self._horizon
 
     @property
-    def warrant(self) -> SearchWarrant:
+    def warrant(self) -> Warrant:
         """``PROVED`` — a finite set enumerated in full decides its universal."""
-        return SearchWarrant.PROVED
+        return Warrant.PROVED
 
     @property
     def certificate(self) -> CompletenessCertificate:
@@ -666,9 +658,9 @@ class ChunkedEfeSearch:
         return self._n_policies * self._horizon
 
     @property
-    def warrant(self) -> SearchWarrant:
+    def warrant(self) -> Warrant:
         """``PROVED`` — a finite set enumerated in full decides its universal."""
-        return SearchWarrant.PROVED
+        return Warrant.PROVED
 
 
 class RecedingHorizonSelector:
@@ -693,7 +685,7 @@ class RecedingHorizonSelector:
         return self._search.horizon
 
     @property
-    def warrant(self) -> SearchWarrant:
+    def warrant(self) -> Warrant:
         """``PROVED`` — inherited from the enumerated search."""
         return self._search.warrant
 
@@ -756,7 +748,7 @@ class OpenLoopSelector:
         return self._search.horizon
 
     @property
-    def warrant(self) -> SearchWarrant:
+    def warrant(self) -> Warrant:
         """``PROVED`` — inherited from the enumerated search."""
         return self._search.warrant
 

@@ -27,10 +27,10 @@ from cpomdp.enumeration import (
     FiniteActionSet,
     OpenLoopSelector,
     RecedingHorizonSelector,
-    SearchWarrant,
 )
 from cpomdp.selection import ActionSelector, ObservationGoal, Preference
 from cpomdp.types import Belief, LinearGaussianModel
+from warrantlib import Warrant
 
 
 # --- fixtures ----------------------------------------------------------------------
@@ -94,7 +94,7 @@ class TestRecedingHorizonSelector:
     def test_delegates_introspection(self):
         sel = RecedingHorizonSelector(_search(horizon=2))
         assert sel.horizon == 2
-        assert sel.warrant is SearchWarrant.PROVED
+        assert sel.warrant is Warrant.PROVED
         assert sel.certificate.complete
 
 
