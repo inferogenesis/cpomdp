@@ -270,7 +270,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
   its `G`, its index and the certificate. The front-loaded result has those fields under
   the same names and adds only the score vector. The two paths agree under `==`, ties
   included (ADR-036). Both drivers take it, and the refinement cells of the fourth
-  falsifier ran on it.
+  falsifier ran on it. The searches and their drivers have an API page.
 - `Provenance` (warrantlib 0.2.0) — which ref registered a claim and which one measured
   it, plus one line saying what a reviewer will find at the first. A `PROVED` report
   requires one, on the same terms as it requires evidence, and carries them as a tuple
