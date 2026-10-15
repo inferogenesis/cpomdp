@@ -460,7 +460,7 @@ test rather than a convention.
       world's parameters**, enforced at the type level in the spirit of
       `IncompatibleLinearizationError`. A test asserts the absence of the path, not
       merely that it is unused.
-      Landed in `cpomdp.harness`. `World` has no accessor returning its model or a
+      Landed in `cpomdp._lab.harness`. `World` has no accessor returning its model or a
       parameter of it, and `ScoredAgent` has no constructor slot for a `World`. The
       absence is tested by an object-graph walk that follows attributes, containers,
       bound methods and closure cells. Seven tests probe the walk itself first, because
@@ -486,11 +486,11 @@ test rather than a convention.
       others are measured against. The declared magnitudes themselves are a research
       declaration and are not fixed here.
 - [x] **Keep the module boundary the nineteen-PR plan bought with a PR split.** Nothing
-      in this seam may import PR-4's three-term evaluator, because Paper 3 explicitly
-      does not import it. Assert it with an import test. A test outlives a PR boundary.
-      `tests/test_module_boundary.py` walks the transitive first-party import closure and
-      refuses `cpomdp.scoring`, named before it exists, along with `cpomdp.selection` and
-      `cpomdp.enumeration`. Probed at one hop and at two.
+  in this seam may import PR-4's three-term evaluator, because Paper 3 explicitly does
+  not import it. Assert it with an import test. A test outlives a PR boundary.
+  `tests/test_module_boundary.py` walks the transitive first-party import closure and
+  refuses `cpomdp._lab.scoring`, named before it exists, along with `cpomdp.selection`
+  and `cpomdp.enumeration`. Probed at one hop and at two.
 
 **Merge gate:** the no-read-path test passes. The import test holds. The constructor set
 round-trips through the model spec and shows up in a diff when extended. **ADR-047.**
@@ -551,11 +551,11 @@ and a cell value has no warrant until PR-5 registers what it is measured against
 **ADR-059.**
 
 **Met 2026-09-05.** All four conditions hold. The cross carries a
-`ProductCompletenessCertificate` at `PROVED`, which warrants the enumeration and not
-the cell values: those are `COMPUTED` until PR-5 registers what they are measured
-against. F5 lives in `cpomdp.resolution`, a leaf the boundary test asserts, so the seam
-and the reference filter reach it without reaching the evaluator. Nothing is exported
-at the top level, so no `docs/api/` page is owed yet.
+`ProductCompletenessCertificate` at `PROVED`, which warrants the enumeration and not the
+cell values: those are `COMPUTED` until PR-5 registers what they are measured against.
+F5 lives in `cpomdp._lab.resolution`, a leaf the boundary test asserts, so the seam and
+the reference filter reach it without reaching the evaluator. Nothing is exported at the
+top level, so no `docs/api/` page is owed yet.
 
 **Warrant:** R1 `EXACT` / Prover 1 with a sampled witness. R2 and R3 `EXACT`–`BOUNDED` /
 **Prover 3 · enumeration**. R4 `BOUNDED` / Prover 3 · sample.
@@ -693,27 +693,27 @@ the report carries the weight.
 The hard item, and it is shared. P2-7 (D) moved to PR-7b with the ordering work.
 
 - [x] Grid or quadrature filter over a low-dimensional latent, accepting an **arbitrary
-      pointwise-evaluable likelihood** rather than an R(x)-specific one. The generality is
-      nearly free for a grid filter and is what lets later model classes reuse the engine.
-      `cpomdp.reference.filtering.condition` over the `ObservationLikelihood` protocol.
+  pointwise-evaluable likelihood** rather than an R(x)-specific one. The generality is
+  nearly free for a grid filter and is what lets later model classes reuse the engine.
+  `cpomdp._lab.reference.filtering.condition` over the `ObservationLikelihood` protocol.
 - [x] Returns `E_p*[D_KL[q ‖ p(x|y)]]` directly. `averaged_inference_gap`.
 - [x] Written against a **general transition kernel**, not a hard-coded linear-Gaussian
       one. If Q(x) falls out of the internal interfaces at no cost, let it. Do not
       document it, write examples against it, or claim it in release notes (issue #56).
       `TransitionKernel` is the protocol and `LinearGaussianKernel` the one instance.
 - [x] Rule ladder, common interface, **five rungs** (ADR-056): plug-in `R(μ⁻)`,
-      Spinello–Stilwell single-step (36) and iterated (35), both with the documented
-      modification of ADR-057, belief-smoothed `E[R(x)]`, exact reference at the top.
-      Swappable in one line. (36) is (35) at a budget of one, so declaring it separately
-      costs almost nothing and buys two adjacent differences that isolate distinct
-      mechanisms. **All five built**, in `cpomdp.reference.ladder`, one `RungKind`
-      each. The smoothed rung averages `R` under the prior on its own grid, not under
-      the Gaussian with its moments (ADR-061). The two Spinello–Stilwell rungs run the
-      paper's scalar-observation scheme over a vector state and refuse a second
-      channel (ADR-062, #115). Left open on the smoothed rung: `E[R(x)]` need not exist under H1,
-      and the box quadrature is finite whether it does or not. The rung has no test
-      that returns `Void` when the average leans on the box edge, and the criterion
-      is a declaration owed before PR-9's closure modes read the rung.
+  Spinello–Stilwell single-step (36) and iterated (35), both with the documented
+  modification of ADR-057, belief-smoothed `E[R(x)]`, exact reference at the top.
+  Swappable in one line. (36) is (35) at a budget of one, so declaring it separately
+  costs almost nothing and buys two adjacent differences that isolate distinct
+  mechanisms. **All five built**, in `cpomdp._lab.reference.ladder`, one `RungKind`
+  each. The smoothed rung averages `R` under the prior on its own grid, not under the
+  Gaussian with its moments (ADR-061). The two Spinello–Stilwell rungs run the paper's
+  scalar-observation scheme over a vector state and refuse a second channel (ADR-062,
+  #115). Left open on the smoothed rung: `E[R(x)]` need not exist under H1, and the box
+  quadrature is finite whether it does or not. The rung has no test that returns `Void`
+  when the average leans on the box edge, and the criterion is a declaration owed before
+  PR-9's closure modes read the rung.
 - [x] The rule list is **declared and versioned**, like `FiniteActionSet`. A rung added
       after results are seen shows up in the diff. `RuleLadder` is the type, validated
       as `InferenceSet` is. `LADDER` is the declared constant at `v1`, written once the
@@ -724,10 +724,10 @@ they rest on get measured.
 ### The rung contract
 
 The substrate is built. `QuadratureGrid` and `GridDensity` carry `mean`, `cov` and
-`kl_to`, `FixedNoiseLikelihood` and `StateDependentNoiseLikelihood` evaluate the channel,
-and `averaged_inference_gap` takes the rule under test as `approximate_posterior`. The
-ladder is `cpomdp.reference.ladder`, five implementations of that callable behind
-`Rung.build`, under the contract below.
+`kl_to`, `FixedNoiseLikelihood` and `StateDependentNoiseLikelihood` evaluate the
+channel, and `averaged_inference_gap` takes the rule under test as
+`approximate_posterior`. The ladder is `cpomdp._lab.reference.ladder`, five
+implementations of that callable behind `Rung.build`, under the contract below.
 
 - [x] **A rung is a factory.** Model in, `ApproximatePosterior` out. The seam passes only
       `(prior, observation)`, so the matrices, the noise function and the budget are closed
@@ -739,8 +739,8 @@ ladder is `cpomdp.reference.ladder`, five implementations of that callable behin
       `GaussianChannel`. Per reading the plug-in rung pays one solve of the innovation
       covariance plus the render onto the lattice, and the render is every rung's.
 - [x] **One public way to put a Gaussian on a lattice.** `gaussian_on` in
-      `cpomdp.reference.quadrature`. The copies in `tests/test_reference_gap.py` and
-      `research.checks.gap_identity` now call it.
+  `cpomdp._lab.reference.quadrature`. The copies in `tests/test_reference_gap.py` and
+  `research.checks.gap_identity` now call it.
 - [x] **`VOID` on a non-convergent step**, per ADR-056 and route 5's measurement. A rule
       returns `Void` in place of a belief. `averaged_inference_gap` reports the node
       as NaN, adds its predictive weight to `voided_mass`, and averages over the

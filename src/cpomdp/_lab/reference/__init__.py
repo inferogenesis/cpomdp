@@ -5,6 +5,6 @@ values on a declared lattice, and integration is a weighted sum over those value
 The filter that builds such densities from a likelihood and a transition kernel sits
 above this, and is what makes the two independent objects a comparison needs.
 
-Reached via ``cpomdp.reference.quadrature`` and not re-exported at the package top
+Reached via ``cpomdp._lab.reference.quadrature`` and not re-exported at the package top
 level, since nothing outside is meant to depend on it yet.
 """

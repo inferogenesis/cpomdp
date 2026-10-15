@@ -42,9 +42,9 @@ from research.spinello_stilwell.invariance import CASE, SCALES
 if TYPE_CHECKING:
     from numpy.typing import ArrayLike
 
-    from cpomdp.reference.gap import ApproximatePosterior, Void
-    from cpomdp.reference.likelihood import StateDependentNoiseLikelihood
-    from cpomdp.reference.quadrature import GridDensity, QuadratureGrid
+    from cpomdp._lab.reference.gap import ApproximatePosterior, Void
+    from cpomdp._lab.reference.likelihood import StateDependentNoiseLikelihood
+    from cpomdp._lab.reference.quadrature import GridDensity, QuadratureGrid
 
 __all__ = [
     "MODIFIED",
@@ -79,7 +79,7 @@ SINGLE_STEP = (1, 0.0)
 
 def declared_budget() -> tuple[int, float]:
     """Rung (35)'s budget and tolerance, read from where ADR-058 declared them."""
-    from cpomdp.reference.ladder import CONVERGENCE_TOLERANCE, ITERATION_BUDGET
+    from cpomdp._lab.reference.ladder import CONVERGENCE_TOLERANCE, ITERATION_BUDGET
 
     return ITERATION_BUDGET, CONVERGENCE_TOLERANCE
 
@@ -131,8 +131,8 @@ def scheme_rule(
     quadratic = scheme.quadratic_noise(CASE["base_noise"], CASE["curvature"])
 
     def rule(prior: GridDensity, observation: ArrayLike) -> GridDensity | Void:
-        from cpomdp.reference.gap import Void
-        from cpomdp.reference.quadrature import gaussian_on
+        from cpomdp._lab.reference.gap import Void
+        from cpomdp._lab.reference.quadrature import gaussian_on
 
         # The scheme reads the noise once per step, so the count of reads is the
         # step a failure happened on, which the scheme cannot report itself.
@@ -177,7 +177,7 @@ def _grids() -> tuple[QuadratureGrid, GridDensity]:
     Sized as the registered lattice is, in prior spreads and in predictive spreads
     about the prior mean, so the box is the one the ladder's readings use.
     """
-    from cpomdp.reference.quadrature import QuadratureGrid, gaussian_on
+    from cpomdp._lab.reference.quadrature import QuadratureGrid, gaussian_on
 
     mean, variance = CASE["prior_mean"], CASE["prior_variance"]
     spread = math.sqrt(variance)
@@ -197,7 +197,7 @@ def _grids() -> tuple[QuadratureGrid, GridDensity]:
 
 
 def _likelihood() -> StateDependentNoiseLikelihood:
-    from cpomdp.reference.likelihood import StateDependentNoiseLikelihood
+    from cpomdp._lab.reference.likelihood import StateDependentNoiseLikelihood
 
     return StateDependentNoiseLikelihood(
         [[1.0]],
@@ -208,7 +208,7 @@ def _likelihood() -> StateDependentNoiseLikelihood:
 
 def measure(variant: Variant, scale: float, budget: int, tolerance: float) -> Reading:
     """The reported gap for one scheme at one scale and one budget."""
-    from cpomdp.reference.gap import averaged_inference_gap
+    from cpomdp._lab.reference.gap import averaged_inference_gap
 
     observations, prior = _grids()
     gap = averaged_inference_gap(
@@ -229,8 +229,8 @@ def measure(variant: Variant, scale: float, budget: int, tolerance: float) -> Re
 
 def ladder_gap(budget: int) -> float:
     """The ladder's own rung at this budget, on the same grids, in native units."""
-    from cpomdp.reference.gap import averaged_inference_gap
-    from cpomdp.reference.ladder import ITERATED_RUNG, SINGLE_STEP_RUNG
+    from cpomdp._lab.reference.gap import averaged_inference_gap
+    from cpomdp._lab.reference.ladder import ITERATED_RUNG, SINGLE_STEP_RUNG
 
     rung = SINGLE_STEP_RUNG if budget == 1 else ITERATED_RUNG
     observations, prior = _grids()

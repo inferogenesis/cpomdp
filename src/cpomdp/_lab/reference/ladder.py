@@ -28,11 +28,11 @@ import jax.numpy as jnp
 from jaxtyping import Array, Bool, Float64, Int
 from numpy.typing import ArrayLike
 
+from cpomdp._lab.reference.filtering import condition
+from cpomdp._lab.reference.gap import ApproximatePosterior, Void
+from cpomdp._lab.reference.likelihood import GaussianChannel, ObservationLikelihood
+from cpomdp._lab.reference.quadrature import GridDensity, gaussian_on
 from cpomdp._validation import validate_declared
-from cpomdp.reference.filtering import condition
-from cpomdp.reference.gap import ApproximatePosterior, Void
-from cpomdp.reference.likelihood import GaussianChannel, ObservationLikelihood
-from cpomdp.reference.quadrature import GridDensity, gaussian_on
 
 __all__ = [
     "BELIEF_SMOOTHED_RUNG",

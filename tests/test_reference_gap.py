@@ -11,12 +11,12 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from cpomdp.reference.gap import Void, averaged_inference_gap
-from cpomdp.reference.likelihood import (
+from cpomdp._lab.reference.gap import Void, averaged_inference_gap
+from cpomdp._lab.reference.likelihood import (
     FixedNoiseLikelihood,
     StateDependentNoiseLikelihood,
 )
-from cpomdp.reference.quadrature import GridDensity, QuadratureGrid, gaussian_on
+from cpomdp._lab.reference.quadrature import GridDensity, QuadratureGrid, gaussian_on
 
 PRIOR_MEAN, PRIOR_VAR = 0.3, 0.8
 

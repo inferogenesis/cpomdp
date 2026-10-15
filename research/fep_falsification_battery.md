@@ -244,7 +244,7 @@ seen before the set is fixed is what standing rule 7 refuses.
 ### PRE-REGISTRATION 2026-09-12: the ordering's first reading, at `COMPUTED`, before the gate
 
 Written before any rung's gap is read beside another's. The five rungs exist in
-`cpomdp.reference.ladder` and GATE-D4 has not been evaluated, so this is not the D1
+`cpomdp._lab.reference.ladder` and GATE-D4 has not been evaluated, so this is not the D1
 test. It is the ordering the test will run on, read once at `COMPUTED` with measured
 bars, so that PR-8 has the R6 signal it compares against `T` and so that the direction
 is on record before a certified bar exists. The D1 test proper runs in PR-9 under PR-8's
@@ -263,7 +263,7 @@ reference, and it is reported as measured rather than written as zero.
 
 **The bar, before certification.** A value's bar is its own refinement difference,
 `|gap_declared − gap_fine|`, floored at `100 × 2⁻⁵²` of the value so that no bar is
-claimed below what the arithmetic resolves. It is carried in `cpomdp.resolution` as
+claimed below what the arithmetic resolves. It is carried in `cpomdp._lab.resolution` as
 `Bar(common_mode=0, own=…)`: the whole difference as the quantity's own, nothing
 cancelled between rungs. The five gaps are read against one exact posterior and a
 common-mode part exists. Claiming it needs the error's shape, which is what PR-8
@@ -434,18 +434,17 @@ at `σ = 0.7`. The row is added after the reading and reads the instrument, not 
 claim: it can fire only on the lattice, and the ordering rows would then stand on a
 box the registration had not accepted.
 
-**The suite is not declared in the manifest, and the registration's "Where it runs"
-line said it would be.** ADR-055 moved the manifest's reconciliation to a job that
-runs only when `research/` changes, on the premise that its suites import no `cpomdp`
-and take no measurement. This suite runs the reference engine for minutes and its
-numbers move with `cpomdp.reference`, which that job's filter cannot see, and three of
-its rows fire by registered result, which that job's plugin reads as failures. So it
-stays out of `research/registered_checks.toml`. Its ten ids and its recorded outcomes
-are pinned in `tests/test_ladder_checks.py` on the slow test path, where a dropped id
-or a row that stops firing fails by name on the merge and release runs. The
-certificate, its provenance and the ancestry test are the suite's own and are
-unchanged by where the ids are reconciled. A moved result amends this file before it
-touches that test.
+**The suite is not declared in the manifest, and the registration's "Where it runs" line
+said it would be.** ADR-055 moved the manifest's reconciliation to a job that runs only
+when `research/` changes, on the premise that its suites import no `cpomdp` and take no
+measurement. This suite runs the reference engine for minutes and its numbers move with
+`cpomdp._lab.reference`, which that job's filter cannot see, and three of its rows fire
+by registered result, which that job's plugin reads as failures. So it stays out of
+`research/registered_checks.toml`. Its ten ids and its recorded outcomes are pinned in
+`tests/test_ladder_checks.py` on the slow test path, where a dropped id or a row that
+stops firing fails by name on the merge and release runs. The certificate, its
+provenance and the ancestry test are the suite's own and are unchanged by where the ids
+are reconciled. A moved result amends this file before it touches that test.
 
 **D2 · scaling exponent** · SEVERE · R8 · toolbox C, F · tier `BOUNDED` · **PR-9 · v0.6**, gated on GATE-D4
 

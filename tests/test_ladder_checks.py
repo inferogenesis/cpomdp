@@ -11,8 +11,8 @@ from functools import cache
 
 import pytest
 
-from cpomdp.reference.ladder import LADDER
-from cpomdp.resolution import Order
+from cpomdp._lab.reference.ladder import LADDER
+from cpomdp._lab.resolution import Order
 from research.checks import ladder
 from research.explorations.threshold import ROUNDOFF_FLOOR, SPREADS
 from warrantlib import Outcome, ProductCompletenessCertificate, Tier, Warrant

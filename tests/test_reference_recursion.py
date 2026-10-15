@@ -9,11 +9,11 @@ approximation of it.
 import numpy as np
 import pytest
 
+from cpomdp._lab.reference.filtering import condition, filter_sequence, predict
+from cpomdp._lab.reference.likelihood import FixedNoiseLikelihood
+from cpomdp._lab.reference.quadrature import QuadratureGrid, gaussian_on
+from cpomdp._lab.reference.transition import LinearGaussianKernel
 from cpomdp.backends.kalman import KalmanBackend
-from cpomdp.reference.filtering import condition, filter_sequence, predict
-from cpomdp.reference.likelihood import FixedNoiseLikelihood
-from cpomdp.reference.quadrature import QuadratureGrid, gaussian_on
-from cpomdp.reference.transition import LinearGaussianKernel
 from cpomdp.types import Belief, LinearGaussianModel
 
 A, C, Q, R = [[0.9]], [[1.0]], [[0.15]], [[0.3]]

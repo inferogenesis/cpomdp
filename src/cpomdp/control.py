@@ -13,9 +13,9 @@ import jax.numpy as jnp
 from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
+from cpomdp._lab.resolution import Bar, Bounded
 from cpomdp._validation import equilibrium_drift, require_fixed_noise
 from cpomdp.backends.kalman import _gain_and_posterior_cov
-from cpomdp.resolution import Bar, Bounded
 from cpomdp.types import Belief, LinearGaussianModel
 
 __all__ = [

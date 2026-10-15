@@ -3,6 +3,8 @@ import numpy as np
 import pytest
 import scipy.linalg
 
+from cpomdp._lab.harness import World
+from cpomdp._lab.resolution import EXACT, Bar, Bounded
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.control import (
     CertaintyEquivalentController,
@@ -16,8 +18,6 @@ from cpomdp.control import (
     kalman_schedule,
     optimal_cost,
 )
-from cpomdp.harness import World
-from cpomdp.resolution import EXACT, Bar, Bounded
 from cpomdp.types import Belief, LinearGaussianModel
 
 # Inside this module the terse letters a/b/qc/rc are local scalars for the

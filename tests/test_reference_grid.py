@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from scipy.special import erf
 
-from cpomdp.reference.quadrature import GridDensity, QuadratureGrid, gaussian_on
+from cpomdp._lab.reference.quadrature import GridDensity, QuadratureGrid, gaussian_on
 
 SQRT2 = np.sqrt(2.0)
 

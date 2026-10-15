@@ -1,6 +1,6 @@
 """Scoring a declared cross of models against a declared cross of ways to infer.
 
-The two axes live in ``cpomdp.constructors``: one for what a model gets
+The two axes live in ``cpomdp._lab.constructors``: one for what a model gets
 wrong about the process, one for what its filter gets wrong about the model. A run
 crosses them. Every separation reported from such a run is a comparison between two of
 its cells, which is a decision only if the cross was visited in full.
@@ -18,13 +18,18 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import ArrayLike
 
+from cpomdp._lab.constructors import (
+    ConstructorSet,
+    InferenceKind,
+    InferenceSet,
+    ModelSpec,
+)
+from cpomdp._lab.harness import DrivenRun, ExogenousActionSequence
 from cpomdp._validation import require_fixed_noise
 from cpomdp.backends.base import InferenceBackend
 from cpomdp.backends.kalman import KalmanBackend
-from cpomdp.constructors import ConstructorSet, InferenceKind, InferenceSet, ModelSpec
 from cpomdp.diagnostics import condition_numbers
 from cpomdp.enumeration import IncompleteEnumerationError
-from cpomdp.harness import DrivenRun, ExogenousActionSequence
 from cpomdp.types import Belief, LinearGaussianModel
 from warrantlib import AxisDeclaration, ProductCompletenessCertificate, Warrant
 

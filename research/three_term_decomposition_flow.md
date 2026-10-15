@@ -2,7 +2,7 @@
 
 I'm writing this as the evaluator gets built, one step per commit, so the logic flow
 is readable without opening the diffs. The maths contract is
-`research/fep_falsification_battery.md` section C. The code is `cpomdp.scoring`.
+`research/fep_falsification_battery.md` section C. The code is `cpomdp._lab.scoring`.
 
 ## The cross comes first
 
@@ -82,9 +82,9 @@ cannot be applied to a rule it does not describe, which matters more than the pr
 cost (it is an instrument, not the agent's per-cycle path).
 
 Three oracles hold it. The scalar closed form `test_reference_gap` already uses. The
-grid engine in `cpomdp.reference`, on the fixed-`R` case that ADR-053 says is the one
-both engines can reach, agreeing to `1e-6` with an integrator that knows nothing about
-gains. And a two-dimensional case with the gains written out by formula and the
+grid engine in `cpomdp._lab.reference`, on the fixed-`R` case that ADR-053 says is the
+one both engines can reach, agreeing to `1e-6` with an integrator that knows nothing
+about gains. And a two-dimensional case with the gains written out by formula and the
 average taken by the textbook trace. The exact rule scores `0.0` exactly, since it and
 the exact step are one computation.
 
@@ -155,11 +155,11 @@ declares what they are measured against.
 
 ## The additivity check measures both sides on its own
 
-`cpomdp.additivity` is a separate module, and `AdditivityCheck` is a separate object,
-because it is the one place `H(p*)` is estimated. The evaluator's two terms never
-need an entropy. The check takes an `EntropyEstimator` explicitly: `GaussianEntropy`
-is the closed form with no bar, `MonteCarloEntropy` samples and carries a
-standard-error bar, and anything else that fits the protocol can be wired in.
+`cpomdp._lab.additivity` is a separate module, and `AdditivityCheck` is a separate
+object, because it is the one place `H(p*)` is estimated. The evaluator's two terms
+never need an entropy. The check takes an `EntropyEstimator` explicitly:
+`GaussianEntropy` is the closed form with no bar, `MonteCarloEntropy` samples and
+carries a standard-error bar, and anything else that fits the protocol can be wired in.
 
 The left side is measured directly. `variational_free_energy` computes
 `E_q[ln q − ln p(y|x) − ln p(x)]` term by term from the cell filter's belief and the
@@ -178,11 +178,11 @@ check can tell.
 
 ## A difference is read at its own error, not the sum of two bars
 
-`cpomdp.resolution` is a leaf. It imports nothing first-party, and the boundary test
-asserts that, because it is built once for the evaluator and for the things that may
-not import the evaluator: the reference filter, and Paper 3's G10. It went into its
-own module rather than `cpomdp.diagnostics` because it is not a diagnostic of a
-model. It is the arithmetic of comparing two bounded numbers.
+`cpomdp._lab.resolution` is a leaf. It imports nothing first-party, and the boundary
+test asserts that, because it is built once for the evaluator and for the things that
+may not import the evaluator: the reference filter, and Paper 3's G10. It went into its
+own module rather than `cpomdp.diagnostics` because it is not a diagnostic of a model.
+It is the arithmetic of comparing two bounded numbers.
 
 A `Bar` is split by where its error came from. The `common_mode` part is the shift
 the reference's error puts on the value, at the reference's bar, and it is *signed*.

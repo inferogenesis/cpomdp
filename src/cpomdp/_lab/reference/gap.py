@@ -55,8 +55,8 @@ import jax.numpy as jnp
 from jaxtyping import Array, Bool, Float64
 from numpy.typing import ArrayLike
 
-from cpomdp.reference.likelihood import ObservationLikelihood
-from cpomdp.reference.quadrature import GridDensity, QuadratureGrid
+from cpomdp._lab.reference.likelihood import ObservationLikelihood
+from cpomdp._lab.reference.quadrature import GridDensity, QuadratureGrid
 
 __all__ = ["InferenceGap", "Void", "averaged_inference_gap"]
 

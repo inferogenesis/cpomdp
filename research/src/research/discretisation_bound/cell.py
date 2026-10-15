@@ -19,7 +19,7 @@ import sympy
 from research.explorations import operating_point, threshold
 
 if TYPE_CHECKING:
-    from cpomdp.reference.quadrature import QuadratureGrid
+    from cpomdp._lab.reference.quadrature import QuadratureGrid
 
 __all__ = [
     "BASE_NOISE",
@@ -148,7 +148,7 @@ def state_grid(spread: float) -> "QuadratureGrid":
     Returns:
         The declared `QuadratureGrid`, `μ* ± 12σ` with 1601 nodes.
     """
-    from cpomdp.reference.quadrature import QuadratureGrid
+    from cpomdp._lab.reference.quadrature import QuadratureGrid
 
     reach = threshold.DECLARED.state_half_width * spread
     return QuadratureGrid(

@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from cpomdp.additivity import (
+from cpomdp._lab.additivity import (
     AdditivityCheck,
     AdditivityResidual,
     EntropyEstimate,
@@ -13,8 +13,7 @@ from cpomdp.additivity import (
     MonteCarloEntropy,
     variational_free_energy,
 )
-from cpomdp.backends.kalman import KalmanBackend
-from cpomdp.constructors import (
+from cpomdp._lab.constructors import (
     CORRECT,
     EXACT_INFERENCE,
     ConstructorSet,
@@ -24,13 +23,14 @@ from cpomdp.constructors import (
     ModelSpec,
     Perturbation,
 )
-from cpomdp.observation import CallableSensor
-from cpomdp.scoring import (
+from cpomdp._lab.scoring import (
     build_cross,
     gaussian_kl,
     observation_predictive,
     predicted_belief,
 )
+from cpomdp.backends.kalman import KalmanBackend
+from cpomdp.observation import CallableSensor
 from cpomdp.types import Belief, LinearGaussianModel
 
 DT = 0.1

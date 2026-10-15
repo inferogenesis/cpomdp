@@ -7,9 +7,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from cpomdp.backends.degraded import WrongFixedRBackend
-from cpomdp.backends.kalman import KalmanBackend
-from cpomdp.constructors import (
+from cpomdp._lab.constructors import (
     CORRECT,
     EXACT_INFERENCE,
     ConstructorSet,
@@ -19,13 +17,12 @@ from cpomdp.constructors import (
     ModelSpec,
     Perturbation,
 )
-from cpomdp.diagnostics import condition_numbers
-from cpomdp.harness import DrivenRun, ExogenousActionSequence, World, drive
-from cpomdp.observation import CallableSensor
-from cpomdp.reference.gap import averaged_inference_gap
-from cpomdp.reference.likelihood import FixedNoiseLikelihood
-from cpomdp.reference.quadrature import QuadratureGrid, gaussian_on
-from cpomdp.scoring import (
+from cpomdp._lab.degraded import WrongFixedRBackend
+from cpomdp._lab.harness import DrivenRun, ExogenousActionSequence, World, drive
+from cpomdp._lab.reference.gap import averaged_inference_gap
+from cpomdp._lab.reference.likelihood import FixedNoiseLikelihood
+from cpomdp._lab.reference.quadrature import QuadratureGrid, gaussian_on
+from cpomdp._lab.scoring import (
     _SERIES_BELOW,
     ConstructorCross,
     CrossCell,
@@ -40,6 +37,9 @@ from cpomdp.scoring import (
     misspecification_step,
     observation_predictive,
 )
+from cpomdp.backends.kalman import KalmanBackend
+from cpomdp.diagnostics import condition_numbers
+from cpomdp.observation import CallableSensor
 from cpomdp.types import Belief, LinearGaussianModel
 
 

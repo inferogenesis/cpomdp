@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 from numpy.typing import ArrayLike
 
-from cpomdp.constructors import CORRECT, ConstructorSet, ModelSpec, Perturbation
+from cpomdp._lab.constructors import CORRECT, ConstructorSet, ModelSpec, Perturbation
 from cpomdp.dynamics import CallableProcessNoise
 from cpomdp.observation import CallableSensor, FixedSensor
 from cpomdp.types import LinearGaussianModel

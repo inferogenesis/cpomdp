@@ -25,9 +25,9 @@ import jax.numpy as jnp
 import numpy as np
 from numpy.typing import ArrayLike
 
+from cpomdp._lab.degraded import DiagonalCovarianceBackend, WrongFixedRBackend
 from cpomdp._validation import UNVERSIONED, validate_declared
 from cpomdp.backends.base import InferenceBackend
-from cpomdp.backends.degraded import DiagonalCovarianceBackend, WrongFixedRBackend
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.dynamics import DynamicsNoise
 from cpomdp.observation import ObservationModel
