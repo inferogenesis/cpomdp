@@ -122,18 +122,23 @@ Run that and the belief lands on `[1, 0]`. The agent worked out it was at positi
 
 ## The pymdp parallel
 
-If you've used pymdp, the loop is the same and most of the names are too. Four carry over verbatim:
+If you've used pymdp, the loop is the same. Four names carry over verbatim:
 
 > `Agent` · `qs` · `infer_states` · `sample_action`
 
 (`qs` is a read-only alias for `belief`, cpomdp's canonical name, so `agent.qs` and `agent.belief` are the same posterior. Use whichever your fingers reach for.)
 
-Only two things are spelled differently:
+The model's parts and the policy step are spelled differently:
 
-| pymdp | cpomdp                          | what it is                           |
-| ----- | ------------------------------- | ------------------------------------ |
-| `C`   | `StateGoal` / `ObservationGoal` | the goal you pursue, and how sharply |
-| `D`   | `model.prior`                   | belief before you've seen anything   |
+| pymdp            | cpomdp                                                | what it is                                      |
+| ---------------- | ----------------------------------------------------- | ----------------------------------------------- |
+| `A`              | `observation_matrix`, `observation_noise`             | how a state produces a reading                  |
+| `B`              | `dynamics_matrix`, `control_matrix`, `dynamics_noise` | how the state moves, and how an action moves it |
+| `C`              | `StateGoal` / `ObservationGoal`                       | the goal you pursue, and how sharply            |
+| `D`              | `model.prior`                                         | belief before you've seen anything              |
+| `infer_policies` | folded into `sample_action`                           | scoring the actions on offer                    |
+
+The model also answers to `.A`, `.B`, `.C`, `.Q` and `.R`. Those are control-theory letters. `model.A` is the dynamics matrix, pymdp's `B`, and `model.C` is the observation matrix, pymdp's `A`.
 
 One honest difference in behaviour. `sample_action` here is deterministic, not a sample from a policy posterior. For a linear-Gaussian model with fixed noise the action that minimises expected free energy turns out to be exactly the LQR optimum ([Koudahl, Kouw and de Vries 2021](https://doi.org/10.3390/e23121565)), so there's a single best action and that's what comes back. Same loop, exact answer. The reasoning is in [DECISIONS.md](https://github.com/inferogenesis/cpomdp/blob/main/DECISIONS.md) (ADR-003) if you want it.
 
