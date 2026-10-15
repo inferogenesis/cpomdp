@@ -168,10 +168,14 @@ class TestFfgRolloutAtMultiDimAction:
             backend, belief, _walk(4), pref, info_block=info_block
         )
         assert trace.g.shape == (4,)  # H
-        assert trace.mu_pred.shape == (4, 6)  # H, n
-        assert trace.sigma_pred.shape == (4, 6, 6)
-        assert trace.sigma_post.shape == (4, 6, 6)
-        assert trace.s.shape == (4, 3, 3)  # H, m. Not n, and not p.
+        assert trace.predicted_mean.shape == (4, 6)  # H, n
+        assert trace.predicted_cov.shape == (4, 6, 6)
+        assert trace.posterior_cov.shape == (4, 6, 6)
+        assert trace.predicted_observation_cov.shape == (
+            4,
+            3,
+            3,
+        )  # H, m. Not n, and not p.
 
     def test_sums_equal_the_summed_rollout(self):
         backend, belief, pref = _coupled_backend(), _coupled_belief(), _pref()
@@ -242,8 +246,8 @@ class TestFfgRolloutAtMultiDimAction:
         )
         rc = rollout_conditioning(trace)
         assert rc.all_positive_definite
-        assert rc.cond_sigma_pred.shape == (4,)
-        assert rc.cond_s.shape == (4,)
+        assert rc.cond_predicted_cov.shape == (4,)
+        assert rc.cond_predicted_observation_cov.shape == (4,)
 
 
 # --- the flat and FFG rollouts still agree once the action is wider ----------------

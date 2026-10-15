@@ -22,6 +22,8 @@ Imports `rollout_conditioning`/`RolloutConditioning`, so until they land this mo
 collection-red — the `ImportError` naming `rollout_conditioning` is the build cue.
 """
 
+import dataclasses
+
 import jax.numpy as jnp
 import numpy as np
 
@@ -125,10 +127,21 @@ class TestRolloutConditioning:
             rc = rollout_conditioning(trace)
             assert isinstance(rc, RolloutConditioning)
             assert rc.all_positive_definite, f"{name}: a rollout matrix is not PD"
-            assert np.all(rc.cond_sigma_pred < COND_CEILING), f"{name}: cond(Σ⁺)"
-            assert np.all(rc.cond_s < COND_CEILING), f"{name}: cond(S)"
-            assert np.all(rc.cond_sigma_post < COND_CEILING), f"{name}: cond(Σ_post)"
-            assert np.all(rc.min_eig_sigma_post > MIN_EIG_FLOOR), f"{name}: min eig"
+            assert np.all(rc.cond_predicted_cov < COND_CEILING), f"{name}: cond(Σ⁺)"
+            assert np.all(rc.cond_predicted_observation_cov < COND_CEILING), (
+                f"{name}: cond(S)"
+            )
+            assert np.all(rc.cond_posterior_cov < COND_CEILING), f"{name}: cond(Σ_post)"
+            assert np.all(rc.min_eig_posterior_cov > MIN_EIG_FLOOR), f"{name}: min eig"
+
+    def test_fields_name_the_matrix_they_measure(self):
+        assert [field.name for field in dataclasses.fields(RolloutConditioning)] == [
+            "cond_predicted_cov",
+            "cond_predicted_observation_cov",
+            "cond_posterior_cov",
+            "min_eig_posterior_cov",
+            "all_positive_definite",
+        ]
 
     def test_per_step_shapes(self):
         model, belief, pref = _model(), _belief(), _obs_preference()
@@ -136,10 +149,10 @@ class TestRolloutConditioning:
             policy_efe_trace(model, belief, _policy([0.4, -0.2, 0.1]), pref)
         )
         for column in (
-            rc.cond_sigma_pred,
-            rc.cond_s,
-            rc.cond_sigma_post,
-            rc.min_eig_sigma_post,
+            rc.cond_predicted_cov,
+            rc.cond_predicted_observation_cov,
+            rc.cond_posterior_cov,
+            rc.min_eig_posterior_cov,
         ):
             assert column.shape == (3,)
 
@@ -148,11 +161,11 @@ class TestRolloutConditioning:
         # check bites, not passes everything. Built by hand off a real trace.
         model, belief, pref = _model(), _belief(), _obs_preference()
         trace = policy_efe_trace(model, belief, _policy([0.4, -0.2]), pref)
-        bad_post = np.array(trace.sigma_post)  # writable (jax arrays are read-only)
+        bad_post = np.array(trace.posterior_cov)  # writable (jax arrays are read-only)
         bad_post[-1] = np.array([[1e-15, 0.0], [0.0, 1e-15]])
-        degraded = trace._replace(sigma_post=jnp.asarray(bad_post))
+        degraded = trace._replace(posterior_cov=jnp.asarray(bad_post))
         rc = rollout_conditioning(degraded)
-        assert not np.all(rc.min_eig_sigma_post > MIN_EIG_FLOOR)
+        assert not np.all(rc.min_eig_posterior_cov > MIN_EIG_FLOOR)
 
 
 class TestSlogdetSignGuarded:

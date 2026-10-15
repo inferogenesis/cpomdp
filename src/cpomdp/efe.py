@@ -27,7 +27,7 @@ and an OBSERVATION-space preference ``(g, Λ)`` (goal observation ``g``, precisi
 
     predict:    μ⁺ = A·μ + B·a            Σ⁺ = A·Σ·Aᵀ + Q
     sense:      (C, R) = observation.linearize(μ⁺)
-                o⁺ = C·μ⁺                  S = C·Σ⁺·Cᵀ + R          # predicted-obs cov
+                o⁺ = C·μ⁺                  S = C·Σ⁺·Cᵀ + R  # predicted observation cov
     pragmatic:  ½·(o⁺ − g)ᵀ·Λ·(o⁺ − g)  +  ½·tr(Λ·S)
     epistemic:  ½·(ln det S − ln det R)            # = I(state; obs) ≥ 0, info gain
     G = pragmatic − epistemic                      # minimise: low cost, high info
@@ -82,7 +82,7 @@ THE DATA FLOW  (top → bottom: what goes in → what comes out)
       │
       ▼    SENSE      (C, R) = linearize(μ⁺)   or fixed (model.C, model.R)
       │               o⁺ = C·μ⁺
-      │               S  = C·Σ⁺·Cᵀ + R         (predicted-obs cov; computed ONCE)
+      │               S  = C·Σ⁺·Cᵀ + R         (predicted observation cov, ONCE)
       │
       ├──► PRAGMATIC  ½·(o⁺−g)ᵀ·Λ·(o⁺−g) + ½·tr(Λ·S)    (cost,  lower better)
       ├──► EPISTEMIC  ½·(ln det S − ln det R)            (value, higher better)
@@ -145,59 +145,57 @@ class EfeResult(NamedTuple):
 class PolicyEfeTrace(NamedTuple):
     """One H-step rollout's per-step record, each field stacked along a leading H axis.
 
-    ``policy_efe`` sums each step's ``(g, pragmatic, epistemic)`` and discards the
-    moments it propagates between steps; ``policy_efe_trace`` returns this instead, so
-    the per-step quantities the ``lax.scan`` already computes can be inspected — the
-    covariance trajectory a policy carries, the per-step pragmatic/epistemic split, and
-    the matrices whose conditioning the rollout depends on.
+    The first three fields are the per-step ``EfeResult``, and each sums to the matching
+    field of the rollout's result. The rest are the moments the rollout carries between
+    steps, kept for inspection: the covariance a policy carries, and the matrices whose
+    conditioning the rollout depends on.
 
-    A ``NamedTuple`` because it is a JAX pytree with no registration: ``lax.scan`` emits
-    it directly as its ``ys`` (stacking each field along the leading H axis) and it
-    survives ``jit`` / ``vmap`` / ``grad``, gaining any outer ``vmap`` axis too. That is
-    the difference from ``_EfeStep``, which is a plain dataclass precisely because it
-    never crosses a scan/transform boundary.
+    A ``NamedTuple`` is a JAX pytree with no registration. ``lax.scan`` emits it as its
+    ``ys``, and it survives ``jit``, ``vmap`` and ``grad``, gaining any outer ``vmap``
+    axis too.
 
-    Moments use this module's convention: ``⁺`` marks the one-step *prediction* (after
-    the dynamics and action, before any observation); ``Σ_post`` is the covariance after
-    the predict-only Kalman contraction.
+    *Predicted* means after the dynamics and the action and before any observation.
+    *Posterior* means after the predict-only Kalman update the rollout carries to the
+    next step.
 
     Attributes:
-        g: Per-step EFE ``G = pragmatic − epistemic`` — (H,).
-        pragmatic: Per-step pragmatic (goal) term — (H,).
-        epistemic: Per-step epistemic (state information gain) term — (H,).
-        mu_pred: Predicted mean μ⁺ = ``A·μ + control·a`` — (H, n).
-        sigma_pred: Predicted covariance Σ⁺ = ``A·Σ·Aᵀ + Q`` — (H, n, n).
-        sigma_post: Post-observation covariance Σ_post, the contraction carried to the
-            next step — (H, n, n).
-        s: Innovation covariance S = ``C·Σ⁺·Cᵀ + R`` (observation space) — (H, m, m).
+        g: Per-step EFE ``G = pragmatic − epistemic``, shape ``(H,)``.
+        pragmatic: Per-step goal term, shape ``(H,)``.
+        epistemic: Per-step information gain about the state, shape ``(H,)``.
+        predicted_mean: The predicted state mean, μ⁺ = ``A·μ + B·a``, shape ``(H, n)``.
+        predicted_cov: The predicted state covariance, Σ⁺ = ``A·Σ·Aᵀ + Q``, shape
+            ``(H, n, n)``.
+        posterior_cov: The state covariance after the predicted observation, Σ_post,
+            shape ``(H, n, n)``.
+        predicted_observation_cov: The predicted observation covariance,
+            S = ``C·Σ⁺·Cᵀ + R``, shape ``(H, m, m)``.
     """
 
     g: Float64[Array, "H"]
     pragmatic: Float64[Array, "H"]
     epistemic: Float64[Array, "H"]
-    mu_pred: Float64[Array, "H n"]  # μ⁺ (predicted mean)
-    sigma_pred: Float64[Array, "H n n"]  # Σ⁺ (predicted cov)
-    sigma_post: Float64[Array, "H n n"]  # Σ_post (Kalman-contracted, post-observation)
-    s: Float64[Array, "H m m"]  # S (innovation cov)
+    predicted_mean: Float64[Array, "H n"]  # μ⁺
+    predicted_cov: Float64[Array, "H n n"]  # Σ⁺
+    posterior_cov: Float64[Array, "H n n"]  # Σ_post
+    predicted_observation_cov: Float64[Array, "H m m"]  # S
 
 
 @dataclass(frozen=True)
 class _EfeStep:
     """One EFE step: the public split plus the moments the rollout propagates.
 
-    ``expected_free_energy`` exposes only ``g`` + ``{pragmatic, epistemic}``; the
-    H-step rollout (``policy_efe``, B2) additionally needs ``mu_pred``/``sigma_pred``/
-    ``s`` (μ⁺, Σ⁺, S) to propagate the belief — but NOT ``C`` (it fetches its own where
-    it propagates). Consumed locally; it never crosses a ``jit``/``vmap``/``scan``
-    boundary, so it needs no pytree registration.
+    ``expected_free_energy`` exposes only the first three fields. The H-step rollout
+    (``policy_efe``) also needs the predicted moments to propagate the belief, named as
+    ``PolicyEfeTrace`` names them. It fetches its own ``C``. Consumed locally, it never
+    crosses a ``jit``/``vmap``/``scan`` boundary, so it needs no pytree registration.
     """
 
     g: Float64[Array, ""]
     pragmatic: Float64[Array, ""]
     epistemic: Float64[Array, ""]
-    mu_pred: Float64[Array, "n"]
-    sigma_pred: Float64[Array, "n n"]
-    s: Float64[Array, "m m"]
+    predicted_mean: Float64[Array, "n"]  # μ⁺
+    predicted_cov: Float64[Array, "n n"]  # Σ⁺
+    predicted_observation_cov: Float64[Array, "m m"]  # S
 
 
 def expected_free_energy(
@@ -358,19 +356,21 @@ def _rollout_body(
         c = (
             model.C
             if model.observation_model is None
-            else model.observation_model.linearize(r.mu_pred)[0]
+            else model.observation_model.linearize(r.predicted_mean)[0]
         )
-        p_xo = r.sigma_pred @ c.T
-        sigma_post = r.sigma_pred - p_xo @ jnp.linalg.solve(r.s, p_xo.T)
+        p_xo = r.predicted_cov @ c.T
+        sigma_post = r.predicted_cov - p_xo @ jnp.linalg.solve(
+            r.predicted_observation_cov, p_xo.T
+        )
         sigma_post = 0.5 * (sigma_post + sigma_post.T)
-        return (r.mu_pred, sigma_post), PolicyEfeTrace(
+        return (r.predicted_mean, sigma_post), PolicyEfeTrace(
             g=r.g,
             pragmatic=r.pragmatic,
             epistemic=r.epistemic,
-            mu_pred=r.mu_pred,
-            sigma_pred=r.sigma_pred,
-            sigma_post=sigma_post,
-            s=r.s,
+            predicted_mean=r.predicted_mean,
+            predicted_cov=r.predicted_cov,
+            posterior_cov=sigma_post,
+            predicted_observation_cov=r.predicted_observation_cov,
         )
 
     return step
@@ -578,10 +578,10 @@ def _ffg_rollout_body(
             g=scored.g,
             pragmatic=scored.pragmatic,
             epistemic=scored.epistemic,
-            mu_pred=predicted.mean,
-            sigma_pred=predicted.cov,
-            sigma_post=sigma_post,
-            s=s,
+            predicted_mean=predicted.mean,
+            predicted_cov=predicted.cov,
+            posterior_cov=sigma_post,
+            predicted_observation_cov=s,
         )
 
     return step
@@ -785,7 +785,7 @@ def _efe_step(
         g=g,
         pragmatic=pragmatic,
         epistemic=epistemic,
-        mu_pred=mu_pred,
-        sigma_pred=sigma_pred,
-        s=pred_obs_cov,
+        predicted_mean=mu_pred,
+        predicted_cov=sigma_pred,
+        predicted_observation_cov=pred_obs_cov,
     )

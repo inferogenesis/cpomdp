@@ -957,11 +957,16 @@ def _print_tables() -> None:
     )
     for k in range(FLIP_H):
         print(
-            f"   {k:>2} {rc.cond_sigma_pred[k]:>10.1f} {rc.cond_s[k]:>9.1f} "
-            f"{rc.cond_sigma_post[k]:>13.1f} {rc.min_eig_sigma_post[k]:>15.3e}"
+            f"   {k:>2} {rc.cond_predicted_cov[k]:>10.1f} "
+            f"{rc.cond_predicted_observation_cov[k]:>9.1f} "
+            f"{rc.cond_posterior_cov[k]:>13.1f} {rc.min_eig_posterior_cov[k]:>15.3e}"
         )
-    max_cond = max(rc.cond_sigma_pred.max(), rc.cond_s.max(), rc.cond_sigma_post.max())
-    min_eig = float(rc.min_eig_sigma_post.min())
+    max_cond = max(
+        rc.cond_predicted_cov.max(),
+        rc.cond_predicted_observation_cov.max(),
+        rc.cond_posterior_cov.max(),
+    )
+    min_eig = float(rc.min_eig_posterior_cov.min())
     print(
         f"   all PD = {rc.all_positive_definite}; min eig(Σ_post) = {min_eig:.3e} "
         f"({min_eig / MIN_EIG_FLOOR:.0e}x the floor); max cond = {max_cond:.0f}"
@@ -1090,10 +1095,10 @@ def check() -> None:
     #    definite and off the floor, so the Cholesky guard never fires (margin is real).
     rc = conditioning(_walk(FLIP_H))
     assert rc.all_positive_definite
-    assert rc.min_eig_sigma_post.min() > MIN_EIG_FLOOR
-    assert rc.cond_sigma_pred.max() < COND_CEILING
-    assert rc.cond_s.max() < COND_CEILING
-    assert rc.cond_sigma_post.max() < COND_CEILING
+    assert rc.min_eig_posterior_cov.min() > MIN_EIG_FLOOR
+    assert rc.cond_predicted_cov.max() < COND_CEILING
+    assert rc.cond_predicted_observation_cov.max() < COND_CEILING
+    assert rc.cond_posterior_cov.max() < COND_CEILING
 
     # The equal-billing measurement (H* one sooner with the one-step reach -3) and the
     # refinement-stability check are heavier enumerations; they print in the bare run

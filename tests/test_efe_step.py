@@ -8,8 +8,8 @@ three intermediates the rollout consumes — `(μ⁺, Σ⁺, S)` — with **no `
 fetches its own `C` only where it propagates; see the build plan Phase 3 / B1).
 
 Target: `_efe_step(model, mu, sigma, control, action, goal, precision)` returns an
-internal `_EfeStep` (g, pragmatic, epistemic, mu_pred, sigma_pred, s) — the public
-split plus the moments B2 propagates.
+internal `_EfeStep` (g, pragmatic, epistemic, predicted_mean, predicted_cov,
+predicted_observation_cov), the public split plus the moments B2 propagates.
 
 Two locks live here:
 
@@ -20,7 +20,8 @@ Two locks live here:
   all three branches the extraction moves: fixed (`None`), `R(x)`, `Q(x)`.
 - `TestEfeStepContract` pins the signature, the `_EfeStep` fields, the byte-identical
   `EfeResult` the wrapper exposes, and the three intermediates' values (vs independent
-  NumPy) — including a shape check that `.s` is `S` (m×m), not `C` (m×n).
+  NumPy), including a shape check that `.predicted_observation_cov` is `S` (m×m), not
+  `C` (m×n).
 
 This module imports `_efe_step` directly, so until B1 lands it is **collection-red** —
 the `ImportError` naming `_efe_step` is the build cue. The gate BEYOND this file: the
@@ -228,11 +229,11 @@ class TestEfeStepContract:
         np.testing.assert_array_equal(step.pragmatic, efe_ref.pragmatic)
         np.testing.assert_array_equal(step.epistemic, efe_ref.epistemic)
 
-        # shapes pin the contract — and prove `.s` is S (m×m), NOT C (m×n):
+        # shapes pin the contract, and prove S is (m×m), NOT C (m×n):
         # for this model n=2, m=1, so C would be (1, 2) and S is (1, 1).
-        assert step.mu_pred.shape == (2,)
-        assert step.sigma_pred.shape == (2, 2)
-        assert step.s.shape == (1, 1)
+        assert step.predicted_mean.shape == (2,)
+        assert step.predicted_cov.shape == (2, 2)
+        assert step.predicted_observation_cov.shape == (1, 1)
 
         # the three intermediates are the real moments B2 consumes (vs NumPy).
         a_mat = np.asarray(model.dynamics_matrix)
@@ -244,10 +245,14 @@ class TestEfeStepContract:
         sigma = np.asarray(belief.cov)
         a = np.asarray(action, dtype=float)
         sigma_pred_ref = a_mat @ sigma @ a_mat.T + q_mat
-        np.testing.assert_allclose(step.mu_pred, a_mat @ mu + b_mat @ a, atol=1e-12)
-        np.testing.assert_allclose(step.sigma_pred, sigma_pred_ref, atol=1e-12)
         np.testing.assert_allclose(
-            step.s, c_mat @ sigma_pred_ref @ c_mat.T + r_mat, atol=1e-12
+            step.predicted_mean, a_mat @ mu + b_mat @ a, atol=1e-12
+        )
+        np.testing.assert_allclose(step.predicted_cov, sigma_pred_ref, atol=1e-12)
+        np.testing.assert_allclose(
+            step.predicted_observation_cov,
+            c_mat @ sigma_pred_ref @ c_mat.T + r_mat,
+            atol=1e-12,
         )
 
     def test_matches_wrapper_on_state_dependent_sensor(self):
@@ -266,4 +271,4 @@ class TestEfeStepContract:
         )
         g_ref = expected_free_energy(model, belief, action, pref).g
         np.testing.assert_array_equal(step.g, g_ref)
-        assert step.s.shape == (1, 1)
+        assert step.predicted_observation_cov.shape == (1, 1)
