@@ -41,9 +41,9 @@ class Preference:
     case (visit one of several goals) is RFC-002, deferred; this type is the seam
     that a mixture ``Preference`` plugs into.
 
-    ``precision`` is unused by [`LQRSelector`][cpomdp.LQRSelector] (it is baked into
-    the controller's Riccati solve at construction); it is carried here for the EFE
-    pragmatic term added in Phase 1A.
+    ``precision`` is unused by [`LQRSelector`][cpomdp.LQRSelector], whose controller
+    bakes its own goal precision into the Riccati solve at construction. The EFE
+    selectors read it in the pragmatic term.
     """
 
     goal: Float64[Array, "n"]
@@ -242,7 +242,7 @@ class EFESelector:
 
         The counterpart to ``EnumeratedEfeSearch.warrant`` (``PROVED``): the two search
         families print in different vocabulary so a sampled result is never read as a
-        decided one (standing rule 6; ADR-031).
+        decided one (ADR-031).
         """
         return SearchWarrant.CORROBORATED
 

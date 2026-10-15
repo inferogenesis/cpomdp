@@ -354,8 +354,9 @@ class LQRController:
             not match the state/action dimensions, is not symmetric, or fails its
             definiteness requirement (``goal_precision`` PSD, ``effort_penalty``
             PD).
-        RuntimeError: If the control Riccati does not converge within ``max_iter``
-            — typically because ``(dynamics, control)`` is not stabilisable.
+        RuntimeError: If the control Riccati does not converge within ``max_iter``,
+            usually because ``(dynamics_matrix, control_matrix)`` is not
+            stabilisable.
     """
 
     def __init__(
@@ -470,8 +471,8 @@ class LQRController:
         else:
             raise RuntimeError(
                 f"control Riccati did not converge in {max_iter} iterations; "
-                "(dynamics, control) may not be stabilisable, so no steady-state "
-                "gain exists."
+                "(dynamics_matrix, control_matrix) may not be stabilisable, so no "
+                "steady-state gain exists."
             )
 
         _, gain = _riccati_step(

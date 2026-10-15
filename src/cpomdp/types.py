@@ -36,10 +36,11 @@ class Belief:
     array-like (lists, tuples, arrays) and stored as float ``jax.Array``.
 
     A ``Belief`` is a registered JAX pytree (its leaves are ``mean`` and ``cov``),
-    so it passes through ``jit``/``vmap``/``grad`` as data. JAX rebuilds it from
-    its leaves without re-running validation; the shape/symmetry checks fire only
-    on direct construction, at the trust boundary. Positive-semi-definiteness is
-    enforced at the trust boundary too, not here (see DECISIONS.md ADR-002).
+    so it passes through ``jit``/``vmap``/``grad`` as data. Direct construction
+    checks the shapes, that the mean is finite, and that the covariance is symmetric
+    and positive semi-definite. JAX rebuilds a ``Belief`` from its leaves without
+    those checks, and under a trace the value checks are skipped because the values
+    are abstract.
     """
 
     mean: Float64[Array, "n"]
@@ -110,8 +111,8 @@ class LinearGaussianModel:
     The agent's assumed story for how a hidden state evolves and produces
     observations, under linear maps and Gaussian noise::
 
-        next_state  = dynamics @ state         + control @ action + dynamics noise
-        observation = observation_matrix @ state                  + observation noise
+        next_state  = dynamics_matrix @ state + control_matrix @ action + dynamics noise
+        observation = observation_matrix @ state + observation noise
 
     The noise terms are zero-mean Gaussians with covariances ``dynamics_noise``
     and ``observation_noise``; the initial state is drawn from ``prior``.
@@ -264,7 +265,7 @@ class LinearGaussianModel:
             or self.dynamics_matrix.shape[0] != self.dynamics_matrix.shape[1]
         ):
             raise ValueError(
-                f"dynamics must be a square (n x n) matrix, "
+                f"dynamics_matrix must be a square (n x n) matrix, "
                 f"got shape {self.dynamics_matrix.shape}"
             )
         n = self.n_states

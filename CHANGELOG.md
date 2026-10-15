@@ -371,6 +371,16 @@ certainty equivalence is optimal, and no use of the readings beats it.
   once at construction, as ADR-002 and ADR-003 planned. Every release has filtered per
   step. Both now say so, and ADR-072 records the per-step filter as the default and the
   steady-state one as the opt-in.
+- Public docstrings cited build-plan labels a pip user cannot look up, "Phase 1A",
+  "item E" and "standing rule 6" among them. They are gone, and
+  `tests/test_docstring_labels.py` fails on one in any docstring outside `cpomdp._lab`.
+  The ADR numbers stay, and the docs home links DECISIONS.md, which is append-only, so
+  an ADR a release cites reads the same there later.
+- Pre-rename names survived in the model's formula, in two error messages and in the
+  guide: `dynamics @ state + control @ action`, "dynamics must be a square matrix",
+  "(dynamics, control) may not be stabilisable" and `dynamics=dynamics`. Each now names
+  `dynamics_matrix` and `control_matrix`. `Belief`'s docstring said its covariance is
+  checked for positive semi-definiteness elsewhere. Its constructor checks it.
 - `EFESelector` described varying-sequence search as a deferred v0.4 `GradientEFESelector`
   seam, in its rendered class docstring and in the `ValueError` a `p > 1` caller hits. That
   search shipped in v0.4.4 as `EnumeratedEfeSearch`, whose own docstring says it supports

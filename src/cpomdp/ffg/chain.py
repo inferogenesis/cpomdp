@@ -1,8 +1,8 @@
 """FFG chain inference backend: ``predict ∘ update ∘ to_moment`` = a Kalman step.
 
-The keystone of v0.4 Phase 2 (ADR-012): wiring the Phase-1/Phase-2 message algebra
-into the ``InferenceBackend`` protocol and showing that, on a *chain* topology, it
-reproduces the existing Kalman path. Gaussian belief propagation on a linear chain
+It wires the canonical-form message algebra of ``cpomdp.ffg`` (ADR-012) into the
+``InferenceBackend`` protocol, and on a *chain* topology it reproduces the existing
+Kalman path. Gaussian belief propagation on a linear chain
 *is* the Kalman filter — so this backend is interchangeable with ``KalmanBackend``
 behind the same seam, and the gate (``tests/test_ffg_chain.py``) holds it to
 numerical identity against that path.
@@ -133,8 +133,8 @@ class ChainBackend:
 
         Validate the per-step inputs at the trust boundary with the shared
         ``_validate_step_inputs`` (identical checks to ``KalmanBackend`` — same seam,
-        same errors), form the control shift ``b = control @ action`` (zero when the
-        model is uncontrolled), then run the module-docstring pipeline: lift the
+        same errors), form the control shift ``b = control_matrix @ action`` (zero when
+        the model is uncontrolled), then run the module-docstring pipeline: lift the
         prior into canonical form, ``predict`` through the transition factor, add the
         observation factor's ``message(y)`` (the measurement update), and
         ``to_moment`` the result back into a ``Belief``.

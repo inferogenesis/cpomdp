@@ -39,12 +39,12 @@ class Coupling:
     factor.
 
     ``efe_relevant`` is a modeller's *declaration* that this edge carries information
-    the instrumental epistemic depends on — a physics call, not a structural one (in
-    chemotaxis the gradient rides receptor->CheA->CheY, while CheA->CheB methylation is
-    observed and coupled yet gradient-blind). A carry partition (ADR-016) that severs a
-    flagged edge drops the cross-temporal covariance it holds, breaking the integration
-    of that information about a slow latent; every graph EFE entry point refuses such a
-    partition (ADR-018). Default ``False``; it does not affect the factor or the filter.
+    the instrumental epistemic depends on. It is a physics call. An edge can be
+    observed and coupled and still carry nothing the epistemic needs. A carry partition
+    (ADR-016) that severs a flagged edge drops the cross-temporal covariance it holds,
+    and with it the integration of that information about a slow latent. Every graph
+    EFE entry point refuses such a partition (ADR-018). Default ``False``. The flag
+    does not affect the factor or the filter.
     """
 
     parent: int
