@@ -132,10 +132,21 @@ class CouplingGraphBackend:
             built on this backend starts from it, and ``to_flat_model`` carries it.
         control_matrix: B, shape ``(n, p)`` with ``n = sum(graph.dims)``, mapping an
             action into the joint state. ``None`` for a pure filtering model.
+        partition: clusters of node indices that together hold every node once. The
+            filter carries the correlation within a cluster to the next step and
+            drops the correlation between clusters (ADR-016). ``None`` is one cluster
+            of every node, the exact filter. All singletons take a cheaper
+            node-by-node pass. ``severed_mass`` measures what a cut drops.
 
     An ``observation`` passed to ``infer_states`` is the readings of the observed nodes
     stacked in **ascending node-index order**, each node contributing its sensor's rows.
     ``stack_observations`` builds it from readings keyed by node.
+
+    Raises:
+        TypeError: If ``prior`` is not a [`Belief`][cpomdp.Belief].
+        ValueError: If there is not one transition per node sized to it, if
+            ``prior`` or ``control_matrix`` is not over the joint state, or if
+            ``partition`` misses a node, repeats one or names one outside the graph.
     """
 
     def __init__(
