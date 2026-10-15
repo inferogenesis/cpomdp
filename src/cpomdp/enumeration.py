@@ -17,10 +17,11 @@ are seen must show up in the diff, not be discovered by a reviewer. The ``PROVED
 warrant is scoped to the *declared* set — whether that set is fine enough is a separate
 question a refinement-stability check answers, not this certificate.
 
-Internal seam: imported from ``cpomdp.enumeration``, not re-exported at the top level.
+Imported from ``cpomdp.enumeration``. None of it is re-exported at the top level.
 """
 
 import itertools
+from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, NamedTuple, Protocol
@@ -28,7 +29,7 @@ from typing import TYPE_CHECKING, Any, NamedTuple, Protocol
 import jax
 import jax.numpy as jnp
 import numpy as np
-from jaxtyping import Array, Float64
+from jaxtyping import Array, Float64, Int
 from numpy.typing import ArrayLike
 
 from cpomdp.efe import _checked_info_block, _policy_efe_ffg, policy_efe
@@ -164,16 +165,26 @@ def _certify(
 
 
 class EnumeratedSearchResult(NamedTuple):
-    """The outcome of one exhaustive search.
+    """The outcome of one front-loaded exhaustive search.
+
+    It carries every field of ``ChunkedSearchResult`` under the same name, so code
+    that reads those runs on either search. The one addition is the score vector,
+    which the chunked path never holds.
 
     Attributes:
         best_policy: the argmin sequence, shape ``(H, p)``.
-        g: the full EFE vector over every enumerated policy, shape ``(|A|^H,)`` — G-D's
-            dual reporting at H > 1 for free.
+        g: the summed EFE of every enumerated policy, in enumeration order, shape
+            ``(|A|^H,)``.
+        best_g: the argmin's summed EFE, G.
+        best_index: the argmin's position in the enumeration.
+        certificate: the completeness certificate (ADR-030).
     """
 
     best_policy: Float64[Array, "H p"]
     g: Float64[Array, "N"]
+    best_g: Float64[Array, ""]
+    best_index: Int[Array, ""]
+    certificate: CompletenessCertificate
 
 
 class _PolicyScorer(Protocol):
@@ -233,10 +244,14 @@ class EnumeratedEfeSearch:
     """Exhaustive EFE search over ``A^H`` for a declared finite action set (ADR-031).
 
     Front-loads (ADR-002) the full ``|A|^H`` enumeration of *varying* sequences at
-    construction, with its completeness certificate; ``evaluate`` scores them all and
-    returns the argmin policy and the full ``G`` vector. Because the set is finite and
-    fully enumerated the search **decides** its universal — warrant ``PROVED``, distinct
-    from ``EFESelector``'s ``CORROBORATED`` grid.
+    construction, and checks its completeness there. ``evaluate`` scores them all and
+    returns the argmin, its score and index, the certificate and the full ``G`` vector.
+    Because the set is finite and fully enumerated the search **decides** its universal,
+    warrant ``PROVED``, distinct from ``EFESelector``'s ``CORROBORATED`` grid.
+
+    [`ChunkedEfeSearch`][cpomdp.enumeration.ChunkedEfeSearch] runs the same enumeration
+    in blocks. The two take the same arguments, answer the same ``evaluate`` and drive
+    the same selectors, so swapping one for the other changes no call site.
 
     Scoring is a strategy (ADR-034): the default constructor scores on a flat
     ``LinearGaussianModel`` (``policy_efe``); ``over_backend`` scores on an FFG backend
@@ -318,18 +333,31 @@ class EnumeratedEfeSearch:
     def evaluate(
         self, belief: Belief, preference: "Preference"
     ) -> EnumeratedSearchResult:
-        """Score every enumerated policy; return the argmin and the full ``G`` vector.
+        """Score every enumerated policy, and return the argmin with its evidence.
 
         One ``vmap`` of the scorer over the front-loaded ``|A|^H`` policies, then a
         NaN-safe ``argmin`` (a NaN-scoring policy must not silently win). The scorer
         holds the flat model or the FFG backend as a closure constant, so the ``vmap``
         maps only over the policies.
+
+        Args:
+            belief: the belief to plan from.
+            preference: the goal and precision the EFE scores against.
+
+        Returns:
+            The argmin, its score, its index, the certificate and the score vector.
         """
         g = jax.vmap(lambda pol: self._scorer.score(belief, pol, preference))(
             self._policies
         )
         best = jnp.argmin(jnp.where(jnp.isnan(g), jnp.inf, g))
-        return EnumeratedSearchResult(best_policy=self._policies[best], g=g)
+        return EnumeratedSearchResult(
+            best_policy=self._policies[best],
+            g=g,
+            best_g=g[best],
+            best_index=best,
+            certificate=self._certificate,
+        )
 
     @property
     def policies(self) -> Float64[Array, "N H p"]:
@@ -355,11 +383,6 @@ class EnumeratedEfeSearch:
     def warrant(self) -> Warrant:
         """``PROVED`` — a finite set enumerated in full decides its universal."""
         return Warrant.PROVED
-
-    @property
-    def certificate(self) -> CompletenessCertificate:
-        """The front-loaded completeness certificate (ADR-030)."""
-        return self._certificate
 
 
 # Measured on the crossover model at |A|^H = 9^6, sweeping 64 to 65536. Throughput has
@@ -425,31 +448,30 @@ class _BlockReducer(Protocol):
 class ChunkedSearchResult(NamedTuple):
     """The outcome of one chunked exhaustive search.
 
-    No score vector, which is the point: at ``17^7`` one would cost 3.28 GB.
+    No score vector, which is the point: at ``17^7`` one would cost 3.28 GB. Every
+    field is also on the front-loaded result, under the same name.
 
     Attributes:
         best_policy: the argmin sequence, shape ``(H, p)``.
-        best_g: its summed EFE — G.
-        best_index: its position in the enumeration, for comparison against the
-            front-loaded path's argmin.
-        visited: how many policies the loop actually scored, counted in the loop
-            rather than read off an array's length.
-        certificate: the completeness certificate (ADR-030). It arrives on the result
-            rather than at construction, because the count it certifies is what the
-            loop produces.
+        best_g: the argmin's summed EFE, G.
+        best_index: the argmin's position in the enumeration, the index
+            ``policies_at`` decodes.
+        certificate: the completeness certificate (ADR-030). Its ``visited`` is the
+            count of policies the loop scored, carried by the loop rather than read
+            off an array's length.
     """
 
     best_policy: Float64[Array, "H p"]
     best_g: Float64[Array, ""]
-    best_index: int
-    visited: int
+    best_index: Int[Array, ""]
     certificate: CompletenessCertificate
 
 
 class ChunkedEfeSearch:
     """Exhaustive EFE search over ``A^H`` in blocks, at ``O(chunk)`` residency.
 
-    The same enumeration as [`EnumeratedEfeSearch`][cpomdp.enumeration] and the same
+    The same enumeration as
+    [`EnumeratedEfeSearch`][cpomdp.enumeration.EnumeratedEfeSearch] and the same
     warrant, run so that neither the policy set nor the score vector is ever
     materialised. That is what puts sets past the front-loaded path's memory ceiling in
     reach, and the reason to have it is a set declared too large to hold, never a
@@ -539,8 +561,8 @@ class ChunkedEfeSearch:
                 "wraps would enumerate the wrong policies and still certify."
             )
 
-    def reduce(self, belief: Belief, preference: "Preference") -> ChunkedSearchResult:
-        """Score every policy in blocks; return the argmin and the loop's own count.
+    def evaluate(self, belief: Belief, preference: "Preference") -> ChunkedSearchResult:
+        """Score every policy in blocks, and return the argmin with its evidence.
 
         One ``lax.scan`` over ``ceil(|A|^H / chunk)`` blocks. Each block decodes its own
         indices, scores them under one ``vmap``, and folds the result into running
@@ -551,7 +573,8 @@ class ChunkedEfeSearch:
             preference: the goal and precision the EFE scores against.
 
         Returns:
-            The argmin, its index and score, the visited count and the certificate.
+            The argmin, its score, its index, and the certificate the loop's own count
+            earns.
         """
         return self._reduce(belief, preference, None)[0]
 
@@ -561,7 +584,7 @@ class ChunkedEfeSearch:
         preference: "Preference",
         reducer: _BlockReducer | None,
     ) -> tuple[ChunkedSearchResult, Any]:
-        """``reduce`` with an extra per-block fold, and the fold's final carry.
+        """``evaluate`` with an extra per-block fold, and the fold's final carry.
 
         The seam for evidence the argmin does not carry. The carry is ``Any`` because it
         is whatever the fold accumulates, and one seam with one consumer does not repay
@@ -614,8 +637,7 @@ class ChunkedEfeSearch:
                 argmin.best_index, self._action_set, self._horizon
             ),
             best_g=argmin.best_g,
-            best_index=int(argmin.best_index),
-            visited=int(argmin.visited),
+            best_index=argmin.best_index,
             certificate=_certify(self._action_set, self._horizon, int(argmin.visited)),
         ), extra
 
@@ -663,21 +685,23 @@ class ChunkedEfeSearch:
         return Warrant.PROVED
 
 
-class RecedingHorizonSelector:
-    """Receding-horizon driver over ``EnumeratedEfeSearch`` (an ``ActionSelector``).
+class _SearchDriver(ABC):
+    """What both drivers share: the search, its accounting and the last certificate."""
 
-    Every ``select`` re-runs the full ``A^H`` search on the current belief and returns
-    the first action of the best sequence. The belief drives every choice, so the plan
-    is recomputed each step. Kept separate from ``OpenLoopSelector`` because item E's
-    matched-horizon bracket depends on which mode is running (ADR-031).
-    """
-
-    def __init__(self, search: EnumeratedEfeSearch) -> None:
+    def __init__(self, search: EnumeratedEfeSearch | ChunkedEfeSearch) -> None:
+        if not isinstance(search, EnumeratedEfeSearch | ChunkedEfeSearch):
+            raise TypeError(
+                f"{type(self).__name__} drives an EnumeratedEfeSearch or a "
+                f"ChunkedEfeSearch, got {type(search).__name__}."
+            )
         self._search = search
+        self._certificate: CompletenessCertificate | None = None
 
-    def select(self, belief: Belief, preference: "Preference") -> Float64[Array, "p"]:
-        """Re-plan on ``belief`` and return the first action of the best sequence."""
-        return self._search.evaluate(belief, preference).best_policy[0]
+    def _plan(self, belief: Belief, preference: "Preference") -> Float64[Array, "H p"]:
+        """Run the search on ``belief`` and keep the certificate it earned."""
+        result = self._search.evaluate(belief, preference)
+        self._certificate = result.certificate
+        return result.best_policy
 
     @property
     def horizon(self) -> int:
@@ -686,88 +710,102 @@ class RecedingHorizonSelector:
 
     @property
     def warrant(self) -> Warrant:
-        """``PROVED`` — inherited from the enumerated search."""
+        """``PROVED`` — inherited from the exhaustive search."""
         return self._search.warrant
 
     @property
-    def certificate(self) -> CompletenessCertificate:
-        """The search's completeness certificate (ADR-030)."""
-        return self._search.certificate
+    def certificate(self) -> CompletenessCertificate | None:
+        """The last plan's completeness certificate (ADR-030), ``None`` before one.
+
+        The chunked search earns its certificate by running, so a driver has one only
+        once it has planned.
+        """
+        return self._certificate
 
     @property
     def cost_per_plan(self) -> int:
-        """Step-evals for one search = ``|A|^H * H`` (RFC-001 attributable work)."""
+        """Step evaluations one search costs, ``|A|^H * H`` (RFC-001)."""
         return self._search.cost_per_plan
 
     @property
+    @abstractmethod
     def replan_interval(self) -> int:
-        """Cycles between re-plans. 1: this driver plans every step."""
-        return 1
+        """Agent steps between two plans."""
 
     @property
     def cost_per_cycle(self) -> int:
-        """Per-cycle step-evals = ``|A|^H * H``. It plans every cycle."""
+        """Step evaluations per agent step, one plan spread over its interval."""
         return self.cost_per_plan // self.replan_interval
 
 
-class OpenLoopSelector:
-    """Open-loop driver over ``EnumeratedEfeSearch`` (an ``ActionSelector``).
+class RecedingHorizonSelector(_SearchDriver):
+    """Re-plans every step and applies the first action of the best sequence.
 
-    Plans once on the belief of the first ``select``, commits to the whole best
-    sequence, and returns its actions in order while ignoring the interim beliefs. It
-    re-plans only when the committed sequence is exhausted, or after ``reset``. Ignoring
-    the interim beliefs is what makes it open-loop, and the distinction from
-    ``RecedingHorizonSelector`` is item E's matched-horizon bracket (ADR-031).
+    An ``ActionSelector`` over either exhaustive search. Every ``select`` re-runs the
+    full ``A^H`` search on the current belief, so the belief drives every choice. It
+    costs a whole plan per step, ``cost_per_cycle = |A|^H * H``. A measurement has to
+    declare which mode it ran, so this and ``OpenLoopSelector`` stay separate (ADR-031).
+
+    Args:
+        search: the search to plan with, an ``EnumeratedEfeSearch`` or a
+            ``ChunkedEfeSearch``. Both give the same actions.
+
+    Raises:
+        TypeError: If ``search`` is neither.
+    """
+
+    def select(self, belief: Belief, preference: "Preference") -> Float64[Array, "p"]:
+        """Re-plan on ``belief`` and return the first action of the best sequence."""
+        return self._plan(belief, preference)[0]
+
+    @property
+    def replan_interval(self) -> int:
+        """Agent steps between two plans. 1: this driver plans every step."""
+        return 1
+
+
+class OpenLoopSelector(_SearchDriver):
+    """Plans once, then applies the whole best sequence without looking at beliefs.
+
+    An ``ActionSelector`` over either exhaustive search. It plans on the belief of the
+    first ``select`` and returns the plan's actions in order, ignoring the interim
+    beliefs. It re-plans only when the committed sequence is spent, or after ``reset``.
+    Ignoring the interim beliefs is what makes it open-loop. One plan covers H steps, so
+    ``cost_per_cycle = |A|^H``. A measurement has to declare which mode it ran, so this
+    and ``RecedingHorizonSelector`` stay separate (ADR-031).
 
     Stateful: it holds the committed plan and a step counter. The ``Agent`` drives it
     eagerly, one ``select`` per step, so the mutation is safe.
+
+    Args:
+        search: the search to plan with, an ``EnumeratedEfeSearch`` or a
+            ``ChunkedEfeSearch``. Both give the same actions.
+
+    Raises:
+        TypeError: If ``search`` is neither.
     """
 
-    def __init__(self, search: EnumeratedEfeSearch) -> None:
-        self._search = search
-        self._plan: Float64[Array, "H p"] | None = None
+    def __init__(self, search: EnumeratedEfeSearch | ChunkedEfeSearch) -> None:
+        super().__init__(search)
+        self._committed: Float64[Array, "H p"] | None = None
         self._step = 0
 
     def select(self, belief: Belief, preference: "Preference") -> Float64[Array, "p"]:
         """Return the next committed action, re-planning on ``belief`` when spent."""
-        if self._plan is None or self._step >= self._search.horizon:
-            self._plan = self._search.evaluate(belief, preference).best_policy
+        if self._committed is None or self._step >= self._search.horizon:
+            self._committed = self._plan(belief, preference)
             self._step = 0
-        action = self._plan[self._step]
+        action = self._committed[self._step]
         self._step += 1
         return action
 
     def reset(self) -> None:
-        """Drop the committed plan so the next ``select`` re-plans from scratch."""
-        self._plan = None
+        """Drop the committed plan and its certificate, so the next ``select`` plans."""
+        self._committed = None
         self._step = 0
-
-    @property
-    def horizon(self) -> int:
-        """The planning horizon H, which is also the re-plan interval."""
-        return self._search.horizon
-
-    @property
-    def warrant(self) -> Warrant:
-        """``PROVED`` — inherited from the enumerated search."""
-        return self._search.warrant
-
-    @property
-    def certificate(self) -> CompletenessCertificate:
-        """The search's completeness certificate (ADR-030)."""
-        return self._search.certificate
-
-    @property
-    def cost_per_plan(self) -> int:
-        """Step-evals for one search = ``|A|^H * H`` (RFC-001 attributable work)."""
-        return self._search.cost_per_plan
+        self._certificate = None
 
     @property
     def replan_interval(self) -> int:
-        """Cycles between re-plans = H. It commits to the whole sequence."""
+        """Agent steps between two plans, H. It commits to the whole sequence."""
         return self._search.horizon
-
-    @property
-    def cost_per_cycle(self) -> int:
-        """Amortised per-cycle step-evals = ``|A|^H`` (one ``|A|^H * H`` plan per H)."""
-        return self.cost_per_plan // self.replan_interval

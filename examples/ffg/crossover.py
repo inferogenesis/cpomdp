@@ -250,7 +250,7 @@ def measure_refinement(action_set, horizon: int) -> RefinementRow:
     search = ChunkedEfeSearch.over_backend(
         backend, action_set, info_block=info_block, horizon=horizon
     )
-    result = search.reduce(belief, preference)
+    result = search.evaluate(belief, preference)
     policy = np.asarray(result.best_policy).ravel()
     return RefinementRow(
         horizon=horizon,
@@ -415,35 +415,32 @@ def measure_extension(max_horizon: int = EXT_BAR) -> ExtensionMeasurement:
     # set that cannot reach the cue returns "no crossover" for a reason that has nothing
     # to do with the objective, and the outcome for that is NOT APPLICABLE.
     sensed = demo_maze.best_reachable_noise(EXT_SET, 1, max_horizon) <= demo_maze.R_LO
-    # One enumeration per horizon, and the certificate comes off that same search. Going
-    # back for it through a second `over_backend` would enumerate the set twice.
+    # One enumeration per horizon, and the certificate comes off that same run.
     backend, belief, preference, info_block = _setup()
     policy = ()
     for horizon in range(1, max_horizon + 1):
-        search = EnumeratedEfeSearch.over_backend(
+        result = EnumeratedEfeSearch.over_backend(
             backend, EXT_SET, info_block=info_block, horizon=horizon
-        )
-        policy = np.asarray(search.evaluate(belief, preference).best_policy).ravel()
+        ).evaluate(belief, preference)
+        policy = np.asarray(result.best_policy).ravel()
         if _cue_ward(policy):
-            return ExtensionMeasurement(horizon, search.certificate, policy, sensed)
-    return ExtensionMeasurement(None, search.certificate, policy, sensed)
+            return ExtensionMeasurement(horizon, result.certificate, policy, sensed)
+    return ExtensionMeasurement(None, result.certificate, policy, sensed)
 
 
 def measure_flip(horizon: int) -> FlipMeasurement:
     """Enumerate at ``horizon`` and read off everything the falsifiers need."""
-    n_policies, _, _, cue_ward = argmin_at(horizon)
-    backend, _, _, info_block = _setup()
-    certificate = EnumeratedEfeSearch.over_backend(
+    backend, belief, preference, info_block = _setup()
+    result = EnumeratedEfeSearch.over_backend(
         backend, ACTION_SET, info_block=info_block, horizon=horizon
-    ).certificate
+    ).evaluate(belief, preference)
     walk, reach = _numpy_score(_walk(horizon)), _numpy_score(_reach(horizon))
-    assert certificate.expected == n_policies  # the two routes enumerate the same set
     return FlipMeasurement(
         horizon=horizon,
-        certificate=certificate,
+        certificate=result.certificate,
         delta_g=walk - reach,
         bound=flip_margin_error(walk, reach),
-        cue_ward=cue_ward,
+        cue_ward=_cue_ward(np.asarray(result.best_policy).ravel()),
     )
 
 
