@@ -11,8 +11,9 @@ and a reason. A falsifier does not pass, so `PASS` is not in the vocabulary at a
 prover column disambiguates warrant, never the outcome. A check that never ran carries
 no warrant, because attributing one claims evidence it did not produce.
 
-The vocabulary lives in `warrantlib`. cpomdp re-exports `Warrant` alone, the type its
-selectors and searches report.
+The vocabulary lives in `warrantlib`. cpomdp's top level re-exports `Warrant` alone,
+the type its selectors and searches report. `cpomdp.enumeration` keeps
+`CompletenessCertificate`, which v0.4.4 shipped there.
 """
 
 import dataclasses

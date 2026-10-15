@@ -276,8 +276,9 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `research/c4_hand_derivation.md` landed 2026-08-17, after the suites citing it, which
   ADR-037 already discloses (ADR-041).
 - `warrantlib` — the vocabulary every check labels itself from, published as its own
-  distribution. cpomdp re-exports `Warrant` alone, the type its selectors and searches
-  report, and the rest is imported from warrantlib (ADR-069).
+  distribution. cpomdp's top level re-exports `Warrant` alone, the type its selectors
+  and searches report. `cpomdp.enumeration` keeps `CompletenessCertificate`, which v0.4.4
+  shipped there. The rest is imported from warrantlib (ADR-069).
   It depends on the standard library alone, so a suite can label its findings without a
   numerical stack; cpomdp depends on it and adds nothing to it (ADR-039). `Warrant` carries the
   prover class (`PROVED`, `CERTIFIED`, `CORROBORATED`), `Outcome` what a registered
@@ -465,9 +466,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `_validate_step_inputs` and `_rxinfer_chemotaxis_tree_root`. v0.4.4 exported them from
   `cpomdp.backends.base` and `cpomdp.backends.rxinfer`. The first is the shape check the
   built-in backends share and the second is the RxInfer test oracle, and a cpomdp user
-  calls neither (ADR-069). `cpomdp.enumeration.DEFAULT_CHUNK` is private as well, and
-  `ChunkedEfeSearch.reduce` no longer takes a `reducer`, whose type was private.
-  `import cpomdp` no longer leaves `cpomdp.jax` behind.
+  calls neither (ADR-069). `import cpomdp` no longer leaves `cpomdp.jax` behind.
 - **Breaking:** a *fixed* `observation_model` or `dynamics_noise_model` must now restate
   the model's `observation_noise` / `dynamics_noise` exactly, and a sensor's linearized
   observation matrix must equal `observation_matrix`. `LinearGaussianModel` previously

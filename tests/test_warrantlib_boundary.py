@@ -22,8 +22,9 @@ import.
 are pytest hooks and a fixture, which pytest finds through the entry point, and putting
 them in `__all__` would publish an import path nobody should use.
 
-cpomdp re-exports `Warrant` alone, the type its selectors and searches report. The
-rest of the vocabulary is imported from warrantlib, its one home (ADR-069).
+cpomdp's top level re-exports `Warrant` alone, the type its selectors and searches
+report. `cpomdp.enumeration` keeps `CompletenessCertificate`, which v0.4.4 shipped
+there. The rest of the vocabulary is imported from warrantlib, its one home (ADR-069).
 """
 
 import ast
