@@ -4,7 +4,7 @@ The chain (``test_ffg_chain.py``) is the degenerate FFG — every node has degre
 The shared ``CheA`` network ADR-012 targets has a node of degree > 2: one latent
 feeding two branches. This file pins the first genuinely-branching inference — the
 marginal at a shared parent computed by *combining* the upward message from each
-branch (``GaussianCoupling.message_to_parent``) with the prior. The combination is
+branch (``GaussianCoupling._message_to_parent``) with the prior. The combination is
 the factor product ``CanonicalGaussian.__add__``; summing three messages at one node
 is the operation a chain never needs.
 
@@ -20,9 +20,9 @@ import numpy as np
 import pytest
 
 from cpomdp import KalmanBackend, LinearGaussianModel
+from cpomdp.ffg._message import CanonicalGaussian
 from cpomdp.ffg.factors.linear_gaussian import GaussianCoupling, GaussianObservation
 from cpomdp.ffg.graph import Coupling, CouplingGraph
-from cpomdp.ffg.message import CanonicalGaussian
 from cpomdp.types import Belief
 
 
@@ -54,11 +54,11 @@ class TestSharedNodeTwoBranches:
 
         # --- FFG: combine the prior with each branch's upward message ---
         prior = _belief_as_canonical(m0, P0)
-        msg1 = GaussianCoupling(W1, coupling_noise=Q1).message_to_parent(
-            GaussianObservation(np.eye(c1), observation_noise=R1).message(y1)
+        msg1 = GaussianCoupling(W1, coupling_noise=Q1)._message_to_parent(
+            GaussianObservation(np.eye(c1), observation_noise=R1)._message(y1)
         )
-        msg2 = GaussianCoupling(W2, coupling_noise=Q2).message_to_parent(
-            GaussianObservation(np.eye(c2), observation_noise=R2).message(y2)
+        msg2 = GaussianCoupling(W2, coupling_noise=Q2)._message_to_parent(
+            GaussianObservation(np.eye(c2), observation_noise=R2)._message(y2)
         )
         out_mean, out_cov = (prior + msg1 + msg2).to_moment()
 
@@ -98,11 +98,11 @@ class TestSharedNodeTwoBranches:
         y1, y2 = rng.standard_normal(1), rng.standard_normal(1)
 
         prior = _belief_as_canonical(m0, P0)
-        msg1 = GaussianCoupling(W1, coupling_noise=Q1).message_to_parent(
-            GaussianObservation(np.eye(1), observation_noise=R1).message(y1)
+        msg1 = GaussianCoupling(W1, coupling_noise=Q1)._message_to_parent(
+            GaussianObservation(np.eye(1), observation_noise=R1)._message(y1)
         )
-        msg2 = GaussianCoupling(W2, coupling_noise=Q2).message_to_parent(
-            GaussianObservation(np.eye(1), observation_noise=R2).message(y2)
+        msg2 = GaussianCoupling(W2, coupling_noise=Q2)._message_to_parent(
+            GaussianObservation(np.eye(1), observation_noise=R2)._message(y2)
         )
         a_mean, a_cov = (prior + msg1 + msg2).to_moment()
         b_mean, b_cov = (msg2 + (msg1 + prior)).to_moment()
@@ -364,7 +364,7 @@ class TestCouplingGraphInfer:
         )
 
 
-# --- CouplingGraph.infer_all: collect + distribute vs the dense joint solve -------
+# --- CouplingGraph._infer_all: collect + distribute vs the dense joint solve -------
 
 
 def _joint_all_marginals_oracle(dims, edges, seeds):
@@ -399,7 +399,7 @@ def _joint_all_marginals_oracle(dims, edges, seeds):
 
 
 def _check_infer_all(dims, edges, seeds, atol=1e-8):
-    """Build the graph, run infer_all, check *every* node's marginal vs the oracle."""
+    """Build the graph, run _infer_all, check *every* node's marginal vs the oracle."""
     couplings = tuple(
         Coupling(parent, child, GaussianCoupling(w, coupling_noise=q), 1.0)
         for parent, child, w, q in edges
@@ -408,7 +408,7 @@ def _check_infer_all(dims, edges, seeds, atol=1e-8):
     seed_msgs = {
         n: CanonicalGaussian(precision, h) for n, (precision, h) in seeds.items()
     }
-    marginals = graph.infer_all(seed_msgs)
+    marginals = graph._infer_all(seed_msgs)
     oracle = _joint_all_marginals_oracle(dims, edges, seeds)
     for node in range(len(dims)):
         out_mean, out_cov = marginals[node].to_moment()
@@ -417,7 +417,7 @@ def _check_infer_all(dims, edges, seeds, atol=1e-8):
 
 
 class TestCouplingGraphInferAll:
-    """The distribute pass: infer_all returns *every* node's marginal (collect alone
+    """The distribute pass: _infer_all returns *every* node's marginal (collect alone
     gives only the root), matching an independent dense joint solve.
     """
 

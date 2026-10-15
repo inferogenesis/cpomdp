@@ -8,10 +8,10 @@ under test.
 
 The decomposition these factors implement (one Kalman step = Phase 1 ops):
 
-- ``GaussianObservation(C, R).message(y)`` -> ``CanonicalGaussian`` on x, the
+- ``GaussianObservation(C, R)._message(y)`` -> ``CanonicalGaussian`` on x, the
   information form ``(CᵀR⁻¹C, CᵀR⁻¹y)``. The measurement *update* is then
   ``belief + message`` (``CanonicalGaussian.__add__``).
-- ``GaussianTransition(A, Q).predict(message, control_term)`` -> the *predict*
+- ``GaussianTransition(A, Q)._predict(message, control_term)`` -> the *predict*
   step: build the joint over ``[x, x']``, fold the message into the x block,
   marginalize x out. Moment form: ``AΣAᵀ+Q``, ``Aμ+b``.
 """
@@ -21,13 +21,13 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
+from cpomdp.ffg._message import CanonicalGaussian
 from cpomdp.ffg.factors.linear_gaussian import (
     CallableGaussianObservation,
     GaussianCoupling,
     GaussianObservation,
     GaussianTransition,
 )
-from cpomdp.ffg.message import CanonicalGaussian
 
 
 def _spd(rng, n):
@@ -96,7 +96,7 @@ class TestGaussianObservation:
         C = rng.standard_normal((m, n))
         R = _spd(rng, m)
         y = rng.standard_normal(m)
-        msg = GaussianObservation(C, observation_noise=R).message(y)
+        msg = GaussianObservation(C, observation_noise=R)._message(y)
         Rinv = np.linalg.inv(R)
         np.testing.assert_allclose(msg.precision, C.T @ Rinv @ C, atol=1e-10)
         np.testing.assert_allclose(msg.potential, C.T @ Rinv @ y, atol=1e-10)
@@ -116,7 +116,7 @@ class TestGaussianObservation:
 
         post = _belief_as_canonical(mean, cov) + GaussianObservation(
             C, observation_noise=R
-        ).message(y)
+        )._message(y)
         out_mean, out_cov = post.to_moment()
         np.testing.assert_allclose(out_mean, mean_post, atol=1e-8)
         np.testing.assert_allclose(out_cov, cov_post, atol=1e-8)
@@ -126,10 +126,10 @@ class TestGaussianObservation:
             [[1.0, 0.5], [0.0, 1.0]], observation_noise=[[1.0, 0.0], [0.0, 1.0]]
         )
         y = jnp.array([1.0, -1.0])
-        eager = fac.message(y).potential
-        jitted = jax.jit(lambda yy: fac.message(yy).potential)(y)
+        eager = fac._message(y).potential
+        jitted = jax.jit(lambda yy: fac._message(yy).potential)(y)
         np.testing.assert_allclose(jitted, eager, atol=1e-12)
-        grad = jax.grad(lambda yy: fac.message(yy).potential.sum())(y)
+        grad = jax.grad(lambda yy: fac._message(yy).potential.sum())(y)
         assert bool(jnp.all(jnp.isfinite(grad)))
 
 
@@ -179,8 +179,8 @@ class TestCallableGaussianObservation:
         fixed = GaussianObservation(C, observation_noise=R0)
         states = (np.zeros(n), rng.standard_normal(n), 3.0 * rng.standard_normal(n))
         for state in states:
-            msg = callable_fac.message(y, jnp.asarray(state))
-            ref = fixed.message(y)
+            msg = callable_fac._message(y, jnp.asarray(state))
+            ref = fixed._message(y)
             np.testing.assert_allclose(msg.precision, ref.precision, atol=1e-10)
             np.testing.assert_allclose(msg.potential, ref.potential, atol=1e-10)
 
@@ -196,7 +196,7 @@ class TestCallableGaussianObservation:
         fac = CallableGaussianObservation(C, _scaled_noise, params)
         r_at = R0 * (1.0 + 0.3 * float(state @ state))
         r_inv = np.linalg.inv(r_at)
-        msg = fac.message(y, jnp.asarray(state))
+        msg = fac._message(y, jnp.asarray(state))
         np.testing.assert_allclose(msg.precision, C.T @ r_inv @ C, atol=1e-9)
         np.testing.assert_allclose(msg.potential, C.T @ r_inv @ y, atol=1e-9)
 
@@ -217,7 +217,7 @@ class TestCallableGaussianObservation:
 
         params = {"R0": jnp.asarray(R0), "gain": 0.2}
         fac = CallableGaussianObservation(C, _scaled_noise, params)
-        post = _belief_as_canonical(mean, cov) + fac.message(y, jnp.asarray(state))
+        post = _belief_as_canonical(mean, cov) + fac._message(y, jnp.asarray(state))
         out_mean, out_cov = post.to_moment()
         np.testing.assert_allclose(out_mean, mean_post, atol=1e-8)
         np.testing.assert_allclose(out_cov, cov_post, atol=1e-8)
@@ -229,8 +229,8 @@ class TestCallableGaussianObservation:
         C = np.array([[1.0, 0.0]])
         params = {"R0": jnp.array([[1.0]]), "gain": 0.5}
         fac = CallableGaussianObservation(C, _scaled_noise, params)
-        near = fac.message(np.array([0.0]), jnp.zeros(2)).precision  # R small ⇒ sharp
-        far = fac.message(np.array([0.0]), jnp.array([3.0, 0.0])).precision  # R big
+        near = fac._message(np.array([0.0]), jnp.zeros(2)).precision  # R small ⇒ sharp
+        far = fac._message(np.array([0.0]), jnp.array([3.0, 0.0])).precision  # R big
         assert float(near[0, 0]) > float(far[0, 0])
 
     def test_linearize_returns_C_and_R_at_state(self):
@@ -261,8 +261,8 @@ class TestCallableGaussianObservation:
         fac = CallableGaussianObservation([[1.0, 0.0]], _scaled_noise, params)
         y = jnp.array([0.7])
         state = jnp.array([1.2, -0.3])
-        eager = fac.message(y, state).potential
-        jitted = jax.jit(lambda s: fac.message(y, s).potential)(state)
+        eager = fac._message(y, state).potential
+        jitted = jax.jit(lambda s: fac._message(y, s).potential)(state)
         np.testing.assert_allclose(jitted, eager, atol=1e-12)
         # grad w.r.t. the noise params (the sensor-learning gradient must be finite).
         grad = jax.grad(
@@ -270,7 +270,7 @@ class TestCallableGaussianObservation:
                 CallableGaussianObservation(
                     [[1.0, 0.0]], _scaled_noise, {"R0": params["R0"], "gain": g}
                 )
-                .message(y, state)
+                ._message(y, state)
                 .potential.sum()
             )
         )(0.5)
@@ -328,7 +328,7 @@ class TestGaussianTransition:
         cov_pred = A @ cov @ A.T + Q
         mean_pred = A @ mean
 
-        pred = GaussianTransition(A, dynamics_noise=Q).predict(
+        pred = GaussianTransition(A, dynamics_noise=Q)._predict(
             _belief_as_canonical(mean, cov)
         )
         out_mean, out_cov = pred.to_moment()
@@ -377,7 +377,7 @@ class TestGaussianTransition:
         mean_pred = A @ mean + b
         cov_pred = A @ cov @ A.T + Q
 
-        pred = GaussianTransition(A, dynamics_noise=Q).predict(
+        pred = GaussianTransition(A, dynamics_noise=Q)._predict(
             _belief_as_canonical(mean, cov), control_term=b
         )
         out_mean, out_cov = pred.to_moment()
@@ -389,12 +389,12 @@ class TestGaussianTransition:
             [[1.0, 0.1], [0.0, 1.0]], dynamics_noise=[[1.0, 0.0], [0.0, 1.0]]
         )
         msg = CanonicalGaussian([[2.0, 0.0], [0.0, 2.0]], [1.0, 0.0])
-        eager = fac.predict(msg).potential
+        eager = fac._predict(msg).potential
         jitted = jax.jit(
-            lambda h: fac.predict(CanonicalGaussian(msg.precision, h)).potential
+            lambda h: fac._predict(CanonicalGaussian(msg.precision, h)).potential
         )(msg.potential)
         np.testing.assert_allclose(jitted, eager, atol=1e-10)
-        grad = jax.grad(lambda b: fac.predict(msg, control_term=b).potential.sum())(
+        grad = jax.grad(lambda b: fac._predict(msg, control_term=b).potential.sum())(
             jnp.zeros(2)
         )
         assert bool(jnp.all(jnp.isfinite(grad)))
@@ -459,8 +459,8 @@ class TestGaussianCoupling:
         cov_post = (np.eye(p + c) - gain @ H) @ cov_j
         parent_mean, parent_cov = mean_post[:p], cov_post[:p, :p]
 
-        child_msg = GaussianObservation(np.eye(c), observation_noise=R).message(y)
-        up = GaussianCoupling(W, coupling_noise=Q).message_to_parent(child_msg)
+        child_msg = GaussianObservation(np.eye(c), observation_noise=R)._message(y)
+        up = GaussianCoupling(W, coupling_noise=Q)._message_to_parent(child_msg)
         out_mean, out_cov = (_belief_as_canonical(m0, P0) + up).to_moment()
 
         np.testing.assert_allclose(out_mean, parent_mean, atol=1e-8)
@@ -483,7 +483,7 @@ class TestGaussianCoupling:
         cov_child = W @ Pp @ W.T + Q
 
         parent_msg = _belief_as_canonical(mp, Pp)
-        down = GaussianCoupling(W, coupling_noise=Q).message_to_child(parent_msg)
+        down = GaussianCoupling(W, coupling_noise=Q)._message_to_child(parent_msg)
         out_mean, out_cov = down.to_moment()
 
         np.testing.assert_allclose(out_mean, mean_child, atol=1e-8)
@@ -493,15 +493,15 @@ class TestGaussianCoupling:
         # non-square W (1x2)
         coupling = GaussianCoupling([[1.5, -0.5]], coupling_noise=[[0.3]])
         m = CanonicalGaussian([[2.0]], [1.0])  # a message on the 1-D child
-        eager = coupling.message_to_parent(m).potential
+        eager = coupling._message_to_parent(m).potential
         jitted = jax.jit(
             lambda h: (
-                coupling.message_to_parent(CanonicalGaussian(m.precision, h)).potential
+                coupling._message_to_parent(CanonicalGaussian(m.precision, h)).potential
             )
         )(m.potential)
         np.testing.assert_allclose(jitted, eager, atol=1e-10)
         grad = jax.grad(
-            lambda h: coupling.message_to_parent(
+            lambda h: coupling._message_to_parent(
                 CanonicalGaussian(m.precision, h)
             ).potential.sum()
         )(m.potential)
