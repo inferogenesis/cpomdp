@@ -1,10 +1,8 @@
-"""CanonicalGaussian: the FFG message algebra (v0.4 Phase 1, DECISIONS.md ADR-012).
+"""CanonicalGaussian: the FFG message algebra (DECISIONS.md ADR-012).
 
-Oracle-first (per the build plan): these tests are written before
-``cpomdp.ffg._message.CanonicalGaussian`` exists, so the whole file is RED until
-that module lands. Each oracle here is computed independently of the
-implementation under test — plain NumPy, a different formula path, or a
-literal dense slice — never by importing or re-deriving the kernel's own math.
+Each oracle here is computed independently of the implementation under test, by plain
+NumPy, a different formula path or a literal dense slice. None imports or re-derives
+the kernel's own maths.
 
 The spec these tests pin (mirrors ``Belief`` in types.py for shape/validation):
 
