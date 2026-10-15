@@ -276,7 +276,7 @@ def _boundary_scan(alive: bool, cue_x: float = CUE_X) -> dict:
     for action in grid:
         predicted = backend.predicted_belief(start_belief(), jnp.array([action]))
         noise = backend.observation_noise_at(predicted.mean)  # R(mu+)
-        efe, parts = _ffg_efe_step(
+        efe = _ffg_efe_step(
             predicted.mean,
             predicted.cov,
             observation_matrix,
@@ -285,9 +285,9 @@ def _boundary_scan(alive: bool, cue_x: float = CUE_X) -> dict:
             precision,
             (CONTEXT,),
         )
-        total.append(float(efe))  # G = pragmatic - epistemic, the minimised quantity
-        epistemic.append(float(parts["epistemic"]))
-        pragmatic.append(float(parts["pragmatic"]))  # the goal-seeking cost
+        total.append(float(efe.g))  # G = pragmatic - epistemic, the minimised quantity
+        epistemic.append(float(efe.epistemic))
+        pragmatic.append(float(efe.pragmatic))  # the goal-seeking cost
         r_info_mu_plus.append(float(np.asarray(noise)[1, 1]))  # info channel [1, 1]
         local = np.asarray(predicted.mean)[arm_block]  # cue_noise reads x = local[0]
         mu_plus_x.append(float(local[0]))

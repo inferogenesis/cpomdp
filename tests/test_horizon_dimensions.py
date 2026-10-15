@@ -177,25 +177,23 @@ class TestFfgRolloutAtMultiDimAction:
         backend, belief, pref = _coupled_backend(), _coupled_belief(), _pref()
         info_block = tuple(backend.block(CONTEXT))
         for h in (1, 2, 4):
-            g, parts = policy_efe_ffg(
-                backend, belief, _walk(h), pref, info_block=info_block
-            )
+            efe = policy_efe_ffg(backend, belief, _walk(h), pref, info_block=info_block)
             trace = policy_efe_ffg_trace(
                 backend, belief, _walk(h), pref, info_block=info_block
             )
-            np.testing.assert_array_equal(g, jnp.sum(trace.g))
-            np.testing.assert_array_equal(parts["pragmatic"], jnp.sum(trace.pragmatic))
-            np.testing.assert_array_equal(parts["epistemic"], jnp.sum(trace.epistemic))
+            np.testing.assert_array_equal(efe.g, jnp.sum(trace.g))
+            np.testing.assert_array_equal(efe.pragmatic, jnp.sum(trace.pragmatic))
+            np.testing.assert_array_equal(efe.epistemic, jnp.sum(trace.epistemic))
 
     def test_h1_reduces_to_one_ffg_step(self):
         backend, belief, pref = _coupled_backend(), _coupled_belief(), _pref()
         info_block = tuple(backend.block(CONTEXT))
         policy = _walk(1)
-        g, parts = policy_efe_ffg(backend, belief, policy, pref, info_block=info_block)
+        efe = policy_efe_ffg(backend, belief, policy, pref, info_block=info_block)
 
         predicted = backend.predicted_belief(belief, policy[0])
         observation_matrix, _ = backend.observation_model
-        g_ref, parts_ref = _ffg_efe_step(
+        efe_ref = _ffg_efe_step(
             predicted.mean,
             predicted.cov,
             observation_matrix,
@@ -204,9 +202,9 @@ class TestFfgRolloutAtMultiDimAction:
             pref.precision,
             info_block,
         )
-        np.testing.assert_array_equal(g, g_ref)
-        np.testing.assert_array_equal(parts["pragmatic"], parts_ref["pragmatic"])
-        np.testing.assert_array_equal(parts["epistemic"], parts_ref["epistemic"])
+        np.testing.assert_array_equal(efe.g, efe_ref.g)
+        np.testing.assert_array_equal(efe.pragmatic, efe_ref.pragmatic)
+        np.testing.assert_array_equal(efe.epistemic, efe_ref.epistemic)
 
     def test_action_reaches_every_control_axis(self):
         # A guard on the fixture itself: if only one action component moved the state,
@@ -256,16 +254,14 @@ class TestFfgReducesToFlatAtMultiDimAction:
         pref = _pref()
         for h in (2, 3):
             policy = _policy([[0.5, -0.4], [-0.3, 0.2], [0.1, 0.6]], h)
-            g, parts = policy_efe_ffg(
-                backend, belief, policy, pref, info_block=range(4)
-            )
-            g_ref, parts_ref = policy_efe(model, belief, policy, pref)
-            np.testing.assert_allclose(float(g), float(g_ref), atol=1e-9)
+            efe = policy_efe_ffg(backend, belief, policy, pref, info_block=range(4))
+            efe_ref = policy_efe(model, belief, policy, pref)
+            np.testing.assert_allclose(float(efe.g), float(efe_ref.g), atol=1e-9)
             np.testing.assert_allclose(
-                float(parts["pragmatic"]), float(parts_ref["pragmatic"]), atol=1e-9
+                float(efe.pragmatic), float(efe_ref.pragmatic), atol=1e-9
             )
             np.testing.assert_allclose(
-                float(parts["epistemic"]), float(parts_ref["epistemic"]), atol=1e-9
+                float(efe.epistemic), float(efe_ref.epistemic), atol=1e-9
             )
 
 

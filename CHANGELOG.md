@@ -555,6 +555,13 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `node` and `block` are the words the rest of the tree already uses for those two kinds.
   `ObservationGoal.info_target` becomes `info_node`. `StateGoal.target` and
   `ObservationGoal.target` keep the name, which now has one meaning.
+- **Breaking:** `expected_free_energy`, `policy_efe` and `policy_efe_ffg` return an
+  `EfeResult`, a `NamedTuple` of `g`, `pragmatic` and `epistemic`. They returned
+  `(G, {"pragmatic": ..., "epistemic": ...})`. Their trace siblings returned a
+  `NamedTuple`, so one family answered in two forms, and a misspelt key failed only when
+  it ran. `g` comes first, so `result[0]` still reads `G`. Code that unpacked
+  `G, parts = ...` reads `result.g` and `result.pragmatic` instead. A `vmap` over
+  candidate actions returns one `EfeResult` with every field batched.
 - **Breaking:** `ObservationGoal` takes `action_bounds` by keyword. `StateGoal` already
   takes everything after its first argument by keyword, so this was the odd one out in a
   public pair a reader meets together. The two positional slots also transposed without
