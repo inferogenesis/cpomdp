@@ -570,6 +570,13 @@ certainty equivalence is optimal, and no use of the readings beats it.
   read without the docstring. S also went by four names across the docstrings, and is
   the predicted observation covariance in all of them now. `g`, `pragmatic` and
   `epistemic` keep their names, which `EfeResult` shares.
+- `ObservationGoal.preference` is the `Preference` the expected free energy functions
+  score against, built once from the goal's target and precision. Passing the goal
+  itself to `expected_free_energy`, `policy_efe` or a sibling raised `'ObservationGoal'
+  object has no attribute 'goal'`. It now raises a `TypeError` naming
+  `goal.preference`, and a `StateGoal` is refused as aiming at a state. The functions
+  still take one type, the `Preference` pytree that passes through `jit` and `vmap`, so
+  a goal's search settings never reach a score that would ignore them.
 - **Breaking:** `ObservationGoal` takes `action_bounds` by keyword. `StateGoal` already
   takes everything after its first argument by keyword, so this was the odd one out in a
   public pair a reader meets together. The two positional slots also transposed without

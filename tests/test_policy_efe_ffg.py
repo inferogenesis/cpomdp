@@ -25,6 +25,7 @@ Collection-red until the two functions land: the import of ``policy_efe_ffg`` /
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pytest
 
 from _support import unit_prior
 from cpomdp.backends.coupling import CouplingGraphBackend
@@ -44,7 +45,7 @@ from cpomdp.ffg.factors.linear_gaussian import (
 )
 from cpomdp.ffg.graph import Coupling, CouplingGraph
 from cpomdp.observation import CallableSensor
-from cpomdp.selection import Preference
+from cpomdp.selection import ObservationGoal, Preference
 from cpomdp.types import Belief, LinearGaussianModel
 
 
@@ -297,3 +298,18 @@ class TestFfgTraceTransforms:
         )(policy)
         assert np.all(np.isfinite(np.asarray(grad)))
         assert grad.shape == (2, 1)
+
+
+# --- the goal a user holds ---------------------------------------------------------
+@pytest.mark.parametrize("score", [policy_efe_ffg, policy_efe_ffg_trace])
+def test_a_whole_goal_is_refused_naming_its_preference(score):
+    backend, belief = _coupled_backend(), _coupled_belief()
+    goal = ObservationGoal([0.5], action_bounds=(-1.0, 1.0), precision=[[2.0]])
+    info_block = tuple(backend.block(0))
+    policy = _policy([0.4])
+    with pytest.raises(TypeError, match=r"goal\.preference"):
+        score(backend, belief, policy, goal, info_block=info_block)
+    np.testing.assert_array_equal(
+        score(backend, belief, policy, goal.preference, info_block=info_block).g,
+        score(backend, belief, policy, _pref(), info_block=info_block).g,
+    )

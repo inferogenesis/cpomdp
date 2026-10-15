@@ -2,6 +2,7 @@
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from functools import cached_property
 from typing import Protocol, runtime_checkable
 
 import jax
@@ -498,3 +499,14 @@ class ObservationGoal:
                 f"info_node must be a non-negative node index or None, "
                 f"got {self.info_node}"
             )
+
+    @cached_property
+    def preference(self) -> Preference:
+        """The target and precision, as the preference a score is taken against.
+
+        The [`Preference`][cpomdp.Preference] that
+        [`expected_free_energy`][cpomdp.expected_free_energy] and the rollouts in
+        ``cpomdp.efe`` take. The search settings stay on the goal. Built once, since
+        the goal cannot change.
+        """
+        return Preference(self.target, self.precision)

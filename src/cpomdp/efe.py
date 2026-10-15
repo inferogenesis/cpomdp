@@ -210,7 +210,7 @@ def expected_free_energy(
     definition documented at the top of this module. Pure ``jnp``, so it composes
     under ``jit``/``vmap``/``grad`` — in particular ``vmap``/``grad`` over a batch
     of candidate ``action`` vectors (with ``model``/``belief``/``preference`` held
-    fixed), which is how ``EFESelector`` will search.
+    fixed), which is how ``EFESelector`` searches.
 
     Args:
         model: The generative model. Must have a control matrix (an action has no
@@ -219,9 +219,11 @@ def expected_free_energy(
             ``(observation_matrix, observation_noise)``.
         belief: The current belief ``(μ, Σ)``.
         action: The candidate action ``a``, shape ``(p,)``.
-        preference: The goal as an OBSERVATION-space ``Preference`` — ``goal`` is a
-            preferred observation ``g`` (shape ``(m,)``) and ``precision`` is ``Λ``
-            (shape ``(m, m)``). See FRAGILE(lit) #1 in the module docstring.
+        preference: The goal as an observation-space ``Preference``. ``goal`` is a
+            preferred observation ``g``, shape ``(m,)``, and ``precision`` is ``Λ``,
+            shape ``(m, m)``. The goal is a reading, and it coincides with a state
+            only when ``C = I``. An ``ObservationGoal`` hands over its own as
+            ``goal.preference``.
 
     Returns:
         The scalar EFE ``g`` and its two non-negative terms, ``pragmatic`` and
@@ -229,6 +231,7 @@ def expected_free_energy(
 
     Raises:
         ValueError: If the model has no control matrix.
+        TypeError: If ``preference`` is a goal rather than its ``Preference``.
     """
     if model.control_matrix is None:
         raise ValueError(
@@ -236,6 +239,7 @@ def expected_free_energy(
             "has no effect on a control-free (pure-tracking) model."
         )
     control_matrix = model.control_matrix  # narrowed to Array by the guard above
+    goal, precision = _goal_and_precision(preference, "expected_free_energy")
     action = jnp.asarray(action, dtype=float)
     step = _efe_step(
         model,
@@ -243,8 +247,8 @@ def expected_free_energy(
         belief.cov,
         control_matrix,
         action,
-        preference.goal,
-        preference.precision,
+        goal,
+        precision,
     )
     return EfeResult(g=step.g, pragmatic=step.pragmatic, epistemic=step.epistemic)
 
@@ -273,7 +277,7 @@ def policy_efe(
             "effect on a control-free (pure-tracking) model."
         )
     control_matrix = model.control_matrix
-    goal, precision = preference.goal, preference.precision
+    goal, precision = _goal_and_precision(preference, "policy_efe")
     policy = jnp.asarray(policy, dtype=float)
     body = _rollout_body(model, control_matrix, goal, precision)
 
@@ -324,7 +328,7 @@ def policy_efe_trace(
             "effect on a control-free (pure-tracking) model."
         )
     control_matrix = model.control_matrix
-    goal, precision = preference.goal, preference.precision
+    goal, precision = _goal_and_precision(preference, "policy_efe_trace")
     policy = jnp.asarray(policy, dtype=float)
     body = _rollout_body(model, control_matrix, goal, precision)
 
@@ -436,7 +440,7 @@ def _policy_efe_ffg(
     A search checks its target once at construction and then scores every policy in
     the set, so the per-policy call skips the host-side check.
     """
-    goal, precision = preference.goal, preference.precision
+    goal, precision = _goal_and_precision(preference, "policy_efe_ffg")
     policy = jnp.asarray(policy, dtype=float)
     body = _ffg_rollout_body(backend, goal, precision, info_block)
 
@@ -489,13 +493,49 @@ def policy_efe_ffg_trace(
         ValueError: If ``info_block`` is empty, repeats an index, or names an index
             outside the joint state.
     """
-    goal, precision = preference.goal, preference.precision
+    goal, precision = _goal_and_precision(preference, "policy_efe_ffg_trace")
     policy = jnp.asarray(policy, dtype=float)
     checked = _checked_info_block(backend, info_block)
     body = _ffg_rollout_body(backend, goal, precision, checked)
 
     _, trace = lax.scan(body, belief, policy)
     return trace
+
+
+def _goal_and_precision(
+    preference: "Preference", caller: str
+) -> tuple[Float64[Array, "m"], Float64[Array, "m m"]]:
+    """The two fields a score reads off ``preference``, or a refusal naming the fix.
+
+    Read by attribute, so any preference with a ``goal`` and a ``precision`` scores,
+    and the read adds nothing to a call that succeeds. A goal object has neither. An
+    ``ObservationGoal`` carries search settings a score never reads, and a
+    ``StateGoal`` aims at a state, so each is refused with what to pass instead.
+    """
+    try:
+        return preference.goal, preference.precision
+    except AttributeError:
+        raise TypeError(_not_a_preference(preference, caller)) from None
+
+
+def _not_a_preference(given: object, caller: str) -> str:
+    """The refusal for ``given``, naming the ``Preference`` to pass in its place."""
+    # selection imports this module, so its goal types are read only on the way out.
+    from cpomdp.selection import ObservationGoal, StateGoal
+
+    if isinstance(given, ObservationGoal):
+        return (
+            f"{caller} scores against a Preference and was given an ObservationGoal. "
+            "Pass goal.preference, which carries its target and precision and leaves "
+            "its search settings behind."
+        )
+    if isinstance(given, StateGoal):
+        return (
+            f"{caller} scores a predicted observation, and a StateGoal's target is a "
+            "state. Pass an ObservationGoal's goal.preference, whose target is a "
+            "reading."
+        )
+    return f"{caller} scores against a Preference, not a {type(given).__name__}."
 
 
 def _checked_info_block(
