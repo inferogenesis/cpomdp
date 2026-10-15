@@ -135,7 +135,7 @@ Only two things are spelled differently:
 | `C`   | `StateGoal` / `ObservationGoal` | the goal you pursue, and how sharply |
 | `D`   | `model.prior`                   | belief before you've seen anything   |
 
-One honest difference in behaviour. `sample_action` here is deterministic, not a sample from a policy posterior. For a linear-Gaussian sensor the action that minimises expected free energy turns out to be exactly the LQR optimum ([Koudahl, Kouw and de Vries 2021](https://doi.org/10.3390/e23121565)), so there's a single best action and that's what comes back. Same loop, exact answer. The reasoning is in [DECISIONS.md](https://github.com/inferogenesis/cpomdp/blob/main/DECISIONS.md) (ADR-003) if you want it.
+One honest difference in behaviour. `sample_action` here is deterministic, not a sample from a policy posterior. For a linear-Gaussian model with fixed noise the action that minimises expected free energy turns out to be exactly the LQR optimum ([Koudahl, Kouw and de Vries 2021](https://doi.org/10.3390/e23121565)), so there's a single best action and that's what comes back. Same loop, exact answer. The reasoning is in [DECISIONS.md](https://github.com/inferogenesis/cpomdp/blob/main/DECISIONS.md) (ADR-003) if you want it.
 
 ## Just want to track, not act?
 

@@ -694,12 +694,13 @@ class LQRController:
     computed at construction, and together they are LQG (see RESEARCH.md).
 
     The load-bearing claim (ADR-003) is that LQR *is* active inference here, not a
-    substitute for it. For a fixed linear-Gaussian sensor the covariance recursion
-    is control-independent, so Expected Free Energy's epistemic term is identical
-    for every action and drops out of the argmin; EFE-minimising selection reduces
-    to its pragmatic term, and the pragmatic term under a Gaussian preference is a
-    quadratic cost whose optimum is exactly LQR. The epistemic term only re-enters
-    once sensing depends on the state or action — out of scope for v0.1.
+    substitute for it. For a fixed linear-Gaussian sensor and fixed process noise the
+    covariance recursion is control-independent, so Expected Free Energy's epistemic
+    term is identical for every action and drops out of the argmin; EFE-minimising
+    selection reduces to its pragmatic term, and the pragmatic term under a Gaussian
+    preference is a quadratic cost whose optimum is exactly LQR. The epistemic term
+    re-enters once the sensor noise or the process noise depends on the state
+    (ADR-006).
 
     The two cost matrices are named for the preference they encode, not by LQR's
     traditional ``Q``/``R`` — those letters already mean the noise covariances on

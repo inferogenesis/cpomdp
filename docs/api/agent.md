@@ -9,7 +9,9 @@ The stateful façade you drive: `infer_states` to perceive, `sample_action` to a
 
     A curious agent is one whose information term changes with the action. The Agent
     builds one for an `ObservationGoal` on a sensor whose noise depends on the state. An
-    EFE selector passed explicitly makes one on a `Q(x)` model too. Green marks it.
+    EFE selector passed explicitly makes one on a model whose process noise `Q(x)` varies
+    with the state, a [`CallableProcessNoise`][cpomdp.CallableProcessNoise]. That case
+    is claimed at horizon 1 only. Green marks it.
     Amber is EFE whose information term is the same for every action, blue is LQR, grey a
     tracker, a red outline a refusal at construction, and a dashed red outline a
     combination that builds and then raises or does not do what its name suggests.
@@ -45,8 +47,8 @@ The stateful façade you drive: `infer_states` to perceive, `sample_action` to a
 
     | You pass | Fixed sensor | `R(x)` sensor |
     | --- | --- | --- |
-    | `ObservationGoal` + `selector=EFESelector(…)` | EFE, information flat unless `Q(x)` varies | Curious EFE at the horizon given, which is not checked |
-    | `ObservationGoal` + `selector=RecedingHorizonSelector(…)` or `OpenLoopSelector(…)` | Search, information flat unless `Q(x)` varies | Curious search over varying action sequences |
+    | `ObservationGoal` + `selector=EFESelector(…)` | EFE. Information is flat unless `Q(x)` varies, which is claimed at horizon 1 only | Curious EFE at the horizon given, which is not checked |
+    | `ObservationGoal` + `selector=RecedingHorizonSelector(…)` or `OpenLoopSelector(…)` | Search. Information is flat unless `Q(x)` varies, which is claimed at horizon 1 only | Curious search over varying action sequences |
     | `StateGoal` + `selector=LQRSelector(…)` | LQR with your controller | Refused |
     | `StateGoal` + an EFE selector, or `ObservationGoal` + `LQRSelector` | Refused | Refused |
     | Any selector with no goal | Ignored, and the agent tracks | Ignored, and the agent tracks |

@@ -90,7 +90,8 @@ class ActionSelector(Protocol):
     """Chooses an action from a belief and a preference.
 
     The abstraction wall for action selection: [`LQRSelector`][cpomdp.LQRSelector] is
-    the fixed-sensor case (EFE collapses to LQR, ADR-003);
+    the fixed-noise case (a fixed sensor and fixed process noise, where EFE collapses
+    to LQR, ADR-003);
     [`EFESelector`][cpomdp.EFESelector] is the state-dependent one.
     [`Agent`][cpomdp.Agent] depends only on this, never on a concrete selector.
     """
@@ -106,8 +107,8 @@ class LQRSelector:
 
     A thin wrapper: it owns no control logic, it just forwards to the
     front-loaded controller, unpacking the belief's mean and the preference's
-    goal. EFE collapses to LQR under a fixed sensor (ADR-003), so for that regime
-    this *is* the action selector.
+    goal. EFE collapses to LQR under a fixed sensor and fixed process noise
+    (ADR-003), so for that regime this *is* the action selector.
     """
 
     controller: LQRController
