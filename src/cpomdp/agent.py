@@ -7,7 +7,7 @@ from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
 from cpomdp._validation import equilibrium_drift
-from cpomdp.backends.base import EfeBackend, InferenceBackend
+from cpomdp.backends.base import GraphBackend, InferenceBackend
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.control import LQRController
 from cpomdp.enumeration import OpenLoopSelector, RecedingHorizonSelector
@@ -315,7 +315,7 @@ class Agent:
                     "and an ObservationGoal's target is an observation. Pass a "
                     "StateGoal for the LQR path, or an EFE selector."
                 )
-            is_ffg = isinstance(self._backend, EfeBackend)
+            is_ffg = isinstance(self._backend, GraphBackend)
             if sensor_is_fixed and selector is None and not is_ffg:
                 raise ValueError(
                     "an ObservationGoal on a fixed sensor is output regulation "
@@ -361,7 +361,7 @@ class Agent:
         its joint-state block and hand it to the ``FfgEfeSelector``.
         """
         backend = self._backend
-        assert isinstance(backend, EfeBackend)  # only built for the FFG path
+        assert isinstance(backend, GraphBackend)  # only built for the FFG path
         if objective.horizon not in (None, 1):
             raise ValueError(
                 "H-step EFE on the FFG backend is deferred; ObservationGoal.horizon "

@@ -10,7 +10,7 @@ from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
 from cpomdp._validation import validate_covariance
-from cpomdp.backends.base import EfeBackend
+from cpomdp.backends.base import GraphBackend
 from cpomdp.control import LQRController
 from cpomdp.efe import (
     _checked_info_block,
@@ -270,7 +270,7 @@ class FfgEfeSelector:
 
     def __init__(
         self,
-        backend: EfeBackend,
+        backend: GraphBackend,
         *,
         info_block: Sequence[int],
         n_candidates: int,
