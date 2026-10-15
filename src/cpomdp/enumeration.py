@@ -639,6 +639,21 @@ class ChunkedEfeSearch:
     the trailing block is padded, with its padded lanes masked out of the argmin
     and out of ``visited``, so completeness is a count of real work rather than of
     array slots.
+
+    It takes no policy budget. Its footprint is set by ``chunk``, and its time grows
+    with ``cost_per_plan``.
+
+    Args:
+        model: the flat model to score on. It needs a control matrix.
+        action_set: the declared actions, enumerated as every length-H sequence.
+        horizon: H, the sequence length.
+        chunk: the most policies one block scores, ``4096`` unless set. Clamped to
+            ``|A|^H``. The answer does not depend on it.
+
+    Raises:
+        ValueError: If the model has no control matrix, if the action set's dimension
+            or the horizon does not fit, if ``chunk`` is below 1, or if ``|A|^H``
+            exceeds the index dtype's ceiling.
     """
 
     def __init__(
@@ -897,7 +912,7 @@ class _SearchDriver(ABC):
 
     @property
     def warrant(self) -> Warrant:
-        """``PROVED`` — inherited from the exhaustive search."""
+        """``PROVED``, inherited from the exhaustive search."""
         return self._search.warrant
 
     @property
