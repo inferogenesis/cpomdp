@@ -10,12 +10,9 @@ This is a model built on the toolbox, not part of it: the Phase-3 acceptance tes
 the end-to-end demo (#27) import ``chemotaxis_ffg`` from here.
 """
 
-from cpomdp.ffg.factors.linear_gaussian import (
-    GaussianCoupling,
-    GaussianObservation,
-    GaussianTransition,
-)
+from cpomdp.ffg.factors.linear_gaussian import GaussianCoupling, GaussianTransition
 from cpomdp.ffg.graph import Coupling, CouplingGraph
+from cpomdp.observation import FixedSensor
 
 CHEA = 0  # receptor kinase hub — the root
 CHEY = 1  # fast response regulator, drives the motors
@@ -66,7 +63,7 @@ def chemotaxis_ffg(dt):
     )
 
     observations = {
-        node: GaussianObservation([[1.0]], observation_noise=[[_OBS_NOISE]])
+        node: FixedSensor([[1.0]], observation_noise=[[_OBS_NOISE]])
         for node in _OBSERVED
     }
     graph = CouplingGraph(

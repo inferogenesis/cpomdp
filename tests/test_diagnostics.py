@@ -7,13 +7,12 @@ import pytest
 from _support import unit_prior
 from cpomdp import (
     Belief,
-    CallableGaussianObservation,
     CallableSensor,
     Coupling,
     CouplingGraph,
     CouplingGraphBackend,
+    FixedSensor,
     GaussianCoupling,
-    GaussianObservation,
     GaussianTransition,
     LinearGaussianModel,
     probe_model,
@@ -233,9 +232,9 @@ class TestProbeGraphBackend:
     @staticmethod
     def build(*, alive):
         cue = (
-            CallableGaussianObservation([[-1.0, 1.0]], range_noise, None)
+            CallableSensor([[-1.0, 1.0]], range_noise, None)
             if alive
-            else GaussianObservation([[-1.0, 1.0]], observation_noise=[[2.0]])
+            else FixedSensor([[-1.0, 1.0]], observation_noise=[[2.0]])
         )
         graph = CouplingGraph(
             root=0,
@@ -285,7 +284,7 @@ class TestProbeGraphBackend:
             dims=(2,),
             couplings=(),
             observations={
-                0: GaussianObservation(
+                0: FixedSensor(
                     [[-1.0, 1.0], [-1.0, 1.0]],
                     observation_noise=[[2.0, 0.0], [0.0, 2.0]],
                 )

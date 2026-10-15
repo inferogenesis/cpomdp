@@ -25,6 +25,8 @@ from numpy.typing import ArrayLike
 
 from cpomdp._validation import validate_covariance, validate_finite
 
+__all__ = ["CanonicalGaussian", "likelihood_message"]
+
 
 @jax.tree_util.register_pytree_node_class
 @dataclass(frozen=True, init=False)
@@ -239,3 +241,33 @@ class CanonicalGaussian:
         """Rebuild from leaves without validating — the leaves may be tracers."""
         precision, potential = children
         return cls._unchecked(precision, potential)
+
+
+def likelihood_message(
+    observation_matrix: Float64[Array, "m n"],
+    observation_noise: Float64[Array, "m m"],
+    reading: ArrayLike,
+) -> CanonicalGaussian:
+    """A reading's message into the state it observes: ``Λ = CᵀR⁻¹C``, ``h = CᵀR⁻¹y``.
+
+    The information form of the likelihood ``N(y; Cx, R)``. The measurement update is
+    then ``prior_message + this``. Solving against R avoids forming ``R⁻¹``. The result
+    is valid by construction, so it is built without validation.
+
+    Args:
+        observation_matrix: C, shape ``(m, n)``.
+        observation_noise: R, shape ``(m, m)``, positive-definite.
+        reading: y, shape ``(m,)``.
+
+    Returns:
+        A ``CanonicalGaussian`` over the n-D state.
+    """
+    reading = jnp.asarray(reading, dtype=float)  # y
+    noise_weighted_model = jnp.linalg.solve(
+        observation_noise, observation_matrix
+    )  # R⁻¹C
+    precision = observation_matrix.T @ noise_weighted_model  # CᵀR⁻¹C
+    potential = observation_matrix.T @ jnp.linalg.solve(
+        observation_noise, reading
+    )  # CᵀR⁻¹y
+    return CanonicalGaussian._unchecked(precision, potential)

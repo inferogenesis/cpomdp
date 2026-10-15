@@ -57,12 +57,12 @@ import numpy as np
 from cpomdp import (
     Agent,
     Belief,
-    CallableGaussianObservation,
+    CallableSensor,
     Coupling,
     CouplingGraph,
     CouplingGraphBackend,
+    FixedSensor,
     GaussianCoupling,
-    GaussianObservation,
     GaussianTransition,
     IncompatibleLinearizationError,
     ObservationGoal,
@@ -140,9 +140,9 @@ def build_backend(
     """
     observation_matrix = [[-1.0, 1.0], [-1.0, 1.0]]  # C: both channels read o = f - x
     cue = (
-        CallableGaussianObservation(observation_matrix, cue_noise, _cue_params(cue_x))
+        CallableSensor(observation_matrix, cue_noise, _cue_params(cue_x))
         if epistemic_alive
-        else GaussianObservation(
+        else FixedSensor(
             observation_matrix, observation_noise=_fixed_noise_at_prior(cue_x)
         )
     )

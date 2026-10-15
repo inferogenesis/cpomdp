@@ -22,9 +22,9 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from cpomdp import KalmanBackend, LinearGaussianModel
-from cpomdp.ffg._message import CanonicalGaussian
-from cpomdp.ffg.factors.linear_gaussian import GaussianCoupling, GaussianObservation
+from cpomdp import CallableSensor, FixedSensor, KalmanBackend, LinearGaussianModel
+from cpomdp.ffg._message import CanonicalGaussian, likelihood_message
+from cpomdp.ffg.factors.linear_gaussian import GaussianCoupling
 from cpomdp.ffg.graph import Coupling, CouplingGraph
 from cpomdp.types import Belief
 
@@ -58,10 +58,10 @@ class TestSharedNodeTwoBranches:
         # --- FFG: combine the prior with each branch's upward message ---
         prior = _belief_as_canonical(m0, P0)
         msg1 = GaussianCoupling(W1, coupling_noise=Q1)._message_to_parent(
-            GaussianObservation(np.eye(c1), observation_noise=R1)._message(y1)
+            likelihood_message(jnp.eye(c1), jnp.asarray(R1), y1)
         )
         msg2 = GaussianCoupling(W2, coupling_noise=Q2)._message_to_parent(
-            GaussianObservation(np.eye(c2), observation_noise=R2)._message(y2)
+            likelihood_message(jnp.eye(c2), jnp.asarray(R2), y2)
         )
         out_mean, out_cov = (prior + msg1 + msg2).to_moment()
 
@@ -102,10 +102,10 @@ class TestSharedNodeTwoBranches:
 
         prior = _belief_as_canonical(m0, P0)
         msg1 = GaussianCoupling(W1, coupling_noise=Q1)._message_to_parent(
-            GaussianObservation(np.eye(1), observation_noise=R1)._message(y1)
+            likelihood_message(jnp.eye(1), jnp.asarray(R1), y1)
         )
         msg2 = GaussianCoupling(W2, coupling_noise=Q2)._message_to_parent(
-            GaussianObservation(np.eye(1), observation_noise=R2)._message(y2)
+            likelihood_message(jnp.eye(1), jnp.asarray(R2), y2)
         )
         a_mean, a_cov = (prior + msg1 + msg2).to_moment()
         b_mean, b_cov = (msg2 + (msg1 + prior)).to_moment()
@@ -174,8 +174,7 @@ def _check_infer(root, dims, edges, obs_specs, m0, P0, readings, atol=1e-8):
         for parent, child, w, q in edges
     )
     observations = {
-        n: GaussianObservation(c, observation_noise=r)
-        for n, (c, r) in obs_specs.items()
+        n: FixedSensor(c, observation_noise=r) for n, (c, r) in obs_specs.items()
     }
     graph = CouplingGraph(
         root=root, dims=dims, couplings=couplings, observations=observations
@@ -319,7 +318,7 @@ class TestCouplingGraphInfer:
         np.testing.assert_allclose(np.asarray(out.cov), P0, atol=1e-8)
 
     def test_reading_without_observation_factor_raises(self):
-        # A reading for a node that has no observation factor is a usage error.
+        # A reading for a node that has no sensor is a usage error.
         graph = CouplingGraph(
             0,
             (1, 1),
@@ -345,7 +344,7 @@ class TestCouplingGraphInfer:
                     1.0,
                 ),
             ),
-            {1: GaussianObservation(jnp.eye(1), observation_noise=jnp.array([[0.2]]))},
+            {1: FixedSensor(jnp.eye(1), observation_noise=jnp.array([[0.2]]))},
         )
         prior = Belief(mean=jnp.zeros(2), cov=jnp.eye(2))
 
@@ -461,7 +460,7 @@ class TestCouplingGraphValidation:
             0,
             (2, 1, 1),
             (Coupling(0, 1, self._w(1, 2), 1.0), Coupling(0, 2, self._w(1, 2), 1.0)),
-            {1: GaussianObservation(np.eye(1), observation_noise=np.eye(1))},
+            {1: FixedSensor(np.eye(1), observation_noise=np.eye(1))},
         )
         assert g.root == 0
         assert g.dims == (2, 1, 1)
@@ -521,7 +520,7 @@ class TestCouplingGraphValidation:
                 0,
                 (1, 1),
                 (Coupling(0, 1, self._w(1, 1), 1.0),),
-                {9: GaussianObservation(np.eye(1), observation_noise=np.eye(1))},
+                {9: FixedSensor(np.eye(1), observation_noise=np.eye(1))},
             )
 
     def test_rejects_sensor_narrower_than_its_node(self):
@@ -532,7 +531,7 @@ class TestCouplingGraphValidation:
                 0,
                 (2, 1),
                 (Coupling(0, 1, self._w(1, 2), 1.0),),
-                {0: GaussianObservation(np.eye(1), observation_noise=np.eye(1))},
+                {0: FixedSensor(np.eye(1), observation_noise=np.eye(1))},
             )
 
     @pytest.mark.parametrize("field", ["root", "dims", "couplings", "observations"])
@@ -543,14 +542,14 @@ class TestCouplingGraphValidation:
             0,
             (1, 1),
             (Coupling(0, 1, self._w(1, 1), 1.0),),
-            {1: GaussianObservation(np.eye(1), observation_noise=np.eye(1))},
+            {1: FixedSensor(np.eye(1), observation_noise=np.eye(1))},
         )
         with pytest.raises(AttributeError):
             setattr(graph, field, getattr(graph, field))
 
     def test_observations_cannot_gain_a_sensor_after_validation(self):
         # A sensor added to node 7 of a two-node graph would skip the range check.
-        sensor = GaussianObservation(np.eye(1), observation_noise=np.eye(1))
+        sensor = FixedSensor(np.eye(1), observation_noise=np.eye(1))
         graph = CouplingGraph(
             0, (1, 1), (Coupling(0, 1, self._w(1, 1), 1.0),), {1: sensor}
         )
@@ -565,7 +564,7 @@ class TestCouplingGraphValidation:
     )
     def test_survives_a_copy_and_a_pickle(self, round_trip):
         # A simulation forks with deepcopy and reaches a worker process by pickle.
-        sensor = GaussianObservation(np.eye(1), observation_noise=np.eye(1))
+        sensor = FixedSensor(np.eye(1), observation_noise=np.eye(1))
         graph = CouplingGraph(
             0, (1, 1), (Coupling(0, 1, self._w(1, 1), 1.0),), {1: sensor}
         )
@@ -573,6 +572,27 @@ class TestCouplingGraphValidation:
         assert sorted(copied.observations) == [1]
         with pytest.raises(TypeError):
             copied.observations[7] = sensor  # ty: ignore[invalid-assignment]
+
+    def test_rejects_an_observation_that_is_not_a_sensor(self):
+        # A bare matrix used to construct and fail at the first filter step.
+        with pytest.raises(TypeError, match=r"node 1.*FixedSensor.*CallableSensor"):
+            CouplingGraph(
+                0,
+                (1, 1),
+                (Coupling(0, 1, self._w(1, 1), 1.0),),
+                {1: np.eye(1)},  # ty: ignore[invalid-argument-type]
+            )
+
+    def test_static_inference_refuses_a_reading_on_a_state_dependent_node(self):
+        # R(x) needs the predicted mean, which a single static collect does not have.
+        sensor = CallableSensor(
+            np.eye(1), lambda x, p: p * (1.0 + x @ x)[None, None], 0.5
+        )
+        graph = CouplingGraph(
+            0, (1, 1), (Coupling(0, 1, self._w(1, 1), 1.0),), {1: sensor}
+        )
+        with pytest.raises(ValueError, match=r"node 1.*CouplingGraphBackend"):
+            graph.infer(Belief(mean=np.zeros(1), cov=np.eye(1)), {1: np.zeros(1)})
 
 
 # --- CouplingGraph.infer vs the normal backend on the hand-flattened joint ---
@@ -670,8 +690,7 @@ class TestFlattenedKalmanParity:
             for p, c, w, q in edges
         )
         observations = {
-            n: GaussianObservation(c, observation_noise=r)
-            for n, (c, r) in obs_specs.items()
+            n: FixedSensor(c, observation_noise=r) for n, (c, r) in obs_specs.items()
         }
         graph = CouplingGraph(
             root=root, dims=dims, couplings=couplings, observations=observations
