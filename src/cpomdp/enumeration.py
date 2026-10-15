@@ -390,8 +390,9 @@ class EnumeratedEfeSearch:
     warrant ``PROVED``, distinct from ``EFESelector``'s ``CORROBORATED`` grid.
 
     [`ChunkedEfeSearch`][cpomdp.enumeration.ChunkedEfeSearch] runs the same enumeration
-    in blocks. The two take the same arguments, answer the same ``evaluate`` and drive
-    the same selectors, so swapping one for the other changes no call site.
+    in blocks. The two take the same model, set and horizon, answer the same
+    ``evaluate`` and drive the same selectors. Swapping one for the other changes the
+    memory a plan needs and no line that reads the result.
 
     Scoring is a strategy (ADR-034): the default constructor scores on a flat
     ``LinearGaussianModel`` (``policy_efe``); ``over_backend`` scores on an FFG backend
@@ -486,8 +487,6 @@ class EnumeratedEfeSearch:
         _check_budget(scorer, action_set, self._horizon, max_policies)
         n_policies = action_set.size**self._horizon
         _check_index_ceiling(n_policies)
-        self._scorer = scorer
-        self._action_set = action_set
         # Front-load the enumeration once: one row per A^H sequence, decoded from its
         # index by the function the chunked path decodes with.
         self._policies = _decode_policies(

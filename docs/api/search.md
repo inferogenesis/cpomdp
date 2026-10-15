@@ -6,7 +6,7 @@ An exhaustive search scores every length-H sequence of a declared, finite action
 
 ## Two searches, one interface
 
-The two searches take the same arguments and answer the same `evaluate`. Swapping one for the other changes the memory a plan needs and nothing a caller writes. `EnumeratedEfeSearch` holds every policy and every score, and is the one to reach for first. `ChunkedEfeSearch` scores in blocks at a footprint its block sets. Use it past the front-loaded search's budget, which is `2^21` policies unless set.
+The two searches take the same model, set and horizon, and answer the same `evaluate`. Swapping one for the other changes the memory a plan needs and no line that reads the result. `EnumeratedEfeSearch` holds every policy and every score, and is the one to reach for first. `ChunkedEfeSearch` scores in blocks at a footprint its block sets. Use it past the front-loaded search's budget, which is `2^21` policies unless set.
 
 ??? note "In plain terms"
     Give the search a menu of moves and a number of steps. It writes down every way of
