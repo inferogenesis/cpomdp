@@ -160,10 +160,9 @@ class KalmanBackend:
         mode the gain and covariance are the frozen fixed-point values; otherwise
         they are recomputed from ``prior.cov`` on this step.
 
-        The numeric work is delegated to the ``jit``-compiled module kernels
-        (``_gain_and_posterior_cov``, ``_posterior_mean``); this method stays the
-        eager orchestrator that validates inputs and wraps the result in a
-        ``Belief``.
+        The numeric work runs in two ``jit``-compiled kernels. The method itself is
+        pure, so it traces under ``jit``, ``vmap``, ``grad`` and ``lax.scan``. Its
+        input checks read only shapes, which a trace knows.
 
         Args:
             observation: The latest sensor reading, shape ``(m,)``.
@@ -179,7 +178,7 @@ class KalmanBackend:
             ValueError: If ``observation`` is not shape ``(m,)``, ``prior`` is not
                 a belief over the model's ``n``-D state, the model has a control
                 matrix but ``action`` is ``None``, or ``action`` is not shape
-                ``(p,)``. (All enforced in ``_validate_step_inputs``.)
+                ``(p,)``.
         """
         model = self.model
         observation, action = _validate_step_inputs(model, observation, prior, action)

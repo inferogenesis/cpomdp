@@ -46,9 +46,15 @@ class InferenceBackend(Protocol):
 
     The Protocol is structural: any class with a matching ``infer_states`` (and the
     ``model`` it was built from) is a backend, with no shared base class. This is the
-    abstraction wall — the native Kalman fast path and the RxInfer oracle are
-    interchangeable behind it, and neither's implementation (JAX, juliacall, …) leaks
-    into this signature.
+    abstraction wall. The Kalman filter and the RxInfer oracle are interchangeable
+    behind it, and neither's implementation (JAX, juliacall, …) leaks into this
+    signature.
+
+    The protocol does not require ``infer_states`` to trace. Of the shipped backends,
+    [`KalmanBackend`][cpomdp.KalmanBackend] and
+    [`CouplingGraphBackend`][cpomdp.CouplingGraphBackend] trace under ``jit``,
+    ``vmap``, ``grad`` and ``lax.scan``. ``RxInferBackend`` calls Julia and does not.
+    The backends page lists every public name with how it behaves under a transform.
     """
 
     @property
