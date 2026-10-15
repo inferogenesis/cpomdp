@@ -12,7 +12,6 @@ import numpy as np
 
 from cpomdp.agent import Agent
 from cpomdp.backends.coupling import CouplingGraphBackend
-from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.efe import _ffg_efe_step
 from cpomdp.ffg.factors.linear_gaussian import (
     CallableGaussianObservation,
@@ -117,11 +116,9 @@ def test_agent_on_ffg_backend_acts_via_ffg_selector():
     # epistemic at a chosen node; the Agent routes to the FFG EFE selector, and the
     # perceive -> act cycle completes.
     backend = _two_node_backend()
-    agent = Agent(
-        objective=ObservationGoal(
-            [0.5], action_bounds=(-2.0, 2.0), info_node=0
-        ),  # info about CheA
-        backend=backend,
+    agent = Agent.from_backend(
+        backend,
+        ObservationGoal([0.5], action_bounds=(-2.0, 2.0), info_node=0),  # info: CheA
     )
     agent.infer_states([0.3])  # observe CheY
     action = agent.sample_action()
@@ -134,9 +131,9 @@ def test_agent_ffg_whole_state_when_info_target_none():
     # info_node=None on the FFG backend still routes to the FFG selector, aimed at the
     # whole state (the default epistemic).
     backend = _two_node_backend()
-    agent = Agent(
-        objective=ObservationGoal([0.5], action_bounds=(-2.0, 2.0)),  # no info_node
-        backend=backend,
+    agent = Agent.from_backend(
+        backend,
+        ObservationGoal([0.5], action_bounds=(-2.0, 2.0)),  # no info_node
     )
     assert isinstance(agent._selector, FfgEfeSelector)
     assert tuple(agent._selector._target) == (0, 1)  # whole joint state
@@ -191,14 +188,12 @@ def test_ffg_agent_matches_kalman_efe_agent_end_to_end():
     )
     bounds, k = (-2.0, 2.0), 21
 
-    ffg_agent = Agent(
-        objective=ObservationGoal([0.5], action_bounds=bounds, n_candidates=k),
-        backend=backend,
+    ffg_agent = Agent.from_backend(
+        backend, ObservationGoal([0.5], action_bounds=bounds, n_candidates=k)
     )
     ref_agent = Agent(
         model,
         ObservationGoal([0.5], action_bounds=bounds, n_candidates=k),
-        backend=KalmanBackend(model),
         selector=EFESelector(model, n_candidates=k, action_bounds=bounds),
     )
 

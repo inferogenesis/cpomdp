@@ -374,6 +374,13 @@ no use of the readings beats it.
 
 ### Changed
 
+- **Breaking:** `Agent` takes a model or a backend, never both. `Agent(model, objective)`
+  filters with the default per-step `KalmanBackend`, and
+  `Agent.from_backend(backend, objective)` takes any other engine, a
+  `CouplingGraphBackend` included, and plans under `backend.model`. The `backend=`
+  argument is gone. Passing both let the agent plan on one model and filter on another
+  without raising: with `R = 1` against `R = 100` the posterior was 0.020 where it should
+  be 1.005.
 - `cpomdp.diagnostics.condition_numbers` — the batched condition number
   `rollout_conditioning` computed inline, now a function of its own so a rollout and a
   scored cell read the same number for the same matrix.

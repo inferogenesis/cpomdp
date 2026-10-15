@@ -3,6 +3,7 @@ import numpy as np
 import pytest
 
 from cpomdp.agent import Agent
+from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.control import LQRController
 from cpomdp.observation import CallableSensor
 from cpomdp.selection import EFESelector, LQRSelector, ObservationGoal, StateGoal
@@ -145,6 +146,21 @@ def test_perceive_only_agent_cannot_act():
     # but it cannot act — no objective to steer toward
     with pytest.raises(ValueError, match="objective"):
         agent.sample_action()
+
+
+def test_a_model_and_a_backend_cannot_both_be_passed():
+    # Two inputs could disagree, and the Agent would plan on one model and filter on
+    # the other. Each front door takes one input, so there is nothing to disagree.
+    model = _reaching_model()
+    with pytest.raises(TypeError):
+        Agent(model, StateGoal(GOAL), backend=KalmanBackend(model))  # ty: ignore[unknown-argument]
+
+
+def test_from_backend_plans_under_the_backends_model():
+    backend = KalmanBackend(_reaching_model(), steady_state=True)
+    agent = Agent.from_backend(backend, StateGoal(GOAL))
+    assert agent.model is backend.model
+    assert agent._backend is backend  # white-box: the filter is the one passed
 
 
 # ============================================================================

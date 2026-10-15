@@ -10,7 +10,7 @@ perceive → act loop pymdp users know::
     belief = agent.infer_states(observation)   # perceive
     action = agent.sample_action()             # act
 
-Swap the inference engine via the ``backend=`` argument; ``KalmanBackend``
+Swap the inference engine with ``Agent.from_backend``; ``KalmanBackend``
 is the default and ``InferenceBackend`` is the protocol custom backends
 implement. The optional RxInfer oracle lives behind the ``rxinfer`` extra —
 import it explicitly from ``cpomdp.backends.rxinfer`` so the core stays

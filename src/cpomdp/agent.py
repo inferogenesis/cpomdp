@@ -63,11 +63,10 @@ class Agent:
 
     def __init__(
         self,
-        model: LinearGaussianModel | None = None,
+        model: LinearGaussianModel,
         objective: ObservationGoal | StateGoal | None = None,
         *,
         selector: ActionSelector | None = None,
-        backend: InferenceBackend | None = None,
     ) -> None:
         """Build an agent over ``model``, optionally one that can act.
 
@@ -77,11 +76,13 @@ class Agent:
         state-dependent sensor unless an explicit ``selector`` is given). Omit the
         objective for a perceive-only tracker.
 
+        The agent filters with a per-step [`KalmanBackend`][cpomdp.KalmanBackend]
+        built from ``model``. For any other engine, use ``from_backend``.
+
         Args:
             model: The linear-Gaussian generative model the agent perceives and
                 (with an objective) acts under. Its ``prior`` becomes the starting
-                belief. Optional if a ``backend`` is given — the model is then taken
-                from ``backend.model`` (so a custom backend need not be passed twice).
+                belief.
             objective: What the agent pursues — a ``StateGoal`` (a state to reach,
                 carrying the LQR weights) or an ``ObservationGoal`` (an observation
                 to prefer, carrying the action-search config). ``None`` builds a
@@ -89,10 +90,6 @@ class Agent:
             selector: An explicit ``ActionSelector`` overriding the one the
                 objective would dispatch — the escape hatch for regimes the
                 automatic dispatch declines (e.g. EFE on a fixed sensor).
-            backend: The inference engine. Defaults to a per-step
-                [`KalmanBackend`][cpomdp.KalmanBackend]; pass any
-                [`InferenceBackend`][cpomdp.InferenceBackend] (e.g. a
-                steady-state Kalman or the RxInfer oracle) to swap engines.
 
         Raises:
             ValueError: If the objective and model are incompatible — a
@@ -103,15 +100,51 @@ class Agent:
             TypeError: If ``objective`` is neither a ``StateGoal`` nor an
                 ``ObservationGoal``.
         """
-        # A backend is built from a model and carries it, so either input determines the
-        # other: pass a model (default KalmanBackend), a backend (its model is used), or
-        # both. Passing the same object twice is no longer required.
-        if backend is None:
-            if model is None:
-                raise ValueError("Agent needs a model or a backend to infer with.")
-            backend = KalmanBackend(model)
-        elif model is None:
-            model = backend.model
+        self._setup(KalmanBackend(model), objective, selector)
+
+    @classmethod
+    def from_backend(
+        cls,
+        backend: InferenceBackend,
+        objective: ObservationGoal | StateGoal | None = None,
+        *,
+        selector: ActionSelector | None = None,
+    ) -> "Agent":
+        """Build an agent that filters with ``backend`` and plans under its model.
+
+        For an engine other than the default per-step Kalman filter: a steady-state
+        [`KalmanBackend`][cpomdp.KalmanBackend], the RxInfer oracle, or a
+        [`CouplingGraphBackend`][cpomdp.CouplingGraphBackend], which has no model of
+        its own to pass. The agent's model is ``backend.model``, so the planner and
+        the filter cannot work from different models.
+
+        Args:
+            backend: The inference engine, any
+                [`InferenceBackend`][cpomdp.InferenceBackend].
+            objective: What the agent pursues, as for the constructor.
+            selector: An explicit ``ActionSelector``, as for the constructor.
+
+        Returns:
+            The agent.
+
+        Raises:
+            ValueError: If the objective and the backend's model are incompatible, as
+                for the constructor.
+            TypeError: If ``objective`` is neither a ``StateGoal`` nor an
+                ``ObservationGoal``.
+        """
+        agent = cls.__new__(cls)
+        agent._setup(backend, objective, selector)
+        return agent
+
+    def _setup(
+        self,
+        backend: InferenceBackend,
+        objective: ObservationGoal | StateGoal | None,
+        selector: ActionSelector | None,
+    ) -> None:
+        """Hold the backend and dispatch the objective to a selector."""
+        model = backend.model
         self.model = model
         self.belief = model.prior
         self._backend = backend
