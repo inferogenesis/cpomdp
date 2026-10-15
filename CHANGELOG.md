@@ -4,6 +4,8 @@ Everything worth noting lands here. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-10-15
+
 Warrant plumbing and the `slogdet` oracle audit. The two-level `SearchWarrant` becomes a
 shared three-level `Warrant` that checks can reach, and a check now reports what it found
 alongside how well it was warranted and what it was measured against. The audit half

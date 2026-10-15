@@ -6,26 +6,21 @@ in `DECISIONS.md` (ADRs); this file is the roadmap.
 Conventions: `[x]` done, `[ ]` open, `[~]` partial. **⛔** marks a PR that cannot merge
 until GATE-D4 passes.
 
-Window: v0.4.4 → v0.5. Every remaining change for Papers 2 and 3, as merge-sized pull
-requests. Eleven PRs across two tags. Module and symbol names below are proposals. Each
-PR's ADR fixes them.
+Window: v0.5.0 → v0.6. Every remaining change for Papers 2 and 3, as merge-sized pull
+requests, across two tags. Module and symbol names below are proposals. Each PR's ADR
+fixes them.
 
 ---
 
-## Where this stands — v0.4.4, released 2026-08-04
+## Where this stands — v0.5.0, released 2026-10-15
 
-**Shipped ahead of schedule.** Toolbox **A** (multi-step EFE) was scheduled at v0.5.
-Toolbox **G-B** (exhaustive enumerator with a completeness certificate) was Paper 3's,
-scheduled at v0.6. Both landed at v0.4.4: `cpomdp.enumeration`, `FiniteActionSet`,
-`EnumeratedEfeSearch`, `CompletenessCertificate`, `IncompleteEnumerationError` (ADR-030,
-ADR-031). R10 is measured. `H* = 7`, exhaustive over the declared `{0, ±1, ±2}`, H = 1
-anchors pinned at `Δε = 1.7232`, `Δc = 4.4910`, `ΔG = +2.7678` nats to `1e-4` (ADR-033).
+**Shipped in v0.5.0.** PR-1, PR-1b, PR-2, PR-3, PR-4, PR-7a and PR-7, cut from `main`
+ahead of the gate so the November workshop installs the optional noises (ADR-067). Their
+sections below stay until the reset after the gate. The open PRs build on them.
 
-**Scheduled and not shipped.** v0.4.3 shipped `cpomdp.diagnostics`,
-`tests/test_theorem.py` and the FFG positive-definiteness fixes. It did not ship toolbox
-**B** (the scoring harness) or **G-A** / **G-D** (the Paper 3 hedge), all three of which
-the original Phase 0 assumed it would. Those three, plus **C**, **C′**, **D**, **E**,
-**F1–F6** and **G-C**, are the whole of what follows.
+**Open for the gate, v0.5.1.** PR-5 is partway. PR-7b has one item left. PR-6 and PR-8a
+to PR-8c have not started. PR-8a waits on the hand derivation, whose part 1 landed on
+2026-10-11.
 
 **Blast radius, and it shrank.** D3 was always gate-independent in content. With A and
 R10 banked at v0.4.4, a gate failure now costs Part 2's numbers and nothing else. R1–R5,
@@ -33,22 +28,28 @@ R10, C5 and all of Paper 3 Part 1 are off the reference filter.
 
 ---
 
-## Two tags
+## Three tags
 
-**v0.4.5 — GATE-D4.** Cut at PR-8's merge, whatever the gate's outcome. This is the
+**v0.5.0 — cut from `main` ahead of the gate.** What shipped since v0.4.4: PR-1, PR-1b,
+PR-2, PR-3, PR-4, PR-7a and PR-7, the anti-surge application, and the optional
+`observation_noise` and `dynamics_noise`. The minor version moves because eleven changes
+since v0.4.4 break callers. It certifies nothing. ADR-067.
+
+**v0.5.1 — GATE-D4.** Cut at PR-8's merge, whatever the gate's outcome. This is the
 citation and rollback point. If the bound holds, it is where "certified" starts being
 true. If it fails, it is the witness the re-scoped `EXACT` papers cite, and without it that
-witness is "main at some commit".
+witness is "main at some commit". A breaking change before the gate makes it v0.6.0
+instead, and moves the terminal tag on by one.
 
-**v0.5 — terminal.** Everything Papers 2 and 3 need from cpomdp. Both pin v0.5. v0.6
-stops existing as a planned tag. Paper 4 adds no code, because standing rule 4 of its
-scoping is zero new numbers, so it appears here as a consumer of v0.5 only.
+**v0.6 — terminal.** Everything Papers 2 and 3 need from cpomdp. Both pin v0.6. No later
+tag is planned. Paper 4 adds no code, because standing rule 4 of its scoping is zero new
+numbers, so it appears here as a consumer of v0.6 only.
 
 Two naming decisions, closed:
 
-- [x] **`GATE-D4`**, never "the v0.4.4 gate" and never "the v0.4.5 gate". The bound is
-      named independently of the tag that carries it. Cite it as `GATE-D4 (PR-8, v0.4.5)`.
-      `research/warrant_ledger.md` is amended.
+- [x] **`GATE-D4`**, never named after a tag. The tag carrying it has moved more than
+      once, most recently from v0.4.5 to v0.5.1 (ADR-067). Cite it as
+      `GATE-D4 (PR-8, v0.5.1)`. `research/warrant_ledger.md` is amended.
 - [x] **The `P2-n` namespace stands as an alias layer** for the external programme
       paperwork, which is not tracked here. In-repo, only the toolbox letters have a live
       consumer: `research/fep_falsification_battery.md` cites toolbox A–F in its build
@@ -113,22 +114,22 @@ Import it; do not restate it.
 
 | PR | Title | Serves | Blocked by | Alias | Size | Tag |
 | --- | --- | --- | --- | --- | --- | --- |
-| **PR-1** | Warrant plumbing and the `slogdet` oracle audit | 2, 3 | — | P2-3, F4, P2-9 | M | v0.4.5 |
-| **PR-1b** | Chunked enumerator (`O(chunk)` residency) | 2, 3 | — | — | S | v0.4.5 |
-| **PR-2** | R10 hardening | 2, 3 | PR-1, PR-1b | P2-9 | M | v0.4.5 |
-| **PR-3** | World/Agent seam, exogenous action, constructors | 2, 3 | PR-1, PR-1b | P2-1a (B) | L | v0.4.5 |
-| **PR-4** | Paper 2 scoring: evaluator, cells, error bars | 2, 3 | PR-3 | P2-1b (B), F1–F3, F5 | L | v0.4.5 |
-| **PR-5** | Control bracket and Paper 2 Part 1 results | 2 | PR-4 | P2-4 (E) | L | v0.4.5 |
-| **PR-6** | Paper 3 toolbox and Part 1 results | 3 | PR-1, PR-3 | G-A, G-C, G-D | L | v0.4.5 |
-| **PR-7a** | Printed-scheme failure probes and the declared budget | 2, 3 | — | — | S | v0.4.5 |
-| **PR-7** | Exact reference filter and the rule ladder | 2, 3 | PR-3, PR-7a | P2-5 (C) | L | v0.4.5 |
-| **PR-7b** | The ladder's ordering, and the R6 gap | 2, 3 | PR-7 | P2-7 (D) | M | v0.4.5 |
-| **PR-8a** | The bound's derivation, registered before any number | 2, 3 | PR-7b | — | S | v0.4.5 |
-| **PR-8** | **Certified discretisation bound, `δ_ref` at `CERTIFIED`** | 2, 3 | PR-8a | P2-6 (C′) | L | v0.4.5 |
-| **PR-8c** | **GATE-D4 evaluated · tag v0.4.5** | 2, 3 | PR-8 | — | S | v0.4.5 |
-| **PR-9** ⛔ | Window harness and Paper 2 Part 2 results | 2 | GATE-D4, PR-4 | P2-8 (F6) | L | v0.5 |
-| **PR-10** ⛔ | Paper 3 Part 2 results | 3 | GATE-D4, PR-2, PR-6 | — | M | v0.5 |
-| **PR-11** | v0.5 release | 2, 3 | all | — | M | v0.5 |
+| **PR-1** | Warrant plumbing and the `slogdet` oracle audit | 2, 3 | — | P2-3, F4, P2-9 | M | v0.5.0 |
+| **PR-1b** | Chunked enumerator (`O(chunk)` residency) | 2, 3 | — | — | S | v0.5.0 |
+| **PR-2** | R10 hardening | 2, 3 | PR-1, PR-1b | P2-9 | M | v0.5.0 |
+| **PR-3** | World/Agent seam, exogenous action, constructors | 2, 3 | PR-1, PR-1b | P2-1a (B) | L | v0.5.0 |
+| **PR-4** | Paper 2 scoring: evaluator, cells, error bars | 2, 3 | PR-3 | P2-1b (B), F1–F3, F5 | L | v0.5.0 |
+| **PR-5** | Control bracket and Paper 2 Part 1 results | 2 | PR-4 | P2-4 (E) | L | v0.5.1 |
+| **PR-6** | Paper 3 toolbox and Part 1 results | 3 | PR-1, PR-3 | G-A, G-C, G-D | L | v0.5.1 |
+| **PR-7a** | Printed-scheme failure probes and the declared budget | 2, 3 | — | — | S | v0.5.0 |
+| **PR-7** | Exact reference filter and the rule ladder | 2, 3 | PR-3, PR-7a | P2-5 (C) | L | v0.5.0 |
+| **PR-7b** | The ladder's ordering, and the R6 gap | 2, 3 | PR-7 | P2-7 (D) | M | v0.5.1 |
+| **PR-8a** | The bound's derivation, registered before any number | 2, 3 | PR-7b | — | S | v0.5.1 |
+| **PR-8** | **Certified discretisation bound, `δ_ref` at `CERTIFIED`** | 2, 3 | PR-8a | P2-6 (C′) | L | v0.5.1 |
+| **PR-8c** | **GATE-D4 evaluated · tag v0.5.1** | 2, 3 | PR-8 | — | S | v0.5.1 |
+| **PR-9** ⛔ | Window harness and Paper 2 Part 2 results | 2 | GATE-D4, PR-4 | P2-8 (F6) | L | v0.6 |
+| **PR-10** ⛔ | Paper 3 Part 2 results | 3 | GATE-D4, PR-2, PR-6 | — | M | v0.6 |
+| **PR-11** | v0.6 release | 2, 3 | all | — | M | v0.6 |
 
 Size key: S under a day, M two to four days, L a week or more. Grouping the original
 nineteen items into eleven PRs pushed six of them to L. That is the trade.
@@ -278,7 +279,7 @@ can link to it.
 ## PR-1 — Warrant plumbing and the `slogdet` oracle audit
 
 `serves: 2, 3` · `blocked by: —` · `alias: P2-3, F4, part of P2-9` · `size: M` ·
-`tag: v0.4.5` · `ADR-035`
+`tag: v0.5.0` · `ADR-035`
 
 Do this first. Everything downstream self-labels off it, and a registered number depends
 on the audit half.
@@ -335,7 +336,7 @@ suite summary renders. No existing check loses its label. **ADR-035.** — met.
 
 ## PR-1b — the chunked enumerator
 
-`serves: 2, 3` · `blocked by: —` · `alias: —` · `size: S` · `tag: v0.4.5` · `ADR-036`
+`serves: 2, 3` · `blocked by: —` · `alias: —` · `size: S` · `tag: v0.5.0` · `ADR-036`
 
 Ahead of PR-2, and dated, because PR-2's registration pre-commits against adopting a
 chunked enumerator in response to a `VOID` outcome. Taking it before any cell is declared
@@ -365,7 +366,7 @@ tracks the block rather than the enumeration. **ADR-036.** — met.
 
 ## PR-2 — R10 hardening
 
-`serves: 2, 3` · `blocked by: PR-1` · `alias: P2-9` · `size: M` · `tag: v0.4.5` ·
+`serves: 2, 3` · `blocked by: PR-1` · `alias: P2-9` · `size: M` · `tag: v0.5.0` ·
 `ADR: on landing`
 
 Gate-independent. Paper 3's G9 inherits the qualifier this produces.
@@ -448,7 +449,7 @@ out moot rather than deferred.
 
 ## PR-3 — World/Agent seam, exogenous action, constructors
 
-`serves: 2, 3` · `blocked by: PR-1` · `alias: P2-1a (B)` · `size: L` · `tag: v0.4.5` ·
+`serves: 2, 3` · `blocked by: PR-1` · `alias: P2-1a (B)` · `size: L` · `tag: v0.5.0` ·
 `ADR-047` · issue #66
 
 The foundation, and the fan-out point. Paper 3 reuses the seam, the exogenous action mode
@@ -507,7 +508,7 @@ fitted to a gap figure that does not yet exist.
 ## PR-4 — Paper 2 scoring: evaluator, separation cells, error bars
 
 `serves: 2, and F5 serves 3` · `blocked by: PR-3` · `alias: P2-1b (B), F1, F2, F3, F5` ·
-`size: L` · `tag: v0.4.5` · `ADR: ADR-059`
+`size: L` · `tag: v0.5.0` · `ADR: ADR-059`
 
 - [x] `ThreeTermEvaluator` returns `Decomposition(misspecification, inference_gap)`, two
       divergences directly computed. The type carries no entropy field and no entropy
@@ -562,7 +563,7 @@ at the top level, so no `docs/api/` page is owed yet.
 ## PR-5 — Control bracket and Paper 2 Part 1 results
 
 `serves: 2` · `blocked by: PR-4` · `alias: P2-4 (E), R1–R5, C5` · `size: L` ·
-`tag: v0.4.5`
+`tag: v0.5.1`
 
 Gate-independent. It banks R1–R5 and C5 before the gate is even attempted, which is half
 of what survives a failure.
@@ -599,7 +600,7 @@ forms. That is the strongest thing the tier table licenses without a bound.
 ## PR-6 — Paper 3 toolbox and Part 1 results
 
 `serves: 3` · `blocked by: PR-1, PR-3` · `alias: G-A, G-C, G-D, G1–G5` · `size: L` ·
-`tag: v0.4.5` · `ADR: on landing`
+`tag: v0.5.1` · `ADR: on landing`
 
 G-A and G-D were the original Phase 0 hedge, scheduled at v0.4.3 and never shipped. They
 are gate-independent and cheap. They are what stands between "a gate failure stalls the
@@ -638,7 +639,7 @@ sampled existence claim, settled by one construction.
 ## PR-7a — the printed scheme's failure probes, and the declared budget
 
 `serves: 2, 3` · `blocked by: —` · `alias: —` · `size: S` ·
-`tag: v0.4.5` · `ADR: on landing`
+`tag: v0.5.0` · `ADR: on landing`
 
 Ahead of the ladder. The ladder cannot ship a rung whose budget is undeclared, and the
 budget cannot be declared before the probe that sizes it exists. Nothing here touches
@@ -687,7 +688,7 @@ the report carries the weight.
 ## PR-7 — Exact reference filter and the rule ladder
 
 `serves: 2, 3` · `blocked by: PR-3, PR-7a` · `alias: P2-5 (C)` · `size: L` ·
-`tag: v0.4.5`
+`tag: v0.5.0`
 
 The hard item, and it is shared. P2-7 (D) moved to PR-7b with the ordering work.
 
@@ -820,7 +821,7 @@ under `o → λo` (ADR-057). Each rung evaluates. The ladder enumerates complete
 
 ## PR-7b — the ladder's ordering, and the R6 gap
 
-`serves: 2, 3` · `blocked by: PR-7` · `alias: P2-7 (D)` · `size: M` · `tag: v0.4.5`
+`serves: 2, 3` · `blocked by: PR-7` · `alias: P2-7 (D)` · `size: M` · `tag: v0.5.1`
 
 Split from PR-7 because PR-8 waits on one number in here and should not also wait on a
 ladder review.
@@ -872,9 +873,9 @@ those two fall behind the plug-in. Only belief-smoothed to exact holds throughou
 Every pair resolved at every spread and nothing voided. The battery's RESULT of
 2026-09-12 under D1 carries the table. The D1 test proper is PR-9's, under PR-8's bar.
 
-## PR-8 — Certified discretisation bound · GATE-D4 · tag v0.4.5
+## PR-8 — Certified discretisation bound · GATE-D4 · tag v0.5.1
 
-`serves: 2, 3` · `blocked by: PR-7b` · `alias: P2-6 (C′)` · `size: L` · `tag: v0.4.5` ·
+`serves: 2, 3` · `blocked by: PR-7b` · `alias: P2-6 (C′)` · `size: L` · `tag: v0.5.1` ·
 `ADR: on landing`
 
 **Landed ahead of the PR: `research/gate_d4_registration.md`, opened 2026-08-07.** The gate
@@ -1055,7 +1056,7 @@ in the warrant vocabulary.
       for this one.
 - [ ] Shown small relative to R6's measured signal by the pre-agreed factor, whichever
       way it comes out.
-- [ ] **Cut v0.4.5 at this merge whatever the outcome.** Release notes record the gate
+- [ ] **Cut v0.5.1 at this merge whatever the outcome.** Release notes record the gate
       result as a number against the factor, `PASS` or `FAIL`. Changelog, `DECISIONS.md`
       entry, `CITATION.cff` and `__init__.__version__` on the release commit, matching
       v0.4.4's discipline. The release commit is only the release.
@@ -1065,7 +1066,7 @@ in the warrant vocabulary.
 ## PR-9 ⛔ — Window harness and Paper 2 Part 2 results
 
 `serves: 2` · `blocked by: GATE-D4, PR-4` · `alias: P2-8 (F6), R6–R9` · `size: L` ·
-`tag: v0.5`
+`tag: v0.6`
 
 - [ ] Before any exponent is fitted, demonstrate the D2 fit window is non-empty. Print its
       bounds **on both swept axes** and the signal-to-bound ratio across it.
@@ -1088,7 +1089,7 @@ and assert at their stated tiers.
 ## PR-10 ⛔ — Paper 3 Part 2 results
 
 `serves: 3` · `blocked by: GATE-D4, PR-2, PR-6` · `alias: G6–G10` · `size: M` ·
-`tag: v0.5`
+`tag: v0.6`
 
 - [ ] **G6** class splitting under R(x).
 - [ ] **G7** argmin divergence separated from the certified error.
@@ -1099,9 +1100,9 @@ and assert at their stated tiers.
 
 **Merge gate:** G6–G10 print and assert. G9 carries PR-2's stability outcome.
 
-## PR-11 — v0.5 release
+## PR-11 — v0.6 release
 
-`serves: 2, 3` · `blocked by: all` · `size: M` · `tag: v0.5`
+`serves: 2, 3` · `blocked by: all` · `size: M` · `tag: v0.6`
 
 - [ ] R1–R10 and G1–G10 all print and assert in one run.
 - [ ] Changelog, docs, examples gallery, deferred-and-unsupported section with an issue
@@ -1125,7 +1126,7 @@ merge block on **PR-9 and PR-10**.
       and before PR-7 merges.
 - [ ] Mark PR-9 and PR-10 blocked in the tracker, not by convention. A gate honoured by
       memory is not honoured.
-- [ ] Tag v0.4.5 at PR-8's merge regardless of outcome.
+- [ ] Tag v0.5.1 at PR-8's merge regardless of outcome.
 
 **On failure: stop.** Do not merge PR-9 or PR-10 against an uncertified reference.
 
@@ -1268,6 +1269,10 @@ result PR-2 hardens.
       and PR-5 both land before the gate.
 - [ ] `research/fep_falsification_battery.md`, still open. Two items need a decision
       rather than an edit, both listed under "Registered wording" below.
+- [x] The tags, 2026-10-14 (ADR-067). v0.5.0 is cut from `main` ahead of the gate.
+      Shipped work reads v0.5.0, GATE-D4 and the work before it read v0.5.1, and the
+      papers' terminal tag reads v0.6, across this file, the battery, the ledger and
+      `warrant_numbers.md`. The ledger's opening line is dated and keeps its v0.4.5.
 - [ ] This file supersedes the earlier build plans. Anything still citing them is stale.
 
 **Registered wording, two open decisions.**

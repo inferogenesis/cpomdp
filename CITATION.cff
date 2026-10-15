@@ -9,8 +9,8 @@ type: software
 authors:
   - name: "Inferogenesis"
     email: "hello@inferogenesis.com"
-version: 0.4.4
-date-released: "2026-08-04"
+version: 0.5.0
+date-released: "2026-10-15"
 license: MIT
 repository-code: "https://github.com/inferogenesis/cpomdp"
 url: "https://cpomdp.inferogenesis.com/"
