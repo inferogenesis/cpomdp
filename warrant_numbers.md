@@ -163,6 +163,11 @@ past the float64 `2^53` ceiling where a float count would drift.
 | `FiniteActionSet` size `>= 2` | 2 | a set of one is no choice to search |
 | `horizon >= 1` | 1 | a policy needs at least one step |
 
+Renamed 2026-10-15. The searches' `cost_per_cycle` in the row above is `cost_per_plan`
+now. A driver's `cost_per_cycle` is per agent step, `|A|^H` for the open-loop driver, so
+the old name overstated open-loop cost by a factor of H. The value and the bar did not
+move.
+
 ### Negative-control fixtures
 
 Not tolerances. Each is an input chosen to make a guard fire, and each is asserted to

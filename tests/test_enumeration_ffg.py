@@ -136,7 +136,7 @@ class TestOverBackendSharedAccounting:
         assert ffg.warrant is Warrant.PROVED
         assert ffg.certificate.complete
         assert ffg.n_policies == 9  # 3^2
-        assert ffg.cost_per_cycle == 18  # |A|^H * H = 9 * 2
+        assert ffg.cost_per_plan == 18  # |A|^H * H = 9 * 2
 
     def test_rejects_wrong_action_dim(self):
         backend, _ = _single_node_pair(state_dependent=False)  # p = 1

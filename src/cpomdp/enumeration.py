@@ -347,8 +347,8 @@ class EnumeratedEfeSearch:
         return self._horizon
 
     @property
-    def cost_per_cycle(self) -> int:
-        """Per-cycle step-evals = ``|A|^H * H`` — the honest exponential cost."""
+    def cost_per_plan(self) -> int:
+        """Step evaluations one ``evaluate`` costs, ``|A|^H * H`` (RFC-001)."""
         return self.n_policies * self._horizon
 
     @property
@@ -653,8 +653,8 @@ class ChunkedEfeSearch:
         return -(-self._n_policies // self._chunk)
 
     @property
-    def cost_per_cycle(self) -> int:
-        """Per-cycle step-evals = ``|A|^H * H`` — the honest exponential cost."""
+    def cost_per_plan(self) -> int:
+        """Step evaluations one ``evaluate`` costs, ``|A|^H * H`` (RFC-001)."""
         return self._n_policies * self._horizon
 
     @property
@@ -697,7 +697,7 @@ class RecedingHorizonSelector:
     @property
     def cost_per_plan(self) -> int:
         """Step-evals for one search = ``|A|^H * H`` (RFC-001 attributable work)."""
-        return self._search.cost_per_cycle
+        return self._search.cost_per_plan
 
     @property
     def replan_interval(self) -> int:
@@ -760,7 +760,7 @@ class OpenLoopSelector:
     @property
     def cost_per_plan(self) -> int:
         """Step-evals for one search = ``|A|^H * H`` (RFC-001 attributable work)."""
-        return self._search.cost_per_cycle
+        return self._search.cost_per_plan
 
     @property
     def replan_interval(self) -> int:

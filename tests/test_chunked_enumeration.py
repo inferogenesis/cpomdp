@@ -424,7 +424,8 @@ class TestCostAndWarrant:
             _model(), _finite_set([-1.0, 0.0, 1.0]), horizon=3, chunk=7
         )
         assert search.n_policies == 27
-        assert search.cost_per_cycle == 27 * 3  # |A|^H * H, RFC-001
+        assert search.cost_per_plan == 27 * 3  # |A|^H * H, RFC-001
+        assert not hasattr(search, "cost_per_cycle")
         assert search.n_blocks == 4  # ceil(27 / 7), the last one padded
         assert search.chunk == 7
 

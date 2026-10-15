@@ -628,6 +628,11 @@ certainty equivalence is optimal, and no use of the readings beats it.
   from `cpomdp` or `warrantlib`, the one enum it was an alias of. Its members are the
   same objects, so `EFESelector.warrant` still reads `CORROBORATED` and
   `EnumeratedEfeSearch.warrant` still reads `PROVED`.
+- **Breaking:** `EnumeratedEfeSearch.cost_per_cycle` is `cost_per_plan`, the name the
+  drivers already used for one search. `cost_per_cycle` now means one thing everywhere,
+  the cost of one agent step, and only selectors report it. Read as per step, the
+  search's figure overstated the open-loop driver by a factor of H, and the README did
+  exactly that.
 - `PROVED` without evidence does not construct, enforced in `CheckReport`. Two kinds
   qualify, one per decisive prover: a completeness certificate for an exhaustive
   enumeration, a `SymbolicReduction` for a theorem or a symbolic identity (Provers 1 and
