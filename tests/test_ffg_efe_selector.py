@@ -120,15 +120,21 @@ def _two_node_backend():
 
 @pytest.mark.parametrize(
     ("control_matrix", "match"),
-    [(None, "control matrix"), ([[1.0, 0.0], [0.0, 1.0]], "p=1")],
+    [
+        (None, "control matrix"),
+        # The search named must be the one that takes a backend.
+        ([[1.0, 0.0], [0.0, 1.0]], r"p=1\).*EnumeratedEfeSearch\.over_backend"),
+    ],
 )
 def test_selector_refuses_a_backend_it_cannot_search(control_matrix, match):
     # Unrefused, a control-free backend returned the grid's first action, and p = 2
     # constructed and failed at the first select.
-    graph = _two_node_backend().graph
-    transitions = _two_node_backend().transitions
+    template = _two_node_backend()
     backend = CouplingGraphBackend(
-        graph, transitions, prior=unit_prior(graph), control_matrix=control_matrix
+        template.graph,
+        template.transitions,
+        prior=unit_prior(template.graph),
+        control_matrix=control_matrix,
     )
     with pytest.raises(ValueError, match=match):
         FfgEfeSelector(

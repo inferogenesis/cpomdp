@@ -43,8 +43,8 @@ class Coupling:
     chemotaxis the gradient rides receptor->CheA->CheY, while CheA->CheB methylation is
     observed and coupled yet gradient-blind). A carry partition (ADR-016) that severs a
     flagged edge drops the cross-temporal covariance it holds, breaking the integration
-    of that information about a slow latent; the EFE selector refuses such a partition
-    (ADR-018). Default ``False``; it does not affect the factor or the filter.
+    of that information about a slow latent; every graph EFE entry point refuses such a
+    partition (ADR-018). Default ``False``; it does not affect the factor or the filter.
     """
 
     parent: int
@@ -73,9 +73,10 @@ class CouplingGraph:
     Raises:
         ValueError: if ``dims`` is empty or non-positive; if ``root``, an edge, or an
             observation references an out-of-range node; if an edge's factor ``W`` is
-            not ``(dim[child], dim[parent])``; or if the edges do not form a tree rooted
-            at ``root`` — the root has a parent, a node has two parents or none, or the
-            edges contain a cycle.
+            not ``(dim[child], dim[parent])``; if a sensor's ``C`` is not as wide as the
+            node it observes; or if the edges do not form a tree rooted at ``root`` —
+            the root has a parent, a node has two parents or none, or the edges contain
+            a cycle.
     """
 
     def __init__(

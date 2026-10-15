@@ -107,8 +107,9 @@ from cpomdp.types import Belief, LinearGaussianModel
 if TYPE_CHECKING:
     # Type-only imports: the kernel reads preference.goal/.precision and the backend's
     # predict/observation methods by duck-typing, so it does NOT depend on selection or
-    # the backends package at runtime. This keeps the dependency one-way (selectors and
-    # backends -> kernel) and lets EFESelector / FfgEfeSelector import this module.
+    # on a backend at runtime. Its one runtime import from the backends package is the
+    # exception the graph rollouts raise, and `backends.base` imports nothing that
+    # imports this module, so EFESelector / FfgEfeSelector import it without a cycle.
     from cpomdp.backends.base import EfeBackend
     from cpomdp.selection import Preference
 
