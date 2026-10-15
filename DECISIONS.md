@@ -4594,3 +4594,30 @@ What that moves:
   record of what landed stays whole.
 - Promoting a piece of `_lab` later is additive: a public module re-exports it and an
   API page documents it.
+
+## ADR-070 — cpomdp's warrantlib floor is 0.3
+
+**Date:** 2026-10-15
+**Status:** Accepted
+**Supersedes:** ADR-042's consequence that cpomdp's floor stays at `>=0.2`.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+ADR-042 kept cpomdp at `warrantlib>=0.2` because nothing under `src/cpomdp` constructs a
+report. That premise was wrong. `cpomdp.enumeration` builds the completeness
+certificates warrantlib 0.3 introduced, and against 0.2 the modules that build them
+failed to import. No release carried the `>=0.2` floor, so no install met it.
+
+### Decision
+
+cpomdp requires `warrantlib>=0.3,<0.4`. The cap is there because warrantlib's minor
+versions break before 1.0, as cpomdp's do.
+
+### Consequences
+
+- ADR-040's publish-ordering race does not re-arm for 0.5.0. warrantlib 0.3.0 has been
+  on PyPI since 2026-08-26, published on its own as ADR-040 prescribes.
+- The next floor change meets the race again, with the two options ADR-040 lists.
+- A warrantlib 0.4 reaches cpomdp users only through a cpomdp release that lifts the
+  cap.

@@ -514,9 +514,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
   Python 3.10 reaches end of life in October 2026, which is what makes the trade cheap
   rather than what makes it right (ADR-045). The published warrantlib 0.2.0 keeps its
   `>=3.10` metadata, so an existing 3.10 install resolves as it always did.
-- `cpomdp-research` requires `warrantlib>=0.3`, for `CheckReport.check_id`. cpomdp's own
-  floor stays at `>=0.2`: nothing under `src/cpomdp` constructs a report, and moving the
-  floor would re-arm ADR-040's publish-ordering race for no gain.
+- `cpomdp-research` requires `warrantlib>=0.3`, for `CheckReport.check_id`.
 - The crossover falsifiers name their action mode. `H* = 7` is an open-loop number: the
   sweep scores whole length-H sequences with no re-planning, driving neither
   `RecedingHorizonSelector` nor `OpenLoopSelector`. The same statistic under a
@@ -526,7 +524,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
 - cpomdp requires `warrantlib>=0.3,<0.4`, up from `>=0.1`. The tree builds the
   completeness certificates 0.3 introduced, and against 0.2 the modules that build them
   failed to import. The cap is there because warrantlib's minor versions break before
-  1.0, as cpomdp's do. Breaking for anyone pinning warrantlib below 0.3.
+  1.0, as cpomdp's do. Breaking for anyone pinning warrantlib below 0.3 (ADR-070).
 - **Breaking:** the model's fields are `dynamics_matrix`, `control_matrix`,
   `observation_model` and `dynamics_noise_model` (were `dynamics`, `control`,
   `observation`, `process_noise`). One rule now covers every field: `_matrix` is a linear
