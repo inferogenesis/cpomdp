@@ -160,7 +160,7 @@ agent.sample_action()                 # ValueError: this Agent has no objective 
 | ----------------------------------------- | ---------------------------------------------------------------------------- |
 | perceive, exactly | `Agent.infer_states`, `KalmanBackend` |
 | reach a target state | `StateGoal` with `LQRSelector` |
-| act on expected free energy | `ObservationGoal` with `EFESelector`, `expected_free_energy` |
+| act on expected free energy, where `R(x)` or `Q(x)` varies | `ObservationGoal` (the `Agent` builds an `EFESelector` and reads its horizon off the model), `expected_free_energy` |
 | ...over an H-step horizon | `cpomdp.efe.policy_efe`, `policy_efe_trace` |
 | ...searched exhaustively, with a certificate | `cpomdp.enumeration`, `EnumeratedEfeSearch`, `RecedingHorizonSelector`, `OpenLoopSelector` |
 | sense more sharply in some places than others | `CallableSensor`, state-dependent `R(x)` |
