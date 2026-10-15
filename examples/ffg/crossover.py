@@ -49,7 +49,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from cpomdp.crossover import crossover_statistic
-from cpomdp.diagnostics import _host_logdet_pd, rollout_conditioning
+from cpomdp.diagnostics import is_positive_definite, rollout_conditioning
 from cpomdp.efe import policy_efe_ffg, policy_efe_ffg_trace
 from cpomdp.enumeration import (
     ChunkedEfeSearch,
@@ -473,6 +473,16 @@ def mechanism_curve(max_horizon=MAX_H):
 
 
 # --- 3. conditioning + an independent NumPy oracle on the headline number ----------
+def _host_logdet_pd(matrix) -> float:
+    """``ln det`` of a symmetric positive-definite matrix, NaN otherwise.
+
+    ``slogdet`` read only after a Cholesky succeeds, built from public names.
+    """
+    if not is_positive_definite(matrix):
+        return float("nan")
+    return float(np.linalg.slogdet(np.asarray(matrix, dtype=float))[1])
+
+
 def _numpy_score(policy) -> float:
     """Pure-NumPy predict-then-contract score.
 
