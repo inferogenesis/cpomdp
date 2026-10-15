@@ -733,6 +733,60 @@ class TestObservationChannel:
         assert not hasattr(backend, "observation_model")
 
 
+class TestStackObservations:
+    """Readings keyed by node, the format `CouplingGraph.infer` takes, stack here.
+
+    The stacked vector puts each observed node's reading in ascending node order, a
+    rule that lived in a private layout. Stacking `{3: motor, 2: cheB}` in its
+    insertion order gave each node the other's reading and passed every shape check.
+    """
+
+    def _chemotaxis(self):
+        return _build(
+            _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
+        )
+
+    def test_readings_stack_in_node_order_whatever_the_dict_order(self):
+        stacked = self._chemotaxis().stack_observations({4: [0.4], 2: [0.2], 3: [0.3]})
+        np.testing.assert_array_equal(np.asarray(stacked), [0.2, 0.3, 0.4])
+
+    def test_a_scalar_is_a_one_row_reading(self):
+        stacked = self._chemotaxis().stack_observations({3: 0.3, 4: 0.4, 2: 0.2})
+        np.testing.assert_array_equal(np.asarray(stacked), [0.2, 0.3, 0.4])
+
+    def test_the_stack_filters_like_the_vector_it_replaces(self):
+        backend = self._chemotaxis()
+        prior = Belief(mean=np.zeros(5), cov=np.eye(5))
+        by_node = backend.infer_states(
+            backend.stack_observations({4: 0.4, 3: 0.3, 2: 0.2}), prior
+        )
+        by_hand = backend.infer_states([0.2, 0.3, 0.4], prior)
+        np.testing.assert_array_equal(
+            np.asarray(by_node.mean), np.asarray(by_hand.mean)
+        )
+
+    def test_a_missing_observed_node_is_refused_by_name(self):
+        with pytest.raises(
+            ValueError, match=r"no reading for observed node\(s\) \[3\]"
+        ):
+            self._chemotaxis().stack_observations({2: 0.2, 4: 0.4})
+
+    def test_a_reading_on_an_unobserved_node_is_refused_by_name(self):
+        with pytest.raises(ValueError, match=r"node\(s\) \[0\] carry no sensor"):
+            self._chemotaxis().stack_observations({0: 0.0, 2: 0.2, 3: 0.3, 4: 0.4})
+
+    def test_a_reading_of_the_wrong_width_is_refused_by_name(self):
+        rng = np.random.default_rng(0)
+        backend = _build(
+            (1, 2),
+            [(0, 1, rng.standard_normal((2, 1)), _spd(rng, 2))],
+            {1: (np.eye(2), _spd(rng, 2))},
+            [([[0.5]], [[0.1]]), (np.eye(2) * 0.5, np.eye(2) * 0.1)],
+        )
+        with pytest.raises(ValueError, match=r"node 1 .* reads 2 value"):
+            backend.stack_observations({1: 0.5})
+
+
 class TestNodeLookup:
     """A node outside the graph is refused by name, never read as an empty block.
 

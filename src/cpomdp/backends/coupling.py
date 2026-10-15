@@ -13,7 +13,7 @@ it makes the recursion exact. A chosen node's belief is then a pure slice of tha
 (``marginal`` / ``readout``).
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 import jax
 import jax.numpy as jnp
@@ -136,6 +136,7 @@ class CouplingGraphBackend:
 
     An ``observation`` passed to ``infer_states`` is the readings of the observed nodes
     stacked in **ascending node-index order**, each node contributing its sensor's rows.
+    ``stack_observations`` builds it from readings keyed by node.
     """
 
     def __init__(
@@ -288,6 +289,47 @@ class CouplingGraphBackend:
             layout.append((node, cursor, cursor + width))
             cursor += width
         return tuple(layout), cursor
+
+    def stack_observations(
+        self, readings: Mapping[int, ArrayLike]
+    ) -> Float64[jax.Array, "m"]:
+        """One step's readings, keyed by node, as the vector ``infer_states`` takes.
+
+        The vector holds each observed node's reading in ascending node order. A dict
+        iterates in insertion order, so readings of one width stacked by hand in the
+        wrong order pass every shape check and filter each node against another's.
+
+        Args:
+            readings: one reading per observed node, keyed by node, the form
+                ``CouplingGraph.infer`` takes. A scalar is a one-row reading.
+
+        Returns:
+            The stacked observation, shape ``(model.n_observations,)``.
+
+        Raises:
+            ValueError: If an observed node has no reading, a reading names a node
+                with no sensor, or a reading's width is not its sensor's row count.
+        """
+        observed = [node for node, _lo, _hi in self._obs_layout]
+        missing = sorted(set(observed) - set(readings))
+        if missing:
+            raise ValueError(f"no reading for observed node(s) {missing}")
+        unobserved = sorted(set(readings) - set(observed))
+        if unobserved:
+            raise ValueError(
+                f"node(s) {unobserved} carry no sensor, so they take no reading. "
+                f"The observed nodes are {observed}."
+            )
+        parts = []
+        for node, lo, hi in self._obs_layout:
+            reading = jnp.atleast_1d(jnp.asarray(readings[node], dtype=float))
+            if reading.shape != (hi - lo,):
+                raise ValueError(
+                    f"the reading on node {node} has shape {reading.shape}, and its "
+                    f"sensor reads {hi - lo} value(s)"
+                )
+            parts.append(reading)
+        return jnp.concatenate(parts) if parts else jnp.zeros(0)
 
     def _embedded_sensor_rows(self) -> list[jax.Array]:
         """Each observed node's C embedded into the joint state, in stacking order.
@@ -486,7 +528,8 @@ class CouplingGraphBackend:
 
         Args:
             observation: the observed nodes' readings, stacked in ascending node-index
-                order, shape ``(model.n_observations,)``.
+                order, shape ``(model.n_observations,)``. ``stack_observations``
+                builds it from readings keyed by node.
             prior: the current *joint* belief over all nodes. Never mutated.
             action: the action just taken, shape ``(p,)``; required iff the model has a
                 control matrix, ``None`` for pure filtering.
