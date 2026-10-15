@@ -468,6 +468,9 @@ certainty equivalence is optimal, and no use of the readings beats it.
 - The batched condition number `rollout_conditioning` computed inline is now a private
   function of its own, so a rollout and a scored cell read the same number for the same
   matrix.
+- `CouplingGraph` works out its parent map and collect order once, at construction. The
+  factored filter path rebuilt and re-sorted both on every belief-propagation pass, once
+  or twice a step, though neither depends on anything but the wiring.
 - **Breaking:** `validate_step_inputs` and `rxinfer_chemotaxis_tree_root` are private, as
   `_validate_step_inputs` and `_rxinfer_chemotaxis_tree_root`. v0.4.4 exported them from
   `cpomdp.backends.base` and `cpomdp.backends.rxinfer`. The first is the shape check the

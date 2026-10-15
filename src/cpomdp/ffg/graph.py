@@ -98,6 +98,11 @@ class CouplingGraph:
         self._observations = dict(observations)
         self._validate()
         self._sensor_at_zero = self._linearize_sensors_at_zero()
+        self._parent_edge = {edge.child: edge for edge in self._couplings}
+        # Deepest first, so a child folds into its parent before the parent moves up.
+        self._collect_order = tuple(
+            sorted(self._parent_edge, key=self._depth, reverse=True)
+        )
 
     @property
     def root(self) -> int:
@@ -164,6 +169,14 @@ class CouplingGraph:
                     raise ValueError("couplings contain a cycle — not a tree")
                 seen.add(node)
                 node = parent_of[node]
+
+    def _depth(self, node: int) -> int:
+        """The number of edges from ``node`` up to the root."""
+        hops = 0
+        while node != self.root:
+            node = self._parent_edge[node].parent
+            hops += 1
+        return hops
 
     def _linearize_sensors_at_zero(
         self,
@@ -241,18 +254,6 @@ class CouplingGraph:
                     "graph through a CouplingGraphBackend."
                 )
 
-        def combine(acc, key, msg):
-            """Add ``msg`` to ``acc[key]``, or start the slot with it if absent."""
-            return acc[key] + msg if key in acc else msg
-
-        def depth(node: int) -> int:
-            """The number of edges from ``node`` up to the root."""
-            hops = 0
-            while node != self.root:
-                node = parent_edge[node].parent
-                hops += 1
-            return hops
-
         # Lift the moment-form prior into a canonical message on the root.
         prior_precision = jnp.linalg.inv(prior.cov)  # Λ₀ = Σ⁻¹
         prior_msg = CanonicalGaussian._unchecked(
@@ -265,19 +266,16 @@ class CouplingGraph:
             node: self._observation_message(node, reading)
             for node, reading in readings.items()
         }
-        acc[self.root] = combine(acc, self.root, prior_msg)
+        acc[self.root] = _combine(acc, self.root, prior_msg)
 
-        # Pass messages up to the root, deepest nodes first so every child folds into a
-        # node before that node is itself sent up to its parent.
-        parent_edge = {edge.child: edge for edge in self.couplings}
-        order = sorted(parent_edge, key=depth, reverse=True)
-        for node in order:
+        # Pass messages up to the root, deepest nodes first.
+        for node in self._collect_order:
             if node not in acc:  # an unobserved leaf has nothing to send up
                 continue
-            edge = parent_edge[node]
+            edge = self._parent_edge[node]
             # Summarise everything known at `node` onto its parent, eliminating `node`.
             up = edge.factor._message_to_parent(acc[node])
-            acc[edge.parent] = combine(acc, edge.parent, up)
+            acc[edge.parent] = _combine(acc, edge.parent, up)
 
         # Read the accumulated root message back into moment form.
         mean, cov = acc[self.root].to_moment()  # Σ = Λ⁻¹, μ = Λ⁻¹h
@@ -304,39 +302,30 @@ class CouplingGraph:
             A ``CanonicalGaussian`` marginal per node index; call ``.to_moment()`` on
             any one for its ``(mean, cov)``.
         """
-
-        def combine(acc, key, msg):
-            """Add ``msg`` to ``acc[key]``, or start the slot with it if absent."""
-            return acc[key] + msg if key in acc else msg
-
-        def depth(node: int) -> int:
-            """The number of edges from ``node`` up to the root."""
-            hops = 0
-            while node != self.root:
-                node = parent_edge[node].parent
-                hops += 1
-            return hops
-
-        parent_edge = {edge.child: edge for edge in self.couplings}
-        order = sorted(parent_edge, key=depth, reverse=True)  # deepest-first
-
         # Collect: fold each subtree up into its parent (as ``infer``), but cache every
         # edge's upward message for the distribute pass. ``below[node]`` ends holding
         # the node's own seed plus everything its children sent up.
         below = dict(seeds)
         up_msg = {}
-        for node in order:
-            edge = parent_edge[node]
+        for node in self._collect_order:
+            edge = self._parent_edge[node]
             up = edge.factor._message_to_parent(below[node])
             up_msg[node] = up
-            below[edge.parent] = combine(below, edge.parent, up)
+            below[edge.parent] = _combine(below, edge.parent, up)
 
         # Distribute: push each parent's finished marginal back down, shallowest-first
         # so a parent is done before its children. Divide out the child's own upward
         # message first (``- up_msg[node]``) so its evidence does not double-count.
         marginals = {self.root: below[self.root]}
-        for node in reversed(order):
-            edge = parent_edge[node]
+        for node in reversed(self._collect_order):
+            edge = self._parent_edge[node]
             down = edge.factor._message_to_child(marginals[edge.parent] - up_msg[node])
-            marginals[node] = combine(below, node, down)
+            marginals[node] = _combine(below, node, down)
         return marginals
+
+
+def _combine(
+    acc: Mapping[int, CanonicalGaussian], key: int, msg: CanonicalGaussian
+) -> CanonicalGaussian:
+    """Add ``msg`` to ``acc[key]``, or start the slot with it if absent."""
+    return acc[key] + msg if key in acc else msg
