@@ -99,9 +99,11 @@ def test_the_walk_follows_an_import_of_an_import():
 
 
 def test_the_walk_stops_where_the_first_party_imports_do():
-    # The error on a difference imports nothing first-party, so its closure is itself.
-    # A walk that over-collected would not come back with one name.
-    assert _closure("_lab.resolution") == {"_lab.resolution"}
+    # The shared validators import nothing first-party, and cpomdp.types imports them,
+    # so they cannot import back. A walk that over-collected would not come back with
+    # one name. The subject differs from the leaf claim below, so a broken walk and a
+    # broken boundary fail apart.
+    assert _closure("_validation") == {"_validation"}
 
 
 def test_a_module_outside_the_seam_is_not_dragged_in():
