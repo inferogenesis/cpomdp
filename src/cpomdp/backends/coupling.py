@@ -123,9 +123,10 @@ class CouplingGraphBackend:
             ``child = W·parent + noise``) and the per-node observations.
         transitions: one [`GaussianTransition`][cpomdp.GaussianTransition] (A_i, Q_i)
             per node, indexed by node, so ``transitions[i]`` is node ``i``'s own
-            dynamics. Each ``Q_i`` must be positive-*definite* (the information form
-            inverts it), the same divergence from moment-form Kalman that
-            ``ChainBackend`` carries.
+            dynamics. Each ``Q_i`` must be positive-*definite*, because the
+            information form inverts it. A flat
+            [`LinearGaussianModel`][cpomdp.LinearGaussianModel] accepts a
+            semi-definite Q.
         prior: the belief over the joint state before any reading, a mean of length
             ``sum(graph.dims)``. It is ``model.prior``, so an [`Agent`][cpomdp.Agent]
             built on this backend starts from it, and ``to_flat_model`` carries it.

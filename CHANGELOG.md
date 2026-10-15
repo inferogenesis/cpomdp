@@ -414,6 +414,13 @@ certainty equivalence is optimal, and no use of the readings beats it.
   the valid range. `block(-1)` returned an empty range, so an epistemic term aimed at it
   scored zero. `marginal(-1, belief)` failed inside a reduction, and `block(5)` on five
   nodes raised a bare `IndexError`.
+- A covariance refused for not being positive-definite was refused because "a noiseless
+  or degenerate sensor sends the information gain to infinity", whatever the matrix
+  was. A semi-definite `dynamics_noise` on a `GaussianTransition` or `coupling_noise` on
+  a `GaussianCoupling` was blamed on a sensor the caller never passed. The refusal now
+  says the matrix is inverted. The graph path still needs a definite Q where the flat
+  model accepts a semi-definite one, because its transition factor inverts Q, and
+  `CouplingGraphBackend` says so.
 - The graph EFE rollouts and searches skipped the checks `FfgEfeSelector` makes on its
   target. `policy_efe_ffg`, `policy_efe_ffg_trace`, the crossover statistic and both
   searches' `over_backend` scored on a carry partition that severs an EFE-load-bearing
