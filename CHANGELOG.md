@@ -379,6 +379,9 @@ certainty equivalence is optimal, and no use of the readings beats it.
   so four API pages shipped a raw key where a reference should have been and no page
   carried a bibliography at all. Enabling the extension fixes every citation in the tree
   at once. No prose contained `[^` beforehand, so nothing existing changes meaning.
+- The README is the PyPI page, and its two figures and five links were relative paths,
+  which PyPI does not resolve. They are absolute now, so the page renders the same on
+  PyPI, on GitHub and on the docs site.
 - `cpomdp._lab.additivity.variational_free_energy` and `RxInferBackend` refuse a
   state-dependent sensor. Both read the plain `observation_noise` whatever the model
   carried, so a model with `R(x)` was priced or filtered against a constant without
