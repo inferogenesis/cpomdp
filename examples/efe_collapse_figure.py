@@ -159,10 +159,10 @@ def check() -> None:
     mu = np.asarray(BELIEF.mean)
     epi_live, epi_frozen, r_curve, post_vars, gains = [], [], [], [], []
     for a in np.asarray(ACTIONS):
-        _, live_parts = expected_free_energy(live, BELIEF, jnp.array([a]), GOAL)
-        _, frozen_parts = expected_free_energy(frozen, BELIEF, jnp.array([a]), GOAL)
-        epi_live.append(float(live_parts["epistemic"]))
-        epi_frozen.append(float(frozen_parts["epistemic"]))
+        live_efe = expected_free_energy(live, BELIEF, jnp.array([a]), GOAL)
+        frozen_efe = expected_free_energy(frozen, BELIEF, jnp.array([a]), GOAL)
+        epi_live.append(float(live_efe.epistemic))
+        epi_frozen.append(float(frozen_efe.epistemic))
         mu_minus = a_mat @ mu + b_mat @ np.array([a])  # μ⁻(a) = A·μ + B·a
         r_here = _precision_well_noise(jnp.asarray(mu_minus), WELL_PARAMS)
         r_curve.append(float(r_here[0, 0]))

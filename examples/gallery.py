@@ -495,7 +495,7 @@ def efe_over_grid(model, belief, preference, candidates):
     `preference.precision` (Λ), so this is the real public path rather than a
     hand-weighted recombination of the pragmatic and epistemic parts.
     """
-    return jax.vmap(lambda a: expected_free_energy(model, belief, a, preference)[0])(
+    return jax.vmap(lambda a: expected_free_energy(model, belief, a, preference).g)(
         candidates
     )
 
@@ -511,10 +511,10 @@ def efe_sweep(model, belief, goal, actions):
     """
     pragmatic, epistemic, g = [], [], []
     for action in actions:
-        g_a, parts = expected_free_energy(model, belief, jnp.array([action]), goal)
-        g.append(float(g_a))
-        pragmatic.append(float(parts["pragmatic"]))
-        epistemic.append(float(parts["epistemic"]))
+        efe = expected_free_energy(model, belief, jnp.array([action]), goal)
+        g.append(float(efe.g))
+        pragmatic.append(float(efe.pragmatic))
+        epistemic.append(float(efe.epistemic))
     return np.array(pragmatic), np.array(epistemic), np.array(g)
 
 

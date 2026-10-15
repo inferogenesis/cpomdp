@@ -196,11 +196,11 @@ class TestStructureIsInertArithmetic:
         structured = _model(control_matrix=[[1.0], [0.0]], structure=self._STRUCT)
         pref = Preference(goal=[0.5], precision=[[2.0]])
         action = jnp.array([0.3])
-        g0, parts0 = expected_free_energy(plain, plain.prior, action, pref)
-        g1, parts1 = expected_free_energy(structured, structured.prior, action, pref)
-        np.testing.assert_array_equal(g0, g1)
-        np.testing.assert_array_equal(parts0["pragmatic"], parts1["pragmatic"])
-        np.testing.assert_array_equal(parts0["epistemic"], parts1["epistemic"])
+        efe0 = expected_free_energy(plain, plain.prior, action, pref)
+        efe1 = expected_free_energy(structured, structured.prior, action, pref)
+        np.testing.assert_array_equal(efe0.g, efe1.g)
+        np.testing.assert_array_equal(efe0.pragmatic, efe1.pragmatic)
+        np.testing.assert_array_equal(efe0.epistemic, efe1.epistemic)
 
     def test_kalman_step_is_byte_identical(self):
         plain = _model(control_matrix=[[1.0], [0.0]])

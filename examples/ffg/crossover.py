@@ -602,10 +602,10 @@ def epistemic_counterfactual(horizon=FLIP_H, actions=None):
     @jax.jit
     def batch(pols):
         def one(pol):
-            g, parts = policy_efe_ffg(
+            efe = policy_efe_ffg(
                 backend, belief, pol, preference, info_block=info_block
             )
-            return g, parts["pragmatic"]
+            return efe.g, efe.pragmatic
 
         return jax.vmap(one)(pols)
 
@@ -970,7 +970,7 @@ def _print_tables() -> None:
     walk_ship = float(
         policy_efe_ffg(
             backend, belief, _walk(FLIP_H), preference, info_block=info_block
-        )[0]
+        ).g
     )
     walk_np, reach_np = _numpy_score(_walk(FLIP_H)), _numpy_score(_reach(FLIP_H))
     print(
@@ -1074,9 +1074,7 @@ def check() -> None:
     backend, belief, preference, info_block = _setup()
     for policy in (_walk(FLIP_H), _reach(FLIP_H)):
         shipped = float(
-            policy_efe_ffg(backend, belief, policy, preference, info_block=info_block)[
-                0
-            ]
+            policy_efe_ffg(backend, belief, policy, preference, info_block=info_block).g
         )
         assert abs(shipped - _numpy_score(policy)) < 1e-9
 

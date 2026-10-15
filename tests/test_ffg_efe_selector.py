@@ -265,7 +265,7 @@ def _score_components(backend, belief, preference, candidates, info_block):
     def comp(action):
         predicted = backend.predicted_belief(belief, action)  # μ⁺, Σ⁺
         observation_noise = backend.observation_noise_at(predicted.mean)  # R(μ⁺)
-        _, parts = _ffg_efe_step(
+        efe = _ffg_efe_step(
             predicted.mean,
             predicted.cov,
             observation_matrix,
@@ -274,7 +274,7 @@ def _score_components(backend, belief, preference, candidates, info_block):
             preference.precision,
             info_block,
         )
-        return parts["pragmatic"], parts["epistemic"]
+        return efe.pragmatic, efe.epistemic
 
     return jax.vmap(comp)(candidates)
 
