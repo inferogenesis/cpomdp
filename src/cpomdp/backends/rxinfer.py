@@ -154,7 +154,10 @@ class RxInferBackend:
     belief one step at a time. On a fixed-noise model it gives
     [`KalmanBackend`][cpomdp.KalmanBackend]'s answers through separate machinery.
     It exists for correctness, so it has no steady-state mode. The first instance
-    built in a process loads the Julia runtime, and later ones reuse it.
+    built in a process loads the Julia runtime, and later ones reuse it. The first
+    ever built in an environment also has juliapkg install Julia and RxInfer there,
+    which needs network access and can take minutes. The README's install section
+    says where that environment lives and how to provision it ahead of time.
 
     Fixed noise only. The Julia model takes one ``Q`` and one ``R``, so a model
     carrying a state-dependent ``R(x)`` or ``Q(x)`` raises ``ValueError`` here, before

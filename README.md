@@ -77,15 +77,19 @@ Or the latest from source:
 pip install git+https://github.com/inferogenesis/cpomdp
 ```
 
+That's all you need for normal use.
+
 Importing cpomdp switches JAX to 64-bit floats for the whole process (`jax_enable_x64`). The filter is checked against its oracles to 1e-9, which float32 cannot hold. Every other JAX array in the process then defaults to float64 too, at twice the memory. Turning the flag off again after the import makes beliefs and posteriors come back float32, with no warning.
 
-That's all you need for normal use. There's also an optional RxInfer (Julia) backend that the test suite leans on as a correctness oracle. You almost certainly don't need it, but if you want it:
+There's also an optional RxInfer (Julia) backend that the test suite leans on as a correctness oracle. You almost certainly don't need it. If you want it:
 
 ```bash
 pip install "cpomdp[rxinfer]"
 ```
 
-It pulls in a Julia bridge and bootstraps itself the first time you use it.
+It pulls in a Julia bridge, juliacall, and sets itself up the first time you build an `RxInferBackend`. That first build needs network access. It declares RxInfer to juliapkg, which downloads Julia if it finds none, updates Julia's package registry, and installs and precompiles RxInfer. Expect minutes. The Julia project it builds lives inside your virtual or conda environment, in `julia_env`, or in `~/.julia/environments/pyjuliapkg` on a system Python. After that, each new process pays tens of seconds once to load RxInfer.
+
+To set it up ahead of time, on a cluster node or for a notebook kernel, build one `RxInferBackend` in that environment while it is online. `PYTHON_JULIAPKG_EXE` points juliapkg at a Julia you already have, `PYTHON_JULIAPKG_PROJECT` chooses where the project lives, and `PYTHON_JULIAPKG_OFFLINE=yes` keeps a provisioned environment off the network.
 
 ## Quickstart
 
