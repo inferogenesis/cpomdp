@@ -532,6 +532,29 @@ class TestCouplingGraphValidation:
                 {0: GaussianObservation(np.eye(1), observation_noise=np.eye(1))},
             )
 
+    @pytest.mark.parametrize("field", ["root", "dims", "couplings", "observations"])
+    def test_wiring_cannot_be_reassigned_after_validation(self, field):
+        # Construction is the only place the wiring is checked, so a field written
+        # afterwards would reach the backend unvalidated.
+        graph = CouplingGraph(
+            0,
+            (1, 1),
+            (Coupling(0, 1, self._w(1, 1), 1.0),),
+            {1: GaussianObservation(np.eye(1), observation_noise=np.eye(1))},
+        )
+        with pytest.raises(AttributeError):
+            setattr(graph, field, getattr(graph, field))
+
+    def test_observations_cannot_gain_a_sensor_after_validation(self):
+        # A sensor added to node 7 of a two-node graph would skip the range check.
+        sensor = GaussianObservation(np.eye(1), observation_noise=np.eye(1))
+        graph = CouplingGraph(
+            0, (1, 1), (Coupling(0, 1, self._w(1, 1), 1.0),), {1: sensor}
+        )
+        with pytest.raises(TypeError):
+            # Writing to it is the test, so ty's refusal is expected.
+            graph.observations[7] = sensor  # ty: ignore[invalid-assignment]
+
 
 # --- CouplingGraph.infer vs the normal backend on the hand-flattened joint ---
 

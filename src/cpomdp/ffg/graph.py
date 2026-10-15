@@ -13,6 +13,7 @@ the message passing that reads it lives elsewhere.
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from types import MappingProxyType
 
 import jax.numpy as jnp
 from numpy.typing import ArrayLike
@@ -77,6 +78,9 @@ class CouplingGraph:
             node it observes; or if the edges do not form a tree rooted at ``root`` —
             the root has a parent, a node has two parents or none, or the edges contain
             a cycle.
+
+    The four fields are read-only once built. Construction is where the wiring is
+    checked, so a graph that needs other wiring is a new graph.
     """
 
     def __init__(
@@ -86,11 +90,31 @@ class CouplingGraph:
         couplings: Sequence[Coupling],
         observations: Mapping[int, ObservationFactor],
     ) -> None:
-        self.root = int(root)
-        self.dims = tuple(int(d) for d in dims)
-        self.couplings = tuple(couplings)
-        self.observations = dict(observations)
+        self._root = int(root)
+        self._dims = tuple(int(d) for d in dims)
+        self._couplings = tuple(couplings)
+        self._observations = MappingProxyType(dict(observations))
         self._validate()
+
+    @property
+    def root(self) -> int:
+        """The index of the node the tree is rooted at."""
+        return self._root
+
+    @property
+    def dims(self) -> tuple[int, ...]:
+        """``dims[i]`` is the dimension of node ``i``."""
+        return self._dims
+
+    @property
+    def couplings(self) -> tuple[Coupling, ...]:
+        """The tree edges, directed away from the root."""
+        return self._couplings
+
+    @property
+    def observations(self) -> Mapping[int, ObservationFactor]:
+        """Each observed node's sensor, keyed by node index. A read-only view."""
+        return self._observations
 
     def _validate(self) -> None:
         n = len(self.dims)
