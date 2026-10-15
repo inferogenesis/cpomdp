@@ -658,6 +658,13 @@ certainty equivalence is optimal, and no use of the readings beats it.
   which gains `best_g`, `best_index` and `certificate` after `g`. Unpacking the result
   into two names no longer works. A driver's `certificate` is the last plan's, `None`
   before its first, because the chunked search earns one per run.
+- **Breaking:** `EnumeratedEfeSearch` and its `over_backend` refuse a set of more than
+  `max_policies` policies, `2^21` unless set, with a `PolicyBudgetError`. `|A|^H` is
+  exact before anything is allocated, and an oversized set used to take a
+  memory-capped host down without raising. The error gives the count, the step
+  evaluations of one plan and a floor on the memory, and names `ChunkedEfeSearch`,
+  which both drivers take. `max_policies=None` lifts the budget. The set is now decoded
+  from its indices rather than built through `itertools.product` on the host (ADR-071).
 - `PROVED` without evidence does not construct, enforced in `CheckReport`. Two kinds
   qualify, one per decisive prover: a completeness certificate for an exhaustive
   enumeration, a `SymbolicReduction` for a theorem or a symbolic identity (Provers 1 and
