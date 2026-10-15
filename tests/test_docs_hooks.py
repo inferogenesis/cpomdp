@@ -13,6 +13,7 @@ from mkdocs_hooks import (
 )
 
 REPO_URL = "https://github.com/inferogenesis/cpomdp"
+RAW_URL = "https://raw.githubusercontent.com/inferogenesis/cpomdp"
 GALLERY = "examples/README.md"
 FFG_GALLERY = "examples/ffg/README.md"
 
@@ -87,6 +88,16 @@ class TestResolveLink:
     def test_links_that_are_already_right_are_left_alone(self, target, layout):
         assert resolve(target, layout) == target
 
+    def test_a_pinned_raw_asset_is_served_by_the_site(self, layout):
+        # PyPI needs an absolute image URL, pinned so a later rename cannot break it.
+        # The site serves its own copy.
+        target = resolve(f"{RAW_URL}/0123abc/docs/assets/demo.gif", layout)
+        assert target == "assets/demo.gif"
+
+    def test_a_browsed_url_into_the_repository_resolves_like_its_path(self, layout):
+        target = resolve(f"{REPO_URL}/blob/v0.5.0/examples/demo.py", layout)
+        assert target == f"{REPO_URL}/blob/main/examples/demo.py"
+
     def test_a_page_in_a_subdirectory_climbs_back_to_the_assets(self, layout):
         target = resolve_link(
             "../docs/assets/demo.gif",
@@ -108,6 +119,13 @@ class TestRewriteLinks:
         assert "![a demo](assets/demo.gif)" in rewritten
         assert f"[source]({REPO_URL}/blob/main/examples/demo.py)" in rewritten
         assert missing == []
+
+    def test_a_pinned_url_to_a_missing_file_is_reported(self, layout):
+        target = f"{RAW_URL}/0123abc/docs/assets/gone.gif"
+        _, missing = rewrite_links(
+            f"![gone]({target})\n", source=GALLERY, page="examples.md", layout=layout
+        )
+        assert missing == [target]
 
     def test_a_link_title_is_kept(self, layout):
         text = '[source](demo.py "the demo")\n'

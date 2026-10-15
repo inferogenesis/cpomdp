@@ -384,7 +384,9 @@ certainty equivalence is optimal, and no use of the readings beats it.
   at once. No prose contained `[^` beforehand, so nothing existing changes meaning.
 - The README is the PyPI page, and its two figures and five links were relative paths,
   which PyPI does not resolve. They are absolute now, so the page renders the same on
-  PyPI, on GitHub and on the docs site.
+  PyPI, on GitHub and on the docs site. The figures are pinned to the commit that last
+  changed them, so a later rename on `main` cannot break a published page, and the docs
+  site still serves its own copies.
 - `cpomdp._lab.additivity.variational_free_energy` and `RxInferBackend` refuse a
   state-dependent sensor. Both read the plain `observation_noise` whatever the model
   carried, so a model with `R(x)` was priced or filtered against a constant without

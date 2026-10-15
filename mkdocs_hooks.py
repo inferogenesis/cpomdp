@@ -16,6 +16,10 @@ repoints them on the way into a page:
 | `../docs/assets/`               | a `tree/main` URL. A directory is not a page |
 | `#a-heading`                    | untouched. Anchors already work in both     |
 
+A URL into this repository at any ref, raw or browsed, is read as the path it names
+and repointed the same way. The README pins its figures to a commit so its PyPI page
+keeps them, and the site still serves its own copy.
+
 A relative link with no target in the repository logs a mkdocs warning, so
 `mkdocs build --strict` fails on it. Reference definitions (`[label]: path`)
 are repointed and checked alongside inline links. Fenced blocks and inline
@@ -119,7 +123,7 @@ def resolve_link(target: str, *, source: str, page: str, layout: SiteLayout) -> 
         The rewritten link, `#fragment` preserved. External links, in-page
         anchors and paths that escape the repository come back unchanged.
     """
-    repo_path = _repo_path(target, source)
+    repo_path = _repo_path(target, source, layout.repo_url)
     if repo_path is None:
         return target
     _, separator, fragment = target.partition("#")
@@ -146,7 +150,7 @@ def rewrite_links(
 
     def repointed(target: str) -> str | None:
         """The site target, or None if this link is not ours to rewrite."""
-        repo_path = _repo_path(target, source)
+        repo_path = _repo_path(target, source, layout.repo_url)
         if repo_path is None:
             return None
         if not (layout.repo_root / repo_path).exists():
@@ -206,18 +210,34 @@ def expand_includes(
     return _INCLUDE.sub(paste, text), missing
 
 
-def _repo_path(target: str, source: str) -> str | None:
+def _repo_path(target: str, source: str, repo_url: str) -> str | None:
     """Resolve a link written in `source` to a path relative to the repo root.
 
-    Returns None when the link is not a relative path into the repository: an
-    external URL, a site-absolute path, an in-page anchor, or a `../` chain that
-    climbs out of the tree.
+    A URL into this repository's files, raw or browsed and at any ref, resolves to the
+    path it names. Returns None when the link is not into the repository: an external
+    URL, a site-absolute path, an in-page anchor, or a `../` chain that climbs out of
+    the tree.
     """
     path = target.partition("#")[0]
+    if (named := _path_in_repository_url(path, repo_url)) is not None:
+        return named
     if not path or "://" in path or path.startswith(("/", "mailto:")):
         return None
     resolved = posixpath.normpath(posixpath.join(posixpath.dirname(source), path))
     return None if resolved.startswith("..") else resolved
+
+
+def _path_in_repository_url(url: str, repo_url: str) -> str | None:
+    """The repo path a raw, blob or tree URL into this repository names, else None."""
+    repository = repo_url.rstrip("/").removeprefix("https://github.com/")
+    for prefix in (
+        f"https://raw.githubusercontent.com/{repository}/",
+        f"https://github.com/{repository}/blob/",
+        f"https://github.com/{repository}/tree/",
+    ):
+        if url.startswith(prefix):
+            return url.removeprefix(prefix).partition("/")[2].rstrip("/") or None
+    return None
 
 
 def _site_target(repo_path: str, *, page: str, layout: SiteLayout) -> str:

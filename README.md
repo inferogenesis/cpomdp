@@ -41,7 +41,7 @@ Each body sits at its **true** hidden state. The blue `+` is where it believes i
 
 The four differ in **one number only**, the **goal precision Λ** each is built with. They all minimise the same Expected Free Energy `G = pragmatic − epistemic`. The pragmatic (goal) term scales with Λ and the epistemic (information) term does not, so Λ alone tips the balance. **Classic LQR** and a **sharp Λ** beeline to the agent's current food guess and never detour. A **balanced Λ** detours to the beacon, learns where the food really is, *then* heads there with confidence. A **weak Λ** is so over-curious it parks at the beacon and never eats. One real knob, the precision you'd actually pass. Four behaviours.
 
-![Four bacilli learning where the food is, under different goal precisions Λ, via continuous active inference](https://raw.githubusercontent.com/inferogenesis/cpomdp/main/docs/assets/bacillus_uncertain_food.gif)
+![Four bacilli learning where the food is, under different goal precisions Λ, via continuous active inference](https://raw.githubusercontent.com/inferogenesis/cpomdp/348b9eb50417d43bc0e9d4e1520c1c2eb934d36b/docs/assets/bacillus_uncertain_food.gif)
 
 Reproduce it with [`examples/bacillus_uncertain_food.py`](https://github.com/inferogenesis/cpomdp/blob/main/examples/bacillus_uncertain_food.py) (`pip install "cpomdp[examples]"`).
 
@@ -51,7 +51,7 @@ An agent on an open plane wants a goal it cannot locate. Its prior points the wr
 
 Run the same world once per planning horizon. At `H = 2` the agent walks straight to the spot it already believed in and settles there. It never checks. At `H = 14` it walks *away* from that spot, reads the beacon, finds out it was wrong, and then goes to the real goal. Only `H` changed.
 
-![One agent run once per planning horizon: at short horizons it settles where its prior said, and past a crossing it detours to the beacon, learns where the goal really is, and goes there](https://raw.githubusercontent.com/inferogenesis/cpomdp/main/docs/assets/crossover_horizon.gif)
+![One agent run once per planning horizon: at short horizons it settles where its prior said, and past a crossing it detours to the beacon, learns where the goal really is, and goes there](https://raw.githubusercontent.com/inferogenesis/cpomdp/011d8b9d42536353f73e2cfbade6ce88d7dfc679/docs/assets/crossover_horizon.gif)
 
 The margin between the two plans, `ΔG(H) = G(detour) − G(direct)` in nats, crosses zero exactly once. The epistemic pull is flat, because sensing once is worth what sensing once is worth. The pragmatic gradient decays under it. Freeze `R` at a constant and the sweep never crosses at any horizon, so the behaviour belongs to the state-dependent sensor and the horizon together.
 
