@@ -1,6 +1,6 @@
 # Control
 
-Steady-state LQR action selection, the action-side dual of the Kalman filter. Under a fixed sensor it is the action expected free energy chooses [@koudahl2021epistemics]. The `Agent` builds one when you give it a `StateGoal`. Build one yourself to hand an `LQRSelector` to `Agent(selector=...)`.
+Steady-state LQR action selection, the action-side dual of the Kalman filter. Under a fixed sensor and fixed process noise it is the action expected free energy chooses [@koudahl2021epistemics]. The `Agent` builds one when you give it a `StateGoal`. Build one yourself to hand an `LQRSelector` to `Agent(selector=...)`.
 
 ::: cpomdp.LQRController
 

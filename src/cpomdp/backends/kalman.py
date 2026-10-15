@@ -171,7 +171,7 @@ class KalmanBackend:
             ValueError: If ``observation`` is not shape ``(m,)``, ``prior`` is not
                 a belief over the model's ``n``-D state, the model has a control
                 matrix but ``action`` is ``None``, or ``action`` is not shape
-                ``(p,)``. (All enforced in ``_validate_inputs``.)
+                ``(p,)``. (All enforced in ``_validate_step_inputs``.)
         """
         model = self.model
         observation, action = _validate_step_inputs(model, observation, prior, action)
