@@ -17,11 +17,11 @@ from dataclasses import dataclass
 import jax.numpy as jnp
 from numpy.typing import ArrayLike
 
+from cpomdp.ffg._message import CanonicalGaussian
 from cpomdp.ffg.factors.linear_gaussian import (
     GaussianCoupling,
     ObservationFactor,
 )
-from cpomdp.ffg.message import CanonicalGaussian
 from cpomdp.types import Belief
 
 __all__ = ["Coupling", "CouplingGraph"]
@@ -180,7 +180,7 @@ class CouplingGraph:
         # Seed each observed node with its reading's message, then fold in the prior at
         # the root (which may already hold the root's own observation).
         acc = {
-            node: self.observations[node].message(reading)
+            node: self.observations[node]._message(reading)
             for node, reading in readings.items()
         }
         acc[self.root] = combine(acc, self.root, prior_msg)
@@ -194,14 +194,14 @@ class CouplingGraph:
                 continue
             edge = parent_edge[node]
             # Summarise everything known at `node` onto its parent, eliminating `node`.
-            up = edge.factor.message_to_parent(acc[node])
+            up = edge.factor._message_to_parent(acc[node])
             acc[edge.parent] = combine(acc, edge.parent, up)
 
         # Read the accumulated root message back into moment form.
         mean, cov = acc[self.root].to_moment()  # Σ = Λ⁻¹, μ = Λ⁻¹h
         return Belief(mean=mean, cov=cov)
 
-    def infer_all(
+    def _infer_all(
         self, seeds: Mapping[int, CanonicalGaussian]
     ) -> dict[int, CanonicalGaussian]:
         """Every node's exact marginal by two-pass belief propagation over the tree.
@@ -245,7 +245,7 @@ class CouplingGraph:
         up_msg = {}
         for node in order:
             edge = parent_edge[node]
-            up = edge.factor.message_to_parent(below[node])
+            up = edge.factor._message_to_parent(below[node])
             up_msg[node] = up
             below[edge.parent] = combine(below, edge.parent, up)
 
@@ -255,6 +255,6 @@ class CouplingGraph:
         marginals = {self.root: below[self.root]}
         for node in reversed(order):
             edge = parent_edge[node]
-            down = edge.factor.message_to_child(marginals[edge.parent] - up_msg[node])
+            down = edge.factor._message_to_child(marginals[edge.parent] - up_msg[node])
             marginals[node] = combine(below, node, down)
         return marginals

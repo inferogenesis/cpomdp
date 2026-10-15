@@ -1,7 +1,7 @@
 """CanonicalGaussian: the FFG message algebra (v0.4 Phase 1, DECISIONS.md ADR-012).
 
 Oracle-first (per the build plan): these tests are written before
-``cpomdp.ffg.message.CanonicalGaussian`` exists, so the whole file is RED until
+``cpomdp.ffg._message.CanonicalGaussian`` exists, so the whole file is RED until
 that module lands. Each oracle here is computed independently of the
 implementation under test — plain NumPy, a different formula path, or a
 literal dense slice — never by importing or re-deriving the kernel's own math.
@@ -26,7 +26,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from cpomdp.ffg.message import CanonicalGaussian
+from cpomdp.ffg._message import CanonicalGaussian
 
 
 def _spd(rng, n):

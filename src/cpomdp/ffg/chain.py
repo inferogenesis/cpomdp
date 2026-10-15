@@ -11,9 +11,9 @@ One step decomposes into the owned algebra exactly as the factor docstrings prom
 
     prior (moment) ──┐
                      ▼  to canonical: Λ₀ = Σ⁻¹, h₀ = Λ₀μ
-        GaussianTransition.predict(prior_msg, control_term)   # predict  (x → x')
+        GaussianTransition._predict(prior_msg, control_term)  # predict  (x → x')
                      ▼
-        predicted_msg + GaussianObservation.message(y)        # update   (+ = product)
+        predicted_msg + GaussianObservation._message(y)       # update   (+ = product)
                      ▼  to_moment: Σ = Λ⁻¹, μ = Λ⁻¹h
                 posterior (moment)
 
@@ -41,8 +41,8 @@ import jax.numpy as jnp
 from numpy.typing import ArrayLike
 
 from cpomdp.backends.base import _validate_step_inputs
+from cpomdp.ffg._message import CanonicalGaussian
 from cpomdp.ffg.factors.linear_gaussian import GaussianObservation, GaussianTransition
-from cpomdp.ffg.message import CanonicalGaussian
 from cpomdp.types import Belief, LinearGaussianModel
 
 __all__ = ["ChainBackend"]
@@ -211,8 +211,8 @@ class ChainBackend:
             prior_precision, prior_precision @ prior.mean
         )  # h₀ = Λ₀μ; invariant-preserving lift of a validated Belief — no re-validate
 
-        predicted = transition.predict(prior_msg, control_term)
-        posterior_msg = predicted + observation_factor.message(observation)
+        predicted = transition._predict(prior_msg, control_term)
+        posterior_msg = predicted + observation_factor._message(observation)
 
         mean_post, cov_post = posterior_msg.to_moment()  # Σ = Λ⁻¹, μ = Λ⁻¹h
 

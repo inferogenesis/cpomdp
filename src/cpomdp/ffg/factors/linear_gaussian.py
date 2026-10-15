@@ -31,7 +31,7 @@ from jaxtyping import Float64, PyTree
 from numpy.typing import ArrayLike
 
 from cpomdp._validation import validate_covariance
-from cpomdp.ffg.message import CanonicalGaussian
+from cpomdp.ffg._message import CanonicalGaussian
 
 __all__ = [
     "CallableGaussianObservation",
@@ -45,10 +45,9 @@ __all__ = [
 @jax.tree_util.register_pytree_node_class
 @dataclass(frozen=True, init=False)
 class GaussianObservation:
-    """Tier-1 likelihood factor ``N(y; Cx, R)`` — emits a message into the state.
+    """Tier-1 likelihood factor ``N(y; Cx, R)``: a fixed sensor on a graph node.
 
-    Holds the fixed sensor map and noise; ``message(y)`` turns a reading into its
-    canonical-form contribution to the belief on x.
+    Holds the fixed sensor map and noise.
 
     - ``observation_matrix`` — C, shape ``(m, n)``.
     - ``observation_noise`` — R, shape ``(m, m)``, positive-definite (it is inverted).
@@ -91,7 +90,7 @@ class GaussianObservation:
                 f"got shape {observation_noise.shape}"
             )
 
-    def message(
+    def _message(
         self, observation: ArrayLike, state: ArrayLike | None = None
     ) -> CanonicalGaussian:
         """The likelihood's message into x: ``Λ = CᵀR⁻¹C``, ``h = CᵀR⁻¹y``.
@@ -104,7 +103,7 @@ class GaussianObservation:
         Args:
             observation: the reading y, shape ``(m,)``.
             state: ignored — a fixed sensor's noise does not depend on the state. It is
-                accepted so the fixed and state-dependent factors share one ``message``
+                accepted so the fixed and state-dependent factors share one ``_message``
                 interface (the backend can call either without a type branch).
 
         Returns:
@@ -167,8 +166,7 @@ class CallableGaussianObservation:
     ``noise_fn(x, params) -> R(x)``. Evaluated at the predicted mean ``μ⁺`` — which the
     action moves — ``R`` is no longer action-invariant, so the FFG epistemic term stops
     collapsing to LQR (ADR-003) and the chosen action can seek states where the sensor
-    is sharper (the dual effect, ADR-014 finding #1). ``message(y, state)`` emits the
-    same information-form message as the fixed factor, at the plugged-in ``R(state)``.
+    is sharper (the dual effect, ADR-014 finding #1).
 
     - ``observation_matrix`` — C, shape ``(m, n)`` (constant); a traced pytree **leaf**.
     - ``noise_fn`` — ``(x, params) -> R(x)``, a positive-definite ``(m, m)`` covariance;
@@ -216,12 +214,12 @@ class CallableGaussianObservation:
         # R(x) is inverted in the message, so it must be positive-definite.
         validate_covariance(r0, "noise_fn(x, params)", require_definite=True)
 
-    def message(
+    def _message(
         self, observation: ArrayLike, state: ArrayLike | None = None
     ) -> CanonicalGaussian:
         """The likelihood's message into x, with ``R`` evaluated at the plug-in state.
 
-        Identical to ``GaussianObservation.message`` (``Λ = CᵀR⁻¹C``, ``h = CᵀR⁻¹y``)
+        Identical to ``GaussianObservation._message`` (``Λ = CᵀR⁻¹C``, ``h = CᵀR⁻¹y``)
         but for the one thing that makes the sensor state-dependent: ``R`` is taken at
         ``state`` — the predicted mean ``μ⁺`` — rather than fixed. A solve against
         ``R(state)`` avoids forming its inverse; the result is valid by construction, so
@@ -241,9 +239,9 @@ class CallableGaussianObservation:
         """
         if state is None:
             raise ValueError(
-                "CallableGaussianObservation.message needs the plug-in state (the "
-                "predicted mean μ⁺) to evaluate R(x); a static or factored inference "
-                "context has no such linearization point."
+                "a CallableGaussianObservation needs the predicted mean μ⁺ to "
+                "evaluate R(x), and static inference has none. Run the graph through "
+                "a CouplingGraphBackend."
             )
         observation_matrix = self.observation_matrix  # C
         reading = jnp.asarray(observation, dtype=float)  # y
@@ -311,10 +309,10 @@ class CallableGaussianObservation:
 @jax.tree_util.register_pytree_node_class
 @dataclass(frozen=True, init=False)
 class GaussianTransition:
-    """Tier-1 dynamics factor ``N(x'; Ax + b, Q)`` — emits the forward predict.
+    """Tier-1 dynamics factor ``N(x'; Ax + b, Q)``: how one node steps in time.
 
-    Holds the fixed transition and process noise; ``predict(message, b)`` pushes a
-    belief on x through the dynamics to a belief on x'.
+    Holds the node's fixed transition and process noise. A
+    [`CouplingGraphBackend`][cpomdp.CouplingGraphBackend] takes one per node.
 
     - ``dynamics_matrix`` — A, shape ``(n, n)``.
     - ``dynamics_noise`` — Q, shape ``(n, n)``, positive-definite (it is inverted).
@@ -387,7 +385,7 @@ class GaussianTransition:
         q = stationary_var * (1.0 - a * a)  # Q = Σ_stat (1 − A²)
         return cls(jnp.reshape(a, (1, 1)), dynamics_noise=jnp.reshape(q, (1, 1)))
 
-    def predict(
+    def _predict(
         self,
         message: CanonicalGaussian,
         control_term: ArrayLike | None = None,
@@ -514,7 +512,7 @@ class GaussianCoupling:
                 f"got shape {coupling_noise.shape}"
             )
 
-    def message_to_parent(self, child_message: CanonicalGaussian) -> CanonicalGaussian:
+    def _message_to_parent(self, child_message: CanonicalGaussian) -> CanonicalGaussian:
         """Summarise what a child's belief says about the parent: eliminate the child.
 
         The coupling is the joint Gaussian over ``z = [parent, child]``::
@@ -529,7 +527,7 @@ class GaussianCoupling:
            ``h_J`` (a block add during construction, *not* ``__add__``).
         2. Marginalizes the child out, leaving the message on the p-D parent.
 
-        This is the mirror of ``GaussianTransition.predict`` (which folds into the
+        This is the mirror of ``GaussianTransition._predict`` (which folds into the
         parent block and eliminates the parent, emitting downward onto the child);
         here we fold into the child block and eliminate the child, emitting upward.
 
@@ -564,15 +562,15 @@ class GaussianCoupling:
         joint = CanonicalGaussian._unchecked(precision, potential)
         return joint.marginalize(over=range(p, p + c))  # eliminate child, keep parent
 
-    def message_to_child(self, parent_message: CanonicalGaussian) -> CanonicalGaussian:
+    def _message_to_child(self, parent_message: CanonicalGaussian) -> CanonicalGaussian:
         """Push a parent's belief down the edge onto the child: eliminate the parent.
 
-        The distribute-pass mirror of ``message_to_parent``. Over the same joint on
+        The distribute-pass mirror of ``_message_to_parent``. Over the same joint on
         ``z = [parent, child]``, but here the *parent* is known, so its message folds
         into the *parent* block of ``Λ_J`` and the parent is marginalized out, leaving
         the message on the c-D child.
 
-        Structurally this is ``GaussianTransition.predict`` (fold the incoming belief
+        Structurally this is ``GaussianTransition._predict`` (fold the incoming belief
         into the source block, eliminate the source, emit onto the target) with a
         non-square ``W`` and no control shift — a pure coupling carries no bias. So on
         its own the downward message is a full child belief, landing in moment form on
@@ -630,6 +628,6 @@ class GaussianCoupling:
 
 
 # A node's likelihood factor is either fixed or state-dependent; both share the
-# ``message(observation, state=None)`` interface, so the graph and backend hold them
+# ``_message(observation, state=None)`` interface, so the graph and backend hold them
 # uniformly (the fixed factor ignores ``state``).
 ObservationFactor = GaussianObservation | CallableGaussianObservation

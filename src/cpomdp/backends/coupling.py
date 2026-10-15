@@ -22,9 +22,9 @@ from jaxtyping import Float64
 from numpy.typing import ArrayLike
 
 from cpomdp.backends.base import _validate_step_inputs
+from cpomdp.ffg._message import CanonicalGaussian
 from cpomdp.ffg.factors.linear_gaussian import GaussianTransition, ObservationFactor
 from cpomdp.ffg.graph import Coupling, CouplingGraph
-from cpomdp.ffg.message import CanonicalGaussian
 from cpomdp.types import Belief, LinearGaussianModel
 
 __all__ = ["CouplingGraphBackend", "IncompatibleLinearizationError"]
@@ -167,7 +167,7 @@ class CouplingGraphBackend:
         self._partition = self._resolve_partition(partition)
         # Fully-factored (every cluster a singleton) → the carry keeps the belief
         # block-diagonal, so the within-slice solve is a tree and cheap two-pass BP
-        # (``infer_all``) replaces the dense joint solve (ADR-016 energy lever).
+        # (``_infer_all``) replaces the dense joint solve (ADR-016 energy lever).
         self._is_factored = all(len(cluster) == 1 for cluster in self._partition)
 
         # Front-loaded factor tier — built once, reused every step (ADR-002).
@@ -399,14 +399,14 @@ class CouplingGraphBackend:
         """Scatter each node's observation message into the joint (Λ_obs, h_obs).
 
         The per-step twin of ``_assemble_structural_precision``: each observed node's
-        ``GaussianObservation.message(y_node)`` is a canonical message on that node
+        ``GaussianObservation._message(y_node)`` is a canonical message on that node
         (``CᵀR⁻¹C``, ``CᵀR⁻¹y``); place each at the node's offset. Data-dependent — it
         reads ``y`` — unlike the front-loaded structural precision.
         """
         precision = jnp.zeros((self.n_total, self.n_total))
         potential = jnp.zeros(self.n_total)
         for node, lo, hi in self._obs_layout:
-            message = self.graph.observations[node].message(observation[lo:hi])
+            message = self.graph.observations[node]._message(observation[lo:hi])
             block = self._block(node)
             precision = precision.at[block, block].add(message.precision)
             potential = potential.at[block].add(message.potential)
@@ -419,8 +419,8 @@ class CouplingGraphBackend:
 
         The state-dependent twin of ``_observation_messages``: a node with a
         state-dependent sensor evaluates its ``R`` at that node's block of the predicted
-        mean ``μ⁺`` (``obs.message(y_node, μ⁺[block])``); a fixed sensor ignores it
-        (``obs.message(y_node)``), so a mixed graph works. This is where the chosen
+        mean ``μ⁺`` (``obs._message(y_node, μ⁺[block])``); a fixed sensor ignores it
+        (``obs._message(y_node)``), so a mixed graph works. This is where the chosen
         action reaches the covariance — ``μ⁺`` moves with the action, so ``R(μ⁺)`` does
         too, and the epistemic term stops being action-invariant (ADR-003).
         """
@@ -430,7 +430,7 @@ class CouplingGraphBackend:
             block = self._block(node)
             # Uniform call: a fixed factor ignores the state, a state-dependent one
             # evaluates R at μ⁺[block] — no type branch (shared message interface).
-            message = self.graph.observations[node].message(
+            message = self.graph.observations[node]._message(
                 observation[lo:hi], predicted_mean[block]
             )
             precision = precision.at[block, block].add(message.precision)
@@ -517,7 +517,7 @@ class CouplingGraphBackend:
 
         For a singleton partition the carried belief is block-diagonal, so the
         within-slice problem is a tree: each node is seeded per-node (its own predicted
-        block + observation) and ``CouplingGraph.infer_all`` returns every node's exact
+        block + observation) and ``CouplingGraph._infer_all`` returns every node's exact
         marginal in O(tree) small solves, never forming or inverting the dense joint
         (ADR-016). Only each node's own diagonal block of the prior is used, so a
         non-block-diagonal prior is factored on ingest — consistent with the partition.
@@ -526,7 +526,7 @@ class CouplingGraphBackend:
         state-dependent ``R(x)`` today, a nonlinear sensor ``C(x)`` later — needs it
         evaluated at the predicted mean μ⁺, which the per-node predicted seeds do not
         yet carry (couplings only resolve inside BP). So it takes one extra pass: run
-        ``infer_all`` on the *R-free* predicted seeds to read each node's μ⁺ marginal,
+        ``_infer_all`` on the *R-free* predicted seeds to read each node's μ⁺ marginal,
         linearize there, then seed and BP again (ADR-019). The pass-1 seeds carry no
         likelihood, so every point is the R-free predictive prior — non-circular, and
         exact in exactly two passes (not a truncated fixed point). Still O(tree), no
@@ -540,7 +540,7 @@ class CouplingGraphBackend:
             node_prior = CanonicalGaussian._unchecked(
                 node_precision, node_precision @ prior.mean[block]
             )
-            predicted[node] = self.transitions[node].predict(
+            predicted[node] = self.transitions[node]._predict(
                 node_prior, control_term[block]
             )
 
@@ -549,7 +549,7 @@ class CouplingGraphBackend:
         else:
             # Pass 1: μ⁺ marginals from the R-free predicted seeds (couplings via BP, no
             # observation) — the frozen point every R(μ⁺) is linearized at (ADR-019).
-            predicted_marginals = self.graph.infer_all(predicted)
+            predicted_marginals = self.graph._infer_all(predicted)
             mu_plus = jnp.concatenate(
                 [
                     predicted_marginals[node].to_moment()[0]
@@ -567,7 +567,7 @@ class CouplingGraphBackend:
                 predicted[node].precision + obs_precision[block, block],
                 predicted[node].potential + obs_potential[block],
             )
-        marginals = self.graph.infer_all(seeds)
+        marginals = self.graph._infer_all(seeds)
         moments = [marginals[node].to_moment() for node in range(len(self.dims))]
         mean = jnp.concatenate([node_mean for node_mean, _ in moments])
         cov = jax.scipy.linalg.block_diag(*[node_cov for _, node_cov in moments])
@@ -730,7 +730,7 @@ class CouplingGraphBackend:
             prior_precision,
             prior_precision @ prior.mean,  # h₀ = Λ₀μ
         )
-        predicted = self._transition.predict(prior_msg, control_term)  # → Λ⁻, h⁻
+        predicted = self._transition._predict(prior_msg, control_term)  # → Λ⁻, h⁻
         return predicted.precision + self._structural_precision, predicted.potential
 
     def _carry(self, cov: jax.Array) -> tuple[jax.Array, jax.Array]:
