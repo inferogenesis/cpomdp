@@ -46,7 +46,7 @@ def chemotaxis_ffg(dt):
 
     Returns ``(graph, transitions)``: the structural ``CouplingGraph`` (couplings +
     observations) and the node-indexed per-node OU ``GaussianTransition``s, to hand
-    to ``CouplingGraphBackend(graph, transitions)``.
+    to ``CouplingGraphBackend(graph, transitions, prior=...)``.
     """
     transitions = tuple(
         GaussianTransition.from_ou(

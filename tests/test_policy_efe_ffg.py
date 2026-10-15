@@ -26,6 +26,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+from _support import unit_prior
 from cpomdp.backends.coupling import CouplingGraphBackend
 from cpomdp.efe import (
     PolicyEfeTrace,
@@ -74,7 +75,10 @@ def _single_node_pair(*, state_dependent):
         obs_flat = None
     graph = CouplingGraph(root=0, dims=(2,), couplings=(), observations={0: obs_ffg})
     backend = CouplingGraphBackend(
-        graph, (GaussianTransition(a, dynamics_noise=q),), control_matrix=b
+        graph,
+        (GaussianTransition(a, dynamics_noise=q),),
+        prior=unit_prior(graph),
+        control_matrix=b,
     )
     model = LinearGaussianModel(
         dynamics_matrix=a,
@@ -102,7 +106,9 @@ def _coupled_backend():
         GaussianTransition([[0.7]], dynamics_noise=[[0.1]]),
         GaussianTransition([[0.5]], dynamics_noise=[[0.08]]),
     )
-    return CouplingGraphBackend(graph, transitions, control_matrix=[[1.0], [0.0]])
+    return CouplingGraphBackend(
+        graph, transitions, prior=unit_prior(graph), control_matrix=[[1.0], [0.0]]
+    )
 
 
 def _coupled_belief():

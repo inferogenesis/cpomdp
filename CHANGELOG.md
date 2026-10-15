@@ -542,6 +542,11 @@ no use of the readings beats it.
   `GaussianCoupling([[0.05]], [[0.9]])` built an edge with the two swapped. The new name
   follows the `_matrix` suffix every other linear map carries. 33 call sites moved to
   keywords.
+- **Breaking:** `CouplingGraphBackend` takes a required keyword `prior`, the belief over
+  the joint state before any reading. Its `model.prior` was an N(0, I) placeholder, so
+  an `Agent` built on the backend planned and filtered from a belief the caller never
+  chose, and `to_flat_model()` carried the same placeholder. The flagship example
+  overwrote `agent.belief` to work around it. Pass the starting belief at construction.
 - **Breaking:** every `LinearGaussianModel` argument after `dynamics` is keyword-only.
   The four matrices are two maps and two covariances of the same rank, and only the
   covariances are content-checked, so a transposed pair constructed in silence whenever

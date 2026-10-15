@@ -13,6 +13,7 @@ which fires at ``FfgEfeSelector`` construction (the EFE path), never on pure fil
 import numpy as np
 import pytest
 
+from _support import unit_prior
 from cpomdp.agent import Agent
 from cpomdp.backends.base import InadmissiblePartitionError
 from cpomdp.backends.coupling import CouplingGraphBackend
@@ -61,7 +62,11 @@ def _backend(graph, partition=None):
         GaussianTransition([[0.9]], dynamics_noise=[[0.02]]),
     )
     return CouplingGraphBackend(
-        graph, transitions, control_matrix=[[1.0], [0.0], [0.0]], partition=partition
+        graph,
+        transitions,
+        prior=unit_prior(graph),
+        control_matrix=[[1.0], [0.0], [0.0]],
+        partition=partition,
     )
 
 

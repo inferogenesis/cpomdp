@@ -4,6 +4,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
+from _support import unit_prior
 from cpomdp import (
     Belief,
     CallableGaussianObservation,
@@ -257,7 +258,10 @@ class TestProbeGraphBackend:
             ),
         )
         return CouplingGraphBackend(
-            graph, transitions, control_matrix=[[0.0], [1.0], [0.0]]
+            graph,
+            transitions,
+            prior=unit_prior(graph),
+            control_matrix=[[0.0], [1.0], [0.0]],
         )
 
     @staticmethod
@@ -292,6 +296,7 @@ class TestProbeGraphBackend:
                     [[1.0, 0.0], [0.0, 1.0]], dynamics_noise=[[0.1, 0.0], [0.0, 0.1]]
                 ),
             ),
+            prior=unit_prior(graph),
             control_matrix=[[1.0], [0.0]],
         )
         report = probe_model(backend, Belief(jnp.zeros(2), jnp.eye(2)), ACTIONS)

@@ -387,7 +387,10 @@ def build_maze(
     for axis in range(n_dims):
         control_matrix[context_dim + axis, axis] = 1.0
     return CouplingGraphBackend(
-        graph, transitions, control_matrix=control_matrix.tolist()
+        graph,
+        transitions,
+        prior=start_belief(n_dims, context_dim=context_dim),
+        control_matrix=control_matrix.tolist(),
     )
 
 

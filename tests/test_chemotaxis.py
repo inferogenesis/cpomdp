@@ -19,6 +19,7 @@ from chemotaxis_model import (
     chemotaxis_ffg,
 )
 
+from _support import unit_prior
 from cpomdp.backends.coupling import CouplingGraphBackend
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.backends.rxinfer import RxInferBackend
@@ -53,7 +54,7 @@ def test_filtering_matches_flat_kalman():
     # The built model's filtering equals an independent KalmanBackend on the flattened
     # joint (structural couplings as within-slice pseudo-observations), step for step.
     graph, transitions = chemotaxis_ffg(dt=0.01)
-    backend = CouplingGraphBackend(graph, transitions)
+    backend = CouplingGraphBackend(graph, transitions, prior=unit_prior(graph))
     flat = KalmanBackend(backend.to_flat_model())
 
     rng = np.random.default_rng(0)
@@ -77,7 +78,7 @@ def test_filtering_matches_rxinfer_on_flat_model():
     # The external oracle: RxInfer (Julia) on the flattened joint must reproduce the
     # native backend's filtering, through completely separate machinery.
     graph, transitions = chemotaxis_ffg(dt=0.01)
-    backend = CouplingGraphBackend(graph, transitions)
+    backend = CouplingGraphBackend(graph, transitions, prior=unit_prior(graph))
     oracle = RxInferBackend(backend.to_flat_model())
 
     rng = np.random.default_rng(1)
@@ -108,10 +109,14 @@ def test_methylation_is_the_cheapest_node_to_sever():
 
     def sever_one(node):
         partition = [[n for n in range(5) if n != node], [node]]
-        backend = CouplingGraphBackend(graph, transitions, partition=partition)
+        backend = CouplingGraphBackend(
+            graph, transitions, prior=unit_prior(graph), partition=partition
+        )
         return backend.partition_error(y, prior)
 
-    exact = CouplingGraphBackend(graph, transitions).partition_error(y, prior)
+    exact = CouplingGraphBackend(
+        graph, transitions, prior=unit_prior(graph)
+    ).partition_error(y, prior)
     assert exact == pytest.approx(0.0)  # the full carry drops nothing
 
     cheb = sever_one(CHEB)
@@ -127,7 +132,7 @@ def test_epistemic_can_target_the_hidden_hub():
     # couplings. That info gain is positive, isolable, and distinct from the whole-state
     # info gain the flat observation-space EFE is limited to.
     graph, transitions = chemotaxis_ffg(dt=0.01)
-    backend = CouplingGraphBackend(graph, transitions)
+    backend = CouplingGraphBackend(graph, transitions, prior=unit_prior(graph))
     observation_matrix, observation_noise = backend.observation_model
     prior = Belief(mean=np.zeros(5), cov=np.eye(5))
     sigma_pred = backend.predicted_belief(prior).cov  # Σ⁺

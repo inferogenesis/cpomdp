@@ -124,6 +124,9 @@ class CouplingGraphBackend:
             dynamics. Each ``Q_i`` must be positive-*definite* (the information form
             inverts it), the same divergence from moment-form Kalman that
             ``ChainBackend`` carries.
+        prior: the belief over the joint state before any reading, a mean of length
+            ``n_total``. It is ``model.prior``, so an [`Agent`][cpomdp.Agent] built on
+            this backend starts from it, and ``to_flat_model`` carries it.
         control_matrix: B, shape ``(n_total, p)``, mapping an action into the joint
             ``None`` for a pure filtering model. ``n_total = sum(graph.dims)``.
         readout_node: the node ``readout`` returns; defaults to ``graph.root``. The
@@ -138,6 +141,7 @@ class CouplingGraphBackend:
         graph: CouplingGraph,
         transitions: Sequence[GaussianTransition],
         *,
+        prior: Belief,
         control_matrix: ArrayLike | None = None,
         readout_node: int | None = None,
         partition: Sequence[Sequence[int]] | None = None,
@@ -155,6 +159,7 @@ class CouplingGraphBackend:
         self.transitions = tuple(transitions)
         self._offsets = tuple(int(o) for o in np.cumsum([0, *graph.dims]))
         self.n_total = self._offsets[-1]
+        self._prior = self._validate_prior(prior)
         self.readout_node = self._resolve_readout_node(readout_node)
         self._control = self._coerce_control(control_matrix)
         self._partition = self._resolve_partition(partition)
@@ -195,6 +200,17 @@ class CouplingGraphBackend:
                     f"transition for node {node} has state dim {state_dim}, "
                     f"but node {node} has dim {graph.dims[node]}"
                 )
+
+    def _validate_prior(self, prior: Belief) -> Belief:
+        """Check the prior is a ``Belief`` over the whole joint state."""
+        if not isinstance(prior, Belief):
+            raise TypeError(f"prior must be a Belief, got {type(prior).__name__}")
+        if prior.mean.shape != (self.n_total,):
+            raise ValueError(
+                f"prior must be over the {self.n_total}-D joint state (the sum of the "
+                f"node dimensions), got a mean of shape {prior.mean.shape}"
+            )
+        return prior
 
     def _resolve_readout_node(self, readout_node: int | None) -> int:
         """Default the readout node to the root and check it is in range."""
@@ -310,8 +326,8 @@ class CouplingGraphBackend:
         ``infer_states`` reuses the shared per-step validator (``backends.base``) every
         backend uses, so a caller gets the same errors here as from ``KalmanBackend``.
         The validator reads only the model's dims, so this carries the *real* stacked
-        observations (not the structural pseudo-observations ``to_flat_model`` adds);
-        the prior is an unused placeholder.
+        observations (not the structural pseudo-observations ``to_flat_model`` adds)
+        and the prior the backend was built with.
 
         A graph with any state-dependent sensor also gets a ``_JointObservation``, so
         the model's ``R`` follows the state rather than sitting frozen at the
@@ -340,7 +356,7 @@ class CouplingGraphBackend:
             observation_matrix=observation_matrix,
             dynamics_noise=self._transition.dynamics_noise,
             observation_noise=observation_noise,
-            prior=Belief(jnp.zeros(self.n_total), jnp.eye(self.n_total)),
+            prior=self._prior,
             control_matrix=self._control,
             observation_model=observation_model,
         )
@@ -829,8 +845,7 @@ class CouplingGraphBackend:
         [`KalmanBackend`][cpomdp.KalmanBackend] or ``RxInferBackend`` on this
         reproduces this backend's filter exactly — the independent cross-check, and what
         the Phase-3 demo contrasts the native FFG against. Pad a step's readings with
-        ``flat_observation`` first; the returned prior is an unused placeholder (pass
-        the real prior per step).
+        ``flat_observation`` first. The returned model carries the backend's prior.
 
         With couplings present a state-dependent ``R(x)`` is a *category error* for this
         route (``IncompatibleLinearizationError`` — the flat Kalman linearizes at μ⁻,
@@ -874,7 +889,7 @@ class CouplingGraphBackend:
             observation_matrix=jnp.vstack(rows),
             dynamics_noise=self._transition.dynamics_noise,
             observation_noise=jax.scipy.linalg.block_diag(*noise_blocks),
-            prior=Belief(jnp.zeros(self.n_total), jnp.eye(self.n_total)),
+            prior=self._prior,
             control_matrix=self._control,
             observation_model=observation_model,
         )

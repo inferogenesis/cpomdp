@@ -176,7 +176,9 @@ def build_backend(
         [1.0],
         [0.0],
     ]  # B: the 1-D action drives position (joint idx 1)
-    return CouplingGraphBackend(graph, transitions, control_matrix=control_matrix)
+    return CouplingGraphBackend(
+        graph, transitions, prior=start_belief(), control_matrix=control_matrix
+    )
 
 
 def start_belief() -> Belief:
@@ -201,9 +203,7 @@ def build_agent(backend: CouplingGraphBackend) -> Agent:
         horizon=1,
         info_node=CONTEXT,
     )
-    agent = Agent.from_backend(backend, objective)
-    agent.belief = start_belief()  # the FFG backend's model.prior is a placeholder
-    return agent
+    return Agent.from_backend(backend, objective)
 
 
 def simulate(*, epistemic_alive: bool, seed: int = 7, cue_x: float = CUE_X) -> dict:
