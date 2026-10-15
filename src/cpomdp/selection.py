@@ -565,19 +565,25 @@ class StateGoal:
 class ObservationGoal:
     """An observation-space objective: prefer to observe a target (the EFE regime).
 
-    The complete spec for the information-seeking path - the preferred observation, how
-    sharply it is preferred (``precision``), and the action-search config the
-    EFESelector front-loads: ``action_bounds`` is the action box, two finite scalars,
-    ``n_candidates`` how many actions the grid holds in total, ``horizon`` its lookahead
-    depth. Left as ``None``, the horizon is the
-    shortest at which the target moves the scores, which the Agent reads off the model
-    (ADR-068). On a double integrator observed in position that is 2.
-    ``agent.selector.horizon`` reads it back. ``info_node`` optionally aims the
-    epistemic term at a single latent *node* (info gain about that node's marginal, the
-    factored-EFE regime on a branching backend, issue #26); ``None`` = whole-state info
-    gain (the default, unchanged behaviour). The Agent dispatches an ObservationGoal to
-    an EFESelector. Not a pytree - construction-time only; the Agent extracts a
-    Preference.
+    The complete spec for the information-seeking path: the preferred observation, how
+    sharply it is preferred (``precision``), and the grid search the Agent builds from
+    it. ``action_bounds`` is the action box, two finite scalars. ``n_candidates`` is how
+    many actions the grid holds in total.
+
+    ``horizon`` is how many steps each candidate is held and scored over. A candidate
+    is one action repeated, so a longer horizon looks further along a constant push.
+    It never scores a plan whose action changes, such as stepping to a cue and then
+    committing. That search is ``cpomdp.enumeration.EnumeratedEfeSearch``, passed to
+    the Agent as a selector beside a [`Preference`][cpomdp.Preference]. Left as
+    ``None``, the horizon is the shortest at which the target moves the scores, which
+    the Agent reads off the model (ADR-068). On a double integrator observed in
+    position that is 2. ``agent.selector.horizon`` reads it back.
+
+    ``info_node`` optionally aims the epistemic term at a single latent *node* (info
+    gain about that node's marginal, the factored-EFE regime on a branching backend,
+    issue #26). ``None`` means whole-state info gain. The Agent dispatches an
+    ObservationGoal to an EFESelector, or to an FfgEfeSelector on a branching backend.
+    Not a pytree. The Agent reads it once at construction and keeps a Preference.
     """
 
     target: Float64[Array, "m"]
