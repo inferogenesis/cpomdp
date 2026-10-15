@@ -28,7 +28,7 @@ The stateful façade you drive: `infer_states` to perceive, `sample_action` to a
         obs -- "R(x) sensor" --> c1["Curious EFE: horizon read off the model"]:::curious
         obs -- "R(x) sensor,<br/>horizon set too short" --> r3["Refused: the target does not move the scores"]:::refused
         obs -- "fixed sensor" --> r4["Refused: same information everywhere"]:::refused
-        obs -- "Q(x) only" --> rq["Refused, though Q(x) alone<br/>can make an agent curious"]:::gap
+        obs -- "Q(x) only" --> rq["Refused, though Q(x) alone<br/>can make an agent curious"]:::refused
         obs -- "graph model,<br/>R(x) node sensors" --> c2["Curious EFE: graph selector, horizon 1"]:::curious
         obs -- "graph model,<br/>fixed sensors" --> flat["EFE: information term flat"]:::flat
 

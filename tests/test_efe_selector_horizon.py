@@ -69,7 +69,7 @@ def _pref():
 
 
 class TestHorizonConstruction:
-    def test_default_horizon_is_left_to_the_agent(self):
+    def test_default_horizon_is_one(self):
         sel = EFESelector(_model(), n_candidates=11, action_bounds=(-2.0, 2.0))
         assert sel.horizon == 1
         assert sel.cost_per_cycle == 11  # n_candidates * 1
