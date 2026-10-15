@@ -518,8 +518,10 @@ certainty equivalence is optimal, and no use of the readings beats it.
   receding-horizon driver is a different quantity and is unmeasured. The declaration now
   travels with the number in the `PROVED` details, in `warrant_numbers.md`, in the ledger
   and in the README, and a test asserts it so the qualifier cannot be dropped silently.
-- cpomdp requires `warrantlib>=0.2`, up from `>=0.1`. Breaking for anyone pinning
-  warrantlib 0.1.
+- cpomdp requires `warrantlib>=0.3,<0.4`, up from `>=0.1`. The tree builds the
+  completeness certificates 0.3 introduced, and against 0.2 the modules that build them
+  failed to import. The cap is there because warrantlib's minor versions break before
+  1.0, as cpomdp's do. Breaking for anyone pinning warrantlib below 0.3.
 - **Breaking:** the model's fields are `dynamics_matrix`, `control_matrix`,
   `observation_model` and `dynamics_noise_model` (were `dynamics`, `control`,
   `observation`, `process_noise`). One rule now covers every field: `_matrix` is a linear

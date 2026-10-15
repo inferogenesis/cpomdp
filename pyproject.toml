@@ -27,7 +27,8 @@ dependencies = [
     "numpy>=1.24",
     # The warrant vocabulary, published separately and developed in this repository
     # under `packages/warrantlib`. Stdlib-only, so it adds nothing to the install.
-    "warrantlib>=0.2",
+    # Capped below 0.4 because its minor versions break before 1.0, as cpomdp's do.
+    "warrantlib>=0.3,<0.4",
 ]
 
 [project.urls]
@@ -81,7 +82,7 @@ packages = ["src/cpomdp"]
 members = ["packages/warrantlib", "research"]
 
 # Resolved from the tree while developing. `uv build` strips these, so the published
-# wheel carries a plain `Requires-Dist: warrantlib>=0.2`.
+# wheel carries a plain `Requires-Dist: warrantlib<0.4,>=0.3`.
 [tool.uv.sources]
 warrantlib = { workspace = true }
 cpomdp-research = { workspace = true }
