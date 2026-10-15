@@ -24,7 +24,7 @@ import jax.numpy as jnp
 from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
-from cpomdp._validation import validate_covariance
+from cpomdp._validation import state_dependent, validate_covariance
 from cpomdp.backends.base import InferenceBackend
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.types import Belief, LinearGaussianModel
@@ -147,8 +147,8 @@ class World:
                 )
             mean_next = mean_next + model.control_matrix @ action
 
-        process = model.dynamics_noise_model
-        if process is None or process.is_fixed:
+        process = state_dependent(model.dynamics_noise_model)
+        if process is None:
             dynamics_noise = model.dynamics_noise
         else:
             dynamics_noise = process.noise_at(mean_next)
@@ -164,8 +164,8 @@ class World:
             key_dynamics, mean_next, dynamics_noise, method="svd"
         )
 
-        sensor = model.observation_model
-        if sensor is None or sensor.is_fixed:
+        sensor = state_dependent(model.observation_model)
+        if sensor is None:
             observation_matrix = model.observation_matrix
             observation_noise = model.observation_noise
         else:

@@ -13,6 +13,7 @@ __all__ = [
     "concrete",
     "equilibrium_drift",
     "require_fixed_noise",
+    "state_dependent",
     "validate_covariance",
     "validate_declared",
     "validate_finite",
@@ -23,6 +24,28 @@ UNVERSIONED = (
 )
 
 _NOISE_SLOTS = ("observation_model", "dynamics_noise_model")
+
+
+class _FlagsFixed(Protocol):
+    """A noise object: an observation model or a dynamics noise model."""
+
+    @property
+    def is_fixed(self) -> bool: ...
+
+
+_NoiseModel = TypeVar("_NoiseModel", bound=_FlagsFixed)
+
+
+def state_dependent(noise_model: _NoiseModel | None) -> _NoiseModel | None:
+    """``noise_model`` if it varies with the state, ``None`` if the noise is constant.
+
+    ``None`` comes back for a model carrying no object, which leaves the plain field as
+    the noise, and for an object flagged ``is_fixed``. Every consumer with a fixed-noise
+    path makes this test before taking it.
+    """
+    if noise_model is None or noise_model.is_fixed:
+        return None
+    return noise_model
 
 
 class _CarriesNoise(Protocol):
@@ -61,8 +84,7 @@ def require_fixed_noise(
         ValueError: Naming the first slot that carries a state-dependent object.
     """
     for slot in slots:
-        carried = getattr(model, slot)
-        if carried is not None and not carried.is_fixed:
+        if state_dependent(getattr(model, slot)) is not None:
             raise ValueError(f"the model's {slot} is state-dependent; {reason}")
 
 
