@@ -119,9 +119,8 @@ def test_agent_rejects_inadmissible_partition():
     # The Agent builds the FFG selector, so the guard reaches the user-facing path too.
     backend = _backend(_hub_graph(), partition=[[0, 2], [1]])
     with pytest.raises(InadmissiblePartitionError):
-        Agent(
-            objective=ObservationGoal([0.5, 0.5], action_bounds=(-2.0, 2.0)),
-            backend=backend,
+        Agent.from_backend(
+            backend, ObservationGoal([0.5, 0.5], action_bounds=(-2.0, 2.0))
         )
 
 

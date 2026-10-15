@@ -39,7 +39,7 @@ class WrongFixedRBackend:
         """Build a filter over ``model`` reading a scaled fixed observation noise.
 
         Args:
-            model: The model being scored. Kept as ``self.model``, untouched.
+            model: The model being scored. Read back as ``model``, untouched.
             magnitude: Relative change to the declared ``observation_noise``, applied
                 as ``value * (1 + magnitude)``.
 
@@ -47,7 +47,7 @@ class WrongFixedRBackend:
             ValueError: If the scaled noise is not a valid covariance, as it is not at
                 a magnitude of ``-1`` or below.
         """
-        self.model = model
+        self._model = model
         self._inner = KalmanBackend(
             LinearGaussianModel(
                 dynamics_matrix=model.dynamics_matrix,
@@ -60,6 +60,11 @@ class WrongFixedRBackend:
                 structure=model.structure,
             )
         )
+
+    @property
+    def model(self) -> LinearGaussianModel:
+        """The model being scored, fixed at construction."""
+        return self._model
 
     def infer_states(
         self,
@@ -92,7 +97,11 @@ class DiagonalCovarianceBackend:
                 is itself degraded.
         """
         self._inner = backend
-        self.model = backend.model
+
+    @property
+    def model(self) -> LinearGaussianModel:
+        """The wrapped backend's model."""
+        return self._inner.model
 
     def infer_states(
         self,

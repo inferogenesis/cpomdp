@@ -11,7 +11,7 @@ Continuous active inference for Python. The continuous-state sibling of [pymdp](
 
 **cpomdp** is a JAX-native active inference toolbox for continuous state spaces. You give it a linear-Gaussian generative model and you get an agent that tracks hidden states and selects actions by minimising expected free energy.
 
-Continuous means continuous: positions, velocities, concentrations, temperatures. State-dependent observation noise keeps the epistemic term alive, so information-seeking behaviour is available in a regime where it is [**provably**](#how-provable-is-your-result-experimental) absent. Inference runs as message passing over a Forney factor graph, JIT-compilable and vmappable end to end.
+Continuous means continuous: positions, velocities, concentrations, temperatures. State-dependent observation noise keeps the epistemic term alive, so information-seeking behaviour is available in a regime where it is [**provably**](#how-provable-is-your-result-experimental) absent. Inference runs as message passing over a Forney factor graph. The backends and action selectors are JIT-compilable and vmappable. The `Agent` that drives them runs eagerly.
 
 The loop is `infer_states` / `sample_action`, which pymdp users will recognise. cpomdp is its continuous-state sibling. The machinery underneath is its own.
 
@@ -160,7 +160,7 @@ agent.sample_action()                 # ValueError: this Agent has no objective 
 | ----------------------------------------- | ---------------------------------------------------------------------------- |
 | perceive, exactly | `Agent.infer_states`, `KalmanBackend` |
 | reach a target state | `StateGoal` with `LQRSelector` |
-| act on expected free energy, one step | `ObservationGoal` with `EFESelector`, `expected_free_energy` |
+| act on expected free energy | `ObservationGoal` with `EFESelector`, `expected_free_energy` |
 | ...over an H-step horizon | `cpomdp.efe.policy_efe`, `policy_efe_trace` |
 | ...searched exhaustively, with a certificate | `cpomdp.enumeration`, `EnumeratedEfeSearch`, `RecedingHorizonSelector`, `OpenLoopSelector` |
 | sense more sharply in some places than others | `CallableSensor`, state-dependent `R(x)` |

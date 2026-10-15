@@ -200,7 +200,7 @@ def build_agent(backend: CouplingGraphBackend) -> Agent:
         horizon=1,
         info_node=CONTEXT,
     )
-    agent = Agent(objective=objective, backend=backend)
+    agent = Agent.from_backend(backend, objective)
     agent.belief = start_belief()  # the FFG backend's model.prior is a placeholder
     return agent
 

@@ -3,9 +3,19 @@ import numpy as np
 import pytest
 
 from cpomdp.agent import Agent
+from cpomdp.backends.degraded import DiagonalCovarianceBackend, WrongFixedRBackend
+from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.control import LQRController
+from cpomdp.ffg.chain import ChainBackend
+from cpomdp.harness import ScoredAgent
 from cpomdp.observation import CallableSensor
-from cpomdp.selection import EFESelector, LQRSelector, ObservationGoal, StateGoal
+from cpomdp.selection import (
+    EFESelector,
+    LQRSelector,
+    ObservationGoal,
+    Preference,
+    StateGoal,
+)
 from cpomdp.types import Belief, LinearGaussianModel
 
 # The double-integrator point mass from test_control: state = [position, velocity],
@@ -147,6 +157,94 @@ def test_perceive_only_agent_cannot_act():
         agent.sample_action()
 
 
+def test_a_model_and_a_backend_cannot_both_be_passed():
+    # Two inputs could disagree, and the Agent would plan on one model and filter on
+    # the other. Each front door takes one input, so there is nothing to disagree.
+    model = _reaching_model()
+    with pytest.raises(TypeError):
+        Agent(model, StateGoal(GOAL), backend=KalmanBackend(model))  # ty: ignore[unknown-argument]
+
+
+def test_from_backend_plans_under_the_backends_model():
+    backend = KalmanBackend(_reaching_model(), steady_state=True)
+    agent = Agent.from_backend(backend, StateGoal(GOAL))
+    assert agent.model is backend.model
+    assert agent._backend is backend  # white-box: the filter is the one passed
+
+
+def test_model_is_read_only():
+    # The selector and controller were built from the model, so swapping it would
+    # leave them planning under the old one while agent.model reported the new.
+    agent = Agent(_reaching_model(), StateGoal(GOAL))
+    with pytest.raises(AttributeError):
+        agent.model = _reaching_model()  # ty: ignore[invalid-assignment]
+
+
+def test_belief_assignment_is_validated():
+    agent = Agent(_reaching_model(), StateGoal(GOAL))
+    with pytest.raises(TypeError, match="Belief"):
+        agent.belief = [1.0, 2.0]  # ty: ignore[invalid-assignment]
+    with pytest.raises(ValueError, match="2-D state"):
+        agent.belief = Belief(mean=[0.0], cov=[[1.0]])
+
+
+def test_belief_assignment_restarts_filtering():
+    agent = Agent(_reaching_model(), StateGoal(GOAL))
+    restart = Belief(mean=[0.5, 0.0], cov=np.eye(2))
+    agent.belief = restart
+    assert agent.belief is restart
+    assert agent.infer_states([0.5]).mean[0] == pytest.approx(0.5, abs=1e-3)
+
+
+def test_kalman_backend_model_is_read_only():
+    backend = KalmanBackend(_reaching_model())
+    with pytest.raises(AttributeError):
+        backend.model = _reaching_model()  # ty: ignore[invalid-assignment]
+    with pytest.raises(AttributeError):
+        backend.steady_state = True  # ty: ignore[invalid-assignment]
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        ScoredAgent,
+        lambda m: LQRController(m, goal_precision=np.eye(2), effort_penalty=np.eye(1)),
+        ChainBackend,
+        lambda m: WrongFixedRBackend(m, magnitude=0.5),
+        lambda m: DiagonalCovarianceBackend(KalmanBackend(m)),
+    ],
+    ids=["ScoredAgent", "LQRController", "ChainBackend", "WrongFixedR", "Diagonal"],
+)
+def test_every_holder_of_a_model_keeps_it_read_only(build):
+    # Each builds a filter, a gain or a factor from the model at construction.
+    holder = build(_reaching_model())
+    with pytest.raises(AttributeError):
+        holder.model = _reaching_model()
+
+
+def _damped_model() -> LinearGaussianModel:
+    # A = 0.9 holds only the origin still: any other state decays toward it.
+    return LinearGaussianModel(
+        dynamics_matrix=[[0.9]],
+        observation_matrix=[[1.0]],
+        dynamics_noise=[[1e-6]],
+        observation_noise=[[1e-2]],
+        prior=Belief(mean=[0.0], cov=[[1.0]]),
+        control_matrix=[[1.0]],
+    )
+
+
+def test_state_goal_off_equilibrium_is_refused():
+    # Unrefused, the regulator settles at x = 0.8432 for a target of 1.
+    with pytest.raises(ValueError, match="equilibrium"):
+        Agent(_damped_model(), StateGoal([1.0]))
+
+
+def test_state_goal_at_equilibrium_is_accepted():
+    agent = Agent(_damped_model(), StateGoal([0.0]))
+    assert agent.sample_action().shape == (1,)
+
+
 # ============================================================================
 # Phase 5: regime dispatch — the sensor type picks the selector.
 #
@@ -216,11 +314,11 @@ class TestRegimeDispatch:
 
     def test_state_goal_on_fixed_sensor_uses_lqr_selector(self):
         agent = Agent(_reaching_model(), StateGoal(GOAL))
-        assert isinstance(agent._selector, LQRSelector)  # white-box: dispatch wiring
+        assert isinstance(agent.selector, LQRSelector)
 
     def test_observation_goal_on_callable_sensor_uses_efe_selector(self):
         agent = Agent(_corridor_model(fixed=False), _OBS_GOAL)
-        assert isinstance(agent._selector, EFESelector)
+        assert isinstance(agent.selector, EFESelector)
 
     def test_explicit_selector_is_used_verbatim(self):
         # An explicit selector= overrides the dispatched selector, used as given.
@@ -228,7 +326,7 @@ class TestRegimeDispatch:
             _corridor_model(fixed=False), n_candidates=11, action_bounds=_BOUNDS
         )
         agent = Agent(_corridor_model(fixed=False), _OBS_GOAL, selector=sel)
-        assert agent._selector is sel
+        assert agent.selector is sel
 
     def test_explicit_selector_rescues_fixed_sensor_observation_goal(self):
         # The escape hatch: an ObservationGoal on a fixed sensor raises under auto-
@@ -238,7 +336,7 @@ class TestRegimeDispatch:
             _corridor_model(fixed=True), n_candidates=11, action_bounds=_BOUNDS
         )
         agent = Agent(_corridor_model(fixed=True), _OBS_GOAL, selector=sel)
-        assert agent._selector is sel
+        assert agent.selector is sel
 
     def test_efe_agent_completes_a_perceive_act_cycle(self):
         # The EFE path wires end-to-end: perceive (Kalman) then act (EFE selection).
@@ -274,6 +372,24 @@ class TestRegimeDispatch:
                 ObservationGoal([0.0, 0.0], action_bounds=(-3.0, 3.0)),
             )
 
+    def test_state_goal_with_an_observation_space_selector_raises(self):
+        # EFESelector reads the preference as an observation. Handed a StateGoal it
+        # pursues C·x = target, so on C = 2 it would settle at x = target / 2.
+        model = _corridor_model(fixed=True)
+        sel = EFESelector(model, n_candidates=11, action_bounds=_BOUNDS)
+        with pytest.raises(ValueError, match="observation"):
+            Agent(model, StateGoal([1.0]), selector=sel)
+
+    def test_observation_goal_with_lqr_selector_raises(self):
+        # LQRSelector regulates the state, so an observation target would be
+        # pursued as a state.
+        model = _corridor_model(fixed=True)
+        sel = LQRSelector(
+            LQRController(model, goal_precision=jnp.eye(1), effort_penalty=jnp.eye(1))
+        )
+        with pytest.raises(ValueError, match="StateGoal"):
+            Agent(model, _OBS_GOAL, selector=sel)
+
     def test_qs_aliases_belief(self):
         # pymdp muscle-memory: agent.qs is a read-only alias of agent.belief.
         agent = Agent(_corridor_model(fixed=False), _OBS_GOAL)
@@ -285,6 +401,140 @@ class TestRegimeDispatch:
         # The objective must be a StateGoal or ObservationGoal — nothing else.
         with pytest.raises(TypeError, match=r"StateGoal|ObservationGoal|objective"):
             Agent(_reaching_model(), "reach the goal")  # ty: ignore[invalid-argument-type]
+
+
+# --- the horizon an ObservationGoal is searched over --------------------------------
+#
+# On the double integrator a push changes velocity, and velocity reaches the observed
+# position a step later. At horizon 1 every candidate scores the same G, and the
+# argmin's first candidate, a full push away from the goal, won the tie. A noise that
+# reads velocity breaks the tie at horizon 1 without the target, so the scores moving
+# is not enough. The target has to move them.
+
+
+def _sharp_near_one(x, params):
+    """R(x) sharpest at position 1, so the noise reads only what the sensor reads."""
+    return jnp.array([[0.01 + (x[0] - 1.0) ** 2]])
+
+
+def _sharp_at_rest(x, params):
+    """R(x) sharpest at zero velocity, a state a push changes at once."""
+    return jnp.array([[0.01 + x[1] ** 2]])
+
+
+def _double_integrator(noise_fn, dynamics=DYNAMICS):
+    return LinearGaussianModel(
+        dynamics_matrix=dynamics,
+        observation_matrix=SENSOR_MODEL,
+        dynamics_noise=np.eye(2) * 1e-6,
+        prior=Belief(mean=[0.0, 0.0], cov=np.eye(2)),
+        control_matrix=CONTROL,
+        observation_model=CallableSensor(SENSOR_MODEL, noise_fn, ()),
+    )
+
+
+_REACH_ONE = ObservationGoal([1.0], action_bounds=(-2.0, 2.0))
+
+
+def _horizon(agent):
+    """The horizon of the EFE selector the Agent built."""
+    assert isinstance(agent.selector, EFESelector)
+    return agent.selector.horizon
+
+
+class TestDerivedHorizon:
+    def test_a_push_two_steps_from_the_reading_is_searched_over_two(self):
+        agent = Agent(_double_integrator(_sharp_near_one), _REACH_ONE)
+        assert _horizon(agent) == 2
+        agent.infer_states([0.0])
+        assert float(agent.sample_action()[0]) > 0.0  # toward the goal at +1
+
+    @pytest.mark.parametrize("noise_fn", [_sharp_near_one, _sharp_at_rest])
+    def test_a_horizon_too_short_to_reach_the_reading_is_refused(self, noise_fn):
+        goal = ObservationGoal([1.0], action_bounds=(-2.0, 2.0), horizon=1)
+        with pytest.raises(ValueError, match="horizon=2"):
+            Agent(_double_integrator(noise_fn), goal)
+
+    def test_at_horizon_one_a_noise_that_reads_velocity_chooses_alone(self):
+        # C·B = 0, so the reading cannot move in one step. The noise can.
+        model = _double_integrator(_sharp_at_rest)
+        selector = EFESelector(model, n_candidates=21, action_bounds=(-2.0, 2.0))
+        up, down = (
+            selector.select(model.prior, Preference([target])) for target in (1.0, -5.0)
+        )
+        np.testing.assert_array_equal(up, down)
+
+    def _first_pushes(self, precision):
+        pushes = []
+        for target in (1.0, -5.0):
+            goal = ObservationGoal(
+                [target], action_bounds=(-2.0, 2.0), precision=precision
+            )
+            agent = Agent(_double_integrator(_sharp_at_rest), goal)
+            assert _horizon(agent) == 2
+            agent.infer_states([0.0])
+            pushes.append(float(agent.sample_action()[0]))
+        return pushes
+
+    def test_noise_that_reads_velocity_does_not_stand_in_for_the_target(self):
+        up, down = self._first_pushes(precision=[[100.0]])
+        assert up > 0.0 > down
+
+    def test_a_weak_preference_loses_to_the_information_term(self):
+        # Read, the target still competes. At precision 1 the agent rests at the prior.
+        up, down = self._first_pushes(precision=None)
+        assert up == pytest.approx(0.0, abs=1e-12)
+        assert down == pytest.approx(0.0, abs=1e-12)
+
+    def test_a_single_integrator_keeps_horizon_one(self):
+        agent = Agent(_corridor_model(fixed=False), _OBS_GOAL)
+        assert _horizon(agent) == 1
+
+    def test_an_action_that_never_reaches_the_reading_is_refused(self):
+        # Velocity never feeds position.
+        model = _double_integrator(_sharp_near_one, dynamics=np.eye(2))
+        with pytest.raises(ValueError, match="within 2 steps"):
+            Agent(model, _REACH_ONE)
+
+    def test_a_refusal_names_the_horizon_it_scored(self):
+        model = _double_integrator(_sharp_near_one, dynamics=np.eye(2))
+        goal = ObservationGoal([1.0], action_bounds=(-2.0, 2.0), horizon=5)
+        with pytest.raises(ValueError, match="at horizon 5,"):
+            Agent(model, goal)
+
+
+class TestSelectorAccess:
+    def test_the_selector_is_read_only(self):
+        agent = Agent(_corridor_model(fixed=False), _OBS_GOAL)
+        with pytest.raises(AttributeError):
+            agent.selector = None  # ty: ignore[invalid-assignment]
+
+    def test_a_tracker_has_no_selector(self):
+        tracker = Agent(_corridor_model(fixed=False, control_matrix=False))
+        assert tracker.selector is None
+
+    def test_printing_the_agent_shows_the_horizon_it_chose(self):
+        agent = Agent(_double_integrator(_sharp_near_one), _REACH_ONE)
+        assert repr(agent) == (
+            "Agent(objective=ObservationGoal, selector=EFESelector(horizon=2, "
+            "n_candidates=21, action_bounds=(-2.0, 2.0)), backend=KalmanBackend)"
+        )
+
+    def test_the_lqr_path_prints_the_gain_it_solved_for(self):
+        printed = repr(Agent(_reaching_model(), StateGoal(GOAL)))
+        assert printed.startswith(
+            "Agent(objective=StateGoal, selector=LQRSelector(controller=LQRController("
+            "gain=[["
+        )
+        assert printed.endswith(")), backend=KalmanBackend)")
+
+    def test_a_selector_without_a_repr_prints_its_name(self):
+        class Fixed:
+            def select(self, belief, preference):
+                return jnp.zeros(1)
+
+        agent = Agent(_corridor_model(fixed=False), _OBS_GOAL, selector=Fixed())
+        assert "selector=Fixed," in repr(agent)
 
 
 def test_state_goal_path_is_byte_identical_to_lqr():

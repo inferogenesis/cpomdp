@@ -4472,3 +4472,62 @@ patch number would break anyone pinned to `~=0.4.4`.
   v0.5.1 for GATE-D4 and what precedes it, and v0.6 for the papers' tag. The ledger's
   opening line is dated against v0.4.4 and keeps its wording.
 - A breaking change before the gate makes the gate's tag v0.6.0 and the papers' tag v0.7.
+
+## ADR-068 — an `ObservationGoal`'s horizon is read off the model unless it is set
+
+**Date:** 2026-10-15
+**Status:** Accepted
+**Supersedes:** ADR-009's default of `horizon = 1`, for an `ObservationGoal` the Agent
+dispatches. `EFESelector` built directly keeps it.
+**Extends:** ADR-008's caveat that one-step EFE needs one-step observability.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+ADR-009 defaulted the horizon to 1 so that existing behaviour would not change. ADR-008
+had already recorded what that costs. On a double integrator observed in position, a
+push moves only the velocity in one step. Neither the predicted reading nor its noise
+moves with the action, so every candidate scores the same `G`. `EFESelector` breaks the
+tie at the first candidate, and the agent pushes at full effort toward
+`action_bounds[0]` whatever its goal. Nothing is reported. The README's quickstart plant
+has that shape, so the first state-dependent agent most users write is the quickstart
+with its goal swapped. The review reproduced it on that plant with a sensor sharp at the
+goal: the first action is −2.0 at horizon 1 and +2.0 at horizon 2, for a goal at +1.
+
+### Decision
+
+`ObservationGoal(horizon=None)` is the default. When the Agent builds the EFE selector
+it differentiates every candidate's score with respect to the target, once, at the
+prior, at horizons 1, 2 and so on up to the state dimension. It keeps the first horizon
+where those derivatives differ between candidates. A horizon the caller sets is tested
+the same way and refused if the target does not move the scores, and the message names
+the shortest horizon that works. A model where no horizon up to the state dimension
+lets the target move the scores is refused.
+
+The test asks whether the target moves the scores. The target enters `G` only through
+the pragmatic term's predicted reading. Anything else that responds to a push sooner
+moves the scores without it. A noise that depends on velocity does so at horizon 1 on
+the double integrator, though position does not. The first form of this decision tested
+whether the scores differ at all. It accepted horizon 1 on that plant, and the agent
+then chose the same push for a target at +1 and at −5. Review caught it before landing.
+
+`C·A^(k−1)·B ≠ 0` says when a push reaches the reading on a linear sensor. The
+derivative gives the same answer there and also covers a sensor whose moments are not
+linear in the mean, so the test stays numerical. The state dimension bounds the search
+because a push that has not reached the reading within that many steps never will.
+
+### Consequences
+
+- A model where a push reaches the reading in one step keeps horizon 1. Agents on
+  single integrators are unchanged.
+- The probe runs once, at construction, and costs one forward-mode derivative of the
+  grid's scores per horizon tried.
+  The per-cycle cost stays `n_candidates · horizon`, so a derived horizon of 2 doubles
+  it. That is the price of a selector that reads its target (RFC-001).
+- `EFESelector` built directly keeps `horizon = 1` and does not probe. It is the escape
+  hatch, and its docstring says what horizon 1 does on such a model.
+- A graph backend still requires horizon 1, and an unset horizon means 1 there.
+- An explicit horizon long enough for the target to move the scores is used as given.
+- Reading the target does not make it win. On the velocity-noise plant at the default
+  precision of 1, the agent at the prior stays at rest for any target. The information
+  term outweighs the pull. At a precision of 100 it pushes toward the target.

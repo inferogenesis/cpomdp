@@ -116,8 +116,8 @@ class KalmanBackend:
         tol: float = 1e-12,
         max_iter: int = 1000,
     ) -> None:
-        self.model = model
-        self.steady_state = steady_state
+        self._model = model
+        self._steady_state = steady_state
         if steady_state:
             require_fixed_noise(
                 model,
@@ -127,6 +127,16 @@ class KalmanBackend:
             self._steady_gain, self._steady_cov = self._converge_to_steady_state(
                 tol, max_iter
             )
+
+    @property
+    def model(self) -> LinearGaussianModel:
+        """The model this backend filters under, fixed at construction."""
+        return self._model
+
+    @property
+    def steady_state(self) -> bool:
+        """Whether the gain was frozen at construction, fixed with it."""
+        return self._steady_state
 
     def infer_states(
         self,

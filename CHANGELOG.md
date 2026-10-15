@@ -327,9 +327,20 @@ no use of the readings beats it.
   compressors. `docs/guides/surge_margin_derivation.md` derives the meter model and the
   law, fixes the one calibration constant and lists what the demo does not model. Both
   sit under a new **Applications** section of the docs.
+- `Agent.selector`, read-only: the selector that chooses the agent's actions. For an
+  `ObservationGoal` with no horizon set, `agent.selector.horizon` reads back the horizon
+  taken from the model, and `agent.selector.cost_per_cycle` gives what each
+  `sample_action` costs. `Agent`, `EFESelector`, `FfgEfeSelector` and `LQRController`
+  print what they were built with, so an agent typed at a prompt shows the horizon or
+  the gain it chose. The Agent page shows how to compare horizons.
 
 ### Fixed
 
+- The README called inference JIT-compilable end to end. The backends and selectors are.
+  The `Agent` is not. It holds its belief, so a jitted `agent.infer_states` returned the
+  belief it was traced with on every call, and the next eager call raised
+  `UnexpectedTracerError`. The `Agent` docstring, its API page and the README now say
+  it is eager, and the page shows a backend driven under `jax.lax.scan`.
 - `EFESelector` described varying-sequence search as a deferred v0.4 `GradientEFESelector`
   seam, in its rendered class docstring and in the `ValueError` a `p > 1` caller hits. That
   search shipped in v0.4.4 as `EnumeratedEfeSearch`, whose own docstring says it supports
@@ -374,6 +385,47 @@ no use of the readings beats it.
 
 ### Changed
 
+- **Breaking:** `Agent` takes a model or a backend, never both. `Agent(model, objective)`
+  filters with the default per-step `KalmanBackend`, and
+  `Agent.from_backend(backend, objective)` takes any other engine, a
+  `CouplingGraphBackend` included, and plans under `backend.model`. The `backend=`
+  argument is gone. Passing both let the agent plan on one model and filter on another
+  without raising: with `R = 1` against `R = 100` the posterior was 0.020 where it should
+  be 1.005. `ScoredAgent` takes the same two forms, `ScoredAgent(model)` and
+  `ScoredAgent.from_backend(backend)`. It refused a backend built from another model,
+  and now cannot be given one.
+- **Breaking:** `Agent` refuses a built-in `selector=` that reads its target in the other
+  space from the objective. The EFE selectors and the search drivers score a predicted
+  observation, so `Agent(model, StateGoal(target), selector=EFESelector(...))` pursued
+  `C · x = target` and settled away from the target whenever `C` is not the identity.
+  `LQRSelector` with an `ObservationGoal` failed the same way in reverse. A custom
+  selector is not checked.
+- **Breaking:** on the LQR path `Agent` refuses a `StateGoal` target the dynamics do not
+  hold at zero action, where `A · target ≠ target`. LQR regulates the offset from the
+  target and charges for effort, so it settled short. With `A = 0.9` and a target of 1
+  the state came to rest at 0.8432. `CertaintyEquivalentController` already refused such
+  a goal, and the two refusals now share one equilibrium check. `StateGoal`'s docstring
+  states the requirement.
+- **Breaking:** `Agent.model`, `KalmanBackend.model` and `KalmanBackend.steady_state` are
+  read-only. Assigning `agent.model` changed what the agent reported while its backend,
+  selector and controller kept the old model. A steady-state `KalmanBackend` kept its
+  frozen gain under a reassigned model, and setting `steady_state` afterwards raised on
+  the next step. Build a new `Agent` or backend instead. `model` is read-only on
+  `ScoredAgent`, `LQRController`, `ChainBackend`, `RxInferBackend`, `WrongFixedRBackend`
+  and `DiagonalCovarianceBackend` too. Each builds a filter, a gain or a factor from it
+  at construction. Assigning `agent.belief` now requires a `Belief` over the model's
+  state. A list was accepted and failed on the next step. `InferenceBackend.model` is
+  declared a read-only property, which a plain attribute still satisfies.
+- **Breaking:** an `ObservationGoal`'s `horizon` defaults to `None`, and the `Agent` reads
+  it off the model: the shortest horizon at which the target moves the expected free
+  energy, found by differentiating the candidate grid's scores with respect to the
+  target once, at the prior. On a double integrator observed in position a push reaches
+  the reading only after two steps. At the old default of 1 every candidate scored the
+  same, and the agent pushed at full effort toward `action_bounds[0]`, away from a goal
+  at +1. A noise that reads velocity breaks that tie at horizon 1, and the push it picks
+  there is the same for every target. An explicit horizon too short for the target to
+  move the scores is refused, naming the shortest that works. Single integrators keep
+  horizon 1 (ADR-068).
 - `cpomdp.diagnostics.condition_numbers` — the batched condition number
   `rollout_conditioning` computed inline, now a function of its own so a rollout and a
   scored cell read the same number for the same matrix.

@@ -13,7 +13,7 @@ import jax.numpy as jnp
 from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
-from cpomdp._validation import require_fixed_noise
+from cpomdp._validation import equilibrium_drift, require_fixed_noise
 from cpomdp.backends.kalman import _gain_and_posterior_cov
 from cpomdp.resolution import Bar, Bounded
 from cpomdp.types import Belief, LinearGaussianModel
@@ -261,10 +261,8 @@ def _held_goal(model: LinearGaussianModel, goal: ArrayLike) -> Float64[Array, "n
             f"goal must be a 1-D vector of length {n} (the state dimension), got "
             f"shape {goal.shape}"
         )
-    held = model.dynamics_matrix @ goal
-    if not jnp.allclose(
-        held, goal, rtol=0.0, atol=1e-12 * max(1.0, float(jnp.abs(goal).max()))
-    ):
+    held = equilibrium_drift(model.dynamics_matrix, goal)
+    if held is not None:
         raise ValueError(
             "goal is not an equilibrium of the dynamics: at zero action it moves to "
             f"{held}. The plan regulates the offset from the goal, and the offset only "
@@ -742,11 +740,16 @@ class LQRController:
         tol: float = 1e-12,
         max_iter: int = 1000,
     ) -> None:
-        self.model = model
+        self._model = model
         self._goal_precision, self._effort_penalty = _validated_costs(
             model, goal_precision, effort_penalty
         )
         self._gain = self._converge_to_steady_state(tol, max_iter)
+
+    @property
+    def model(self) -> LinearGaussianModel:
+        """The model the gain was solved for, fixed at construction."""
+        return self._model
 
     @property
     def gain(self) -> Float64[Array, "p n"]:
@@ -783,6 +786,11 @@ class LQRController:
                 f"(the state dimension), got shape {goal.shape}"
             )
         return -self._gain @ (mean - goal)
+
+    def __repr__(self) -> str:
+        """The steady-state gain, the one number the Riccati solve leaves behind."""
+        gain = [[round(float(entry), 4) for entry in row] for row in self._gain]
+        return f"LQRController(gain={gain})"
 
     def _converge_to_steady_state(
         self, tol: float, max_iter: int

@@ -69,7 +69,7 @@ def _pref():
 
 
 class TestHorizonConstruction:
-    def test_default_horizon_is_one(self):
+    def test_default_horizon_is_left_to_the_agent(self):
         sel = EFESelector(_model(), n_candidates=11, action_bounds=(-2.0, 2.0))
         assert sel.horizon == 1
         assert sel.cost_per_cycle == 11  # n_candidates * 1
@@ -124,8 +124,8 @@ class TestHorizonSelect:
 
 
 class TestObservationGoalHorizon:
-    def test_default_horizon_is_one(self):
-        assert ObservationGoal([0.0], action_bounds=(-2.0, 2.0)).horizon == 1
+    def test_default_horizon_is_left_to_the_agent(self):
+        assert ObservationGoal([0.0], action_bounds=(-2.0, 2.0)).horizon is None
 
     def test_carries_horizon(self):
         assert ObservationGoal([0.0], action_bounds=(-2.0, 2.0), horizon=4).horizon == 4
@@ -160,7 +160,7 @@ class TestAgentThreadsHorizon:
                 [0.0], action_bounds=(-3.0, 3.0), n_candidates=11, horizon=3
             ),
         )
-        sel = agent._selector
+        sel = agent.selector
         assert isinstance(sel, EFESelector)
         assert sel.horizon == 3
         assert sel.cost_per_cycle == 33
@@ -170,7 +170,7 @@ class TestAgentThreadsHorizon:
         agent = Agent(
             model, ObservationGoal([0.0], action_bounds=(-3.0, 3.0), n_candidates=11)
         )
-        sel = agent._selector
+        sel = agent.selector
         assert isinstance(sel, EFESelector)
         assert sel.horizon == 1
 

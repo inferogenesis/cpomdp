@@ -36,7 +36,12 @@ markdown_extensions:
       permalink: true
   - pymdownx.highlight:
       anchor_linenums: true
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      # Material renders a ```mermaid fence and re-themes it with the palette toggle.
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
 
 # Pastes the `--8<--` includes (README, CHANGELOG, the two example galleries) into
 # their stub pages and repoints the relative links in them, so one file reads

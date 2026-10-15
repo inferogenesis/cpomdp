@@ -126,6 +126,12 @@ class EFESelector:
     (receding-horizon). Per-cycle cost is a single attributable number,
     ``cost_per_cycle = n_candidates * horizon``.
 
+    Built directly, the selector uses the ``horizon`` it is given. On a model where a
+    push takes more than one step to reach the reading, ``horizon = 1`` leaves the
+    target out of every comparison. The candidates then differ by their noise alone, or
+    tie and the first wins. The ``Agent`` reads the horizon for an ``ObservationGoal``
+    off the model and refuses one too short for the target to move the scores.
+
     Honest caveat: ``horizon`` selects the best *constant* action, not the best
     *sequence*. A genuinely sequential epistemic policy — move to sense, then exploit —
     needs a varying sequence the constant-action family cannot express, so at H > 1 the
@@ -182,17 +188,20 @@ class EFESelector:
         ``horizon > 1`` one ``vmap`` of ``policy_efe`` over the constant-action policies
         + ``argmin``, returning the first (= constant) action of the best policy.
         """
+        g = self._scores(belief, preference)
+        return self._candidates[self._argmin(g)]  # first (= constant) action
+
+    def _scores(self, belief: Belief, preference: Preference) -> Float64[Array, "k"]:
+        """``G`` for every candidate over the horizon, in grid order."""
         if self._horizon == 1:
-            g = jax.vmap(
+            return jax.vmap(
                 lambda a: expected_free_energy(self._model, belief, a, preference)[0]
             )(self._candidates)
-            return self._candidates[self._argmin(g)]
         # H>1: each candidate becomes a constant-action policy (held for H steps).
         policies = jnp.repeat(self._candidates[:, None, :], self._horizon, axis=1)
-        g = jax.vmap(lambda pol: policy_efe(self._model, belief, pol, preference)[0])(
-            policies
-        )
-        return self._candidates[self._argmin(g)]  # first (= constant) action
+        return jax.vmap(
+            lambda pol: policy_efe(self._model, belief, pol, preference)[0]
+        )(policies)
 
     @property
     def n_candidates(self) -> int:
@@ -218,6 +227,14 @@ class EFESelector:
         decided one (standing rule 6; ADR-031).
         """
         return SearchWarrant.CORROBORATED
+
+    def __repr__(self) -> str:
+        """The horizon and the grid, the numbers that set what each cycle costs."""
+        lo, hi = float(self._candidates[0, 0]), float(self._candidates[-1, 0])
+        return (
+            f"EFESelector(horizon={self._horizon}, n_candidates={self.n_candidates}, "
+            f"action_bounds=({lo}, {hi}))"
+        )
 
 
 class FfgEfeSelector:
@@ -320,6 +337,14 @@ class FfgEfeSelector:
         """Per-cycle step-evals = n_candidates (horizon is 1)."""
         return self.n_candidates
 
+    def __repr__(self) -> str:
+        """The horizon, the grid and the joint-state block the epistemic aims at."""
+        lo, hi = float(self._candidates[0, 0]), float(self._candidates[-1, 0])
+        return (
+            f"FfgEfeSelector(horizon={self.horizon}, n_candidates={self.n_candidates}, "
+            f"action_bounds=({lo}, {hi}), info_block={list(self._target)})"
+        )
+
 
 @dataclass(frozen=True, init=False)
 class StateGoal:
@@ -331,6 +356,11 @@ class StateGoal:
     until the Agent pairs this with a model (the Agent fills the identity). The
     Agent dispatches a StateGoal to an LQRSelector. Not a pytree - construction-
     time only; the Agent extracts a Preference for the selector.
+
+    The target must hold still under the model's dynamics at zero action,
+    ``A · target = target``. LQR regulates the offset from the target and charges for
+    effort, so a target the dynamics move would take a constant push it never pays
+    in full, and the state would settle short. The Agent refuses such a target.
     """
 
     target: Float64[Array, "n"]
@@ -371,10 +401,13 @@ class StateGoal:
 class ObservationGoal:
     """An observation-space objective: prefer to observe a target (the EFE regime).
 
-    The complete spec for the information-seeking path - the preferred observation,
-    how sharply it is preferred (``precision``), and the action-search config the
-    EFESelector front-loads: ``action_bounds`` is the action box, ``n_candidates``
-    its resolution, ``horizon`` its lookahead depth. ``info_node`` optionally aims the
+    The complete spec for the information-seeking path - the preferred observation, how
+    sharply it is preferred (``precision``), and the action-search config the
+    EFESelector front-loads: ``action_bounds`` is the action box, ``n_candidates`` its
+    resolution, ``horizon`` its lookahead depth. Left as ``None``, the horizon is the
+    shortest at which the target moves the scores, which the Agent reads off the model
+    (ADR-068). On a double integrator observed in position that is 2.
+    ``agent.selector.horizon`` reads it back. ``info_node`` optionally aims the
     epistemic term at a single latent *node* (info gain about that node's marginal, the
     factored-EFE regime on a branching backend, issue #26); ``None`` = whole-state info
     gain (the default, unchanged behaviour). The Agent dispatches an ObservationGoal to
@@ -386,7 +419,7 @@ class ObservationGoal:
     precision: Float64[Array, "m m"]
     action_bounds: tuple[float, float]
     n_candidates: int
-    horizon: int
+    horizon: int | None
     info_node: int | None
 
     def __init__(
@@ -396,7 +429,7 @@ class ObservationGoal:
         action_bounds,
         precision=None,
         n_candidates=21,
-        horizon=1,
+        horizon=None,
         info_node=None,
     ) -> None:
         target = jnp.asarray(target, dtype=float)
@@ -436,7 +469,7 @@ class ObservationGoal:
             raise ValueError(
                 f"n_candidates must be at least 2 to search, got {self.n_candidates}"
             )
-        if self.horizon < 1:
+        if self.horizon is not None and self.horizon < 1:
             raise ValueError(f"horizon must be >= 1, got {self.horizon}")
         if self.info_node is not None and self.info_node < 0:
             raise ValueError(

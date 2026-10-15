@@ -1,12 +1,16 @@
 """The ``Agent`` façade: a stateful perceive/act loop over a ``LinearGaussianModel``."""
 
+import jax
 import jax.numpy as jnp
+import numpy as np
 from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
+from cpomdp._validation import equilibrium_drift
 from cpomdp.backends.base import EfeBackend, InferenceBackend
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.control import LQRController
+from cpomdp.enumeration import OpenLoopSelector, RecedingHorizonSelector
 from cpomdp.selection import (
     ActionSelector,
     EFESelector,
@@ -19,6 +23,90 @@ from cpomdp.selection import (
 from cpomdp.types import Belief, LinearGaussianModel
 
 __all__ = ["Agent"]
+
+# Each built-in selector reads its Preference in one space. LQR regulates the state.
+# The EFE selectors and the search drivers score a predicted observation.
+_STATE_SPACE_SELECTORS = (LQRSelector,)
+_OBSERVATION_SPACE_SELECTORS = (
+    EFESelector,
+    FfgEfeSelector,
+    RecedingHorizonSelector,
+    OpenLoopSelector,
+)
+
+
+def _reaching_efe_selector(
+    model: LinearGaussianModel, objective: ObservationGoal, preference: Preference
+) -> EFESelector:
+    """The EFE selector for ``objective``, at a horizon that reads its target.
+
+    The target enters ``G`` only through the predicted reading. Until a push reaches the
+    reading, the candidates differ by their noise terms alone, or not at all, and the
+    argmin chooses without regard to the goal. The probe differentiates every
+    candidate's score with respect to the target, once, at the prior, and keeps the
+    first horizon where the derivatives differ. It adds nothing per cycle (DECISIONS.md
+    ADR-068).
+    """
+
+    def at(horizon: int) -> EFESelector:
+        return EFESelector(
+            model,
+            n_candidates=objective.n_candidates,
+            action_bounds=objective.action_bounds,
+            horizon=horizon,
+        )
+
+    def reads_target(selector: EFESelector) -> bool:
+        def scores(target: Float64[Array, "m"]) -> Float64[Array, "k"]:
+            moved = Preference(target, preference.precision)
+            return selector._scores(model.prior, moved)
+
+        sensitivity = np.asarray(jax.jacfwd(scores)(preference.goal))  # (k, m)
+        finite = sensitivity[np.isfinite(sensitivity).all(axis=1)]
+        if finite.shape[0] < 2:
+            return True  # a NaN score is a different failure, reported elsewhere
+        spread = float(np.ptp(finite, axis=0).max())
+        return spread > 1e-12 * max(1.0, float(np.abs(finite).max()))
+
+    # A push that has not reached the reading within n steps never will, so the search
+    # stops at the state dimension.
+    longest = model.n_states
+    if objective.horizon is None:
+        for horizon in range(1, longest + 1):
+            selector = at(horizon)
+            if reads_target(selector):
+                return selector
+        scored = f"within {longest} steps, the state dimension"
+    else:
+        selector = at(objective.horizon)
+        if reads_target(selector):
+            return selector
+        longer = range(objective.horizon + 1, longest + 1)
+        shortest = next((h for h in longer if reads_target(at(h))), None)
+        if shortest is not None:
+            raise ValueError(
+                f"the target does not move the expected free energy at horizon "
+                f"{objective.horizon}: a push first reaches the reading after "
+                f"{shortest} steps, so the agent would choose its action without "
+                f"regard to the goal. Pass horizon={shortest} or more, or leave "
+                f"horizon unset."
+            )
+        scored = f"at horizon {objective.horizon}"
+        if objective.horizon < longest:
+            scored += f" or any longer one up to {longest}, the state dimension"
+    raise ValueError(
+        f"the target does not move the expected free energy {scored}, so the agent "
+        f"cannot steer toward it. The control matrix does not reach the reading."
+    )
+
+
+def _short_repr(selector: ActionSelector | None) -> str:
+    """A selector's own repr where it defines one, and its class name otherwise."""
+    if selector is None:
+        return "None"
+    if type(selector).__repr__ is object.__repr__:
+        return type(selector).__name__
+    return repr(selector)
 
 
 class Agent:
@@ -59,62 +147,110 @@ class Agent:
 
     An agent built without an ``objective`` is a pure tracker: ``infer_states``
     works, but ``sample_action`` raises — there is nothing to act toward.
+
+    The ``Agent`` is eager. It keeps the belief and the last action on itself, so
+    ``jax.jit``, ``vmap`` and ``grad`` do not apply to its methods. A jitted
+    ``infer_states`` bakes in the belief it was traced with and returns the same
+    posterior on every call. To compile a loop, call a backend's ``infer_states``
+    and a selector's ``select`` inside ``jax.lax.scan``, as the API page shows.
     """
 
     def __init__(
         self,
-        model: LinearGaussianModel | None = None,
+        model: LinearGaussianModel,
         objective: ObservationGoal | StateGoal | None = None,
         *,
         selector: ActionSelector | None = None,
-        backend: InferenceBackend | None = None,
     ) -> None:
         """Build an agent over ``model``, optionally one that can act.
 
         The objective's *type* selects the regime: a ``StateGoal`` steers in state
         space via LQR (it needs a fixed sensor); an ``ObservationGoal`` seeks a
-        preferred observation via one-step EFE (it needs a control matrix, and a
+        preferred observation via EFE, over the goal's horizon or, left unset, the
+        shortest at which the target moves the scores (it needs a control matrix, and a
         state-dependent sensor unless an explicit ``selector`` is given). Omit the
         objective for a perceive-only tracker.
+
+        The agent filters with a per-step [`KalmanBackend`][cpomdp.KalmanBackend]
+        built from ``model``. For any other engine, use ``from_backend``.
 
         Args:
             model: The linear-Gaussian generative model the agent perceives and
                 (with an objective) acts under. Its ``prior`` becomes the starting
-                belief. Optional if a ``backend`` is given — the model is then taken
-                from ``backend.model`` (so a custom backend need not be passed twice).
+                belief.
             objective: What the agent pursues — a ``StateGoal`` (a state to reach,
                 carrying the LQR weights) or an ``ObservationGoal`` (an observation
                 to prefer, carrying the action-search config). ``None`` builds a
                 pure tracker that perceives but cannot act.
             selector: An explicit ``ActionSelector`` overriding the one the
                 objective would dispatch — the escape hatch for regimes the
-                automatic dispatch declines (e.g. EFE on a fixed sensor).
-            backend: The inference engine. Defaults to a per-step
-                [`KalmanBackend`][cpomdp.KalmanBackend]; pass any
-                [`InferenceBackend`][cpomdp.InferenceBackend] (e.g. a
-                steady-state Kalman or the RxInfer oracle) to swap engines.
+                automatic dispatch declines (e.g. EFE on a fixed sensor). It reads
+                the objective's target in the objective's own space, so a built-in
+                EFE selector needs an ``ObservationGoal`` and ``LQRSelector`` a
+                ``StateGoal``.
 
         Raises:
             ValueError: If the objective and model are incompatible — a
                 ``StateGoal`` on a state-dependent sensor, an ``ObservationGoal``
                 on a control-free model, or an ``ObservationGoal`` on a fixed
                 sensor without a ``selector`` (output regulation, deferred); or if
-                the ``StateGoal`` target is not a 1-D vector of length ``n``.
+                the ``StateGoal`` target is not a 1-D vector of length ``n``; or if a
+                built-in ``selector`` reads its target in the other space from the
+                objective; or if the LQR path is given a ``StateGoal`` target the
+                dynamics do not hold at zero action. Also raised when an
+                ``ObservationGoal``'s horizon is too short for its target to move the
+                scores.
             TypeError: If ``objective`` is neither a ``StateGoal`` nor an
                 ``ObservationGoal``.
         """
-        # A backend is built from a model and carries it, so either input determines the
-        # other: pass a model (default KalmanBackend), a backend (its model is used), or
-        # both. Passing the same object twice is no longer required.
-        if backend is None:
-            if model is None:
-                raise ValueError("Agent needs a model or a backend to infer with.")
-            backend = KalmanBackend(model)
-        elif model is None:
-            model = backend.model
-        self.model = model
-        self.belief = model.prior
+        self._setup(KalmanBackend(model), objective, selector)
+
+    @classmethod
+    def from_backend(
+        cls,
+        backend: InferenceBackend,
+        objective: ObservationGoal | StateGoal | None = None,
+        *,
+        selector: ActionSelector | None = None,
+    ) -> "Agent":
+        """Build an agent that filters with ``backend`` and plans under its model.
+
+        For an engine other than the default per-step Kalman filter: a steady-state
+        [`KalmanBackend`][cpomdp.KalmanBackend], the RxInfer oracle, or a
+        [`CouplingGraphBackend`][cpomdp.CouplingGraphBackend], which has no model of
+        its own to pass. The agent's model is ``backend.model``, so the planner and
+        the filter cannot work from different models.
+
+        Args:
+            backend: The inference engine, any
+                [`InferenceBackend`][cpomdp.InferenceBackend].
+            objective: What the agent pursues, as for the constructor.
+            selector: An explicit ``ActionSelector``, as for the constructor.
+
+        Returns:
+            The agent.
+
+        Raises:
+            ValueError: If the objective and the backend's model are incompatible, as
+                for the constructor.
+            TypeError: If ``objective`` is neither a ``StateGoal`` nor an
+                ``ObservationGoal``.
+        """
+        agent = cls.__new__(cls)
+        agent._setup(backend, objective, selector)
+        return agent
+
+    def _setup(
+        self,
+        backend: InferenceBackend,
+        objective: ObservationGoal | StateGoal | None,
+        selector: ActionSelector | None,
+    ) -> None:
+        """Hold the backend and dispatch the objective to a selector."""
+        model = backend.model
         self._backend = backend
+        self._objective = objective
+        self._belief = model.prior
         sensor_is_fixed = (
             model.observation_model is None or model.observation_model.is_fixed
         )
@@ -134,6 +270,12 @@ class Agent:
                     "a StateGoal needs a fixed sensor; a state-dependent sensor would "
                     "require converting the goal through C — pass an ObservationGoal."
                 )
+            if isinstance(selector, _OBSERVATION_SPACE_SELECTORS):
+                raise ValueError(
+                    f"{type(selector).__name__} scores its target as an observation, "
+                    "and a StateGoal's target is a state. Pass an ObservationGoal "
+                    "with the observation to seek, or omit selector= for the LQR path."
+                )
             n, p = model.n_states, model.n_controls
             self._goal = jnp.asarray(objective.target, dtype=float)
             if self._goal.shape != (n,):
@@ -141,6 +283,15 @@ class Agent:
                     f"StateGoal target must be a 1-D vector of length {n} (the state "
                     f"dimension), got shape {self._goal.shape}"
                 )
+            if selector is None or isinstance(selector, _STATE_SPACE_SELECTORS):
+                moved = equilibrium_drift(model.dynamics_matrix, self._goal)
+                if moved is not None:
+                    raise ValueError(
+                        f"StateGoal target {self._goal} is not an equilibrium of the "
+                        f"dynamics: at zero action it moves to {moved}. LQR regulates "
+                        "the offset from the target and charges for effort, so it "
+                        "would settle short of a target the dynamics do not hold."
+                    )
             effort = jnp.eye(p) if objective.effort is None else objective.effort
             self._controller = LQRController(
                 model, goal_precision=objective.precision, effort_penalty=effort
@@ -156,6 +307,12 @@ class Agent:
             if model.control_matrix is None:
                 raise ValueError(
                     "an ObservationGoal needs a model with a control matrix to act."
+                )
+            if isinstance(selector, _STATE_SPACE_SELECTORS):
+                raise ValueError(
+                    f"{type(selector).__name__} regulates the state toward its target, "
+                    "and an ObservationGoal's target is an observation. Pass a "
+                    "StateGoal for the LQR path, or an EFE selector."
                 )
             is_ffg = isinstance(self._backend, EfeBackend)
             if sensor_is_fixed and selector is None and not is_ffg:
@@ -184,11 +341,8 @@ class Agent:
             elif is_ffg:
                 self._selector = self._build_ffg_selector(objective)
             else:
-                self._selector = EFESelector(
-                    model,
-                    n_candidates=objective.n_candidates,
-                    action_bounds=objective.action_bounds,
-                    horizon=objective.horizon,
+                self._selector = _reaching_efe_selector(
+                    model, objective, self._preference
                 )
             self._last_action = jnp.zeros(model.n_controls)
 
@@ -207,7 +361,7 @@ class Agent:
         """
         backend = self._backend
         assert isinstance(backend, EfeBackend)  # only built for the FFG path
-        if objective.horizon != 1:
+        if objective.horizon not in (None, 1):
             raise ValueError(
                 "H-step EFE on the FFG backend is deferred; ObservationGoal.horizon "
                 "must be 1 with a CouplingGraphBackend."
@@ -230,6 +384,37 @@ class Agent:
         )
 
     @property
+    def model(self) -> LinearGaussianModel:
+        """The model the agent plans and filters under, read-only.
+
+        It is the backend's model. The selector and any controller were built from it
+        at construction, so acting under a different model needs a new ``Agent``.
+        """
+        return self._backend.model
+
+    @property
+    def belief(self) -> Belief:
+        """The current posterior over the state, replaced by each ``infer_states``.
+
+        Assigning a [`Belief`][cpomdp.Belief] over the model's state restarts
+        filtering from it. Anything else is refused, since the next step would fail
+        on it or filter from the wrong state.
+        """
+        return self._belief
+
+    @belief.setter
+    def belief(self, belief: Belief) -> None:
+        if not isinstance(belief, Belief):
+            raise TypeError(f"belief must be a Belief, got {type(belief).__name__}")
+        n = self.model.n_states
+        if belief.mean.shape != (n,):
+            raise ValueError(
+                f"belief must be over the model's {n}-D state, got a mean of shape "
+                f"{belief.mean.shape}"
+            )
+        self._belief = belief
+
+    @property
     def qs(self) -> Belief:
         """Alias for ``belief`` (read-only) — pymdp muscle-memory ``agent.qs``.
 
@@ -237,6 +422,24 @@ class Agent:
         [`Belief`][cpomdp.Belief], not a categorical posterior. Prefer ``belief``.
         """
         return self.belief
+
+    @property
+    def selector(self) -> ActionSelector | None:
+        """The selector that chooses the agent's actions, read-only.
+
+        ``None`` for a tracker. For an ``ObservationGoal`` with no horizon set,
+        ``selector.horizon`` is the horizon read off the model, and
+        ``selector.cost_per_cycle`` is what each ``sample_action`` costs.
+        """
+        return self._selector
+
+    def __repr__(self) -> str:
+        """The objective, the selector and the backend, as built."""
+        objective = None if self._objective is None else type(self._objective).__name__
+        return (
+            f"Agent(objective={objective}, selector={_short_repr(self._selector)}, "
+            f"backend={type(self._backend).__name__})"
+        )
 
     def infer_states(self, observation: ArrayLike) -> Belief:
         """Fold one observation into the belief and return the updated belief.
@@ -263,10 +466,10 @@ class Agent:
                 backend; see ``validate_step_inputs``).
         """
         observation = jnp.asarray(observation, dtype=float)
-        self.belief = self._backend.infer_states(
-            observation, self.belief, self._last_action
+        self._belief = self._backend.infer_states(
+            observation, self._belief, self._last_action
         )
-        return self.belief
+        return self._belief
 
     def sample_action(self) -> Float64[Array, "p"]:
         """The action the agent's selector chooses for the current belief.
@@ -278,8 +481,8 @@ class Agent:
         ``ObservationGoal`` it is the EFE-minimising action over the front-loaded
         candidate grid. Deterministic, not a sample, and it takes no ``rng_key`` (see
         the class docstring). There is no separate ``infer_policies`` step — policy
-        evaluation is folded in here, its per-cycle cost exposed as
-        ``EFESelector.cost_per_cycle``. The chosen action is remembered so the next
+        evaluation is folded in here. On the EFE path its per-cycle cost reads back as
+        ``agent.selector.cost_per_cycle``. The chosen action is remembered so the next
         ``infer_states`` predicts with it.
 
         Returns:

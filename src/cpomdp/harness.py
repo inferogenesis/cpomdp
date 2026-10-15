@@ -200,47 +200,48 @@ class ScoredAgent:
     The agent neither chooses nor remembers actions, and has no selector and no
     ``sample_action``.
 
-    Pass a model to filter with a per-step ``KalmanBackend``, or pass a backend to
-    filter with something else. Passing both is refused unless they carry the same
-    model.
+    ``ScoredAgent(model)`` filters with a per-step ``KalmanBackend``.
+    ``ScoredAgent.from_backend(backend)`` filters with any other engine, a degraded one
+    included, under the backend's model.
     """
 
-    def __init__(
-        self,
-        model: LinearGaussianModel | None = None,
-        *,
-        backend: InferenceBackend | None = None,
-    ) -> None:
-        """Build an agent filtering under ``model``, or under ``backend``'s model.
+    def __init__(self, model: LinearGaussianModel) -> None:
+        """Build an agent filtering under ``model`` with a per-step ``KalmanBackend``.
 
         Args:
-            model: The agent's own generative model — p. Optional if a ``backend`` is
-                given, since a backend carries the model it was built from.
-            backend: The inference engine. Defaults to a per-step ``KalmanBackend``
-                over ``model``; pass another to degrade or replace the inference
-                without touching the model.
-
-        Raises:
-            ValueError: If neither a model nor a backend is given, or if both are
-                given and they are not the same model.
+            model: The agent's own generative model — p.
         """
-        if backend is None:
-            if model is None:
-                raise ValueError(
-                    "ScoredAgent needs a model or a backend to filter with."
-                )
-            backend = KalmanBackend(model)
-        elif model is None:
-            model = backend.model
-        elif model is not backend.model:
-            raise ValueError(
-                "a ScoredAgent is scored under one model, and the model passed is not "
-                "the one the backend was built from. Pass whichever is intended, or "
-                "build the backend from that model."
-            )
-        self.model = model
-        self.belief = model.prior
+        self._setup(KalmanBackend(model))
+
+    @classmethod
+    def from_backend(cls, backend: InferenceBackend) -> "ScoredAgent":
+        """Build an agent that filters with ``backend`` under its model.
+
+        For a degraded or replaced filter. The agent's model is ``backend.model``, so
+        the model it is scored under and the one it filters with cannot differ.
+
+        Args:
+            backend: The inference engine, any ``InferenceBackend``.
+
+        Returns:
+            The agent.
+        """
+        agent = cls.__new__(cls)
+        agent._setup(backend)
+        return agent
+
+    def _setup(self, backend: InferenceBackend) -> None:
+        """Hold the backend and start from its model's prior."""
         self._backend = backend
+        self.belief = backend.model.prior
+
+    @property
+    def model(self) -> LinearGaussianModel:
+        """The model the agent filters and is scored under, read-only.
+
+        It is the backend's model, fixed when the backend was built.
+        """
+        return self._backend.model
 
     def driven_step(self, observation: ArrayLike, action: ArrayLike) -> Belief:
         """Fold one observation in, predicting with the action supplied.
