@@ -367,6 +367,10 @@ certainty equivalence is optimal, and no use of the readings beats it.
   state-dependent `R(x)` or `Q(x)` the filter reads the noise at the predicted mean, a
   first-order plug-in, and `RxInferBackend` refuses such a model. Each now says the
   filter is exact under fixed noise, and the oracle agrees only there.
+- The `LQRController` docstring and the backends page said the Agent's filter is solved
+  once at construction, as ADR-002 and ADR-003 planned. Every release has filtered per
+  step. Both now say so, and ADR-072 records the per-step filter as the default and the
+  steady-state one as the opt-in.
 - `EFESelector` described varying-sequence search as a deferred v0.4 `GradientEFESelector`
   seam, in its rendered class docstring and in the `ValueError` a `p > 1` caller hits. That
   search shipped in v0.4.4 as `EnumeratedEfeSearch`, whose own docstring says it supports

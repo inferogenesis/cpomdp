@@ -312,11 +312,12 @@ def kalman_schedule(
 class LQRController:
     """Steady-state LQR action selection — the action-side dual of the filter.
 
-    Where the Kalman filter front-loads perception (solve the estimation Riccati
-    once for the steady-state gain ``K∞``, then ``mean += K∞·prediction_error``),
-    this front-loads action: solve the dual *control* Riccati once for ``L∞``,
-    then ``action = -L∞·(mean − goal)``. Both gains are data-independent, both are
-    computed at construction, and together they are LQG.
+    It front-loads action: solve the *control* Riccati once for ``L∞``, then
+    ``action = -L∞·(mean − goal)`` on every step. The estimation Riccati is its dual.
+    A steady-state [`KalmanBackend`][cpomdp.KalmanBackend] solves that one once for
+    ``K∞``, and the pair is steady-state LQG. The [`Agent`][cpomdp.Agent] does not
+    freeze its filter. It recomputes the Kalman gain every step, so its loop is this
+    controller on a per-step filter.
 
     The load-bearing claim (ADR-003) is that LQR *is* active inference here, not a
     substitute for it. For a fixed linear-Gaussian sensor and fixed process noise the
