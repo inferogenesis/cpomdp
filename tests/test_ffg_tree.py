@@ -1,4 +1,4 @@
-"""Branching factor-graph inference: messages combining at a shared node (Phase 4).
+"""Branching factor-graph inference: messages combining at a shared node.
 
 The chain (``test_ffg_chain.py``) is the degenerate FFG — every node has degree 2.
 The shared ``CheA`` network ADR-012 targets has a node of degree > 2: one latent
@@ -743,7 +743,7 @@ def _flattened_kalman_root(root, dims, edges, obs_specs, m0, p0, readings):
 class TestFlattenedKalmanParity:
     """`CouplingGraph.infer` vs the normal backend on the hand-flattened joint.
 
-    The difference Phase 5 demonstrates is representational, not numerical: a branching
+    The difference the demo shows is representational, not numerical: a branching
     model the chain backend cannot draw still yields the *same* posterior a flattened
     `LinearGaussianModel` does through `KalmanBackend`. These pin that identity
     directly (graph vs the normal backend) on the demo's chemotaxis tree and a spread
