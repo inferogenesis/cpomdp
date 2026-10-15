@@ -290,6 +290,24 @@ class TestRegimeDispatch:
                 ObservationGoal([0.0, 0.0], action_bounds=(-3.0, 3.0)),
             )
 
+    def test_state_goal_with_an_observation_space_selector_raises(self):
+        # EFESelector reads the preference as an observation. Handed a StateGoal it
+        # pursues C·x = target, so on C = 2 it would settle at x = target / 2.
+        model = _corridor_model(fixed=True)
+        sel = EFESelector(model, n_candidates=11, action_bounds=_BOUNDS)
+        with pytest.raises(ValueError, match="observation"):
+            Agent(model, StateGoal([1.0]), selector=sel)
+
+    def test_observation_goal_with_lqr_selector_raises(self):
+        # LQRSelector regulates the state, so an observation target would be
+        # pursued as a state.
+        model = _corridor_model(fixed=True)
+        sel = LQRSelector(
+            LQRController(model, goal_precision=jnp.eye(1), effort_penalty=jnp.eye(1))
+        )
+        with pytest.raises(ValueError, match="StateGoal"):
+            Agent(model, _OBS_GOAL, selector=sel)
+
     def test_qs_aliases_belief(self):
         # pymdp muscle-memory: agent.qs is a read-only alias of agent.belief.
         agent = Agent(_corridor_model(fixed=False), _OBS_GOAL)

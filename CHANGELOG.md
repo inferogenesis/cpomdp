@@ -381,6 +381,12 @@ no use of the readings beats it.
   argument is gone. Passing both let the agent plan on one model and filter on another
   without raising: with `R = 1` against `R = 100` the posterior was 0.020 where it should
   be 1.005.
+- **Breaking:** `Agent` refuses a built-in `selector=` that reads its target in the other
+  space from the objective. The EFE selectors and the search drivers score a predicted
+  observation, so `Agent(model, StateGoal(target), selector=EFESelector(...))` pursued
+  `C · x = target` and settled away from the target whenever `C` is not the identity.
+  `LQRSelector` with an `ObservationGoal` failed the same way in reverse. A custom
+  selector is not checked.
 - `cpomdp.diagnostics.condition_numbers` — the batched condition number
   `rollout_conditioning` computed inline, now a function of its own so a rollout and a
   scored cell read the same number for the same matrix.

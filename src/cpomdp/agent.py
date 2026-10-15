@@ -7,6 +7,7 @@ from numpy.typing import ArrayLike
 from cpomdp.backends.base import EfeBackend, InferenceBackend
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.control import LQRController
+from cpomdp.enumeration import OpenLoopSelector, RecedingHorizonSelector
 from cpomdp.selection import (
     ActionSelector,
     EFESelector,
@@ -19,6 +20,16 @@ from cpomdp.selection import (
 from cpomdp.types import Belief, LinearGaussianModel
 
 __all__ = ["Agent"]
+
+# Each built-in selector reads its Preference in one space. LQR regulates the state.
+# The EFE selectors and the search drivers score a predicted observation.
+_STATE_SPACE_SELECTORS = (LQRSelector,)
+_OBSERVATION_SPACE_SELECTORS = (
+    EFESelector,
+    FfgEfeSelector,
+    RecedingHorizonSelector,
+    OpenLoopSelector,
+)
 
 
 class Agent:
@@ -89,14 +100,19 @@ class Agent:
                 pure tracker that perceives but cannot act.
             selector: An explicit ``ActionSelector`` overriding the one the
                 objective would dispatch — the escape hatch for regimes the
-                automatic dispatch declines (e.g. EFE on a fixed sensor).
+                automatic dispatch declines (e.g. EFE on a fixed sensor). It reads
+                the objective's target in the objective's own space, so a built-in
+                EFE selector needs an ``ObservationGoal`` and ``LQRSelector`` a
+                ``StateGoal``.
 
         Raises:
             ValueError: If the objective and model are incompatible — a
                 ``StateGoal`` on a state-dependent sensor, an ``ObservationGoal``
                 on a control-free model, or an ``ObservationGoal`` on a fixed
                 sensor without a ``selector`` (output regulation, deferred); or if
-                the ``StateGoal`` target is not a 1-D vector of length ``n``.
+                the ``StateGoal`` target is not a 1-D vector of length ``n``; or if a
+                built-in ``selector`` reads its target in the other space from the
+                objective.
             TypeError: If ``objective`` is neither a ``StateGoal`` nor an
                 ``ObservationGoal``.
         """
@@ -167,6 +183,12 @@ class Agent:
                     "a StateGoal needs a fixed sensor; a state-dependent sensor would "
                     "require converting the goal through C — pass an ObservationGoal."
                 )
+            if isinstance(selector, _OBSERVATION_SPACE_SELECTORS):
+                raise ValueError(
+                    f"{type(selector).__name__} scores its target as an observation, "
+                    "and a StateGoal's target is a state. Pass an ObservationGoal "
+                    "with the observation to seek, or omit selector= for the LQR path."
+                )
             n, p = model.n_states, model.n_controls
             self._goal = jnp.asarray(objective.target, dtype=float)
             if self._goal.shape != (n,):
@@ -189,6 +211,12 @@ class Agent:
             if model.control_matrix is None:
                 raise ValueError(
                     "an ObservationGoal needs a model with a control matrix to act."
+                )
+            if isinstance(selector, _STATE_SPACE_SELECTORS):
+                raise ValueError(
+                    f"{type(selector).__name__} regulates the state toward its target, "
+                    "and an ObservationGoal's target is an observation. Pass a "
+                    "StateGoal for the LQR path, or an EFE selector."
                 )
             is_ffg = isinstance(self._backend, EfeBackend)
             if sensor_is_fixed and selector is None and not is_ffg:
