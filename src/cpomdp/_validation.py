@@ -11,6 +11,7 @@ from numpy.typing import ArrayLike
 __all__ = [
     "UNVERSIONED",
     "concrete",
+    "equilibrium_drift",
     "require_fixed_noise",
     "validate_covariance",
     "validate_declared",
@@ -100,6 +101,23 @@ def validate_covariance(
             f"{name} must be positive-semi-definite (a covariance), but its "
             f"smallest eigenvalue is {float(eig.min()):.3g}."
         )
+
+
+def equilibrium_drift(
+    dynamics_matrix: ArrayLike, state: ArrayLike
+) -> np.ndarray | None:
+    """Where ``state`` moves in one step at zero action, or ``None`` if it stays put.
+
+    A regulator acts on the offset from its target, and the offset obeys the model's
+    dynamics only when ``A · target = target``. Under a trace the values cannot be
+    inspected, and the check is skipped like every other construction check.
+    """
+    concrete_dynamics, concrete_state = concrete(dynamics_matrix), concrete(state)
+    if concrete_dynamics is None or concrete_state is None:
+        return None
+    moved = concrete_dynamics @ concrete_state
+    atol = 1e-12 * max(1.0, float(np.abs(concrete_state).max()))
+    return None if np.allclose(moved, concrete_state, rtol=0.0, atol=atol) else moved
 
 
 def validate_finite(arr: Float64[Array, "n"], name: str) -> None:

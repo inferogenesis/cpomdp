@@ -331,6 +331,11 @@ class StateGoal:
     until the Agent pairs this with a model (the Agent fills the identity). The
     Agent dispatches a StateGoal to an LQRSelector. Not a pytree - construction-
     time only; the Agent extracts a Preference for the selector.
+
+    The target must hold still under the model's dynamics at zero action,
+    ``A · target = target``. LQR regulates the offset from the target and charges for
+    effort, so a target the dynamics move would take a constant push it never pays
+    in full, and the state would settle short. The Agent refuses such a target.
     """
 
     target: Float64[Array, "n"]

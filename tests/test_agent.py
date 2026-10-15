@@ -163,6 +163,29 @@ def test_from_backend_plans_under_the_backends_model():
     assert agent._backend is backend  # white-box: the filter is the one passed
 
 
+def _damped_model() -> LinearGaussianModel:
+    # A = 0.9 holds only the origin still: any other state decays toward it.
+    return LinearGaussianModel(
+        dynamics_matrix=[[0.9]],
+        observation_matrix=[[1.0]],
+        dynamics_noise=[[1e-6]],
+        observation_noise=[[1e-2]],
+        prior=Belief(mean=[0.0], cov=[[1.0]]),
+        control_matrix=[[1.0]],
+    )
+
+
+def test_state_goal_off_equilibrium_is_refused():
+    # Unrefused, the regulator settles at x = 0.8432 for a target of 1.
+    with pytest.raises(ValueError, match="equilibrium"):
+        Agent(_damped_model(), StateGoal([1.0]))
+
+
+def test_state_goal_at_equilibrium_is_accepted():
+    agent = Agent(_damped_model(), StateGoal([0.0]))
+    assert agent.sample_action().shape == (1,)
+
+
 # ============================================================================
 # Phase 5: regime dispatch — the sensor type picks the selector.
 #

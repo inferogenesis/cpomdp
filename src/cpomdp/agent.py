@@ -4,6 +4,7 @@ import jax.numpy as jnp
 from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
+from cpomdp._validation import equilibrium_drift
 from cpomdp.backends.base import EfeBackend, InferenceBackend
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.control import LQRController
@@ -112,7 +113,8 @@ class Agent:
                 sensor without a ``selector`` (output regulation, deferred); or if
                 the ``StateGoal`` target is not a 1-D vector of length ``n``; or if a
                 built-in ``selector`` reads its target in the other space from the
-                objective.
+                objective; or if the LQR path is given a ``StateGoal`` target the
+                dynamics do not hold at zero action.
             TypeError: If ``objective`` is neither a ``StateGoal`` nor an
                 ``ObservationGoal``.
         """
@@ -196,6 +198,15 @@ class Agent:
                     f"StateGoal target must be a 1-D vector of length {n} (the state "
                     f"dimension), got shape {self._goal.shape}"
                 )
+            if selector is None or isinstance(selector, _STATE_SPACE_SELECTORS):
+                moved = equilibrium_drift(model.dynamics_matrix, self._goal)
+                if moved is not None:
+                    raise ValueError(
+                        f"StateGoal target {self._goal} is not an equilibrium of the "
+                        f"dynamics: at zero action it moves to {moved}. LQR regulates "
+                        "the offset from the target and charges for effort, so it "
+                        "would settle short of a target the dynamics do not hold."
+                    )
             effort = jnp.eye(p) if objective.effort is None else objective.effort
             self._controller = LQRController(
                 model, goal_precision=objective.precision, effort_penalty=effort

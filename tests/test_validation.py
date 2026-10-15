@@ -1,9 +1,11 @@
-"""The one refusal every fixed-noise consumer shares."""
+"""The refusals shared across consumers: fixed noise, and a target the dynamics hold."""
 
+import jax
 import jax.numpy as jnp
+import numpy as np
 import pytest
 
-from cpomdp._validation import require_fixed_noise
+from cpomdp._validation import equilibrium_drift, require_fixed_noise
 from cpomdp.dynamics import CallableProcessNoise
 from cpomdp.observation import CallableSensor, FixedSensor
 from cpomdp.types import Belief, LinearGaussianModel
@@ -61,3 +63,24 @@ def test_a_slot_left_out_is_not_checked():
     # state-dependent sensor is no reason for it to refuse.
     model = _model(observation_model=CallableSensor([[1.0]], _rising_noise, ()))
     require_fixed_noise(model, "unused", slots=("dynamics_noise_model",))
+
+
+def test_a_state_the_dynamics_hold_has_no_drift():
+    assert equilibrium_drift([[1.0, 0.1], [0.0, 1.0]], [1.0, 0.0]) is None
+
+
+def test_a_state_the_dynamics_move_reports_where_it_goes():
+    drift = equilibrium_drift([[0.9]], [1.0])
+    assert drift is not None
+    np.testing.assert_allclose(drift, [0.9])
+
+
+def test_equilibrium_drift_is_skipped_under_a_trace():
+    seen = []
+
+    def traced(state):
+        seen.append(equilibrium_drift([[0.9]], state))
+        return state
+
+    jax.jit(traced)(jnp.ones(1))
+    assert seen == [None]

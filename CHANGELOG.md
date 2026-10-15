@@ -387,6 +387,12 @@ no use of the readings beats it.
   `C · x = target` and settled away from the target whenever `C` is not the identity.
   `LQRSelector` with an `ObservationGoal` failed the same way in reverse. A custom
   selector is not checked.
+- **Breaking:** on the LQR path `Agent` refuses a `StateGoal` target the dynamics do not
+  hold at zero action, where `A · target ≠ target`. LQR regulates the offset from the
+  target and charges for effort, so it settled short. With `A = 0.9` and a target of 1
+  the state came to rest at 0.8432. `CertaintyEquivalentController` already refused such
+  a goal, and the two now share one test. `StateGoal`'s docstring states the
+  requirement.
 - `cpomdp.diagnostics.condition_numbers` — the batched condition number
   `rollout_conditioning` computed inline, now a function of its own so a rollout and a
   scored cell read the same number for the same matrix.
