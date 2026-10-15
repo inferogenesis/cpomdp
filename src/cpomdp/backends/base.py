@@ -52,9 +52,15 @@ class InferenceBackend(Protocol):
     into this signature.
     """
 
-    # The model this backend was built from. A backend is *built from a model*, so it
-    # can always hand it back — the Agent derives its own ``model`` from here.
-    model: LinearGaussianModel
+    @property
+    def model(self) -> LinearGaussianModel:
+        """The model this backend was built from.
+
+        A backend is built from a model, so it can always hand it back. The
+        [`Agent`][cpomdp.Agent] takes its own ``model`` from here. A plain attribute
+        satisfies this as well as a read-only property.
+        """
+        ...
 
     def infer_states(
         self,

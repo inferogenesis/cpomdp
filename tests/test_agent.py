@@ -163,6 +163,38 @@ def test_from_backend_plans_under_the_backends_model():
     assert agent._backend is backend  # white-box: the filter is the one passed
 
 
+def test_model_is_read_only():
+    # The selector and controller were built from the model, so swapping it would
+    # leave them planning under the old one while agent.model reported the new.
+    agent = Agent(_reaching_model(), StateGoal(GOAL))
+    with pytest.raises(AttributeError):
+        agent.model = _reaching_model()  # ty: ignore[invalid-assignment]
+
+
+def test_belief_assignment_is_validated():
+    agent = Agent(_reaching_model(), StateGoal(GOAL))
+    with pytest.raises(TypeError, match="Belief"):
+        agent.belief = [1.0, 2.0]  # ty: ignore[invalid-assignment]
+    with pytest.raises(ValueError, match="2-D state"):
+        agent.belief = Belief(mean=[0.0], cov=[[1.0]])
+
+
+def test_belief_assignment_restarts_filtering():
+    agent = Agent(_reaching_model(), StateGoal(GOAL))
+    restart = Belief(mean=[0.5, 0.0], cov=np.eye(2))
+    agent.belief = restart
+    assert agent.belief is restart
+    assert agent.infer_states([0.5]).mean[0] == pytest.approx(0.5, abs=1e-3)
+
+
+def test_kalman_backend_model_is_read_only():
+    backend = KalmanBackend(_reaching_model())
+    with pytest.raises(AttributeError):
+        backend.model = _reaching_model()  # ty: ignore[invalid-assignment]
+    with pytest.raises(AttributeError):
+        backend.steady_state = True  # ty: ignore[invalid-assignment]
+
+
 def _damped_model() -> LinearGaussianModel:
     # A = 0.9 holds only the origin still: any other state decays toward it.
     return LinearGaussianModel(

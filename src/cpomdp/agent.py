@@ -163,9 +163,8 @@ class Agent:
     ) -> None:
         """Hold the backend and dispatch the objective to a selector."""
         model = backend.model
-        self.model = model
-        self.belief = model.prior
         self._backend = backend
+        self._belief = model.prior
         sensor_is_fixed = (
             model.observation_model is None or model.observation_model.is_fixed
         )
@@ -302,6 +301,37 @@ class Agent:
         )
 
     @property
+    def model(self) -> LinearGaussianModel:
+        """The model the agent plans and filters under, read-only.
+
+        It is the backend's model. The selector and any controller were built from it
+        at construction, so acting under a different model needs a new ``Agent``.
+        """
+        return self._backend.model
+
+    @property
+    def belief(self) -> Belief:
+        """The current posterior over the state, replaced by each ``infer_states``.
+
+        Assigning a [`Belief`][cpomdp.Belief] over the model's state restarts
+        filtering from it. Anything else is refused, since the next step would fail
+        on it or filter from the wrong state.
+        """
+        return self._belief
+
+    @belief.setter
+    def belief(self, belief: Belief) -> None:
+        if not isinstance(belief, Belief):
+            raise TypeError(f"belief must be a Belief, got {type(belief).__name__}")
+        n = self.model.n_states
+        if belief.mean.shape != (n,):
+            raise ValueError(
+                f"belief must be over the model's {n}-D state, got a mean of shape "
+                f"{belief.mean.shape}"
+            )
+        self._belief = belief
+
+    @property
     def qs(self) -> Belief:
         """Alias for ``belief`` (read-only) — pymdp muscle-memory ``agent.qs``.
 
@@ -335,10 +365,10 @@ class Agent:
                 backend; see ``validate_step_inputs``).
         """
         observation = jnp.asarray(observation, dtype=float)
-        self.belief = self._backend.infer_states(
-            observation, self.belief, self._last_action
+        self._belief = self._backend.infer_states(
+            observation, self._belief, self._last_action
         )
-        return self.belief
+        return self._belief
 
     def sample_action(self) -> Float64[Array, "p"]:
         """The action the agent's selector chooses for the current belief.

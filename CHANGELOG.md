@@ -393,6 +393,14 @@ no use of the readings beats it.
   the state came to rest at 0.8432. `CertaintyEquivalentController` already refused such
   a goal, and the two now share one test. `StateGoal`'s docstring states the
   requirement.
+- **Breaking:** `Agent.model`, `KalmanBackend.model` and `KalmanBackend.steady_state` are
+  read-only. Assigning `agent.model` changed what the agent reported while its backend,
+  selector and controller kept the old model. A steady-state `KalmanBackend` kept its
+  frozen gain under a reassigned model, and setting `steady_state` afterwards raised on
+  the next step. Build a new `Agent` or backend instead. Assigning `agent.belief` now
+  requires a `Belief` over the model's state. A list was accepted and failed on the next
+  step. `InferenceBackend.model` is declared a read-only property, which a plain
+  attribute still satisfies.
 - `cpomdp.diagnostics.condition_numbers` — the batched condition number
   `rollout_conditioning` computed inline, now a function of its own so a rollout and a
   scored cell read the same number for the same matrix.
