@@ -594,6 +594,22 @@ class TestProtocolAndReadout:
         with pytest.raises(ValueError, match="2-D joint state"):
             self._one_node_backend(Belief(mean=[0.0], cov=[[1.0]]))
 
+    def test_a_graph_with_no_sensor_is_refused_by_name(self):
+        # It used to fail with a zero-size reduction inside the model's noise check.
+        graph = CouplingGraph(
+            root=0,
+            dims=(1, 1),
+            couplings=(
+                Coupling(0, 1, GaussianCoupling([[1.0]], coupling_noise=[[0.5]])),
+            ),
+            observations={},
+        )
+        transition = GaussianTransition([[0.9]], dynamics_noise=[[0.1]])
+        with pytest.raises(ValueError, match="no node of the graph carries a sensor"):
+            CouplingGraphBackend(
+                graph, (transition, transition), prior=unit_prior(graph)
+            )
+
     def test_prior_not_mutated(self):
         backend = _build(
             _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN

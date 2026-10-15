@@ -18,6 +18,7 @@ from types import MappingProxyType
 from typing import SupportsIndex
 
 import jax.numpy as jnp
+import numpy as np
 from jax import Array
 from jaxtyping import Float64
 from numpy.typing import ArrayLike
@@ -61,8 +62,8 @@ class Coupling:
 
     def __post_init__(self) -> None:
         """Coerce the node indices to ``int`` and check every field's type."""
-        object.__setattr__(self, "parent", _node_index(self.parent, "parent"))
-        object.__setattr__(self, "child", _node_index(self.child, "child"))
+        object.__setattr__(self, "parent", _as_int(self.parent, "parent"))
+        object.__setattr__(self, "child", _as_int(self.child, "child"))
         if not isinstance(self.factor, GaussianCoupling):
             raise TypeError(
                 f"factor must be a GaussianCoupling, got {type(self.factor).__name__}"
@@ -91,7 +92,8 @@ class CouplingGraph:
         observations: maps a node index to the ``ObservationModel`` that reads it.
 
     Raises:
-        TypeError: if an observation is not an ``ObservationModel``.
+        TypeError: if ``root`` or a dimension is not an int, an edge is not a
+            ``Coupling``, or an observation is not an ``ObservationModel``.
         ValueError: if ``dims`` is empty or non-positive; if ``root``, an edge, or an
             observation references an out-of-range node; if an edge's factor ``W`` is
             not ``(dim[child], dim[parent])``; if a sensor's ``C`` is not as wide as the
@@ -110,8 +112,8 @@ class CouplingGraph:
         couplings: Sequence[Coupling],
         observations: Mapping[int, ObservationModel],
     ) -> None:
-        self._root = int(root)
-        self._dims = tuple(int(d) for d in dims)
+        self._root = _as_int(root, "root")
+        self._dims = tuple(_as_int(dim, f"dims[{i}]") for i, dim in enumerate(dims))
         self._couplings = tuple(couplings)
         self._observations = MappingProxyType(dict(observations))
         self._validate()
@@ -150,6 +152,10 @@ class CouplingGraph:
             raise ValueError(f"root {self.root} out of range for {n} nodes")
 
         for edge in self.couplings:
+            if not isinstance(edge, Coupling):
+                raise TypeError(
+                    f"couplings must hold Coupling edges, got {type(edge).__name__}"
+                )
             for idx in (edge.parent, edge.child):
                 if not 0 <= idx < n:
                     raise ValueError(f"coupling references unknown node {idx}")
@@ -243,6 +249,39 @@ class CouplingGraph:
         observation_matrix, observation_noise = self._linearized_sensor(node, state)
         return likelihood_message(observation_matrix, observation_noise, reading)
 
+    def _check_prior(self, prior: Belief) -> None:
+        """Refuse a prior that is not a ``Belief`` over the root node's state."""
+        if not isinstance(prior, Belief):
+            raise TypeError(f"prior must be a Belief, got {type(prior).__name__}")
+        root_dim = self.dims[self.root]
+        if prior.mean.shape != (root_dim,):
+            raise ValueError(
+                f"prior must be over root node {self.root}'s {root_dim}-D state, "
+                f"got a mean of shape {prior.mean.shape}"
+            )
+
+    def _check_readings(self, readings: Mapping[int, ArrayLike]) -> None:
+        """Refuse a reading static inference cannot fold in, naming its node."""
+        for node, reading in readings.items():
+            if node not in self.observations:
+                raise ValueError(
+                    f"node {node} has no sensor, so it cannot take a reading. The "
+                    f"observed nodes are {sorted(self.observations)}."
+                )
+            if not self.observations[node].is_fixed:
+                raise ValueError(
+                    f"node {node} carries a state-dependent sensor, and static "
+                    "inference has no predicted mean to evaluate R(x) at. Run the "
+                    "graph through a CouplingGraphBackend."
+                )
+            width = self._sensor_at_zero[node][0].shape[0]
+            shape = np.shape(reading)
+            if shape != (width,):
+                raise ValueError(
+                    f"the reading on node {node} must have shape ({width},), "
+                    f"got {shape}"
+                )
+
     def infer(self, prior: Belief, readings: Mapping[int, ArrayLike]) -> Belief:
         """Compute the marginal belief at the root from a prior and per-node readings.
 
@@ -262,15 +301,13 @@ class CouplingGraph:
             The marginal belief at the root.
 
         Raises:
-            ValueError: if a reading's node carries a state-dependent sensor.
+            TypeError: if ``prior`` is not a ``Belief``.
+            ValueError: if ``prior`` is not over the root's state, or a reading is on
+                a node with no sensor, on a node whose sensor is state-dependent, or
+                not as wide as its sensor.
         """
-        for node in readings:
-            if not self.observations[node].is_fixed:
-                raise ValueError(
-                    f"node {node} carries a state-dependent sensor, and static "
-                    "inference has no predicted mean to evaluate R(x) at. Run the "
-                    "graph through a CouplingGraphBackend."
-                )
+        self._check_prior(prior)
+        self._check_readings(readings)
 
         # Lift the moment-form prior into a canonical message on the root.
         prior_precision = jnp.linalg.inv(prior.cov)  # Λ₀ = Σ⁻¹
@@ -349,8 +386,8 @@ def _combine(
     return acc[key] + msg if key in acc else msg
 
 
-def _node_index(value: object, name: str) -> int:
-    """``value`` as a node index. A bool and a non-integer are refused."""
+def _as_int(value: object, name: str) -> int:
+    """``value`` as an ``int``. A bool and a non-integer are refused."""
     if isinstance(value, bool) or not isinstance(value, SupportsIndex):
-        raise TypeError(f"{name} must be an int node index, got {type(value).__name__}")
+        raise TypeError(f"{name} must be an int, got {type(value).__name__}")
     return operator.index(value)
