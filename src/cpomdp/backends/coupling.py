@@ -185,7 +185,7 @@ class CouplingGraphBackend:
         self._sensor_is_fixed = all(
             o.is_fixed for o in self._graph.observations.values()
         )
-        self._flat_model = self._build_validation_model()
+        self._model = self._build_model()
         self._partition_mask = self._build_partition_mask()
         # node -> its partition cluster index (ADR-018 admissibility diagnostic).
         self._cluster_of = {
@@ -358,7 +358,7 @@ class CouplingGraphBackend:
             blocks.append(obs.linearize(jnp.zeros(obs.observation_matrix.shape[1]))[1])
         return blocks
 
-    def _build_validation_model(self) -> LinearGaussianModel:
+    def _build_model(self) -> LinearGaussianModel:
         """The flat model of the real interface, which also shape-checks each step.
 
         ``infer_states`` reuses the shared per-step validator (``backends.base``) every
@@ -484,9 +484,9 @@ class CouplingGraphBackend:
         per candidate (issue #27). A graph whose sensors are all fixed returns the
         constant R it front-loaded and reads no mean.
         """
-        joint_observation = self._flat_model.observation_model
+        joint_observation = self._model.observation_model
         if joint_observation is None:  # every sensor fixed
-            return self._flat_model.observation_noise
+            return self._model.observation_noise
         return joint_observation.linearize(mean)[1]
 
     def _build_partition_mask(self) -> jax.Array:
@@ -535,7 +535,7 @@ class CouplingGraphBackend:
             ``marginal``.
         """
         observation, action = _validate_step_inputs(
-            self._flat_model, observation, prior, action
+            self._model, observation, prior, action
         )
         if self._is_factored:
             # Fully-factored carry: skip the dense joint solve, run tree BP instead.
@@ -691,7 +691,7 @@ class CouplingGraphBackend:
                     f"got shape {actions.shape}"
                 )
             first_action = actions[0]
-        _validate_step_inputs(self._flat_model, observations[0], prior, first_action)
+        _validate_step_inputs(self._model, observations[0], prior, first_action)
 
         def step(
             belief: Belief, step_inputs: tuple[jax.Array, jax.Array]
@@ -718,7 +718,7 @@ class CouplingGraphBackend:
         would sever), so the two can never drift.
         """
         observation, action = _validate_step_inputs(
-            self._flat_model, observation, prior, action
+            self._model, observation, prior, action
         )
         return self._assemble_unchecked(observation, prior, action)
 
@@ -874,7 +874,7 @@ class CouplingGraphBackend:
         ``to_flat_model()`` adds them as pseudo-observations for the oracle
         cross-check.
         """
-        return self._flat_model
+        return self._model
 
     def predicted_belief(
         self, prior: Belief, action: ArrayLike | None = None
@@ -929,7 +929,7 @@ class CouplingGraphBackend:
         if not self._sensor_is_fixed:
             # Coupling-free R(x): μ⁻ = μ⁺, so handing the graph's own sensor to a flat
             # backend reproduces this filter, and this model is the backend's own.
-            return self._flat_model
+            return self._model
         rows = self._embedded_sensor_rows()
         noise_blocks = self._fixed_noise_blocks()
         for edge in self._graph.couplings:  # child − W·parent ~ N(0, Q_struct)
