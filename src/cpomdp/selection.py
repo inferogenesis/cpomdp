@@ -123,9 +123,12 @@ class LQRSelector:
 
 
 def _require_scalar_control(
-    control_matrix: Float64[Array, "n p"] | None, selector: str
+    control_matrix: Float64[Array, "n p"] | None, selector: str, search: str
 ) -> None:
-    """Refuse a model a one-dimensional action grid cannot search."""
+    """Refuse a model a one-dimensional action grid cannot search.
+
+    ``search`` is where a caller with more than one action dimension goes instead.
+    """
     if control_matrix is None:
         raise ValueError(
             f"{selector} needs a model with a control matrix; an action has no "
@@ -135,7 +138,7 @@ def _require_scalar_control(
     if p != 1:
         raise ValueError(
             f"{selector} searches a 1-D action grid (p=1); got p={p}. "
-            "For p>1 use EnumeratedEfeSearch over a declared FiniteActionSet "
+            f"For p>1 use {search} with a declared FiniteActionSet "
             "(cpomdp.enumeration), or pass a custom selector."
         )
 
@@ -171,7 +174,9 @@ class EFESelector:
         action_bounds: tuple[float, float],
         horizon: int = 1,
     ) -> None:
-        _require_scalar_control(model.control_matrix, "EFESelector")
+        _require_scalar_control(
+            model.control_matrix, "EFESelector", "EnumeratedEfeSearch"
+        )
         lo, hi = action_bounds
         if not lo < hi:
             raise ValueError(
@@ -270,7 +275,11 @@ class FfgEfeSelector:
         n_candidates: int,
         action_bounds: tuple[float, float],
     ) -> None:
-        _require_scalar_control(backend.model.control_matrix, "FfgEfeSelector")
+        _require_scalar_control(
+            backend.model.control_matrix,
+            "FfgEfeSelector",
+            "EnumeratedEfeSearch.over_backend",
+        )
         lo, hi = action_bounds
         if not lo < hi:
             raise ValueError(
