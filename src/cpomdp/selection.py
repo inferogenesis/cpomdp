@@ -290,6 +290,12 @@ class EFESelector:
         self._horizon = horizon
         self._candidates = candidates
         self._distance_from_zero = jnp.linalg.norm(candidates, axis=1)
+        # H>1: each candidate becomes a constant-action policy (held for H steps).
+        self._policies = jnp.repeat(candidates[:, None, :], horizon, axis=1)
+        # Compiled once, on first use. Belief and Preference are pytree arguments, so
+        # every later call reuses the program (ADR-002).
+        self._scores = jax.jit(self._score_grid)
+        self._choose = jax.jit(self._score_and_choose)
 
     def select(self, belief: Belief, preference: Preference) -> Float64[Array, "p"]:
         """The grid action minimising ``G`` over the horizon (the per-cycle work).
@@ -297,22 +303,28 @@ class EFESelector:
         At ``horizon = 1`` one ``vmap`` of the one-step kernel + ``argmin``. At
         ``horizon > 1`` one ``vmap`` of ``policy_efe`` over the constant-action policies
         + ``argmin``, returning the first (= constant) action of the best policy. NaN
-        when no candidate scores a finite ``G``.
+        when no candidate scores a finite ``G``. The first call compiles the work and
+        later calls reuse it.
         """
-        g = self._scores(belief, preference)
+        return self._choose(belief, preference)
+
+    def _score_and_choose(
+        self, belief: Belief, preference: Preference
+    ) -> Float64[Array, "p"]:
+        g = self._score_grid(belief, preference)
         return _grid_choice(self._candidates, self._distance_from_zero, g)
 
-    def _scores(self, belief: Belief, preference: Preference) -> Float64[Array, "k"]:
+    def _score_grid(
+        self, belief: Belief, preference: Preference
+    ) -> Float64[Array, "k"]:
         """``G`` for every candidate over the horizon, in grid order."""
         if self._horizon == 1:
             return jax.vmap(
                 lambda a: expected_free_energy(self._model, belief, a, preference)[0]
             )(self._candidates)
-        # H>1: each candidate becomes a constant-action policy (held for H steps).
-        policies = jnp.repeat(self._candidates[:, None, :], self._horizon, axis=1)
         return jax.vmap(
             lambda pol: policy_efe(self._model, belief, pol, preference)[0]
-        )(policies)
+        )(self._policies)
 
     @property
     def candidates(self) -> Float64[Array, "k p"]:
@@ -415,6 +427,7 @@ class FfgEfeSelector:
         self._observation_matrix, _ = backend.observation_model  # C (constant)
         self._candidates = candidates
         self._distance_from_zero = jnp.linalg.norm(candidates, axis=1)
+        self._choose = jax.jit(self._score_and_choose)  # compiled once, on first use
 
     def select(self, belief: Belief, preference: Preference) -> Float64[Array, "p"]:
         """The grid action minimising ``G`` (the per-cycle work).
@@ -424,9 +437,13 @@ class FfgEfeSelector:
         ``μ⁺`` per candidate — constant under a fixed sensor, action-dependent under
         ``R(x)`` (the dual effect). This is the RFC-001 hot path; keep it lean. Ties
         and scores that are not finite go as for
-        [`EFESelector`][cpomdp.EFESelector].
+        [`EFESelector`][cpomdp.EFESelector], and the first call compiles the work.
         """
+        return self._choose(belief, preference)
 
+    def _score_and_choose(
+        self, belief: Belief, preference: Preference
+    ) -> Float64[Array, "p"]:
         def g_of(action: Float64[Array, "p"]) -> Float64[Array, ""]:
             predicted = self._backend.predicted_belief(belief, action)  # μ⁺, Σ⁺
             observation_noise = self._backend.observation_noise_at(
