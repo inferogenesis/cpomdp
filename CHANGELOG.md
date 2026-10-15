@@ -221,7 +221,9 @@ certainty equivalence is optimal, and no use of the readings beats it.
   The pytest plugin collects the manifest, turning every declared check into an item.
   The item exists because the check was declared, so a check that stops reporting still
   has a row and the row fails naming it.
-- A pytest plugin, behind `pip install "warrantlib[pytest]"` (warrantlib 0.3.0). A test
+- A pytest plugin (warrantlib 0.3.0), which pytest loads wherever warrantlib is
+  installed, and so wherever cpomdp is. It needs pytest 8 or newer, which the
+  `warrantlib[pytest]` extra pins, and `-p no:warrant` switches it off. A test
   hands its findings to the run with the `record_check` fixture, and the run reports them
   in the warrant vocabulary: the progress letter separates a void check from one measured
   elsewhere, `-v` prints `NOT TRIGGERED` where it would have printed `PASSED`, and the run
@@ -231,7 +233,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
   stays one of pytest's own three: `junitxml` branches on that and nothing else, so a
   fourth value would write the row as no row at all. Categories stay standard too, so
   `N passed` still counts what it always did and `assert_outcomes` still sees it. Loaded
-  through the `pytest11` entry point, so no configuration is needed; `dependencies` stays
+  through the `pytest11` entry point, so no configuration is needed. `dependencies` stays
   empty and importing `warrantlib` still pulls in no pytest, which a test asserts in a
   clean interpreter.
 - `report_to_dict` / `report_from_dict` / `SCHEMA_VERSION` (warrantlib 0.3.0) — a
