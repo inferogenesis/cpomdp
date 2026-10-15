@@ -400,6 +400,9 @@ certainty equivalence is optimal, and no use of the readings beats it.
 - The README's pymdp table said only `C` and `D` are spelled differently. It and the
   `Agent` docstring now map `A`, `B` and `infer_policies` as well, and say that
   `model.A` and `model.C` are control-theory letters for pymdp's `B` and `A`.
+- Importing cpomdp has switched JAX to 64-bit floats for the whole process since 0.2.0,
+  and only that release's changelog said so. The README's install section and the
+  package docstring now say it, and what turning the flag off again does.
 - `cpomdp._lab.additivity.variational_free_energy` and `RxInferBackend` refuse a
   state-dependent sensor. Both read the plain `observation_noise` whatever the model
   carried, so a model with `R(x)` was priced or filtered against a constant without
