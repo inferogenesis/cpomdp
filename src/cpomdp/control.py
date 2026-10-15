@@ -1,10 +1,11 @@
 """Quadratic regulation: the action-side dual of the Kalman filter.
 
 ``LQRController`` solves the control Riccati equation to its fixed point once and
-applies the steady-state gain forever after. ``finite_horizon_lqr`` runs the same
-backward recursion a declared number of steps and keeps every gain it produces, which
-is the schedule an ``H``-step plan applies and the gain a receding-horizon planner at
-horizon ``H`` applies at every step. The two agree in the limit and at no finite ``H``.
+applies the steady-state gain forever after. ``lqr_schedule`` runs the same backward
+recursion a declared number of steps and keeps every gain it produces, which is the
+schedule an ``H``-step plan applies and the gain a receding-horizon planner at horizon
+``H`` applies at every step. The two agree in the limit and at no finite ``H``.
+``kalman_schedule`` is the filter's side of the pair, called and read the same way.
 """
 
 from dataclasses import dataclass
@@ -18,11 +19,11 @@ from cpomdp.backends.kalman import _gain_and_posterior_cov
 from cpomdp.types import Belief, LinearGaussianModel
 
 __all__ = [
-    "FiniteHorizonLQR",
     "KalmanSchedule",
     "LQRController",
-    "finite_horizon_lqr",
+    "LQRSchedule",
     "kalman_schedule",
+    "lqr_schedule",
 ]
 
 # Every closed form here prices one fixed noise, so R(x) and Q(x) are refused.
@@ -133,7 +134,7 @@ def _riccati_step(
 
 
 @dataclass(frozen=True)
-class FiniteHorizonLQR:
+class LQRSchedule:
     """The gain schedule and cost-to-go of an ``H``-step regulator.
 
     The stage cost is charged on the state each action arrives at, and nothing is
@@ -176,13 +177,13 @@ class FiniteHorizonLQR:
         return self.gains[0]
 
 
-def finite_horizon_lqr(
+def lqr_schedule(
     model: LinearGaussianModel,
     *,
+    horizon: int,
     goal_precision: ArrayLike,
     effort_penalty: ArrayLike,
-    horizon: int,
-) -> FiniteHorizonLQR:
+) -> LQRSchedule:
     """Run the control Riccati recursion backward over ``horizon`` steps.
 
     The same Bellman step ``LQRController`` iterates to a fixed point, run a declared
@@ -198,11 +199,11 @@ def finite_horizon_lqr(
 
     Args:
         model: The linear-Gaussian model to act in. Must carry a ``control_matrix``.
+        horizon: ``H``, how many steps the plan covers. At least one.
         goal_precision: The stage cost on the state, an ``(n, n)`` matrix. (LQR's
             ``Q``.)
         effort_penalty: The stage cost on the action, a ``(p, p)`` matrix. (LQR's
             ``R``.)
-        horizon: ``H``, how many steps the plan covers. At least one.
 
     Returns:
         The schedule, with ``gains[k]`` the gain at step ``k`` of the plan and
@@ -231,7 +232,7 @@ def finite_horizon_lqr(
         gains.append(gain)
     # Built with the fewest steps remaining first; the plan applies them the other
     # way round.
-    return FiniteHorizonLQR(
+    return LQRSchedule(
         model=model,
         goal_precision=goal_precision,
         effort_penalty=effort_penalty,
@@ -270,9 +271,14 @@ class KalmanSchedule:
     gains: Float64[Array, "H n m"]
     covariances: Float64[Array, "H+1 n n"]
 
+    @property
+    def horizon(self) -> int:
+        """``H``, the number of readings scheduled."""
+        return int(self.gains.shape[0])
+
 
 def kalman_schedule(
-    model: LinearGaussianModel, horizon: int, prior: Belief | None = None
+    model: LinearGaussianModel, *, horizon: int, prior: Belief | None = None
 ) -> KalmanSchedule:
     """The exact filter's gain and covariance at each of ``horizon`` readings.
 
