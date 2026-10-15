@@ -179,6 +179,10 @@ class EnumeratedSearchResult(NamedTuple):
         best_g: the argmin's summed EFE, G.
         best_index: the argmin's position in the enumeration.
         certificate: the completeness certificate (ADR-030).
+
+    When no policy scores finitely there is no argmin. ``best_policy`` and ``best_g``
+    are then NaN and ``best_index`` is -1. The certificate still holds, since it
+    certifies that every policy was scored.
     """
 
     best_policy: Float64[Array, "H p"]
@@ -258,8 +262,33 @@ def _score_every_policy(
 ) -> _Scored:
     """Every policy's summed EFE, then the NaN-safe argmin, its score and its policy."""
     g = jax.vmap(lambda policy: scorer.score(belief, policy, preference))(policies)
-    best_index = jnp.argmin(jnp.where(jnp.isnan(g), jnp.inf, g))
-    return _Scored(g, best_index, g[best_index], policies[best_index])
+    masked = jnp.where(jnp.isnan(g), jnp.inf, g)
+    best_index = jnp.argmin(masked)
+    best_g, best_index, best_policy = _winner_or_none(
+        masked[best_index], g[best_index], best_index, policies[best_index]
+    )
+    return _Scored(g, best_index, best_g, best_policy)
+
+
+def _winner_or_none(
+    masked_best: Float64[Array, ""],
+    best_g: Float64[Array, ""],
+    best_index: Int[Array, ""],
+    best_policy: Float64[Array, "H p"],
+) -> tuple[Float64[Array, ""], Int[Array, ""], Float64[Array, "H p"]]:
+    """The argmin, or NaN, -1 and a NaN policy when no policy scored below ``+inf``.
+
+    A NaN score is masked to ``+inf`` before the argmin, so when every score is NaN the
+    argmin lands on index 0 by default. Reporting that policy would present the first
+    declared sequence as a decision. The NaN policy is jit-safe and reaches the caller
+    as a NaN action, which the caller can refuse.
+    """
+    found = masked_best < jnp.inf
+    return (
+        jnp.where(found, best_g, jnp.nan),
+        jnp.where(found, best_index, -1),
+        jnp.where(found, best_policy, jnp.nan),
+    )
 
 
 class EnumeratedEfeSearch:
@@ -482,6 +511,9 @@ class ChunkedSearchResult(NamedTuple):
         certificate: the completeness certificate (ADR-030). Its ``visited`` is the
             count of policies the loop scored, carried by the loop rather than read
             off an array's length.
+
+    When no policy scores finitely there is no argmin, and the result reads as on the
+    front-loaded path: NaN, -1 and a NaN policy beside a certificate that still holds.
     """
 
     best_policy: Float64[Array, "H p"]
@@ -681,19 +713,35 @@ class ChunkedEfeSearch:
             None if reducer is None else reducer.init(),
         )
         (argmin, extra), _ = jax.lax.scan(run_block, start, jnp.arange(n_blocks))
-        best_policy = _decode_policies(
-            argmin.best_index, self._action_set, self._horizon
+        best_g, best_index, best_policy = _winner_or_none(
+            argmin.best_g,
+            argmin.best_g,
+            argmin.best_index,
+            _decode_policies(argmin.best_index, self._action_set, self._horizon),
         )
+        argmin = argmin._replace(best_g=best_g, best_index=best_index)
         return argmin, best_policy, extra
 
-    def policies_at(self, indices: Array) -> Float64[Array, "... H p"]:
+    def policies_at(self, indices: ArrayLike) -> Float64[Array, "... H p"]:
         """The policies named by ``indices``, decoded rather than looked up.
 
         The counterpart of ``best_index``: a chunked run reports where its winner sat
         in the enumeration, and this turns that back into a plan. Also how a caller
         checks that an index means the same policy here as on the front-loaded path.
+
+        Raises:
+            ValueError: If an index lies outside the enumeration, including the ``-1``
+                a result carries when no policy scored finitely. Decoded, it would
+                wrap to a real policy.
         """
-        return _decode_policies(jnp.asarray(indices), self._action_set, self._horizon)
+        indices = jnp.asarray(indices)
+        outside = np.asarray((indices < 0) | (indices >= self._n_policies))
+        if outside.any():
+            raise ValueError(
+                f"indices {np.asarray(indices)[outside].tolist()} lie outside "
+                f"0..{self._n_policies - 1}, the enumeration's range."
+            )
+        return _decode_policies(indices, self._action_set, self._horizon)
 
     @property
     def n_policies(self) -> int:
