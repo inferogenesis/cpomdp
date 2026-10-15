@@ -317,16 +317,37 @@ class TestCouplingGraphInfer:
         np.testing.assert_allclose(np.asarray(out.mean), m0, atol=1e-8)
         np.testing.assert_allclose(np.asarray(out.cov), P0, atol=1e-8)
 
-    def test_reading_without_observation_factor_raises(self):
-        # A reading for a node that has no sensor is a usage error.
-        graph = CouplingGraph(
+    @staticmethod
+    def _two_node_graph(observations):
+        return CouplingGraph(
             0,
             (1, 1),
             (Coupling(0, 1, GaussianCoupling([[1.0]], coupling_noise=[[0.5]])),),
-            {},
+            observations,
         )
-        with pytest.raises(KeyError):
+
+    def test_reading_on_a_node_without_a_sensor_is_refused_by_name(self):
+        # It used to raise a bare KeyError: 1.
+        graph = self._two_node_graph({})
+        with pytest.raises(ValueError, match=r"node 1 has no sensor"):
             graph.infer(Belief(mean=np.zeros(1), cov=np.eye(1)), {1: np.zeros(1)})
+
+    def test_prior_over_the_wrong_dimension_is_refused_by_name(self):
+        # It used to raise "cannot add messages of shape (2, 2) and (1, 1)".
+        graph = self._two_node_graph({})
+        with pytest.raises(ValueError, match=r"prior.*root node 0.*1-D"):
+            graph.infer(Belief(mean=np.zeros(2), cov=np.eye(2)), {})
+
+    def test_prior_that_is_not_a_belief_is_refused(self):
+        graph = self._two_node_graph({})
+        with pytest.raises(TypeError, match="prior must be a Belief"):
+            graph.infer({1: np.zeros(1)}, {})
+
+    def test_reading_of_the_wrong_width_is_refused_by_name(self):
+        sensor = FixedSensor(np.eye(1), observation_noise=np.eye(1))
+        graph = self._two_node_graph({1: sensor})
+        with pytest.raises(ValueError, match=r"reading on node 1.*\(1,\)"):
+            graph.infer(Belief(mean=np.zeros(1), cov=np.eye(1)), {1: np.zeros(2)})
 
     def test_jit_grad_vmap_through_infer(self):
         # The collect is static structure over traced array data, so it jits, vmaps over
@@ -567,6 +588,25 @@ class TestCouplingGraphValidation:
                 (2, 1),
                 (Coupling(0, 1, self._w(1, 2)),),
                 {0: FixedSensor(np.eye(1), observation_noise=np.eye(1))},
+            )
+
+    @pytest.mark.parametrize(
+        ("root", "dims", "named"),
+        [(0.5, (1, 1), "root"), (True, (1, 1), "root"), (0, (1, 1.5), "dims")],
+    )
+    def test_rejects_a_root_or_dimension_that_is_not_an_int(self, root, dims, named):
+        # int() used to truncate 1.5 to 1 and build a graph nobody declared.
+        with pytest.raises(TypeError, match=named):
+            CouplingGraph(root, dims, (Coupling(0, 1, self._w(1, 1)),), {})
+
+    def test_rejects_a_coupling_that_is_not_a_coupling(self):
+        # A bare (parent, child, factor) tuple used to fail on a missing attribute.
+        with pytest.raises(TypeError, match=r"couplings.*Coupling"):
+            CouplingGraph(
+                0,
+                (1, 1),
+                ((0, 1, self._w(1, 1)),),  # ty: ignore[invalid-argument-type]
+                {},
             )
 
     @pytest.mark.parametrize("field", ["root", "dims", "couplings", "observations"])

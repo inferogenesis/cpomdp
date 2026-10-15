@@ -405,6 +405,13 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `C` on a two-dimensional node used to construct, and `CouplingGraphBackend` broadcast
   it across the node's block, so the sensor read the sum of the node's components and
   the filter returned a plausible posterior from the wrong model.
+- Malformed graph inputs raise an error that names the argument. A reading on a node
+  with no sensor raised a bare `KeyError: 1` from `CouplingGraph.infer`, and a prior over
+  the wrong dimension raised `cannot add messages of shape (2, 2) and (1, 1)`.
+  `GaussianTransition.from_ou(0.0, ...)` raised `ZeroDivisionError`, and a negative `tau`
+  or `dt` blamed `dynamics_noise`, an argument the caller never passed. A `root` or a
+  dimension of 1.5 was truncated to 1. A `CouplingGraphBackend` over a graph with no
+  sensor failed in a zero-size reduction and now refuses at construction.
 - The graph EFE rollouts and searches skipped the checks `FfgEfeSelector` makes on its
   target. `policy_efe_ffg`, `policy_efe_ffg_trace`, the crossover statistic and both
   searches' `over_backend` scored on a carry partition that severs an EFE-load-bearing
