@@ -94,7 +94,9 @@ certainty equivalence is optimal, and no use of the readings beats it.
   is built from non-negative parts and subtracts nothing, so a reading near zero is a
   small divergence rather than a cancellation. `ThreeTermEvaluator.score` walks a driven
   run and returns a `CellScore` with a `RunConditioning` beside it: the condition number
-  of every predictive and posterior covariance the terms factored, per step.
+  of every predictive and posterior covariance the terms factored, per step. The run
+  carries the sequence that drove it, and the score reads the actions from there, so
+  readings cannot be scored against another sequence that reuses the tag.
   `score_cross` scores every cell, reports the cell where both terms move, and refuses
   to name a separation without one. A `Separation` is the pinned term, the moving term
   and their ratio, and `render` prints no separation without its ratio and its worst
