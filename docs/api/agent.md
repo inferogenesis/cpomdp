@@ -26,7 +26,7 @@ The stateful façade you drive: `infer_states` to perceive, `sample_action` to a
         state -- "R(x) sensor" --> r2["Refused: a state goal on varying sensing"]:::refused
         state -- "graph model" --> uncoupled["LQR that ignores the graph's couplings"]:::gap
         obs -- "R(x) sensor" --> c1["Curious EFE: horizon read off the model"]:::curious
-        obs -- "R(x) sensor,<br/>horizon set too short" --> r3["Refused: every action ties"]:::refused
+        obs -- "R(x) sensor,<br/>horizon set too short" --> r3["Refused: the target does not move the scores"]:::refused
         obs -- "fixed sensor" --> r4["Refused: same information everywhere"]:::refused
         obs -- "Q(x) only" --> rq["Refused, though Q(x) alone<br/>can make an agent curious"]:::gap
         obs -- "graph model,<br/>R(x) node sensors" --> c2["Curious EFE: graph selector, horizon 1"]:::curious
@@ -51,7 +51,7 @@ The stateful façade you drive: `infer_states` to perceive, `sample_action` to a
     | Any selector with no goal | Ignored, and the agent tracks | Ignored, and the agent tracks |
 
     An `ObservationGoal` with no horizon set gets the shortest horizon at which the
-    actions score apart. `agent.selector.horizon` reads it back,
+    target moves the scores. `agent.selector.horizon` reads it back,
     `agent.selector.cost_per_cycle` gives what each `sample_action` costs, and printing
     the agent shows both. A longer horizon looks further ahead for more work per step,
     and can change what the agent does. To compare, build one agent per horizon and run

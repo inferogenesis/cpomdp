@@ -9,7 +9,13 @@ from cpomdp.control import LQRController
 from cpomdp.ffg.chain import ChainBackend
 from cpomdp.harness import ScoredAgent
 from cpomdp.observation import CallableSensor
-from cpomdp.selection import EFESelector, LQRSelector, ObservationGoal, StateGoal
+from cpomdp.selection import (
+    EFESelector,
+    LQRSelector,
+    ObservationGoal,
+    Preference,
+    StateGoal,
+)
 from cpomdp.types import Belief, LinearGaussianModel
 
 # The double-integrator point mass from test_control: state = [position, velocity],
@@ -401,7 +407,9 @@ class TestRegimeDispatch:
 #
 # On the double integrator a push changes velocity, and velocity reaches the observed
 # position a step later. At horizon 1 every candidate scores the same G, and the
-# argmin's first candidate, a full push away from the goal, won the tie.
+# argmin's first candidate, a full push away from the goal, won the tie. A noise that
+# reads velocity breaks the tie at horizon 1 without the target, so the scores moving
+# is not enough. The target has to move them.
 
 
 def _sharp_near_one(x, params):
@@ -441,25 +449,58 @@ class TestDerivedHorizon:
         agent.infer_states([0.0])
         assert float(agent.sample_action()[0]) > 0.0  # toward the goal at +1
 
-    def test_a_horizon_that_leaves_every_candidate_tied_is_refused(self):
+    @pytest.mark.parametrize("noise_fn", [_sharp_near_one, _sharp_at_rest])
+    def test_a_horizon_too_short_to_reach_the_reading_is_refused(self, noise_fn):
         goal = ObservationGoal([1.0], action_bounds=(-2.0, 2.0), horizon=1)
         with pytest.raises(ValueError, match="horizon=2"):
-            Agent(_double_integrator(_sharp_near_one), goal)
+            Agent(_double_integrator(noise_fn), goal)
 
-    def test_noise_that_reads_velocity_is_searched_over_one(self):
+    def test_at_horizon_one_a_noise_that_reads_velocity_chooses_alone(self):
         # C·B = 0, so the reading cannot move in one step. The noise can.
-        agent = Agent(_double_integrator(_sharp_at_rest), _REACH_ONE)
-        assert _horizon(agent) == 1
+        model = _double_integrator(_sharp_at_rest)
+        selector = EFESelector(model, n_candidates=21, action_bounds=(-2.0, 2.0))
+        up, down = (
+            selector.select(model.prior, Preference([target])) for target in (1.0, -5.0)
+        )
+        np.testing.assert_array_equal(up, down)
+
+    def _first_pushes(self, precision):
+        pushes = []
+        for target in (1.0, -5.0):
+            goal = ObservationGoal(
+                [target], action_bounds=(-2.0, 2.0), precision=precision
+            )
+            agent = Agent(_double_integrator(_sharp_at_rest), goal)
+            assert _horizon(agent) == 2
+            agent.infer_states([0.0])
+            pushes.append(float(agent.sample_action()[0]))
+        return pushes
+
+    def test_noise_that_reads_velocity_does_not_stand_in_for_the_target(self):
+        up, down = self._first_pushes(precision=[[100.0]])
+        assert up > 0.0 > down
+
+    def test_a_weak_preference_loses_to_the_information_term(self):
+        # Read, the target still competes. At precision 1 the agent rests at the prior.
+        up, down = self._first_pushes(precision=None)
+        assert up == pytest.approx(0.0, abs=1e-12)
+        assert down == pytest.approx(0.0, abs=1e-12)
 
     def test_a_single_integrator_keeps_horizon_one(self):
         agent = Agent(_corridor_model(fixed=False), _OBS_GOAL)
         assert _horizon(agent) == 1
 
-    def test_an_action_that_never_reaches_the_scores_is_refused(self):
-        # Velocity never feeds position, and the noise reads position alone.
+    def test_an_action_that_never_reaches_the_reading_is_refused(self):
+        # Velocity never feeds position.
         model = _double_integrator(_sharp_near_one, dynamics=np.eye(2))
-        with pytest.raises(ValueError, match="cannot tell its candidates apart"):
+        with pytest.raises(ValueError, match="within 2 steps"):
             Agent(model, _REACH_ONE)
+
+    def test_a_refusal_names_the_horizon_it_scored(self):
+        model = _double_integrator(_sharp_near_one, dynamics=np.eye(2))
+        goal = ObservationGoal([1.0], action_bounds=(-2.0, 2.0), horizon=5)
+        with pytest.raises(ValueError, match="at horizon 5,"):
+            Agent(model, goal)
 
 
 class TestSelectorAccess:

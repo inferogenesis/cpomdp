@@ -127,10 +127,10 @@ class EFESelector:
     ``cost_per_cycle = n_candidates * horizon``.
 
     Built directly, the selector uses the ``horizon`` it is given. On a model where a
-    push takes more than one step to reach the reading or its noise, ``horizon = 1``
-    leaves every candidate with the same ``G``, and the first candidate wins the tie.
-    The ``Agent`` reads the horizon for an ``ObservationGoal`` off the model and
-    refuses one that leaves the candidates tied.
+    push takes more than one step to reach the reading, ``horizon = 1`` leaves the
+    target out of every comparison. The candidates then differ by their noise alone, or
+    tie and the first wins. The ``Agent`` reads the horizon for an ``ObservationGoal``
+    off the model and refuses one too short for the target to move the scores.
 
     Honest caveat: ``horizon`` selects the best *constant* action, not the best
     *sequence*. A genuinely sequential epistemic policy — move to sense, then exploit —
@@ -405,7 +405,7 @@ class ObservationGoal:
     sharply it is preferred (``precision``), and the action-search config the
     EFESelector front-loads: ``action_bounds`` is the action box, ``n_candidates`` its
     resolution, ``horizon`` its lookahead depth. Left as ``None``, the horizon is the
-    shortest at which an action changes the scores, which the Agent reads off the model
+    shortest at which the target moves the scores, which the Agent reads off the model
     (ADR-068). On a double integrator observed in position that is 2.
     ``agent.selector.horizon`` reads it back. ``info_node`` optionally aims the
     epistemic term at a single latent *node* (info gain about that node's marginal, the

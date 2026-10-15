@@ -402,8 +402,8 @@ no use of the readings beats it.
   hold at zero action, where `A · target ≠ target`. LQR regulates the offset from the
   target and charges for effort, so it settled short. With `A = 0.9` and a target of 1
   the state came to rest at 0.8432. `CertaintyEquivalentController` already refused such
-  a goal, and the two now share one test. `StateGoal`'s docstring states the
-  requirement.
+  a goal, and the two refusals now share one equilibrium check. `StateGoal`'s docstring
+  states the requirement.
 - **Breaking:** `Agent.model`, `KalmanBackend.model` and `KalmanBackend.steady_state` are
   read-only. Assigning `agent.model` changed what the agent reported while its backend,
   selector and controller kept the old model. A steady-state `KalmanBackend` kept its
@@ -415,12 +415,14 @@ no use of the readings beats it.
   state. A list was accepted and failed on the next step. `InferenceBackend.model` is
   declared a read-only property, which a plain attribute still satisfies.
 - **Breaking:** an `ObservationGoal`'s `horizon` defaults to `None`, and the `Agent` reads
-  it off the model: the shortest horizon at which an action changes the expected free
-  energy, found by scoring the candidate grid once at the prior. On a double integrator
-  observed in position a push reaches the reading only after two steps. At the old
-  default of 1 every candidate scored the same, and the agent pushed at full effort
-  toward `action_bounds[0]`, away from a goal at +1. An explicit horizon that leaves every
-  candidate tied is refused, naming the shortest that works. Single integrators keep
+  it off the model: the shortest horizon at which the target moves the expected free
+  energy, found by differentiating the candidate grid's scores with respect to the
+  target once, at the prior. On a double integrator observed in position a push reaches
+  the reading only after two steps. At the old default of 1 every candidate scored the
+  same, and the agent pushed at full effort toward `action_bounds[0]`, away from a goal
+  at +1. A noise that reads velocity breaks that tie at horizon 1, and the push it picks
+  there is the same for every target. An explicit horizon too short for the target to
+  move the scores is refused, naming the shortest that works. Single integrators keep
   horizon 1 (ADR-068).
 - `cpomdp.diagnostics.condition_numbers` — the batched condition number
   `rollout_conditioning` computed inline, now a function of its own so a rollout and a

@@ -1,5 +1,6 @@
 """The ``Agent`` façade: a stateful perceive/act loop over a ``LinearGaussianModel``."""
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 from jaxtyping import Array, Float64
@@ -37,12 +38,14 @@ _OBSERVATION_SPACE_SELECTORS = (
 def _reaching_efe_selector(
     model: LinearGaussianModel, objective: ObservationGoal, preference: Preference
 ) -> EFESelector:
-    """The EFE selector for ``objective``, at a horizon where actions score apart.
+    """The EFE selector for ``objective``, at a horizon that reads its target.
 
-    A push that reaches neither the predicted reading nor its noise within the horizon
-    leaves every candidate with the same ``G``, and the argmin then takes the first
-    candidate whatever the goal. The scores are probed once, at the prior, so the check
-    adds nothing per cycle (DECISIONS.md ADR-068).
+    The target enters ``G`` only through the predicted reading. Until a push reaches the
+    reading, the candidates differ by their noise terms alone, or not at all, and the
+    argmin chooses without regard to the goal. The probe differentiates every
+    candidate's score with respect to the target, once, at the prior, and keeps the
+    first horizon where the derivatives differ. It adds nothing per cycle (DECISIONS.md
+    ADR-068).
     """
 
     def at(horizon: int) -> EFESelector:
@@ -53,41 +56,47 @@ def _reaching_efe_selector(
             horizon=horizon,
         )
 
-    def moves(selector: EFESelector) -> bool:
-        g = np.asarray(selector._scores(model.prior, preference))
-        finite = g[np.isfinite(g)]
-        if finite.size < 2:
+    def reads_target(selector: EFESelector) -> bool:
+        def scores(target: Float64[Array, "m"]) -> Float64[Array, "k"]:
+            moved = Preference(target, preference.precision)
+            return selector._scores(model.prior, moved)
+
+        sensitivity = np.asarray(jax.jacfwd(scores)(preference.goal))  # (k, m)
+        finite = sensitivity[np.isfinite(sensitivity).all(axis=1)]
+        if finite.shape[0] < 2:
             return True  # a NaN score is a different failure, reported elsewhere
-        spread = float(finite.max() - finite.min())
+        spread = float(np.ptp(finite, axis=0).max())
         return spread > 1e-12 * max(1.0, float(np.abs(finite).max()))
 
-    # A push that has not reached the reading or the state its noise reads within n
-    # steps never will, so the search stops at the state dimension.
+    # A push that has not reached the reading within n steps never will, so the search
+    # stops at the state dimension.
     longest = model.n_states
-    if objective.horizon is not None:
-        selector = at(objective.horizon)
-        if moves(selector):
-            return selector
-        shortest = next(
-            (h for h in range(objective.horizon + 1, longest + 1) if moves(at(h))), None
-        )
-        if shortest is not None:
-            raise ValueError(
-                f"no action changes the expected free energy within horizon "
-                f"{objective.horizon}: a push first reaches the reading or its noise "
-                f"after {shortest} steps, so every candidate scores the same and the "
-                f"agent would take the first. Pass horizon={shortest} or more, or "
-                f"leave horizon unset."
-            )
-    else:
+    if objective.horizon is None:
         for horizon in range(1, longest + 1):
             selector = at(horizon)
-            if moves(selector):
+            if reads_target(selector):
                 return selector
+        scored = f"within {longest} steps, the state dimension"
+    else:
+        selector = at(objective.horizon)
+        if reads_target(selector):
+            return selector
+        longer = range(objective.horizon + 1, longest + 1)
+        shortest = next((h for h in longer if reads_target(at(h))), None)
+        if shortest is not None:
+            raise ValueError(
+                f"the target does not move the expected free energy at horizon "
+                f"{objective.horizon}: a push first reaches the reading after "
+                f"{shortest} steps, so the agent would choose its action without "
+                f"regard to the goal. Pass horizon={shortest} or more, or leave "
+                f"horizon unset."
+            )
+        scored = f"at horizon {objective.horizon}"
+        if objective.horizon < longest:
+            scored += f" or any longer one up to {longest}, the state dimension"
     raise ValueError(
-        f"no action changes the expected free energy within {longest} steps, the "
-        f"state dimension, so the agent cannot tell its candidates apart. The control "
-        f"matrix does not reach the reading or the state its noise depends on."
+        f"the target does not move the expected free energy {scored}, so the agent "
+        f"cannot steer toward it. The control matrix does not reach the reading."
     )
 
 
@@ -157,7 +166,8 @@ class Agent:
 
         The objective's *type* selects the regime: a ``StateGoal`` steers in state
         space via LQR (it needs a fixed sensor); an ``ObservationGoal`` seeks a
-        preferred observation via one-step EFE (it needs a control matrix, and a
+        preferred observation via EFE, over the goal's horizon or, left unset, the
+        shortest at which the target moves the scores (it needs a control matrix, and a
         state-dependent sensor unless an explicit ``selector`` is given). Omit the
         objective for a perceive-only tracker.
 
@@ -187,7 +197,9 @@ class Agent:
                 the ``StateGoal`` target is not a 1-D vector of length ``n``; or if a
                 built-in ``selector`` reads its target in the other space from the
                 objective; or if the LQR path is given a ``StateGoal`` target the
-                dynamics do not hold at zero action.
+                dynamics do not hold at zero action. Also raised when an
+                ``ObservationGoal``'s horizon is too short for its target to move the
+                scores.
             TypeError: If ``objective`` is neither a ``StateGoal`` nor an
                 ``ObservationGoal``.
         """
@@ -469,7 +481,7 @@ class Agent:
         ``ObservationGoal`` it is the EFE-minimising action over the front-loaded
         candidate grid. Deterministic, not a sample, and it takes no ``rng_key`` (see
         the class docstring). There is no separate ``infer_policies`` step — policy
-        evaluation is folded in here, its per-cycle cost readable as
+        evaluation is folded in here. On the EFE path its per-cycle cost reads back as
         ``agent.selector.cost_per_cycle``. The chosen action is remembered so the next
         ``infer_states`` predicts with it.
 
