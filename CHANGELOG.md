@@ -619,6 +619,9 @@ certainty equivalence is optimal, and no use of the readings beats it.
   returned had a time axis on its mean, which broke `Belief`'s invariant, and the
   backend's own `marginal` refused it. It now checks the prior and the first step
   before it scans.
+- **Breaking:** `CouplingGraphBackend.readout` and its `readout_node` argument are
+  removed. `readout(belief)` was `marginal(readout_node, belief)`, and the argument did
+  nothing else. Read any node, the root included, with `marginal(node, belief)`.
 - **Breaking:** every `LinearGaussianModel` argument after `dynamics` is keyword-only.
   The four matrices are two maps and two covariances of the same rank, and only the
   covariances are content-checked, so a transposed pair constructed in silence whenever

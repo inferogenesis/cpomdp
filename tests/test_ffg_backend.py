@@ -185,7 +185,6 @@ def _build(
     dyn,
     *,
     control_matrix=None,
-    readout_node=None,
     partition=None,
 ):
     """Build a ``CouplingGraphBackend`` (graph + per-node transitions) for a spec."""
@@ -201,7 +200,7 @@ def _build(
         root=0, dims=dims, couplings=couplings, observations=observations
     )
     transitions = tuple(GaussianTransition(a, dynamics_noise=q) for a, q in dyn)
-    kwargs = {"control_matrix": control_matrix, "readout_node": readout_node}
+    kwargs = {"control_matrix": control_matrix}
     if partition is not None:
         kwargs["partition"] = partition
     return CouplingGraphBackend(graph, transitions, prior=unit_prior(graph), **kwargs)
@@ -610,16 +609,14 @@ class TestProtocolAndReadout:
         )
         assert isinstance(backend, InferenceBackend)
 
-    def test_readout_defaults_to_root(self):
+    @pytest.mark.parametrize("second_way", ["readout", "readout_node"])
+    def test_marginal_is_the_one_way_to_read_a_node(self, second_way):
+        # `readout(belief)` was `marginal(readout_node, belief)` under a second name,
+        # with a constructor argument that did nothing else.
         backend = _build(
             _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
         )
-        prior = Belief(mean=np.zeros(5), cov=np.eye(5) * 2.0)
-        posterior = backend.infer_states(np.zeros(3), prior)
-        root_belief = backend.readout(posterior)
-        node0 = backend.marginal(0, posterior)
-        np.testing.assert_allclose(root_belief.mean, node0.mean)
-        np.testing.assert_allclose(root_belief.cov, node0.cov)
+        assert not hasattr(backend, second_way)
 
     def _one_node_backend(self, prior, control_matrix=None):
         graph = CouplingGraph(
@@ -820,7 +817,7 @@ class TestTransforms:
         prior = Belief(mean=jnp.zeros(5), cov=jnp.eye(5) * 2.0)
 
         def root_mean(y):
-            return backend.readout(backend.infer_states(y, prior)).mean
+            return backend.marginal(0, backend.infer_states(y, prior)).mean
 
         y = jnp.array([1.25, 1.15, 0.95])
         np.testing.assert_allclose(
@@ -874,7 +871,7 @@ class TestTransforms:
         prior = Belief(mean=jnp.zeros(5), cov=jnp.eye(5) * 2.0)
 
         def root_mean(y):
-            return backend.readout(backend.infer_states(y, prior)).mean
+            return backend.marginal(0, backend.infer_states(y, prior)).mean
 
         y = jnp.array([1.25, 1.15, 0.95])
         np.testing.assert_allclose(
