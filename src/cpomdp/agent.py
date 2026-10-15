@@ -309,7 +309,7 @@ class Agent:
     def __init__(
         self,
         model: LinearGaussianModel,
-        objective: _Objective = None,
+        objective: StateGoal | ObservationGoal | Preference | None = None,
         *,
         selector: ActionSelector | None = None,
     ) -> None:
@@ -364,7 +364,7 @@ class Agent:
     def from_backend(
         cls,
         backend: InferenceBackend,
-        objective: _Objective = None,
+        objective: StateGoal | ObservationGoal | Preference | None = None,
         *,
         selector: ActionSelector | None = None,
     ) -> "Agent":
@@ -547,9 +547,9 @@ class Agent:
         """
         if self._selector is None:
             raise ValueError(
-                "this Agent has no objective, so it can only perceive; pass a "
-                "StateGoal(...) or ObservationGoal(...) to Agent(...) to enable "
-                "sample_action()."
+                "this Agent has no objective, so it can only perceive. Pass a "
+                "StateGoal or an ObservationGoal to Agent(...), or a Preference with "
+                "selector=, to enable sample_action()."
             )
         assert self._preference is not None  # set with _selector; narrows the type
         action = self._selector.select(self.belief, self._preference)
