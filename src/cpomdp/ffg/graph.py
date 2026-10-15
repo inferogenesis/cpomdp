@@ -73,9 +73,10 @@ class CouplingGraph:
     Raises:
         ValueError: if ``dims`` is empty or non-positive; if ``root``, an edge, or an
             observation references an out-of-range node; if an edge's factor ``W`` is
-            not ``(dim[child], dim[parent])``; or if the edges do not form a tree rooted
-            at ``root`` — the root has a parent, a node has two parents or none, or the
-            edges contain a cycle.
+            not ``(dim[child], dim[parent])``; if a sensor's ``C`` is not as wide as the
+            node it observes; or if the edges do not form a tree rooted at ``root`` —
+            the root has a parent, a node has two parents or none, or the edges contain
+            a cycle.
     """
 
     def __init__(
