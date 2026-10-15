@@ -635,6 +635,10 @@ certainty equivalence is optimal, and no use of the readings beats it.
 - **Breaking:** `CouplingGraphBackend.readout` and its `readout_node` argument are
   removed. `readout(belief)` was `marginal(readout_node, belief)`, and the argument did
   nothing else. Read any node, the root included, with `marginal(node, belief)`.
+- **Breaking:** `CouplingGraphBackend.graph` and `transitions` are read-only, as `model`
+  already was. The filter, the factors and the model are built from them at
+  construction, so an assignment left all three describing the old graph. Build a new
+  backend instead.
 - **Breaking:** every `LinearGaussianModel` argument after `dynamics` is keyword-only.
   The four matrices are two maps and two covariances of the same rank, and only the
   covariances are content-checked, so a transposed pair constructed in silence whenever
