@@ -99,9 +99,9 @@ def test_the_walk_follows_an_import_of_an_import():
 
 
 def test_the_walk_stops_where_the_first_party_imports_do():
-    # cpomdp.warrant re-exports warrantlib and reaches nothing else in the tree, so its
-    # closure is itself. A walk that over-collected would not come back with one name.
-    assert _closure("warrant") == {"warrant"}
+    # The error on a difference imports nothing first-party, so its closure is itself.
+    # A walk that over-collected would not come back with one name.
+    assert _closure("_lab.resolution") == {"_lab.resolution"}
 
 
 def test_a_module_outside_the_seam_is_not_dragged_in():

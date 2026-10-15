@@ -117,7 +117,7 @@ from cpomdp.efe import expected_free_energy
 from cpomdp.observation import CallableSensor
 from cpomdp.selection import Preference
 from cpomdp.types import Belief, LinearGaussianModel
-from cpomdp.warrant import CheckReport, Outcome, Tier, Warrant, check_summary
+from warrantlib import CheckReport, Outcome, Tier, Warrant, check_summary
 
 OUT = Path(__file__).resolve().parent.parent / "docs" / "assets" / "surge_margin.png"
 

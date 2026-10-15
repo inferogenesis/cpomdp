@@ -271,7 +271,8 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `research/c4_hand_derivation.md` landed 2026-08-17, after the suites citing it, which
   ADR-037 already discloses (ADR-041).
 - `warrantlib` — the vocabulary every check labels itself from, published as its own
-  distribution and re-exported as `cpomdp.warrant` so existing import paths keep working.
+  distribution. cpomdp re-exports `Warrant` alone, the type its selectors and searches
+  report, and the rest is imported from warrantlib (ADR-069).
   It depends on the standard library alone, so a suite can label its findings without a
   numerical stack; cpomdp depends on it and adds nothing to it (ADR-039). `Warrant` carries the
   prover class (`PROVED`, `CERTIFIED`, `CORROBORATED`), `Outcome` what a registered
@@ -283,7 +284,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
   without a reader knowing the ordering. The prover sub-modes read the same way in prose:
   `Prover 3 · sample`, `Prover 3 · enumeration`, `Prover 3 · validated`. The canonical
   table is at `research/warrant_ledger.md`.
-- `cpomdp.SymbolicReduction` — evidence for a `PROVED` claim decided by argument rather
+- `warrantlib.SymbolicReduction` — evidence for a `PROVED` claim decided by argument rather
   than by enumeration (Provers 1 and 2). A CAS establishes that one expression equals
   another and has nothing to say about whether those are the expressions the analytic
   claim is about, which the warrant ledger records as a human obligation. The type carries
@@ -506,8 +507,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
   receding-horizon driver is a different quantity and is unmeasured. The declaration now
   travels with the number in the `PROVED` details, in `warrant_numbers.md`, in the ledger
   and in the README, and a test asserts it so the qualifier cannot be dropped silently.
-- cpomdp requires `warrantlib>=0.2`, up from `>=0.1`. `cpomdp.warrant` re-exports
-  `Provenance`, so an installed 0.1 fails at `import cpomdp`. Breaking for anyone pinning
+- cpomdp requires `warrantlib>=0.2`, up from `>=0.1`. Breaking for anyone pinning
   warrantlib 0.1.
 - **Breaking:** the model's fields are `dynamics_matrix`, `control_matrix`,
   `observation_model` and `dynamics_noise_model` (were `dynamics`, `control`,

@@ -197,7 +197,7 @@ uv run pytest research/registered_checks.toml --warrant-detail
 uv run python -m warrantlib.manifest --check research/registered_checks.toml
 ```
 
-[research/warrant_ledger.md](research/warrant_ledger.md) is the canonical table, and every other document points at it. [warrant_numbers.md](warrant_numbers.md) records the declared numbers those claims are measured against. The vocabulary itself is [packages/warrantlib](packages/warrantlib), published separately and re-exported as `cpomdp.warrant`, documented at [cpomdp.inferogenesis.com/api/warrant](https://cpomdp.inferogenesis.com/api/warrant/).
+[research/warrant_ledger.md](research/warrant_ledger.md) is the canonical table, and every other document points at it. [warrant_numbers.md](warrant_numbers.md) records the declared numbers those claims are measured against. The vocabulary itself is [packages/warrantlib](packages/warrantlib), published separately, with `Warrant` re-exported at cpomdp's top level, and documented at [cpomdp.inferogenesis.com/api/warrant](https://cpomdp.inferogenesis.com/api/warrant/).
 
 Treat this as experimental. It may move out of cpomdp into a standalone inferogenesis tool before the 1.0 release, which is undecided.
 

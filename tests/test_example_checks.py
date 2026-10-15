@@ -20,7 +20,7 @@ import pytest
 import surge_margin
 
 from cpomdp.enumeration import CompletenessCertificate
-from cpomdp.warrant import Outcome, Tier, Warrant, check_summary
+from warrantlib import Outcome, Tier, Warrant, check_summary
 
 
 def test_single_chain_theorem_check():

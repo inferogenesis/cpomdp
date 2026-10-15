@@ -11,8 +11,8 @@ and a reason. A falsifier does not pass, so `PASS` is not in the vocabulary at a
 prover column disambiguates warrant, never the outcome. A check that never ran carries
 no warrant, because attributing one claims evidence it did not produce.
 
-The imports come through `cpomdp.warrant` rather than `warrantlib`, so the re-export
-path a caller may already be using is exercised by every case below.
+The vocabulary lives in `warrantlib`. cpomdp re-exports `Warrant` alone, the type its
+selectors and searches report.
 """
 
 import dataclasses
@@ -30,7 +30,7 @@ from cpomdp.enumeration import (
 )
 from cpomdp.selection import EFESelector, Preference
 from cpomdp.types import Belief, LinearGaussianModel
-from cpomdp.warrant import (
+from warrantlib import (
     CheckReport,
     Outcome,
     Provenance,
@@ -993,26 +993,19 @@ class TestCheckSummary:
 
 
 class TestPublicSurface:
-    def test_the_vocabulary_is_importable_from_the_package_root(self):
+    def test_warrant_is_re_exported_from_the_package_root(self):
         import cpomdp
 
-        assert (cpomdp.Warrant, cpomdp.Outcome, cpomdp.Tier, cpomdp.CheckReport) == (
-            Warrant,
-            Outcome,
-            Tier,
-            CheckReport,
-        )
+        assert cpomdp.Warrant is Warrant
+        assert "Warrant" in cpomdp.__all__
 
-    def test_the_evidence_types_are_importable_too(self):
+    def test_the_rest_of_the_vocabulary_is_warrantlibs_alone(self):
+        # ADR-069: one home for the vocabulary, so cpomdp does not promise it twice.
         import cpomdp
 
-        assert cpomdp.SymbolicReduction is SymbolicReduction
-
-    def test_the_vocabulary_is_in_the_package_all(self):
-        import cpomdp
-
-        for name in ("Warrant", "Outcome", "Tier", "CheckReport", "SymbolicReduction"):
-            assert name in cpomdp.__all__
+        for name in ("Outcome", "Tier", "CheckReport", "SymbolicReduction"):
+            assert name not in cpomdp.__all__
+            assert not hasattr(cpomdp, name)
 
 
 class TestSearchWarrantAlias:

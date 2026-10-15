@@ -59,7 +59,7 @@ from cpomdp.enumeration import (
 )
 from cpomdp.selection import Preference
 from cpomdp.types import Belief
-from cpomdp.warrant import (
+from warrantlib import (
     CheckReport,
     Outcome,
     Provenance,
