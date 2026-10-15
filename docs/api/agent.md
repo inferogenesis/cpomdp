@@ -5,7 +5,8 @@ The stateful façade you drive: `infer_states` to perceive, `sample_action` to a
 ??? note "Variations of Agent"
     `Agent(model, goal)` filters with the per-step Kalman filter.
     `Agent.from_backend(backend, goal)` takes any other engine, a graph model included,
-    and plans under `backend.model`. Both lead into the same choices below.
+    and plans under `backend.model`. Both lead into the same choices below. Either one
+    takes a [`Preference`][cpomdp.Preference] and `selector=` in place of the goal.
 
     A curious agent is one whose information term changes with the action. The Agent
     builds one for an `ObservationGoal` on a sensor whose noise depends on the state. An
@@ -43,15 +44,18 @@ The stateful façade you drive: `infer_states` to perceive, `sample_action` to a
         classDef gap fill:#e5737326,stroke:#e57373,stroke-width:2px,stroke-dasharray:5 4
     ```
 
-    A selector of your own replaces the one the Agent would choose.
+    A goal configures the selector the Agent builds. To choose with a selector of your
+    own, pass a `Preference` in its place. The selector then carries the whole search,
+    and the `Preference` carries the target and precision it chooses toward, in the space
+    the selector reads.
 
     | You pass | Fixed sensor | `R(x)` sensor |
     | --- | --- | --- |
-    | `ObservationGoal` + `selector=EFESelector(…)` | EFE. Information is flat unless `Q(x)` varies, which is claimed at horizon 1 only | Curious EFE at the horizon given, which is not checked |
-    | `ObservationGoal` + `selector=RecedingHorizonSelector(…)` or `OpenLoopSelector(…)` | Search. Information is flat unless `Q(x)` varies, which is claimed at horizon 1 only | Curious search over varying action sequences |
-    | `StateGoal` + `selector=LQRSelector(…)` | LQR with your controller | Refused |
-    | `StateGoal` + an EFE selector, or `ObservationGoal` + `LQRSelector` | Refused | Refused |
-    | Any selector with no goal | Ignored, and the agent tracks | Ignored, and the agent tracks |
+    | observation `Preference` + `selector=EFESelector(…)` | EFE. Information is flat unless `Q(x)` varies, which is claimed at horizon 1 only | Curious EFE at the horizon given, which is not checked |
+    | observation `Preference` + `selector=RecedingHorizonSelector(…)` or `OpenLoopSelector(…)` | Search. Information is flat unless `Q(x)` varies, which is claimed at horizon 1 only | Curious search over varying action sequences |
+    | state `Preference` + `selector=LQRSelector(…)` | LQR with your controller | LQR with your controller, blind to the information term |
+    | a `Preference` of the wrong length for a built-in selector | Refused | Refused |
+    | a goal + `selector=`, or one of `Preference` and `selector=` without the other | Refused | Refused |
 
     An `ObservationGoal` with no horizon set gets the shortest horizon at which the
     target moves the scores. `agent.selector.horizon` reads it back,
