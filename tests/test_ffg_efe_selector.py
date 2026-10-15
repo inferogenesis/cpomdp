@@ -269,7 +269,7 @@ def _score_components(backend, belief, preference, candidates, info_block):
     ``_ffg_efe_step``) but returns the two ``G`` components, so a test can compare the
     full-``G`` argmin against a pragmatic-only one at the *same* ``R(μ⁺)``.
     """
-    observation_matrix, _ = backend.observation_model  # C (constant)
+    observation_matrix = backend.model.observation_matrix  # C (constant)
 
     def comp(action):
         predicted = backend.predicted_belief(belief, action)  # μ⁺, Σ⁺

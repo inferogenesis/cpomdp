@@ -173,11 +173,11 @@ class CouplingGraphBackend:
         self._transition = self._build_transition()
         self._structural_precision = self._assemble_structural_precision()
         self._obs_layout, self._n_observations = self._build_observation_layout()
-        self._flat_model = self._build_validation_model()
-        self._partition_mask = self._build_partition_mask()
         self._sensor_is_fixed = all(
             o.is_fixed for o in self.graph.observations.values()
         )
+        self._flat_model = self._build_validation_model()
+        self._partition_mask = self._build_partition_mask()
         # node -> its partition cluster index (ADR-018 admissibility diagnostic).
         self._cluster_of = {
             node: cid for cid, cluster in enumerate(self._partition) for node in cluster
@@ -289,71 +289,68 @@ class CouplingGraphBackend:
             cursor += width
         return tuple(layout), cursor
 
-    def _real_observation_blocks(self) -> tuple[list[jax.Array], list[jax.Array]]:
-        """Each observed node's sensor embedded into the joint state, and its noise.
+    def _embedded_sensor_rows(self) -> list[jax.Array]:
+        """Each observed node's C embedded into the joint state, in stacking order.
 
         Row-block ``k`` reads observed node ``self._obs_layout[k]`` out of the joint
-        state (its C placed at the node's columns) with that node's R. Shared by the
-        validation model and ``to_flat_model``.
-
-        For a state-dependent sensor the noise block is a *representative* ``R(0)`` — it
-        feeds only the validation model's shape checks (its values never enter the
-        filter); ``to_flat_model`` guards against relying on it for a coupled R(x) case.
+        state, its C placed at the node's columns. Shared by the backend's model and
+        ``to_flat_model``.
         """
-        rows, noise_blocks = [], []
+        rows = []
         for node, _lo, _hi in self._obs_layout:
             obs = self.graph.observations[node]
             embedded = jnp.zeros((obs.observation_matrix.shape[0], self._n_states))
             embedded = embedded.at[:, self._block(node)].set(obs.observation_matrix)
             rows.append(embedded)
-            noise_blocks.append(self._representative_noise(obs))
-        return rows, noise_blocks
+        return rows
 
-    @staticmethod
-    def _representative_noise(obs: ObservationFactor) -> jax.Array:
-        """An ``(m, m)`` noise block for the validation/flat model.
+    def _fixed_noise_blocks(self) -> list[jax.Array]:
+        """Each observed node's constant R, in stacking order. Fixed sensors only.
 
-        The constant ``R`` for a fixed sensor; a representative ``R(0)`` for a
-        state-dependent one — used only to size and shape-check the validation model,
-        never as a filter value (the filter linearizes ``R`` at μ⁺ per step). Reads it
-        through the shared ``linearize`` seam, so no per-type branch.
+        Read through the shared ``linearize`` seam, so no per-type branch. A
+        state-dependent sensor has no constant to give, and the model then reads R at
+        its prior mean instead (ADR-064).
         """
-        node_dim = obs.observation_matrix.shape[1]
-        return obs.linearize(jnp.zeros(node_dim))[1]  # R (fixed) or R(0) (state-dep.)
+        blocks = []
+        for node, _lo, _hi in self._obs_layout:
+            obs = self.graph.observations[node]
+            blocks.append(obs.linearize(jnp.zeros(obs.observation_matrix.shape[1]))[1])
+        return blocks
 
     def _build_validation_model(self) -> LinearGaussianModel:
-        """A flat model so ``_validate_step_inputs`` shape-checks inputs identically.
+        """The flat model of the real interface, which also shape-checks each step.
 
         ``infer_states`` reuses the shared per-step validator (``backends.base``) every
         backend uses, so a caller gets the same errors here as from ``KalmanBackend``.
-        The validator reads only the model's dims, so this carries the *real* stacked
-        observations (not the structural pseudo-observations ``to_flat_model`` adds)
-        and the prior the backend was built with.
+        It carries the *real* stacked observations (not the structural
+        pseudo-observations ``to_flat_model`` adds) and the backend's prior.
 
-        A graph with any state-dependent sensor also gets a ``_JointObservation``, so
-        the model's ``R`` follows the state rather than sitting frozen at the
-        representative value the ``observation_noise`` block carries for shape.
+        A graph with any state-dependent sensor gets a ``_JointObservation`` and no
+        declared ``observation_noise``, so the model's ``R`` follows the state and its
+        nominal value is ``R`` at the prior mean, by the rule every flat model follows.
         """
-        rows, noise_blocks = self._real_observation_blocks()
+        rows = self._embedded_sensor_rows()
         observation_matrix = (
             jnp.vstack(rows) if rows else jnp.zeros((0, self._n_states))
         )
-        if noise_blocks:
-            observation_noise = jax.scipy.linalg.block_diag(*noise_blocks)
+        if not self._sensor_is_fixed:
+            factors = tuple(
+                self.graph.observations[node] for node, _lo, _hi in self._obs_layout
+            )
+            spans = tuple(
+                (self._offsets[node], self._offsets[node + 1])
+                for node, _lo, _hi in self._obs_layout
+            )
+            observation_model = _JointObservation(observation_matrix, factors, spans)
+            observation_noise = None  # R at the prior mean (ADR-064)
         else:
-            observation_noise = jnp.zeros((0, 0))
-        factors = tuple(
-            self.graph.observations[node] for node, _lo, _hi in self._obs_layout
-        )
-        spans = tuple(
-            (self._offsets[node], self._offsets[node + 1])
-            for node, _lo, _hi in self._obs_layout
-        )
-        observation_model = (
-            None
-            if all(f.is_fixed for f in factors)
-            else _JointObservation(observation_matrix, factors, spans)
-        )
+            noise_blocks = self._fixed_noise_blocks()
+            observation_model = None
+            observation_noise = (
+                jax.scipy.linalg.block_diag(*noise_blocks)
+                if noise_blocks
+                else jnp.zeros((0, 0))
+            )
         return LinearGaussianModel(
             dynamics_matrix=self._transition.dynamics_matrix,
             observation_matrix=observation_matrix,
@@ -824,26 +821,17 @@ class CouplingGraphBackend:
     def model(self) -> LinearGaussianModel:
         """The flat ``LinearGaussianModel`` of the *real* interface (the backend model).
 
-        Block-diagonal dynamics (F, Q), the real sensors (C, R), and the control — the
-        joint state as one linear-Gaussian model, carrying the metadata an
-        [`Agent`][cpomdp.Agent] reads (``n_observations``, ``control_matrix``,
-        ``n_controls``). The ``Agent`` derives
-        its own ``model`` from this, so passing the backend is enough (issue #26).
-        Distinct from ``to_flat_model()``, which *augments* this with the structural
-        couplings as pseudo-observations for the oracle cross-check.
+        Block-diagonal dynamics (F, Q), the real sensors and the control: the joint
+        state as one linear-Gaussian model, with the sizes an [`Agent`][cpomdp.Agent]
+        reads. The ``Agent`` takes its own ``model`` from this, so passing the backend
+        is enough (issue #26). Read the stacked sensor C as
+        ``model.observation_matrix`` and R at a mean with ``observation_noise_at``.
+
+        It omits the structural couplings, so it is not a filter for the graph.
+        ``to_flat_model()`` adds them as pseudo-observations for the oracle
+        cross-check.
         """
         return self._flat_model
-
-    @property
-    def observation_model(self) -> tuple[jax.Array, jax.Array]:
-        """The real sensor ``(C, R)`` embedded in the joint state — what the EFE reads.
-
-        ``C`` (shape ``(n_observations, n_total)``) reads the observed nodes out of the
-        joint state, ``R`` their noise. The *real* sensors, not the structural pseudo-
-        observations ``to_flat_model`` adds; the EFE pragmatic and epistemic terms
-        both read them.
-        """
-        return self._flat_model.observation_matrix, self._flat_model.observation_noise
 
     def predicted_belief(
         self, prior: Belief, action: ArrayLike | None = None
@@ -895,13 +883,12 @@ class CouplingGraphBackend:
                 "declared R(x) that ignores the state is constant in fact and does "
                 "flatten — see cpomdp.diagnostics.probe_model."
             )
-        rows, noise_blocks = self._real_observation_blocks()
-        # Coupling-free R(x): μ⁻ = μ⁺, so handing the graph's own sensor to a flat
-        # backend reproduces this filter. With couplings the branch above has already
-        # refused, so this is None whenever a pseudo-observation is about to be added.
-        observation_model = (
-            None if self._sensor_is_fixed else self._flat_model.observation_model
-        )
+        if not self._sensor_is_fixed:
+            # Coupling-free R(x): μ⁻ = μ⁺, so handing the graph's own sensor to a flat
+            # backend reproduces this filter, and this model is the backend's own.
+            return self._flat_model
+        rows = self._embedded_sensor_rows()
+        noise_blocks = self._fixed_noise_blocks()
         for edge in self.graph.couplings:  # child − W·parent ~ N(0, Q_struct)
             coupling = edge.factor.coupling_matrix  # W
             child_dim = coupling.shape[0]
@@ -917,7 +904,6 @@ class CouplingGraphBackend:
             observation_noise=jax.scipy.linalg.block_diag(*noise_blocks),
             prior=self._prior,
             control_matrix=self._control,
-            observation_model=observation_model,
         )
 
     def flat_observation(self, observation: ArrayLike) -> jax.Array:

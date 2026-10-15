@@ -72,8 +72,8 @@ class ProbeBackend(Protocol):
     """
 
     @property
-    def observation_model(self) -> tuple[jax.Array, jax.Array]:
-        """``(C, R)`` over the joint state."""
+    def model(self) -> "LinearGaussianModel":
+        """The flat model of the real interface, whose ``observation_matrix`` is C."""
         ...
 
     def predicted_belief(
@@ -318,9 +318,8 @@ def probe_model(
 
     Args:
         model: a [`LinearGaussianModel`][cpomdp.LinearGaussianModel], or a backend
-            exposing ``predicted_belief`` / ``observation_noise_at`` /
-            ``observation_model`` ([`CouplingGraphBackend`][cpomdp.CouplingGraphBackend]
-            does).
+            exposing ``model`` / ``predicted_belief`` / ``observation_noise_at``
+            ([`CouplingGraphBackend`][cpomdp.CouplingGraphBackend] does).
         belief: the belief to predict from — the shared prior every action starts at.
         actions: the candidate actions to sample.
         tol: below this, two noise covariances or two epistemic values count as equal.
@@ -337,7 +336,7 @@ def probe_model(
 
     if hasattr(model, "predicted_belief"):  # a graph backend
         backend = cast("ProbeBackend", model)
-        observation_matrix = np.asarray(backend.observation_model[0], dtype=float)
+        observation_matrix = np.asarray(backend.model.observation_matrix, dtype=float)
         predicted = [backend.predicted_belief(belief, np.asarray(a)) for a in actions]
         means = np.asarray([np.asarray(p.mean, dtype=float) for p in predicted])
         covs = [np.asarray(p.cov, dtype=float) for p in predicted]

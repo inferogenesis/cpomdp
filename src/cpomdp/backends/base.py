@@ -81,17 +81,13 @@ class EfeBackend(InferenceBackend, Protocol):
     """An ``InferenceBackend`` that also supports *factored* EFE action selection.
 
     A node-structured backend: beyond ``infer_states`` it exposes the pre-observation
-    predicted joint (``predicted_belief`` → Σ⁺), the real observation model
-    (``observation_model`` → C, R), and the per-node ``block`` the epistemic term can
-    target (issue #26). ``FfgEfeSelector`` and the Agent's EFE dispatch depend on *this*
+    predicted joint (``predicted_belief`` → Σ⁺), the observation noise at a predicted
+    mean (``observation_noise_at`` → R), and the per-node ``block`` the epistemic term
+    can target (issue #26). The sensor C is ``model.observation_matrix``, as on every
+    backend. ``FfgEfeSelector`` and the Agent's EFE dispatch depend on *this*
     abstraction, never the concrete backend class — so action selection stays above the
     backend layer (Dependency Inversion).
     """
-
-    @property
-    def observation_model(self) -> tuple[Float64[Array, "m n"], Float64[Array, "m m"]]:
-        """The real sensor ``(C, R)`` embedded in the joint state (the EFE reads it)."""
-        ...
 
     def predicted_belief(
         self, prior: Belief, action: ArrayLike | None = None

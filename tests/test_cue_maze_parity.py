@@ -100,7 +100,7 @@ def test_the_whole_rx_surface_agrees(pair):
     """
     maze, registered = pair
     np.testing.assert_allclose(
-        maze.observation_model[0], registered.observation_model[0]
+        maze.model.observation_matrix, registered.model.observation_matrix
     )
     for position in PROBE_POSITIONS:
         np.testing.assert_allclose(

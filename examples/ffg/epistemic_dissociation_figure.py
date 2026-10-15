@@ -266,7 +266,7 @@ def _boundary_scan(alive: bool, cue_x: float = CUE_X) -> dict:
     from cpomdp.efe import _ffg_efe_step
 
     backend = build_backend(epistemic_alive=alive, cue_x=cue_x)
-    observation_matrix, _ = backend.observation_model
+    observation_matrix = backend.model.observation_matrix
     arm_block = list(backend.block(ARM_NODE))  # node 1's joint indices: [position, arm]
     goal = jnp.array([0.0, 0.0])
     precision = jnp.array([[GOAL_PRECISION, 0.0], [0.0, INFO_PRECISION]])

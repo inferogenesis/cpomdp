@@ -383,9 +383,9 @@ def policy_efe_ffg(
     ``FfgEfeSelector`` already ``vmap``s its per-candidate score.
 
     Args:
-        backend: The FFG inference backend — supplies ``predicted_belief`` (μ⁺, Σ⁺),
-            ``observation_model`` (the constant sensor C), ``observation_noise_at``
-            (R at μ⁺), and ``block``.
+        backend: The FFG inference backend. It supplies ``predicted_belief``
+            (μ⁺, Σ⁺), ``model.observation_matrix`` (the constant sensor C),
+            ``observation_noise_at`` (R at μ⁺) and ``block``.
         belief: The starting joint belief ``(μ, Σ)`` over the backend's joint state.
         policy: The ``H`` actions to roll out, shape ``(H, p)``.
         preference: The OBSERVATION-space goal — ``goal`` (g) and ``precision`` (Λ).
@@ -533,7 +533,7 @@ def _ffg_rollout_body(
     re-read per step (it may be state-dependent). The carried mean is ``μ⁺`` — zero
     expected innovation, so the observation moves only the covariance.
     """
-    observation_matrix, _ = backend.observation_model  # C (constant, front-loaded)
+    observation_matrix = backend.model.observation_matrix  # C (constant, front-loaded)
 
     def step(belief, action):
         predicted = backend.predicted_belief(belief, action)  # μ⁺, Σ⁺

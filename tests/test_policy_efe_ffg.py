@@ -157,7 +157,7 @@ class TestFfgH1ReducesToFfgEfeStep:
 
         predicted = backend.predicted_belief(belief, policy[0])
         observation_noise = backend.observation_noise_at(predicted.mean)
-        observation_matrix, _ = backend.observation_model
+        observation_matrix = backend.model.observation_matrix
         g_ref, parts_ref = _ffg_efe_step(
             predicted.mean,
             predicted.cov,

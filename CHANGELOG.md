@@ -541,9 +541,8 @@ certainty equivalence is optimal, and no use of the readings beats it.
   scheme is a question the caller has to answer each time. `GaussianTransition.dynamics`
   and the `CouplingGraphBackend(control=...)` argument move with it, as do the demo
   constants (`SENSOR` is `OBSERVATION_MATRIX`, `PROCESS_NOISE` is `DYNAMICS_NOISE`).
-  `LinearGaussianModel.observation_model` and `InferenceBackend.observation_model()` now
-  share a name on two classes: the field holds the declaration, the method returns the
-  `(C, R)` it resolves to. The `.A`/`.B`/`.C`/`.Q`/`.R` aliases are unchanged, and no
+  `LinearGaussianModel.observation_model` holds the declaration, and no backend carries a
+  member of the same name. The `.A`/`.B`/`.C`/`.Q`/`.R` aliases are unchanged, and no
   numerical behaviour moved.
 - **Breaking:** the epistemic term's aim is named `info_node` and `info_block`, not
   `target`. `target` carried two unrelated types on exported API: a desired value
@@ -593,6 +592,13 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `backend.model.n_observations`. Each was the same number under a second name, and
   `n_total` was the only place the joint width was not called `n_states`. The `Agent`
   leaves an `info_node` range check to `backend.block`, which names the valid nodes.
+- **Breaking:** `CouplingGraphBackend.observation_model` is removed. It returned `(C, R)`
+  with R linearized at zero, so under a state-dependent sensor it handed out `R(0)` as the
+  noise the EFE reads. On the same object `backend.model.observation_model` was a sensor.
+  Read C as `backend.model.observation_matrix`, as on every backend, and R at a mean as
+  `backend.observation_noise_at(mean)`. Under a state-dependent sensor
+  `backend.model.observation_noise` is now R at the prior mean, the rule every flat model
+  follows (ADR-064). It was R at zero.
 - **Breaking:** every `LinearGaussianModel` argument after `dynamics` is keyword-only.
   The four matrices are two maps and two covariances of the same rank, and only the
   covariances are content-checked, so a transposed pair constructed in silence whenever
@@ -607,8 +613,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `_JointObservation` and `epistemic_value`. C is the *observation matrix* in the same
   literature that gives R its name, so the two halves of the measurement equation now
   read from one vocabulary. C is not `observation_model`: that name means the whole
-  `(C, R)` channel, both on `InferenceBackend.observation_model()` and on the model field
-  the entry above renames. The 2026-06-13 sketch wanted plain `observation` for C, which the state-
+  channel, the model field the entry above renames. The 2026-06-13 sketch wanted plain `observation` for C, which the state-
   dependent sensor field later claimed. The `.C` alias is unchanged, and no numerical
   behaviour moved.
 - **Breaking:** `sensor_noise` is now `observation_noise`, on `LinearGaussianModel`,
