@@ -4694,3 +4694,48 @@ leaves that entry alone. The job's depot cache is keyed on the pin.
 - The environment's file is read through `juliapkg.deps.load_cur_deps`, which juliapkg
   has carried since 0.1.8 and does not list in its `__all__`. A juliapkg release that
   moves it fails at the first `RxInferBackend`, and CI's oracle job meets it first.
+
+## ADR-072 — the Agent filters per step by default, and the steady-state filter is an opt-in
+
+**Date:** 2026-10-15
+**Status:** Accepted
+**Supersedes:** ADR-002's decision that the default inference is a front-loaded
+steady-state Kalman filter. The perception half of ADR-003's symmetry, which has filter
+and controller both solved once at construction.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+ADR-002 made a front-loaded steady-state filter the default inference. ADR-003 described
+filter and controller as duals, both solved once at construction. Every release from
+0.1.0 to 0.5.0 built the Agent's filter as `KalmanBackend(model)`, which recomputes the
+gain and the covariance every step. No ADR recorded the change. The `LQRController`
+docstring and the backends page repeated the front-loaded account. A reader who followed
+the README into ADR-003 expected a fixed gain and watched the covariance shrink step by
+step.
+
+RFC-001 prices the agent's work per cycle. Which filter the baseline runs is part of
+what it measures.
+
+### Decision
+
+The Agent's default filter is the per-step Kalman filter, as shipped. Under fixed noise
+it is exact from the first step, transient included. Under `R(x)` or `Q(x)` it is the
+only mode that applies, since a state-dependent noise has no constant fixed point.
+
+The steady-state filter is the opt-in: `KalmanBackend(model, steady_state=True)`,
+passed through `Agent.from_backend`. It needs fixed noise. It holds the converged
+covariance from the first step, whatever the prior's, and does no covariance work per
+step.
+
+The controller half of ADR-003 stands. `LQRController` solves the control Riccati once
+at construction.
+
+### Consequences
+
+- RFC-001's baseline agent runs the per-step filter. Its covariance recursion is part of
+  every cycle. A steady-state agent is a separate configuration, declared as one.
+- Switching the default would change every user's numbers through the transient, so it
+  stays as shipped.
+- The `LQRController` docstring and the backends page say the Agent filters per step.
+  ADR-002 and ADR-003 keep their wording.

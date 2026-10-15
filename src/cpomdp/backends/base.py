@@ -38,9 +38,9 @@ class InadmissiblePartitionError(ValueError):
 class InferenceBackend(Protocol):
     """A swappable inference engine for a ``LinearGaussianModel``.
 
-    A backend is *built from a model*: any expensive, data-independent work
-    (front-loading — see DECISIONS.md ADR-002) happens at construction, so the
-    per-step ``infer_states`` stays cheap. Each call advances the belief one
+    A backend is *built from a model*. Expensive work that does not depend on the
+    data happens at construction (ADR-002), which keeps the per-step
+    ``infer_states`` cheap. Each call advances the belief one
     recursive filter step: the current belief goes in as the ``prior`` and the
     updated belief comes back as the posterior.
 
