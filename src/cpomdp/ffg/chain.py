@@ -40,7 +40,7 @@ the protocol bridge, flagged here rather than hidden.
 import jax.numpy as jnp
 from numpy.typing import ArrayLike
 
-from cpomdp.backends.base import validate_step_inputs
+from cpomdp.backends.base import _validate_step_inputs
 from cpomdp.ffg.factors.linear_gaussian import GaussianObservation, GaussianTransition
 from cpomdp.ffg.message import CanonicalGaussian
 from cpomdp.types import Belief, LinearGaussianModel
@@ -132,7 +132,7 @@ class ChainBackend:
         """Advance the belief by one filter step via the FFG algebra.
 
         Validate the per-step inputs at the trust boundary with the shared
-        ``validate_step_inputs`` (identical checks to ``KalmanBackend`` — same seam,
+        ``_validate_step_inputs`` (identical checks to ``KalmanBackend`` — same seam,
         same errors), form the control shift ``b = control @ action`` (zero when the
         model is uncontrolled), then run the module-docstring pipeline: lift the
         prior into canonical form, ``predict`` through the transition factor, add the
@@ -161,7 +161,7 @@ class ChainBackend:
                 belief over the model's ``n``-D state, the model has a control matrix
                 but ``action`` is ``None``, or ``action`` is not shape ``(p,)``.
         """
-        observation, action = validate_step_inputs(
+        observation, action = _validate_step_inputs(
             self.model, observation, prior, action
         )
         model = self.model
@@ -169,7 +169,7 @@ class ChainBackend:
         if control_matrix is None:
             control_term = jnp.zeros(model.n_states)
         else:
-            # validate_step_inputs guarantees a non-None action when control exists
+            # _validate_step_inputs guarantees a non-None action when control exists
             assert action is not None
             control_term = control_matrix @ action
 

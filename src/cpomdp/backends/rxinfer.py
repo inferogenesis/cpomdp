@@ -18,14 +18,14 @@ import numpy as np
 from numpy.typing import ArrayLike
 
 from cpomdp._validation import require_fixed_noise
-from cpomdp.backends.base import validate_step_inputs
+from cpomdp.backends.base import _validate_step_inputs
 from cpomdp.types import Belief, LinearGaussianModel
 
-__all__ = ["RxInferBackend", "rxinfer_chemotaxis_tree_root"]
+__all__ = ["RxInferBackend"]
 
 # The juliacall `Main` handle is a runtime-constructed bridge object with no type
 # stubs.
-JuliaModule = Any
+_JuliaModule = Any
 
 # One filter step as a one-timestep model: prior on the previous state, one
 # transition, one observation; the posterior over x is the Kalman predict+update.
@@ -98,7 +98,7 @@ end
 
 
 @lru_cache(maxsize=1)
-def _julia() -> JuliaModule:
+def _julia() -> _JuliaModule:
     """Load Julia + RxInfer and define the model, once per process.
 
     juliacall is imported here, not at module top, so the module imports without
@@ -161,15 +161,15 @@ class RxInferBackend:
                 a control matrix; pass ``None`` for pure filtering.
 
         Raises:
-            ValueError: On a shape/None mismatch (see ``validate_step_inputs``).
+            ValueError: On a shape/None mismatch (see ``_validate_step_inputs``).
         """
         model = self.model
-        observation, action = validate_step_inputs(model, observation, prior, action)
+        observation, action = _validate_step_inputs(model, observation, prior, action)
         control_matrix = model.control_matrix
         if control_matrix is None:
             control_term = jnp.zeros(model.n_states)
         else:
-            # validate_step_inputs guarantees a non-None action when control exists
+            # _validate_step_inputs guarantees a non-None action when control exists
             assert action is not None
             control_term = control_matrix @ action
 
@@ -189,7 +189,7 @@ class RxInferBackend:
         return Belief(mean=np.asarray(mean_post), cov=np.asarray(cov_post))
 
 
-def rxinfer_chemotaxis_tree_root(
+def _rxinfer_chemotaxis_tree_root(
     *,
     prior_mean: float,
     prior_var: float,

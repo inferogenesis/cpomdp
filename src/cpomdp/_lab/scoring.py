@@ -28,7 +28,7 @@ from cpomdp._lab.harness import DrivenRun, ExogenousActionSequence
 from cpomdp._validation import require_fixed_noise
 from cpomdp.backends.base import InferenceBackend
 from cpomdp.backends.kalman import KalmanBackend
-from cpomdp.diagnostics import condition_numbers
+from cpomdp.diagnostics import _condition_numbers
 from cpomdp.enumeration import IncompleteEnumerationError
 from cpomdp.types import Belief, LinearGaussianModel
 from warrantlib import AxisDeclaration, ProductCompletenessCertificate, Warrant
@@ -98,7 +98,7 @@ class RunConditioning:
     matrix can manufacture or destroy the twelve orders a separation claims
     (``research/warrant_ledger.md`` section 4). So the numbers travel with the score
     rather than being looked up afterwards. Every field is length-``k``, indexed by
-    step, computed on the host by ``cpomdp.diagnostics.condition_numbers``.
+    step, computed on the host by ``cpomdp.diagnostics._condition_numbers``.
 
     Attributes:
         cond_s_true: of the true predictive covariance ``S*``, which weights the
@@ -875,10 +875,10 @@ class ThreeTermEvaluator:
                 misspecification=misspecification, inference_gap=inference_gap
             ),
             conditioning=RunConditioning(
-                cond_s_true=condition_numbers(s_true),
-                cond_s_model=condition_numbers(s_model),
-                cond_sigma_exact=condition_numbers(sigma_exact),
-                cond_sigma_agent=condition_numbers(sigma_agent),
+                cond_s_true=_condition_numbers(s_true),
+                cond_s_model=_condition_numbers(s_model),
+                cond_sigma_exact=_condition_numbers(sigma_exact),
+                cond_sigma_agent=_condition_numbers(sigma_agent),
             ),
             steps=sequence.horizon,
         )

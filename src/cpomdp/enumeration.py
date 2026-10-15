@@ -46,7 +46,6 @@ if TYPE_CHECKING:
     from cpomdp.selection import Preference
 
 __all__ = [
-    "DEFAULT_CHUNK",
     "ChunkedEfeSearch",
     "ChunkedSearchResult",
     "CompletenessCertificate",
@@ -365,7 +364,7 @@ class EnumeratedEfeSearch:
 # the plateau the block size buys nothing back in residency and the choice is about
 # rate alone. 4096 rather than the slightly faster 2048 because its spread across
 # repeats is 2% against 20%, and PR-2 declares compute budgets off this rate.
-DEFAULT_CHUNK = 1 << 12
+_DEFAULT_CHUNK = 1 << 12
 
 
 def _decode_policies(
@@ -432,10 +431,6 @@ class ChunkedSearchResult(NamedTuple):
         certificate: the completeness certificate (ADR-030). It arrives on the result
             rather than at construction, because the count it certifies is what the
             loop produces.
-        extra: the injected reducer's final carry, or ``None`` if none was given.
-            ``Any`` rather than a type variable: the carry is whatever the caller's
-            fold accumulates, and one seam with one shape of consumer does not repay
-            making the result, the protocol and ``reduce`` all generic.
     """
 
     best_policy: Float64[Array, "H p"]
@@ -443,7 +438,6 @@ class ChunkedSearchResult(NamedTuple):
     best_index: int
     visited: int
     certificate: CompletenessCertificate
-    extra: Any
 
 
 class ChunkedEfeSearch:
@@ -470,7 +464,7 @@ class ChunkedEfeSearch:
         action_set: FiniteActionSet,
         *,
         horizon: int,
-        chunk: int = DEFAULT_CHUNK,
+        chunk: int = _DEFAULT_CHUNK,
     ) -> None:
         if model.control_matrix is None:
             raise ValueError(
@@ -487,7 +481,7 @@ class ChunkedEfeSearch:
         *,
         info_block: Sequence[int],
         horizon: int,
-        chunk: int = DEFAULT_CHUNK,
+        chunk: int = _DEFAULT_CHUNK,
     ) -> "ChunkedEfeSearch":
         """Chunked search that scores on an FFG ``backend`` via ``policy_efe_ffg``.
 
@@ -539,13 +533,7 @@ class ChunkedEfeSearch:
                 "wraps would enumerate the wrong policies and still certify."
             )
 
-    def reduce(
-        self,
-        belief: Belief,
-        preference: "Preference",
-        *,
-        reducer: _BlockReducer | None = None,
-    ) -> ChunkedSearchResult:
+    def reduce(self, belief: Belief, preference: "Preference") -> ChunkedSearchResult:
         """Score every policy in blocks; return the argmin and the loop's own count.
 
         One ``lax.scan`` over ``ceil(|A|^H / chunk)`` blocks. Each block decodes its own
@@ -555,11 +543,23 @@ class ChunkedEfeSearch:
         Args:
             belief: the belief to plan from.
             preference: the goal and precision the EFE scores against.
-            reducer: an extra per-block fold, for evidence the argmin does not carry.
 
         Returns:
-            The argmin, its index and score, the visited count, the certificate, and
-            the reducer's final carry.
+            The argmin, its index and score, the visited count and the certificate.
+        """
+        return self._reduce(belief, preference, None)[0]
+
+    def _reduce(
+        self,
+        belief: Belief,
+        preference: "Preference",
+        reducer: _BlockReducer | None,
+    ) -> tuple[ChunkedSearchResult, Any]:
+        """``reduce`` with an extra per-block fold, and the fold's final carry.
+
+        The seam for evidence the argmin does not carry. The carry is ``Any`` because it
+        is whatever the fold accumulates, and one seam with one consumer does not repay
+        making the result and the protocol generic.
         """
         chunk, total = self._chunk, self._n_policies
         n_blocks = -(-total // chunk)  # ceil
@@ -611,8 +611,7 @@ class ChunkedEfeSearch:
             best_index=int(argmin.best_index),
             visited=int(argmin.visited),
             certificate=_certify(self._action_set, self._horizon, int(argmin.visited)),
-            extra=extra,
-        )
+        ), extra
 
     def policies_at(self, indices: Array) -> Float64[Array, "... H p"]:
         """The policies named by ``indices``, decoded rather than looked up.

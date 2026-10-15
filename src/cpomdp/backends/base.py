@@ -13,7 +13,6 @@ __all__ = [
     "EfeBackend",
     "InadmissiblePartitionError",
     "InferenceBackend",
-    "validate_step_inputs",
 ]
 
 
@@ -121,7 +120,7 @@ class EfeBackend(InferenceBackend, Protocol):
         ...
 
 
-def validate_step_inputs(
+def _validate_step_inputs(
     model: LinearGaussianModel,
     observation: ArrayLike,
     prior: Belief,

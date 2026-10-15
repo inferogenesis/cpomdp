@@ -31,7 +31,7 @@ action can actually reach: ``probe_model`` samples that reachable set and
 reports back a ``SensorReport``.
 """
 
-import jax
+import jax as _jax
 
 from cpomdp.agent import Agent
 from cpomdp.backends.base import InferenceBackend
@@ -66,7 +66,7 @@ from warrantlib import Warrant
 
 # Float64 throughout — the oracle matches to 1e-9 and JAX defaults to float32.
 # Process-global by necessity; see ADR-004.
-jax.config.update("jax_enable_x64", True)
+_jax.config.update("jax_enable_x64", True)
 
 __version__ = "0.5.0"
 

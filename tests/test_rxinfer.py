@@ -13,7 +13,7 @@ from numpy.typing import ArrayLike
 
 from cpomdp.backends.base import InferenceBackend
 from cpomdp.backends.kalman import KalmanBackend
-from cpomdp.backends.rxinfer import RxInferBackend, rxinfer_chemotaxis_tree_root
+from cpomdp.backends.rxinfer import RxInferBackend, _rxinfer_chemotaxis_tree_root
 from cpomdp.dynamics import CallableProcessNoise
 from cpomdp.ffg.factors.linear_gaussian import GaussianCoupling, GaussianObservation
 from cpomdp.ffg.graph import Coupling, CouplingGraph
@@ -175,7 +175,7 @@ def test_branching_tree_matches_coupling_graph():
     readings: dict[int, ArrayLike] = {motor_a: [1.25], motor_b: [1.15], cheb: [0.95]}
     native = graph.infer(Belief(mean=[0.0], cov=[[4.0]]), readings)
 
-    rx_mean, rx_var = rxinfer_chemotaxis_tree_root(
+    rx_mean, rx_var = _rxinfer_chemotaxis_tree_root(
         prior_mean=0.0,
         prior_var=4.0,
         w_chey=0.8,

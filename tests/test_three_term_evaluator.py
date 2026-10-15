@@ -38,7 +38,7 @@ from cpomdp._lab.scoring import (
     observation_predictive,
 )
 from cpomdp.backends.kalman import KalmanBackend
-from cpomdp.diagnostics import condition_numbers
+from cpomdp.diagnostics import _condition_numbers
 from cpomdp.observation import CallableSensor
 from cpomdp.types import Belief, LinearGaussianModel
 
@@ -548,7 +548,7 @@ def test_the_calibration_cell_conditions_both_sides_identically(run, evaluator):
 def test_the_conditioning_is_the_diagnostics_module_reading():
     # One implementation, so a rollout and a score read the same number.
     stack = np.array([[[4.0, 0.0], [0.0, 1.0]], [[1.0, 0.0], [0.0, 1.0]]])
-    np.testing.assert_allclose(condition_numbers(stack), [4.0, 1.0], rtol=1e-14)
+    np.testing.assert_allclose(_condition_numbers(stack), [4.0, 1.0], rtol=1e-14)
 
 
 # --- the cross, its separations, and the cell they are read against ------------------

@@ -259,7 +259,7 @@ class ScoredAgent:
 
         Raises:
             ValueError: On a shape mismatch in ``observation`` or ``action``, enforced
-                by the backend's ``validate_step_inputs``.
+                by the backend's ``_validate_step_inputs``.
         """
         self.belief = self._backend.infer_states(observation, self.belief, action)
         return self.belief

@@ -297,10 +297,11 @@ certainty equivalence is optimal, and no use of the readings beats it.
 - `check_summary` prints `n registered, m tested here, k fired`, then counts per
   `(warrant × outcome)`. Registering four falsifiers and testing two is a different claim
   from testing four, and one number cannot carry both.
-- `cpomdp.diagnostics.logdet_pd` — `ln det` behind a Cholesky positive-definiteness guard,
-  NaN otherwise. `slogdet` reports a sign separately, so reading only the magnitude returns
-  `ln 2` for `diag(-1, -2)`, a plausible number for a matrix whose log-determinant does not
-  exist. `epistemic_value` and the crossover demo's oracle both route through it.
+- A host-side `ln det` behind a Cholesky positive-definiteness guard, private to
+  `cpomdp.diagnostics`, NaN otherwise. `slogdet` reports a sign separately, so reading
+  only the magnitude returns `ln 2` for `diag(-1, -2)`, a plausible number for a matrix
+  whose log-determinant does not exist. `epistemic_value` and the crossover demo's
+  oracle both route through it.
 - `examples/ffg/crossover.py` gains `flip_margin_error`, the error the already-declared
   `COND_CEILING` allows on a difference of two scores. `H* = 7` rested on a bare inequality
   between two computed floats with nothing said about how far apart they had to be. The
@@ -449,9 +450,16 @@ certainty equivalence is optimal, and no use of the readings beats it.
   there is the same for every target. An explicit horizon too short for the target to
   move the scores is refused, naming the shortest that works. Single integrators keep
   horizon 1 (ADR-068).
-- `cpomdp.diagnostics.condition_numbers` — the batched condition number
-  `rollout_conditioning` computed inline, now a function of its own so a rollout and a
-  scored cell read the same number for the same matrix.
+- The batched condition number `rollout_conditioning` computed inline is now a private
+  function of its own, so a rollout and a scored cell read the same number for the same
+  matrix.
+- **Breaking:** `validate_step_inputs` and `rxinfer_chemotaxis_tree_root` are private, as
+  `_validate_step_inputs` and `_rxinfer_chemotaxis_tree_root`. v0.4.4 exported them from
+  `cpomdp.backends.base` and `cpomdp.backends.rxinfer`. The first is the shape check the
+  built-in backends share and the second is the RxInfer test oracle, and a cpomdp user
+  calls neither (ADR-069). `cpomdp.enumeration.DEFAULT_CHUNK` is private as well, and
+  `ChunkedEfeSearch.reduce` no longer takes a `reducer`, whose type was private.
+  `import cpomdp` no longer leaves `cpomdp.jax` behind.
 - **Breaking:** a *fixed* `observation_model` or `dynamics_noise_model` must now restate
   the model's `observation_noise` / `dynamics_noise` exactly, and a sensor's linearized
   observation matrix must equal `observation_matrix`. `LinearGaussianModel` previously

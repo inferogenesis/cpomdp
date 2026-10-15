@@ -90,7 +90,7 @@ def _residuals(
     """``y - C x`` at every state, with both shapes checked once.
 
     The observation check closes the silent-broadcast trap that
-    ``cpomdp.backends.base.validate_step_inputs`` closes for the Kalman path. A
+    ``cpomdp.backends.base._validate_step_inputs`` closes for the Kalman path. A
     length-1 observation against an m-D prediction would broadcast and give a
     confident density over the wrong thing rather than an error.
 
