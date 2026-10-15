@@ -600,6 +600,13 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `GaussianCoupling([[0.05]], [[0.9]])` built an edge with the two swapped. The new name
   follows the `_matrix` suffix every other linear map carries. 33 call sites moved to
   keywords.
+- **Breaking:** `Coupling` takes no `tau`. The edge's time-constant was required and read
+  by nothing. In the chemotaxis example it restated the timescale the child's
+  `GaussianTransition.from_ou` already took, and other callers made one up. A node's
+  timescale is its transition. `Coupling` now checks its fields at construction: a node
+  index that is not an int, a factor that is not a `GaussianCoupling` and a non-bool
+  `efe_relevant` raise `TypeError`. A bare matrix as the factor used to construct and
+  fail later on a missing attribute (ADR-072).
 - **Breaking:** `CouplingGraphBackend` takes a required keyword `prior`, the belief over
   the joint state before any reading. Its `model.prior` was an N(0, I) placeholder, so
   an `Agent` built on the backend planned and filtered from a belief the caller never

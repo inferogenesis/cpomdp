@@ -4698,3 +4698,42 @@ documents, and they are the hot path the energy work is most likely to change (R
   exists. As ADR-069 has it, the first user who writes one is who would promote them.
 - ADR-019 and ADR-021 keep their wording. Their `CallableGaussianObservation` is this
   ADR's `CallableSensor` on a graph node.
+
+## ADR-072 — an edge carries no timescale
+
+**Date:** 2026-10-15
+**Status:** Accepted
+**Supersedes:** ADR-015's decision to ship τ stored on edges. The rest of ADR-015
+stands, the deferral of `levels()` included.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+`Coupling` required a `tau`, and nothing read it. ADR-015 kept τ on edges so that a later
+`levels()` could project the tree into fast and slow strata. It deferred the projection
+because its semantics were undecided, so the field stayed metadata. Callers had to make
+up a value. The shipped examples pass 1.0 and 0.0, a zero timescale. The chemotaxis model
+passes the child's τ, the number its `GaussianTransition.from_ou` already took.
+
+### Decision
+
+`Coupling` drops `tau`. In the driven-relaxation model (ADR-017) a coupling acts within a
+slice, so the only timescale the filter has is each node's transition. `from_ou` turns τ
+into the `A` and `Q` the filter reads. A `levels()` that needs τ can read it where the
+dynamics live, or add an optional field once its semantics are settled. A defaulted field
+added then breaks no caller. A required field removed after uptake breaks every
+`Coupling` call.
+
+`Coupling` checks its fields at construction. A node index that is not an int, a factor
+that is not a `GaussianCoupling` and an `efe_relevant` that is not a bool raise
+`TypeError`. A NumPy integer index is stored as an `int`.
+
+### Consequences
+
+- Every `Coupling` call loses its fourth argument. The review recommended keeping the
+  field with a default of `None`. That leaves an argument nothing reads on a public
+  constructor, which is what made it a question at every call site.
+- `GaussianTransition` stores `A` and `Q`, not τ. Recovering τ from a transition needs
+  `dt`, which nothing stores either. `levels()` settles where τ and `dt` live when it
+  lands.
+- The coupling-graph figure's code panel drops `tau=0.0`.

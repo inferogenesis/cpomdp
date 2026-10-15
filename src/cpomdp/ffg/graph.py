@@ -1,19 +1,21 @@
 """A tree of Gaussian-coupled variables and the structure that wires it together.
 
 Nodes are integer indices ``0..N-1``, each with a dimension. A ``Coupling`` edge links
-a parent node to a child node through a linear-Gaussian factor and a time-constant, and
-the edges must form a tree rooted at a chosen node. ``CouplingGraph`` gathers the
-nodes, edges, and per-node observations and checks, on construction, that the wiring is
-a well-formed rooted tree with dimension-consistent factors.
+a parent node to a child node through a linear-Gaussian factor, and the edges must form
+a tree rooted at a chosen node. ``CouplingGraph`` gathers the nodes, edges, and per-node
+sensors and checks, on construction, that the wiring is a well-formed rooted tree with
+dimension-consistent factors.
 
-The graph carries no names: a node is only its index, so the same structure can stand
-for any model. It holds structure, not inference — building one validates the wiring;
-the message passing that reads it lives elsewhere.
+The graph carries no names. A node is only its index, so the same structure can stand
+for any model. Its one public inference is the static collect to the root, ``infer``.
+A filter over time is a ``CouplingGraphBackend``.
 """
 
+import operator
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
+from typing import SupportsIndex
 
 import jax.numpy as jnp
 from jax import Array
@@ -35,9 +37,9 @@ class Coupling:
     ``parent`` and ``child`` are node indices, oriented so the parent is the endpoint
     nearer the tree's root. ``factor`` is the
     [`GaussianCoupling`][cpomdp.GaussianCoupling] holding this edge's ``W`` (shape
-    ``(dim[child], dim[parent])``) and its noise covariance. ``tau`` is a
-    time-constant carried alongside the edge; it is metadata and does not affect the
-    factor.
+    ``(dim[child], dim[parent])``) and its noise covariance. A node's timescale is
+    its [`GaussianTransition`][cpomdp.GaussianTransition], so an edge carries none
+    (ADR-072).
 
     ``efe_relevant`` is a modeller's *declaration* that this edge carries information
     the instrumental epistemic depends on — a physics call, not a structural one (in
@@ -46,13 +48,29 @@ class Coupling:
     flagged edge drops the cross-temporal covariance it holds, breaking the integration
     of that information about a slow latent; every graph EFE entry point refuses such a
     partition (ADR-018). Default ``False``; it does not affect the factor or the filter.
+
+    Raises:
+        TypeError: if ``parent`` or ``child`` is not an int, ``factor`` is not a
+            ``GaussianCoupling``, or ``efe_relevant`` is not a bool.
     """
 
     parent: int
     child: int
     factor: GaussianCoupling
-    tau: float
     efe_relevant: bool = False
+
+    def __post_init__(self) -> None:
+        """Coerce the node indices to ``int`` and check every field's type."""
+        object.__setattr__(self, "parent", _node_index(self.parent, "parent"))
+        object.__setattr__(self, "child", _node_index(self.child, "child"))
+        if not isinstance(self.factor, GaussianCoupling):
+            raise TypeError(
+                f"factor must be a GaussianCoupling, got {type(self.factor).__name__}"
+            )
+        if not isinstance(self.efe_relevant, bool):
+            raise TypeError(
+                f"efe_relevant must be a bool, got {type(self.efe_relevant).__name__}"
+            )
 
 
 class CouplingGraph:
@@ -329,3 +347,10 @@ def _combine(
 ) -> CanonicalGaussian:
     """Add ``msg`` to ``acc[key]``, or start the slot with it if absent."""
     return acc[key] + msg if key in acc else msg
+
+
+def _node_index(value: object, name: str) -> int:
+    """``value`` as a node index. A bool and a non-integer are refused."""
+    if isinstance(value, bool) or not isinstance(value, SupportsIndex):
+        raise TypeError(f"{name} must be an int node index, got {type(value).__name__}")
+    return operator.index(value)
