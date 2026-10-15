@@ -188,12 +188,14 @@ Most toolboxes let you build an agent and stop there. cpomdp also labels how wel
 
 Every check the suite runs carries three labels. A **warrant** says what established the claim. `PROVED` covers a theorem, a symbolic identity, or a finite domain exhausted under a completeness certificate. `CERTIFIED` covers validated numerics over a compact domain. `CORROBORATED` covers a sample of a continuum, which settles existence and refutes a universal by counterexample and decides no universal at any sample count. A **tier** says how well the number itself is known: `EXACT`, `BOUNDED`, or `COMPUTED`. An **outcome** says what the falsifier did, and a falsifier does not pass. It fires or it does not. `PROVED` with nothing behind it does not construct.
 
-Those labels reach a test run. `pip install "warrantlib[pytest]"` adds a plugin, and a test hands its findings over with the `record_check` fixture. A fired check fails, so does an unresolved one, and the two that never ran here skip with the progress letters keeping them apart: `v` for void by construction, `e` for measured elsewhere. Under `-v` a row reads `NOT TRIGGERED` where it would have read `PASSED`. The run closes with the accounting a reader needs first.
+Those labels reach a test run. cpomdp installs warrantlib, and warrantlib registers a pytest plugin that every pytest run in the environment loads. A test hands its findings over with the `record_check` fixture. A fired check fails, so does an unresolved one, and the two that never ran here skip with the progress letters keeping them apart: `v` for void by construction, `e` for measured elsewhere. Under `-v` a row reads `NOT TRIGGERED` where it would have read `PASSED`. The run closes with the accounting a reader needs first.
 
 ```text
 70 registered, 70 tested here, none fired
    PROVED        NOT TRIGGERED   70
 ```
+
+The plugin needs pytest 8 or newer. A project on an older pytest, or one that does not want the plugin, switches it off with `-p no:warrant`, on the command line or in `addopts`.
 
 Registered and tested here are separate counts because they answer separate questions. Registering seventy falsifiers and testing sixty of them is a different claim from testing all seventy, and one number cannot carry both.
 
