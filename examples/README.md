@@ -102,11 +102,11 @@ to a Kalman filter), the coupling-graph figure, and a chemotaxis-network figure.
 
 [`crossover_horizon_figure.py`](crossover_horizon_figure.py)
 
-Under a **fixed** linear-Gaussian sensor the epistemic term of expected free energy is a
-constant across policies. It cannot change any decision. The agent reduces to LQR, the
-collapse [`efe_collapse_figure.py`](efe_collapse_figure.py) draws. A state-dependent
-`R(x)` breaks that: the action reaches the noise, so curiosity becomes *possible* again.
-Possible is not the same as decisive.
+Under a **fixed** linear-Gaussian sensor and fixed process noise the epistemic term of
+expected free energy is a constant across policies. It cannot change any decision. The
+agent reduces to LQR, the collapse [`efe_collapse_figure.py`](efe_collapse_figure.py)
+draws. A state-dependent `R(x)` breaks that: the action reaches the noise, so curiosity
+becomes *possible* again. Possible is not the same as decisive.
 
 An open plane. The agent wants to be at a goal it cannot locate. Its prior says the goal
 is over to the right. It is not. A beacon well off that line is the only thing that can
