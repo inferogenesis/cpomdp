@@ -682,7 +682,7 @@ class CouplingGraphBackend:
         else:
             if actions is None:
                 raise ValueError(
-                    "this model has a control matrix; actions are required"
+                    "this model has a control matrix, so actions are required"
                 )
             actions = jnp.asarray(actions, dtype=float)
             if actions.ndim != 2 or actions.shape[0] != steps:

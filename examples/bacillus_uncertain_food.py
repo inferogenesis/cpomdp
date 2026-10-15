@@ -61,10 +61,9 @@ and names the open multi-goal question it leaves unresolved).
 This needs zero core-library changes (ADR-013): the model is just a bigger
 ``LinearGaussianModel``, the sensor is one ``CallableSensor`` with a 4x4
 block-diagonal ``R(x)``, and ``expected_free_energy``/``LQRController`` don't care
-how the observation/state vectors are built up. The mechanism is checked, not
-just rendered: ``tests/test_ffg_chain.py`` runs this model through both
-``KalmanBackend`` and the FFG chain filter (ADR-012 Phase 2.5) and holds them to
-``atol=1e-7``.
+how the observation/state vectors are built up. ``tests/test_ffg_chain.py`` checks
+the mechanism. It runs this model through both ``KalmanBackend`` and the FFG chain
+filter (ADR-012 Phase 2.5) and holds them to ``atol=1e-7``.
 
 Needs the ``examples`` extra (matplotlib + pillow, neither a runtime dependency of
 the library itself)::
