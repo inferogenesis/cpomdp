@@ -22,7 +22,7 @@ The locks:
   constant-action family cannot express.
 - `TestWarrantSeam`: the two families self-describe — enumerated `PROVED`, grid
   `CORROBORATED` — in distinct vocabulary (standing rule 6).
-- `TestCostAndTransforms`: `cost_per_cycle == |A|^H * H`; the search survives `jit` and
+- `TestCostAndTransforms`: `cost_per_plan == |A|^H * H`; the search survives `jit` and
   handles a multi-dimensional (p>1) action set the grid selector rejects.
 
 Imports the enumeration symbols directly, so until they land this module is
@@ -286,10 +286,12 @@ class TestWarrantSeam:
 
 # --- cost and transforms -----------------------------------------------------------
 class TestCostAndTransforms:
-    def test_cost_per_cycle_is_exponential(self):
+    def test_cost_per_plan_is_exponential(self):
         search = EnumeratedEfeSearch(_model(), _finite_set([-1.0, 0.0, 1.0]), horizon=3)
         assert search.n_policies == 27  # |A|^H
-        assert search.cost_per_cycle == 27 * 3  # |A|^H * H
+        assert search.cost_per_plan == 27 * 3  # |A|^H * H
+        # A search runs per plan. `cost_per_cycle` is a driver's, per agent step.
+        assert not hasattr(search, "cost_per_cycle")
 
     def test_jit_agrees_with_eager(self):
         search = EnumeratedEfeSearch(_model(), _finite_set([-1.0, 0.0, 1.0]), horizon=2)
