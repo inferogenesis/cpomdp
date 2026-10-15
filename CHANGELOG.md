@@ -506,6 +506,11 @@ certainty equivalence is optimal, and no use of the readings beats it.
   step. It now rests. Scores within a relative `1e-9` of the best count as tied, since
   the graph backend leaves roundoff of about `1e-12` on such a tie. Choosing costs one
   more pass over the `k` scores per cycle.
+- `EFESelector` and `FfgEfeSelector` compile their scoring once, on the first `select`,
+  and reuse it. Each `select` re-traced the grid under an eager `vmap`, and at horizon
+  above 1 the rollout's scan compiled again on every call, a fixed cost per step that
+  `cost_per_cycle` never counted. A test counts the traces across three beliefs and
+  finds one.
 - The batched condition number `rollout_conditioning` computed inline is now a private
   function of its own, so a rollout and a scored cell read the same number for the same
   matrix.

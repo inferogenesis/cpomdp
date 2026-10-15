@@ -453,3 +453,22 @@ class TestStateDependentSelection:
         np.testing.assert_allclose(
             np.asarray(sel.select(belief, pref)), np.asarray(full_action), atol=1e-7
         )
+
+
+def test_the_graph_selector_traces_its_kernel_once(monkeypatch):
+    # Each select used to re-trace the predict and the step under an eager vmap.
+    import cpomdp.selection as selection
+
+    traced = []
+    original = selection._ffg_efe_step
+
+    def counted(*args, **kwargs):
+        traced.append(1)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(selection, "_ffg_efe_step", counted)
+    backend = _two_node_rx_backend()
+    selector = FfgEfeSelector(backend, action_bounds=(-2.0, 2.0))
+    for mean in ([0.0, 0.0], [0.3, -0.1], [-0.5, 0.4]):
+        selector.select(Belief(mean=mean, cov=np.eye(2)), Preference([0.5]))
+    assert len(traced) == 1
