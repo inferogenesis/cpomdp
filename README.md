@@ -21,7 +21,7 @@ Full documentation, including API reference and guides, lives at [cpomdp.inferog
 
 **Exact continuous perception.** Linear mean dynamics and Gaussian noise make the filter an exact Kalman filter, closed form, nothing sampled. Under fixed noise there is no variational gap. The same code path runs whether you are tracking or acting.
 
-**Action that reaches the posterior covariance.** cpomdp lets the observation noise depend on the state, `R(x)` (Corva 2026), or the process noise, `Q(x)`. The mean stays linear. Because the covariance now responds to what the agent does, the epistemic term of expected free energy differs across policies and information-seeking behaviour becomes available. Under a *fixed* linear-Gaussian sensor that term is identical for every policy (Koudahl, Kouw & de Vries 2021). State-dependent noise is the smallest deviation from that model which escapes the result.
+**Action that reaches the posterior covariance.** cpomdp lets the observation noise depend on the state, `R(x)` (Corva 2026), or the process noise, `Q(x)`. The mean stays linear. Because the covariance now responds to what the agent does, the epistemic term of expected free energy differs across policies and information-seeking behaviour becomes available. Under a *fixed* linear-Gaussian sensor and fixed process noise that term is identical for every policy (Koudahl, Kouw & de Vries 2021). State-dependent noise is the smallest deviation from that model which escapes the result.
 
 **One knob between exploiting and exploring.** `StateGoal` and `ObservationGoal` carry a precision Λ. The pragmatic term scales with Λ and the epistemic term does not, so Λ alone decides whether an agent beelines for the goal or detours to sharpen its belief first. The four bacilli above differ in that number and nothing else.
 
@@ -135,7 +135,7 @@ Only two things are spelled differently:
 | `C`   | `StateGoal` / `ObservationGoal` | the goal you pursue, and how sharply |
 | `D`   | `model.prior`                   | belief before you've seen anything   |
 
-One honest difference in behaviour. `sample_action` here is deterministic, not a sample from a policy posterior. For a linear-Gaussian sensor the action that minimises expected free energy turns out to be exactly the LQR optimum ([Koudahl, Kouw and de Vries 2021](https://doi.org/10.3390/e23121565)), so there's a single best action and that's what comes back. Same loop, exact answer. The reasoning is in [DECISIONS.md](https://github.com/inferogenesis/cpomdp/blob/main/DECISIONS.md) (ADR-003) if you want it.
+One honest difference in behaviour. `sample_action` here is deterministic, not a sample from a policy posterior. For a linear-Gaussian model with fixed noise the action that minimises expected free energy turns out to be exactly the LQR optimum ([Koudahl, Kouw and de Vries 2021](https://doi.org/10.3390/e23121565)), so there's a single best action and that's what comes back. Same loop, exact answer. The reasoning is in [DECISIONS.md](https://github.com/inferogenesis/cpomdp/blob/main/DECISIONS.md) (ADR-003) if you want it.
 
 ## Just want to track, not act?
 
