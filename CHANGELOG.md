@@ -355,6 +355,11 @@ certainty equivalence is optimal, and no use of the readings beats it.
   belief it was traced with on every call, and the next eager call raised
   `UnexpectedTracerError`. The `Agent` docstring, its API page and the README now say
   it is eager, and the page shows a backend driven under `jax.lax.scan`.
+- `KalmanBackend`, its API page and the README called the filter exact for any
+  linear-Gaussian model, and said `RxInferBackend` re-derives the same answers. Under a
+  state-dependent `R(x)` or `Q(x)` the filter reads the noise at the predicted mean, a
+  first-order plug-in, and `RxInferBackend` refuses such a model. Each now says the
+  filter is exact under fixed noise, and the oracle agrees only there.
 - `EFESelector` described varying-sequence search as a deferred v0.4 `GradientEFESelector`
   seam, in its rendered class docstring and in the `ValueError` a `p > 1` caller hits. That
   search shipped in v0.4.4 as `EnumeratedEfeSearch`, whose own docstring says it supports
