@@ -574,20 +574,21 @@ def _closed_loop(live: bool, meter: str = "dp") -> float:
     """
     model = _model(live=live, meter=meter)
     bounds = (float(ACTIONS[0]), float(ACTIONS[-1]))
-    objective = ObservationGoal(
-        [GOAL_MARGIN],
-        precision=[[GOAL_PRECISION]],
-        action_bounds=bounds,
-        n_candidates=len(ACTIONS),
-    )
-    # The Agent declines EFE on a fixed sensor unless handed a selector, because the
-    # epistemic term is dead there. The twin needs one to be a twin at all.
-    selector = (
-        None
-        if live
-        else EFESelector(model, n_candidates=len(ACTIONS), action_bounds=bounds)
-    )
-    agent = Agent(model, objective, selector=selector)
+    if live:
+        objective = ObservationGoal(
+            [GOAL_MARGIN],
+            precision=[[GOAL_PRECISION]],
+            action_bounds=bounds,
+            n_candidates=len(ACTIONS),
+        )
+        agent = Agent(model, objective)
+    else:
+        # The Agent declines EFE on a fixed sensor, because the epistemic term is dead
+        # there. The twin brings its own selector over the same grid.
+        selector = EFESelector(model, n_candidates=len(ACTIONS), action_bounds=bounds)
+        agent = Agent(
+            model, Preference([GOAL_MARGIN], [[GOAL_PRECISION]]), selector=selector
+        )
     margin, trace = OPERATING_MARGIN, []
     for _ in range(LOOP_STEPS):
         agent.infer_states(jnp.array([margin]))

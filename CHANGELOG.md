@@ -429,12 +429,21 @@ certainty equivalence is optimal, and no use of the readings beats it.
   be 1.005. `ScoredAgent` takes the same two forms, `ScoredAgent(model)` and
   `ScoredAgent.from_backend(backend)`. It refused a backend built from another model,
   and now cannot be given one.
-- **Breaking:** `Agent` refuses a built-in `selector=` that reads its target in the other
-  space from the objective. The EFE selectors and the search drivers score a predicted
-  observation, so `Agent(model, StateGoal(target), selector=EFESelector(...))` pursued
-  `C · x = target` and settled away from the target whenever `C` is not the identity.
-  `LQRSelector` with an `ObservationGoal` failed the same way in reverse. A custom
-  selector is not checked.
+- **Breaking:** `selector=` takes a `Preference`, and a goal configures only the selector
+  the `Agent` builds. `Agent(model, goal)` searches as the goal says, and
+  `Agent(model, preference, selector=...)` searches as the selector says. A goal beside
+  `selector=` is refused, and so is either half of the second form without the other.
+  The goal and the selector both described the search, and the selector won in silence:
+  a goal that declared the action box (-0.1, 0.1) returned the action 1.5. A selector
+  with no goal was dropped, and the agent tracked. A `StateGoal` beside a selector paid a
+  Riccati solve for a controller the Agent then discarded, which raised on a plant with
+  no stabilising gain. A built-in selector reads the `Preference` in its own space, an
+  observation for the EFE selectors and the search drivers and a state for
+  `LQRSelector`, and a target of the wrong length is refused. The old pairing of a goal
+  with a selector reading the other space cannot be written:
+  `Agent(model, StateGoal(target), selector=EFESelector(...))` pursued `C · x = target`
+  and settled away from the target whenever `C` is not the identity. A custom selector
+  is not checked (ADR-071).
 - **Breaking:** on the LQR path `Agent` refuses a `StateGoal` target the dynamics do not
   hold at zero action, where `A · target ≠ target`. LQR regulates the offset from the
   target and charges for effort, so it settled short. With `A = 0.9` and a target of 1
