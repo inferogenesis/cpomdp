@@ -198,7 +198,8 @@ class RxInferBackend:
                 a control matrix; pass ``None`` for pure filtering.
 
         Raises:
-            ValueError: On a shape/None mismatch (see ``_validate_step_inputs``).
+            ValueError: If ``observation``, ``prior`` or ``action`` does not match the
+                model, on the same checks as ``KalmanBackend.infer_states``.
         """
         model = self.model
         observation, action = _validate_step_inputs(model, observation, prior, action)

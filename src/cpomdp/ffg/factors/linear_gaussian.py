@@ -1,7 +1,7 @@
-"""Tier-1 linear-Gaussian factor nodes: the message producers (ADR-012, Phase 2).
+"""Tier-1 linear-Gaussian factor nodes: the message producers (ADR-012).
 
 Two factor types span a linear-Gaussian chain, and each one's job is to *emit a
-``CanonicalGaussian`` message* assembled from the Phase 1 algebra:
+``CanonicalGaussian`` message* assembled from the canonical-form algebra:
 
 - ``GaussianObservation`` — the likelihood ``N(y; Cx, R)``. Its message into x is
   the information form of the reading, ``(CᵀR⁻¹C, CᵀR⁻¹y)``; the measurement
@@ -11,8 +11,8 @@ Two factor types span a linear-Gaussian chain, and each one's job is to *emit a
   marginalizes x out (the Schur complement).
 
 These nodes are thin: the heavy lifting (add, marginalize, readout) already lives
-in ``CanonicalGaussian``. A linear chain of them reproduces the Kalman filter —
-the Phase 2 keystone gate.
+in ``CanonicalGaussian``. A linear chain of them reproduces the Kalman filter, and
+the test suite holds the chain backend to it.
 
 Note (information-form constraint): both factors invert their noise covariance
 (``R⁻¹``, ``Q⁻¹``), so both require it positive-**definite**. Unlike moment-form

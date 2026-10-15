@@ -37,8 +37,8 @@ class IncompatibleLinearizationError(ValueError):
     linearizes ``R`` at the pre-coupling predicted mean μ⁻, while the FFG linearizes at
     the coupling-resolved μ⁺ (issue #27, ADR-019). With a state-dependent ``R(x)`` and a
     mean-shifting coupling, μ⁻ ≠ μ⁺ and no fixed flat model reproduces the filter. The
-    oracle is the standalone NumPy R(μ⁺) filter (backend tests) plus the single-node
-    [`CallableSensor`][cpomdp.CallableSensor] cross-check.
+    test suite checks this backend against a NumPy filter that reads ``R`` at μ⁺, and
+    against [`CallableSensor`][cpomdp.CallableSensor] on a single node.
     """
 
 
@@ -480,11 +480,11 @@ class CouplingGraphBackend:
     ) -> Belief:
         """Advance the joint belief by one filter step over the tree.
 
-        Validate the inputs, form the control shift ``b = control @ action``, then run
-        the driven-relaxation pipeline: lift the joint prior into canonical form,
-        ``predict`` through the block-diagonal per-node dynamics (the temporal edges),
-        add the structural coupling precision and the per-node observation messages (the
-        within-slice update), and ``to_moment`` the joint posterior back.
+        Validate the inputs, form the control shift ``b = control_matrix @ action``,
+        then run the driven-relaxation pipeline: lift the joint prior into canonical
+        form, ``predict`` through the block-diagonal per-node dynamics (the temporal
+        edges), add the structural coupling precision and the per-node observation
+        messages (the within-slice update), and ``to_moment`` the joint posterior back.
 
         Args:
             observation: the observed nodes' readings, stacked in ascending node-index
@@ -786,9 +786,8 @@ class CouplingGraphBackend:
         — so the carry drops the cross-temporal covariance it holds, breaking the
         integration of that information about the targeted latent. Non-empty means
         every EFE entry point must refuse this partition; empty for the exact
-        ``[[all]]`` carry and for any cut that only severs unflagged edges (e.g. the
-        methylation cut). A structural read, not a filter step — no covariance is
-        formed here.
+        ``[[all]]`` carry and for any cut that only severs unflagged edges. It is a
+        structural read and forms no covariance.
         """
         return tuple(
             edge
@@ -846,9 +845,9 @@ class CouplingGraphBackend:
         observations and the structural couplings stack into one sensor, each coupling
         an always-zero pseudo-observation ``child − W·parent ~ N(0, Q_struct)``. Running
         [`KalmanBackend`][cpomdp.KalmanBackend] or ``RxInferBackend`` on this
-        reproduces this backend's filter exactly — the independent cross-check, and what
-        the Phase-3 demo contrasts the native FFG against. Pad a step's readings with
-        ``flat_observation`` first. The returned model carries the backend's prior.
+        reproduces this backend's filter exactly. It is the independent cross-check.
+        Pad a step's readings with ``flat_observation`` first. The returned model
+        carries the backend's prior.
 
         With couplings present a state-dependent ``R(x)`` is a *category error* for this
         route (``IncompatibleLinearizationError`` — the flat Kalman linearizes at μ⁻,

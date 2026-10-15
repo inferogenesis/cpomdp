@@ -163,8 +163,8 @@ class EnumeratedSearchResult(NamedTuple):
 
     Attributes:
         best_policy: the argmin sequence, shape ``(H, p)``.
-        g: the full EFE vector over every enumerated policy, shape ``(|A|^H,)`` — G-D's
-            dual reporting at H > 1 for free.
+        g: the EFE of every enumerated policy, shape ``(|A|^H,)``. The search
+            computes it anyway, so it costs nothing extra.
     """
 
     best_policy: Float64[Array, "H p"]
@@ -663,8 +663,8 @@ class RecedingHorizonSelector:
 
     Every ``select`` re-runs the full ``A^H`` search on the current belief and returns
     the first action of the best sequence. The belief drives every choice, so the plan
-    is recomputed each step. Kept separate from ``OpenLoopSelector`` because item E's
-    matched-horizon bracket depends on which mode is running (ADR-031).
+    is recomputed each step. Kept separate from ``OpenLoopSelector`` because a
+    matched-horizon comparison depends on which mode is running (ADR-031).
     """
 
     def __init__(self, search: EnumeratedEfeSearch) -> None:
@@ -712,7 +712,7 @@ class OpenLoopSelector:
     sequence, and returns its actions in order while ignoring the interim beliefs. It
     re-plans only when the committed sequence is exhausted, or after ``reset``. Ignoring
     the interim beliefs is what makes it open-loop, and the distinction from
-    ``RecedingHorizonSelector`` is item E's matched-horizon bracket (ADR-031).
+    ``RecedingHorizonSelector`` is what a matched-horizon comparison turns on (ADR-031).
 
     Stateful: it holds the committed plan and a step counter. The ``Agent`` drives it
     eagerly, one ``select`` per step, so the mutation is safe.
