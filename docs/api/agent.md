@@ -98,8 +98,9 @@ The stateful façade you drive: `infer_states` to perceive, `sample_action` to a
     4 it settles on the goal, for twice the work per step.
 
 The `Agent` is eager. Its methods update the belief it holds, so `jax.jit`, `vmap` and
-`grad` do not apply to them. A jitted `infer_states` returns the posterior it was traced
-with on every call. To compile a loop, drive a backend directly under `jax.lax.scan`.
+`grad` do not apply to them. A jitted `infer_states` filters every observation against
+the belief it was traced with, so the belief never advances, and the next eager call
+raises `UnexpectedTracerError`. To compile a loop, drive a backend directly under `jax.lax.scan`.
 
 ??? example "A backend driven under `jax.lax.scan`"
     ```python
