@@ -784,6 +784,30 @@ class TestStackObservations:
             backend.stack_observations({1: 0.5})
 
 
+class TestDefiniteNoise:
+    """The graph path inverts each node's Q and each edge's noise, and says so.
+
+    The flat model accepts a semi-definite Q. The graph's refusal of one blamed "a
+    noiseless or degenerate sensor", an object the caller had not passed.
+    """
+
+    def test_a_semi_definite_node_noise_names_the_inversion(self):
+        with pytest.raises(
+            ValueError,
+            match="dynamics_noise must be positive-definite because it is inverted",
+        ) as refusal:
+            GaussianTransition(np.eye(2), dynamics_noise=np.diag([1e-4, 0.0]))
+        assert "sensor" not in str(refusal.value)
+
+    def test_a_semi_definite_edge_noise_names_the_inversion(self):
+        with pytest.raises(
+            ValueError,
+            match="coupling_noise must be positive-definite because it is inverted",
+        ) as refusal:
+            GaussianCoupling([[1.0]], coupling_noise=[[0.0]])
+        assert "sensor" not in str(refusal.value)
+
+
 class TestNodeLookup:
     """A node outside the graph is refused by name, never read as an empty block.
 
