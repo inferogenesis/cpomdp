@@ -149,7 +149,7 @@ class TestEFESelector:
 
         # The one-step pragmatic argmin is DEADBEAT (drive the residual to 0 in one
         # step → a ≈ -1.0). Infinite-horizon LQR is gradual — it spreads the
-        # correction over the horizon. They only coincide as effort_penalty → 0 (LQR
+        # correction over the horizon. They only coincide as effort → 0 (LQR
         # → deadbeat); a *balanced* penalty puts LQR in its characteristic gradual
         # regime, which is where H=1 EFE ≠ H=∞ LQR is visible. Do not lower the
         # penalty back toward 0 — that collapses the very distinction being asserted.
