@@ -686,6 +686,16 @@ class TestOneNamePerQuantity:
         )
         assert not hasattr(backend, duplicate)
 
+    @pytest.mark.parametrize("field", ["graph", "transitions", "model"])
+    def test_what_the_backend_was_built_from_is_read_only(self, field):
+        # The filter, the factors and the model are front-loaded from these, so an
+        # assignment would leave them describing the old graph.
+        backend = _build(
+            _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
+        )
+        with pytest.raises(AttributeError):
+            setattr(backend, field, getattr(backend, field))
+
 
 def _noise_rising_off_zero(x, params):
     """``R(x) = 0.5 + x₀²``, so ``R(0)`` and ``R`` anywhere else differ."""

@@ -155,8 +155,8 @@ class CouplingGraphBackend:
         """
         self._validate_transitions(graph, transitions)
 
-        self.graph = graph
-        self.transitions = tuple(transitions)
+        self._graph = graph
+        self._transitions = tuple(transitions)
         self._offsets = tuple(int(o) for o in np.cumsum([0, *graph.dims]))
         self._n_states = self._offsets[-1]  # n, the joint state's width
         self._prior = self._validate_prior(prior)
@@ -172,7 +172,7 @@ class CouplingGraphBackend:
         self._structural_precision = self._assemble_structural_precision()
         self._obs_layout, self._n_observations = self._build_observation_layout()
         self._sensor_is_fixed = all(
-            o.is_fixed for o in self.graph.observations.values()
+            o.is_fixed for o in self._graph.observations.values()
         )
         self._flat_model = self._build_validation_model()
         self._partition_mask = self._build_partition_mask()
@@ -220,7 +220,7 @@ class CouplingGraphBackend:
         carry). Otherwise ``partition`` must be a true partition of the node set: every
         node in exactly one cluster, no node repeated, no node missing.
         """
-        node_count = len(self.graph.dims)
+        node_count = len(self._graph.dims)
         if partition is None:
             return (tuple(range(node_count)),)
         clusters = tuple(tuple(int(node) for node in cluster) for cluster in partition)
@@ -255,10 +255,10 @@ class CouplingGraphBackend:
     def _build_transition(self) -> GaussianTransition:
         """The network's temporal edges as one block-diagonal transition (F, Q)."""
         force = jax.scipy.linalg.block_diag(
-            *[t.dynamics_matrix for t in self.transitions]
+            *[t.dynamics_matrix for t in self._transitions]
         )
         force_noise = jax.scipy.linalg.block_diag(
-            *[t.dynamics_noise for t in self.transitions]
+            *[t.dynamics_noise for t in self._transitions]
         )
         return GaussianTransition(force, dynamics_noise=force_noise)
 
@@ -272,8 +272,8 @@ class CouplingGraphBackend:
         ``node``. Ascending node order is the stacking order a caller must pass.
         """
         layout, cursor = [], 0
-        for node in sorted(self.graph.observations):
-            width = self.graph.observations[node].observation_matrix.shape[0]
+        for node in sorted(self._graph.observations):
+            width = self._graph.observations[node].observation_matrix.shape[0]
             layout.append((node, cursor, cursor + width))
             cursor += width
         return tuple(layout), cursor
@@ -328,7 +328,7 @@ class CouplingGraphBackend:
         """
         rows = []
         for node, _lo, _hi in self._obs_layout:
-            obs = self.graph.observations[node]
+            obs = self._graph.observations[node]
             embedded = jnp.zeros((obs.observation_matrix.shape[0], self._n_states))
             embedded = embedded.at[:, self._block(node)].set(obs.observation_matrix)
             rows.append(embedded)
@@ -343,7 +343,7 @@ class CouplingGraphBackend:
         """
         blocks = []
         for node, _lo, _hi in self._obs_layout:
-            obs = self.graph.observations[node]
+            obs = self._graph.observations[node]
             blocks.append(obs.linearize(jnp.zeros(obs.observation_matrix.shape[1]))[1])
         return blocks
 
@@ -365,7 +365,7 @@ class CouplingGraphBackend:
         )
         if not self._sensor_is_fixed:
             factors = tuple(
-                self.graph.observations[node] for node, _lo, _hi in self._obs_layout
+                self._graph.observations[node] for node, _lo, _hi in self._obs_layout
             )
             spans = tuple(
                 (self._offsets[node], self._offsets[node + 1])
@@ -410,7 +410,7 @@ class CouplingGraphBackend:
         form is additive), so any node degree works.
         """
         precision = jnp.zeros((self._n_states, self._n_states))
-        for edge in self.graph.couplings:
+        for edge in self._graph.couplings:
             W = edge.factor.coupling_matrix  # (child_dim, parent_dim)
             Q_inv = jnp.linalg.inv(edge.factor.coupling_noise)
             weighted = Q_inv @ W  # Q⁻¹W   (reused twice)
@@ -434,7 +434,7 @@ class CouplingGraphBackend:
         precision = jnp.zeros((self._n_states, self._n_states))
         potential = jnp.zeros(self._n_states)
         for node, lo, hi in self._obs_layout:
-            message = self.graph.observations[node].message(observation[lo:hi])
+            message = self._graph.observations[node].message(observation[lo:hi])
             block = self._block(node)
             precision = precision.at[block, block].add(message.precision)
             potential = potential.at[block].add(message.potential)
@@ -458,7 +458,7 @@ class CouplingGraphBackend:
             block = self._block(node)
             # Uniform call: a fixed factor ignores the state, a state-dependent one
             # evaluates R at μ⁺[block] — no type branch (shared message interface).
-            message = self.graph.observations[node].message(
+            message = self._graph.observations[node].message(
                 observation[lo:hi], predicted_mean[block]
             )
             precision = precision.at[block, block].add(message.precision)
@@ -560,13 +560,13 @@ class CouplingGraphBackend:
         """
         control_term = self._control_shift(action)  # b = B·action over the joint state
         predicted = {}
-        for node in range(len(self.graph.dims)):
+        for node in range(len(self._graph.dims)):
             block = self._block(node)
             node_precision = jnp.linalg.inv(prior.cov[block, block])  # Λ_i = Σ_i⁻¹
             node_prior = CanonicalGaussian._unchecked(
                 node_precision, node_precision @ prior.mean[block]
             )
-            predicted[node] = self.transitions[node].predict(
+            predicted[node] = self._transitions[node].predict(
                 node_prior, control_term[block]
             )
 
@@ -575,11 +575,11 @@ class CouplingGraphBackend:
         else:
             # Pass 1: μ⁺ marginals from the R-free predicted seeds (couplings via BP, no
             # observation) — the frozen point every R(μ⁺) is linearized at (ADR-019).
-            predicted_marginals = self.graph.infer_all(predicted)
+            predicted_marginals = self._graph.infer_all(predicted)
             mu_plus = jnp.concatenate(
                 [
                     predicted_marginals[node].to_moment()[0]
-                    for node in range(len(self.graph.dims))
+                    for node in range(len(self._graph.dims))
                 ]
             )
             obs_precision, obs_potential = self._observation_messages_at(
@@ -587,14 +587,14 @@ class CouplingGraphBackend:
             )
 
         seeds = {}
-        for node in range(len(self.graph.dims)):
+        for node in range(len(self._graph.dims)):
             block = self._block(node)
             seeds[node] = CanonicalGaussian._unchecked(
                 predicted[node].precision + obs_precision[block, block],
                 predicted[node].potential + obs_potential[block],
             )
-        marginals = self.graph.infer_all(seeds)
-        moments = [marginals[node].to_moment() for node in range(len(self.graph.dims))]
+        marginals = self._graph.infer_all(seeds)
+        moments = [marginals[node].to_moment() for node in range(len(self._graph.dims))]
         mean = jnp.concatenate([node_mean for node_mean, _ in moments])
         cov = jax.scipy.linalg.block_diag(*[node_cov for _, node_cov in moments])
         return Belief(mean=mean, cov=cov)
@@ -813,7 +813,7 @@ class CouplingGraphBackend:
         A negative index would otherwise wrap or slice to an empty block, and an
         epistemic term aimed at an empty block is silently zero.
         """
-        node_count = len(self.graph.dims)
+        node_count = len(self._graph.dims)
         if not 0 <= node < node_count:
             raise ValueError(
                 f"node {node} is not a node of this graph, whose nodes are "
@@ -834,10 +834,20 @@ class CouplingGraphBackend:
         """
         return tuple(
             edge
-            for edge in self.graph.couplings
+            for edge in self._graph.couplings
             if edge.efe_relevant
             and self._cluster_of[edge.parent] != self._cluster_of[edge.child]
         )
+
+    @property
+    def graph(self) -> CouplingGraph:
+        """The graph this backend filters over, fixed at construction."""
+        return self._graph
+
+    @property
+    def transitions(self) -> tuple[GaussianTransition, ...]:
+        """Each node's transition, indexed by node, fixed at construction."""
+        return self._transitions
 
     @property
     def model(self) -> LinearGaussianModel:
@@ -894,7 +904,7 @@ class CouplingGraphBackend:
         the reachable set, which this cannot decide — ``cpomdp.diagnostics.probe_model``
         samples it.
         """
-        if not self._sensor_is_fixed and self.graph.couplings:
+        if not self._sensor_is_fixed and self._graph.couplings:
             # A mean-shifting coupling makes μ⁺ ≠ μ⁻, so no fixed flat model
             # reproduces R(μ⁺) -- inherent, not a missing feature.
             raise IncompatibleLinearizationError(
@@ -911,7 +921,7 @@ class CouplingGraphBackend:
             return self._flat_model
         rows = self._embedded_sensor_rows()
         noise_blocks = self._fixed_noise_blocks()
-        for edge in self.graph.couplings:  # child − W·parent ~ N(0, Q_struct)
+        for edge in self._graph.couplings:  # child − W·parent ~ N(0, Q_struct)
             coupling = edge.factor.coupling_matrix  # W
             child_dim = coupling.shape[0]
             row = jnp.zeros((child_dim, self._n_states))
@@ -936,6 +946,6 @@ class CouplingGraphBackend:
         """
         observation = jnp.asarray(observation, dtype=float)
         n_structural = sum(
-            edge.factor.coupling_matrix.shape[0] for edge in self.graph.couplings
+            edge.factor.coupling_matrix.shape[0] for edge in self._graph.couplings
         )
         return jnp.concatenate([observation, jnp.zeros(n_structural)])
