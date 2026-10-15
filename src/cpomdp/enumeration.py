@@ -29,6 +29,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from jaxtyping import Array, Float64
+from numpy.typing import ArrayLike
 
 from cpomdp.efe import _checked_info_block, _policy_efe_ffg, policy_efe
 from cpomdp.types import Belief, LinearGaussianModel
@@ -80,14 +81,19 @@ class FiniteActionSet:
 
     Args:
         actions: the declared actions, shape ``(A, p)`` — ``A`` actions of dimension
-            ``p``. At least two (a set of one is no choice to search).
+            ``p``. At least two (a set of one is no choice to search), every entry
+            finite. A repeated action counts toward ``A``, so it is scored twice.
         version: a non-empty tag, so an action added later shows up in the diff.
+
+    Raises:
+        ValueError: If ``actions`` is not 2-D, holds fewer than two actions or a
+            non-finite entry, or if ``version`` is empty.
     """
 
     actions: Float64[Array, "A p"]
     version: str
 
-    def __init__(self, actions, *, version: str) -> None:
+    def __init__(self, actions: ArrayLike, *, version: str) -> None:
         object.__setattr__(self, "actions", jnp.asarray(actions, dtype=float))
         object.__setattr__(self, "version", version)
         self._validate()
@@ -101,6 +107,13 @@ class FiniteActionSet:
             raise ValueError(
                 f"a FiniteActionSet needs at least 2 actions to search, got "
                 f"{self.actions.shape[0]}"
+            )
+        finite = np.all(np.isfinite(np.asarray(self.actions)), axis=1)
+        if not finite.all():
+            rows = ", ".join(str(row) for row in np.flatnonzero(~finite))
+            raise ValueError(
+                f"every action must be finite. Non-finite rows: {rows}. A policy that "
+                "takes one scores NaN, and the search would still certify covering it."
             )
         if not isinstance(self.version, str) or not self.version:
             raise ValueError(

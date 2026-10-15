@@ -146,6 +146,17 @@ class TestFiniteActionSet:
         with pytest.raises(ValueError, match="version"):
             FiniteActionSet([[0.0], [1.0]], version="")
 
+    @pytest.mark.parametrize("bad", [np.nan, np.inf, -np.inf])
+    def test_rejects_a_non_finite_action(self, bad):
+        # A NaN action scores NaN on every policy that takes it, and a search over the
+        # set would still certify coverage of it.
+        with pytest.raises(ValueError, match=r"finite.*rows: 1\."):
+            FiniteActionSet([[0.0], [bad]], version="v1")
+
+    def test_a_duplicate_counts_toward_the_size(self):
+        # Kept on purpose: the tie-break tests declare duplicates to force ties.
+        assert FiniteActionSet([[1.0], [1.0], [0.0]], version="v1").size == 3
+
 
 # --- CompletenessCertificate -------------------------------------------------------
 class TestCompletenessCertificate:
