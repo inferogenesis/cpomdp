@@ -77,6 +77,8 @@ Or the latest from source:
 pip install git+https://github.com/inferogenesis/cpomdp
 ```
 
+Importing cpomdp switches JAX to 64-bit floats for the whole process (`jax_enable_x64`). The filter is checked against its oracles to 1e-9, which float32 cannot hold. Every other JAX array in the process then defaults to float64 too, at twice the memory. Turning the flag off again after the import makes beliefs and posteriors come back float32, with no warning.
+
 That's all you need for normal use. There's also an optional RxInfer (Julia) backend that the test suite leans on as a correctness oracle. You almost certainly don't need it, but if you want it:
 
 ```bash
