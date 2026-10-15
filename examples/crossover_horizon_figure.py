@@ -1,10 +1,10 @@
 """R(x) and a long enough H bring curiosity back to a linear-Gaussian agent.
 
-Under a *fixed* linear-Gaussian sensor the epistemic term of expected free energy is a
-constant across policies, so it cannot change any decision and the agent reduces to LQR
-(the collapse `efe_collapse_figure.py` draws). A state-dependent `R(x)` breaks that: the
-action reaches the noise, and curiosity becomes possible again. Possible is not the same
-as decisive.
+Under a *fixed* linear-Gaussian sensor and fixed process noise the epistemic term of
+expected free energy is a constant across policies, so it cannot change any decision and
+the agent reduces to LQR (the collapse `efe_collapse_figure.py` draws). A
+state-dependent `R(x)` breaks that: the action reaches the noise, and curiosity becomes
+possible again. Possible is not the same as decisive.
 
 An open plane. The agent wants to be at a goal whose location it does not know. Its
 prior points at `x*`. The goal is five units away from there. A beacon sits off the

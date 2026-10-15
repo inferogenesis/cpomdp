@@ -7,11 +7,14 @@ The stateful façade you drive: `infer_states` to perceive, `sample_action` to a
     `Agent.from_backend(backend, goal)` takes any other engine, a graph model included,
     and plans under `backend.model`. Both lead into the same choices below.
 
-    A curious agent is one whose information term changes with the action. It comes out
-    of an `ObservationGoal` on a sensor whose noise depends on the state, and nowhere
-    else. Green marks it. Amber is EFE whose information term is the same for every
-    action, blue is LQR, grey a tracker, a red outline a refusal at construction, and a
-    dashed red outline a combination that runs and does not do what its name suggests.
+    A curious agent is one whose information term changes with the action. The Agent
+    builds one for an `ObservationGoal` on a sensor whose noise depends on the state. An
+    EFE selector passed explicitly makes one on a model whose process noise `Q(x)` varies
+    with the state, a [`CallableProcessNoise`][cpomdp.CallableProcessNoise]. That case
+    is claimed at horizon 1 only. Green marks it.
+    Amber is EFE whose information term is the same for every action, blue is LQR, grey a
+    tracker, a red outline a refusal at construction, and a dashed red outline a
+    combination that builds and then raises or does not do what its name suggests.
 
     ```mermaid
     flowchart LR
@@ -27,7 +30,7 @@ The stateful façade you drive: `infer_states` to perceive, `sample_action` to a
         state -- "graph model" --> uncoupled["LQR that ignores the graph's couplings"]:::gap
         obs -- "R(x) sensor" --> c1["Curious EFE: horizon read off the model"]:::curious
         obs -- "R(x) sensor,<br/>horizon set too short" --> r3["Refused: the target does not move the scores"]:::refused
-        obs -- "fixed sensor" --> r4["Refused: same information everywhere"]:::refused
+        obs -- "fixed sensor" --> r4["Refused: output regulation, deferred"]:::refused
         obs -- "Q(x) only" --> rq["Refused, though Q(x) alone<br/>can make an agent curious"]:::refused
         obs -- "graph model,<br/>R(x) node sensors" --> c2["Curious EFE: graph selector, horizon 1"]:::curious
         obs -- "graph model,<br/>fixed sensors" --> flat["EFE: information term flat"]:::flat
@@ -44,8 +47,8 @@ The stateful façade you drive: `infer_states` to perceive, `sample_action` to a
 
     | You pass | Fixed sensor | `R(x)` sensor |
     | --- | --- | --- |
-    | `ObservationGoal` + `selector=EFESelector(…)` | EFE, the same information for every action | Curious EFE at the horizon given, which is not checked |
-    | `ObservationGoal` + `selector=RecedingHorizonSelector(…)` or `OpenLoopSelector(…)` | Search, information flat | Curious search over varying action sequences |
+    | `ObservationGoal` + `selector=EFESelector(…)` | EFE. Information is flat unless `Q(x)` varies, which is claimed at horizon 1 only | Curious EFE at the horizon given, which is not checked |
+    | `ObservationGoal` + `selector=RecedingHorizonSelector(…)` or `OpenLoopSelector(…)` | Search. Information is flat unless `Q(x)` varies, which is claimed at horizon 1 only | Curious search over varying action sequences |
     | `StateGoal` + `selector=LQRSelector(…)` | LQR with your controller | Refused |
     | `StateGoal` + an EFE selector, or `ObservationGoal` + `LQRSelector` | Refused | Refused |
     | Any selector with no goal | Ignored, and the agent tracks | Ignored, and the agent tracks |

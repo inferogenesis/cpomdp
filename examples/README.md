@@ -59,9 +59,10 @@ noise_fn(x, p) = beacon_noise(x[:2], p)  # R(x): still keyed on agent_xy only
 Same four-regime structure as the v0.3 demo, same single real knob (the goal precision
 Λ): classic LQR and a sharp Λ both beeline toward the current food estimate and never
 detour — with LQR's effort cost set to ≈0 to match the EFE selection (which has none),
-the two are the *same* controller here, the fixed-sensor collapse made visible: EFE
-reduces to LQR ([Koudahl, Kouw and de Vries 2021](https://doi.org/10.3390/e23121565),
-ADR-003); a balanced Λ detours to the beacon, learns where food really is,
+the two are the *same* controller here. A sharp Λ swamps the epistemic term, so EFE acts
+as it does with both noises fixed, where it reduces to LQR
+([Koudahl, Kouw and de Vries 2021](https://doi.org/10.3390/e23121565), ADR-003); a
+balanced Λ detours to the beacon, learns where food really is,
 *then* heads there with confidence; a weak Λ is so over-curious it parks at the beacon
 and never eats. Each panel carries its own `t=` step counter and border, which
 turn green and freeze the moment that regime first settles near the food, so the GIF
@@ -102,11 +103,11 @@ to a Kalman filter), the coupling-graph figure, and a chemotaxis-network figure.
 
 [`crossover_horizon_figure.py`](crossover_horizon_figure.py)
 
-Under a **fixed** linear-Gaussian sensor the epistemic term of expected free energy is a
-constant across policies. It cannot change any decision. The agent reduces to LQR, the
-collapse [`efe_collapse_figure.py`](efe_collapse_figure.py) draws. A state-dependent
-`R(x)` breaks that: the action reaches the noise, so curiosity becomes *possible* again.
-Possible is not the same as decisive.
+Under a **fixed** linear-Gaussian sensor and fixed process noise the epistemic term of
+expected free energy is a constant across policies. It cannot change any decision. The
+agent reduces to LQR, the collapse [`efe_collapse_figure.py`](efe_collapse_figure.py)
+draws. A state-dependent `R(x)` breaks that: the action reaches the noise, so curiosity
+becomes *possible* again. Possible is not the same as decisive.
 
 An open plane. The agent wants to be at a goal it cannot locate. Its prior says the goal
 is over to the right. It is not. A beacon well off that line is the only thing that can

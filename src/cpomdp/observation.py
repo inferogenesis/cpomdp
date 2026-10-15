@@ -48,8 +48,9 @@ class ObservationModel(Protocol):
 
     Attributes:
         is_fixed: ``True`` when ``(C, R)`` are constant in the state — the
-            fixed-sensor fast path, where EFE's epistemic term is constant and
-            collapses to LQR; ``False`` for a state-dependent sensor.
+            fixed-sensor fast path. With fixed process noise as well, EFE's
+            epistemic term is constant there and EFE collapses to LQR. ``False``
+            for a state-dependent sensor.
     """
 
     is_fixed: bool
@@ -82,9 +83,10 @@ class FixedSensor:
     """A sensor whose (C, R) never change with state.
 
     ``linearize`` returns the same stored matrices for every ``x``: a fixed
-    linear sensor *is* its own linear approximation everywhere. This is the
-    regime where EFE's epistemic term is constant and collapses to LQR
-    (DECISIONS.md ADR-003).
+    linear sensor *is* its own linear approximation everywhere. With fixed process
+    noise as well, this is the regime where EFE's epistemic term is constant and EFE
+    collapses to LQR (DECISIONS.md ADR-003). A state-dependent ``Q(x)`` moves the
+    epistemic term even here (ADR-006).
 
     Attributes:
         observation_matrix: the observation matrix ``C`` (shape ``m x n``), mapping
