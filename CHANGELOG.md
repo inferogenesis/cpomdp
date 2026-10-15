@@ -414,10 +414,10 @@ certainty equivalence is optimal, and no use of the readings beats it.
   the valid range. `block(-1)` returned an empty range, so an epistemic term aimed at it
   scored zero. `marginal(-1, belief)` failed inside a reduction, and `block(5)` on five
   nodes raised a bare `IndexError`.
-- A covariance refused for not being positive-definite was refused because "a noiseless
-  or degenerate sensor sends the information gain to infinity", whatever the matrix
-  was. A semi-definite `dynamics_noise` on a `GaussianTransition` or `coupling_noise` on
-  a `GaussianCoupling` was blamed on a sensor the caller never passed. The refusal now
+- Every refusal of a covariance that is not positive-definite gave one reason, "a
+  noiseless or degenerate sensor sends the information gain to infinity". A
+  semi-definite `dynamics_noise` on a `GaussianTransition` or `coupling_noise` on a
+  `GaussianCoupling` was blamed on a sensor the caller never passed. The refusal now
   says the matrix is inverted. The graph path still needs a definite Q where the flat
   model accepts a semi-definite one, because its transition factor inverts Q, and
   `CouplingGraphBackend` says so.
@@ -636,9 +636,8 @@ certainty equivalence is optimal, and no use of the readings beats it.
   removed. `readout(belief)` was `marginal(readout_node, belief)`, and the argument did
   nothing else. Read any node, the root included, with `marginal(node, belief)`.
 - **Breaking:** `CouplingGraphBackend.graph` and `transitions` are read-only, as `model`
-  already was. The filter, the factors and the model are built from them at
-  construction, so an assignment left all three describing the old graph. Build a new
-  backend instead.
+  already was. The model and the factors are built from them at construction, so an
+  assignment left both describing the old graph. Build a new backend instead.
 - **Breaking:** every `LinearGaussianModel` argument after `dynamics` is keyword-only.
   The four matrices are two maps and two covariances of the same rank, and only the
   covariances are content-checked, so a transposed pair constructed in silence whenever
@@ -653,8 +652,8 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `_JointObservation` and `epistemic_value`. C is the *observation matrix* in the same
   literature that gives R its name, so the two halves of the measurement equation now
   read from one vocabulary. C is not `observation_model`: that name means the whole
-  channel, the model field the entry above renames. The 2026-06-13 sketch wanted plain `observation` for C, which the state-
-  dependent sensor field later claimed. The `.C` alias is unchanged, and no numerical
+  channel, the model field the entry above renames. The 2026-06-13 sketch wanted plain
+  `observation` for C, which the state-dependent sensor field later claimed. The `.C` alias is unchanged, and no numerical
   behaviour moved.
 - **Breaking:** `sensor_noise` is now `observation_noise`, on `LinearGaussianModel`,
   `FixedSensor`, `CallableSensor`, the FFG observation factors and `epistemic_value`.
