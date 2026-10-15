@@ -3,21 +3,19 @@ import numpy as np
 import pytest
 import scipy.linalg
 
-from cpomdp._lab.harness import World
-from cpomdp._lab.resolution import EXACT, Bar, Bounded
-from cpomdp.backends.kalman import KalmanBackend
-from cpomdp.control import (
+from cpomdp._lab.bracket import (
     CertaintyEquivalentController,
     ControlBracket,
-    LQRController,
     closed_loop_cost,
     control_bracket,
     control_efficiency,
-    finite_horizon_lqr,
     full_information_cost,
-    kalman_schedule,
     optimal_cost,
 )
+from cpomdp._lab.harness import World
+from cpomdp._lab.resolution import EXACT, Bar, Bounded
+from cpomdp.backends.kalman import KalmanBackend
+from cpomdp.control import LQRController, finite_horizon_lqr, kalman_schedule
 from cpomdp.types import Belief, LinearGaussianModel
 
 # Inside this module the terse letters a/b/qc/rc are local scalars for the
