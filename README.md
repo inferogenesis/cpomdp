@@ -19,7 +19,7 @@ Full documentation, including API reference and guides, lives at [cpomdp.inferog
 
 ## What cpomdp does
 
-**Exact continuous perception.** Linear mean dynamics and Gaussian noise make the filter an exact Kalman filter, closed form, nothing sampled. Under fixed noise there is no variational gap. The same code path runs whether you are tracking or acting.
+**Exact continuous perception under fixed noise.** Linear mean dynamics and fixed Gaussian noise make the filter an exact Kalman filter, closed form, nothing sampled. There is no variational gap. Under a state-dependent `R(x)` or `Q(x)` the filter reads the noise at the predicted mean. That is a first-order plug-in, and its posterior is approximate. The same code path runs whether you are tracking or acting.
 
 **Action that reaches the posterior covariance.** cpomdp lets the observation noise depend on the state, `R(x)` (Corva 2026), or the process noise, `Q(x)`. The mean stays linear. Because the covariance now responds to what the agent does, the epistemic term of expected free energy differs across policies and information-seeking behaviour becomes available. Under a *fixed* linear-Gaussian sensor and fixed process noise that term is identical for every policy (Koudahl, Kouw & de Vries 2021). State-dependent noise is the smallest deviation from that model which escapes the result.
 
@@ -158,7 +158,7 @@ agent.sample_action()                 # ValueError: this Agent has no objective 
 
 | you want to | reach for |
 | ----------------------------------------- | ---------------------------------------------------------------------------- |
-| perceive, exactly | `Agent.infer_states`, `KalmanBackend` |
+| perceive, exactly under fixed noise | `Agent.infer_states`, `KalmanBackend` |
 | reach a target state | `StateGoal` with `LQRSelector` |
 | act on expected free energy | `ObservationGoal` with `EFESelector`, `expected_free_energy` |
 | ...over an H-step horizon | `cpomdp.efe.policy_efe`, `policy_efe_trace` |
@@ -203,7 +203,7 @@ Treat this as experimental. It may move out of cpomdp into a standalone inferoge
 
 ## Swappable backends
 
-You can swap the inference engine if you want to. `KalmanBackend` is the default and does the real work. `RxInferBackend` re-derives the same answers through Julia and exists mainly so the fast path has something independent to check itself against. Both sit behind the `InferenceBackend` protocol, so you can write your own.
+You can swap the inference engine if you want to. `KalmanBackend` is the default and does the real work. `RxInferBackend` re-derives its answers on fixed-noise models through Julia, so the Kalman path has something independent to check itself against. It refuses a model with `R(x)` or `Q(x)`. Both sit behind the `InferenceBackend` protocol, so you can write your own.
 
 ## Status
 

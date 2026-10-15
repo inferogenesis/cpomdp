@@ -1,4 +1,4 @@
-"""Exact Kalman-filter inference backend (per-step and steady-state modes)."""
+"""The Kalman-filter backend: exact under fixed noise, per-step or steady-state."""
 
 import jax
 import jax.numpy as jnp
@@ -81,24 +81,26 @@ def _posterior_mean(
 
 
 class KalmanBackend:
-    """Exact Kalman-filter inference for a LinearGaussianModel.
+    """Kalman-filter inference for a LinearGaussianModel, exact under fixed noise.
 
     Implements the ``InferenceBackend`` protocol: constructed from a model,
     then advances a belief one step at a time (prior in, posterior out) via
     the standard predict/update recursion.
 
+    Under fixed noise this is the exact Kalman filter. Under a state-dependent
+    ``R(x)`` or ``Q(x)`` it reads the noise at the predicted mean and filters with
+    that value. That is a first-order plug-in, and its posterior is approximate.
+
     Two modes:
 
     - **Per-step (default):** recomputes the Kalman gain and covariance every
-      step from the incoming belief. Correct for any linear-Gaussian model,
-      including transient (pre-convergence) behaviour. This is the analytic
-      oracle the rest of the toolbox is validated against.
+      step from the incoming belief, transient included. On a fixed-noise model
+      this is the analytic oracle the rest of the toolbox is validated against.
     - **Steady-state (``steady_state=True``):** solves the covariance recursion
       *once* at construction to a fixed point, then reuses the frozen gain and
-      covariance every step. Cheap (no per-step covariance maths), but only
-      valid for time-invariant models with regular complete observations.
-      Raises ``RuntimeError`` if the recursion does not converge within ``max_iter``
-      (i.e. the model is not stabilisable/detectable).
+      covariance every step. No covariance maths runs per step. It needs fixed
+      noise, a time-invariant model and a reading every step. It reports the
+      converged covariance from the first step on, whatever the prior's.
 
     Args:
         model: The linear-Gaussian generative model to filter under.
@@ -106,6 +108,12 @@ class KalmanBackend:
         tol: Convergence tolerance for the steady-state fixed point (absolute,
             on successive covariances).
         max_iter: Cap on steady-state iterations before giving up.
+
+    Raises:
+        ValueError: If ``steady_state=True`` and the model carries ``R(x)`` or
+            ``Q(x)``, which have no constant fixed point.
+        RuntimeError: If the steady-state recursion does not converge within
+            ``max_iter``, because the model is not stabilisable or detectable.
     """
 
     def __init__(
