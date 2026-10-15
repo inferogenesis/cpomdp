@@ -71,6 +71,13 @@ def test_dynamics_and_control_agree(pair):
     np.testing.assert_allclose(maze._control, registered._control)
 
 
+def test_the_starting_belief_agrees(pair):
+    """The prior each backend hands an Agent, mean and covariance."""
+    maze, registered = pair
+    np.testing.assert_allclose(maze.model.prior.mean, registered.model.prior.mean)
+    np.testing.assert_allclose(maze.model.prior.cov, registered.model.prior.cov)
+
+
 def test_the_coupling_and_its_noise_agree(pair):
     """W and the coupling noise on the single context -> arena edge."""
     maze, registered = pair

@@ -594,6 +594,10 @@ class TestProtocolAndReadout:
         assert backend.to_flat_model().prior is prior
         assert Agent.from_backend(backend).belief is prior
 
+    def test_prior_that_is_not_a_belief_is_refused(self):
+        with pytest.raises(TypeError, match="prior must be a Belief"):
+            self._one_node_backend(np.zeros(2))
+
     def test_prior_over_the_wrong_dimension_is_refused(self):
         with pytest.raises(ValueError, match="2-D joint state"):
             self._one_node_backend(Belief(mean=[0.0], cov=[[1.0]]))
