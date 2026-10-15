@@ -160,12 +160,12 @@ def _graph_efe_selector(
     """The EFE selector for an ObservationGoal on a branching backend (issue #26).
 
     ``info_node`` names the latent *node* whose marginal info gain is the
-    epistemic value; ``None`` aims at the whole joint state. Translate that node to
+    epistemic value. ``None`` aims at the whole joint state. Translate that node to
     its joint-state block and hand it to the ``FfgEfeSelector``.
     """
     if objective.horizon not in (None, 1):
         raise ValueError(
-            "H-step EFE on the FFG backend is deferred; ObservationGoal.horizon "
+            "H-step EFE on the FFG backend is deferred, so ObservationGoal.horizon "
             "must be 1 with a CouplingGraphBackend."
         )
     info_block = None  # the whole joint state
@@ -336,8 +336,8 @@ class Agent:
             objective: What the agent pursues. A ``StateGoal`` (a state to reach,
                 carrying the LQR weights) or an ``ObservationGoal`` (an observation
                 to prefer, carrying the action search). A ``Preference`` only beside
-                ``selector=``. ``None`` builds a pure tracker that perceives but cannot
-                act.
+                ``selector=``. ``None`` builds a pure tracker, which perceives and
+                never acts.
             selector: An [`ActionSelector`][cpomdp.ActionSelector] of your own, for a
                 search no goal describes: EFE on a fixed sensor, a varying-sequence
                 search driver, or a custom rule. It needs a ``Preference`` as the
@@ -539,8 +539,8 @@ class Agent:
             The action, shape ``(p,)``.
 
         Raises:
-            ValueError: If this is a perceive-only agent (built without an
-                ``objective``) — there is nothing to act toward. Also raised when the
+            ValueError: If this is a perceive-only agent, built without an
+                ``objective``, with nothing to act toward. Also raised when the
                 selector returns NaN, which the grid selectors do when no candidate
                 scores a finite ``G``. The action is then not remembered. The check
                 is one host read of the ``p`` action entries per cycle.
