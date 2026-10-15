@@ -405,6 +405,10 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `C` on a two-dimensional node used to construct, and `CouplingGraphBackend` broadcast
   it across the node's block, so the sensor read the sum of the node's components and
   the filter returned a plausible posterior from the wrong model.
+- `CouplingGraphBackend.block` and `marginal` refuse a node outside the graph and name
+  the valid range. `block(-1)` returned an empty range, so an epistemic term aimed at it
+  scored zero. `marginal(-1, belief)` failed inside a reduction, and `block(5)` on five
+  nodes raised a bare `IndexError`.
 - The graph EFE rollouts and searches skipped the checks `FfgEfeSelector` makes on its
   target. `policy_efe_ffg`, `policy_efe_ffg_trace`, the crossover statistic and both
   searches' `over_backend` scored on a carry partition that severs an EFE-load-bearing

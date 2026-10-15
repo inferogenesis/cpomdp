@@ -612,6 +612,31 @@ class TestProtocolAndReadout:
         np.testing.assert_array_equal(np.asarray(prior.cov), before)
 
 
+class TestNodeLookup:
+    """A node outside the graph is refused by name, never read as an empty block.
+
+    `block(-1)` used to return an empty range, which aims an epistemic term at nothing,
+    and `block(5)` on five nodes raised a bare `IndexError`.
+    """
+
+    @pytest.mark.parametrize("node", [-1, 5])
+    def test_block_refuses_a_node_outside_the_graph(self, node):
+        backend = _build(
+            _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
+        )
+        with pytest.raises(ValueError, match=rf"node {node} .* 0\.\.4"):
+            backend.block(node)
+
+    @pytest.mark.parametrize("node", [-1, 5])
+    def test_marginal_refuses_a_node_outside_the_graph(self, node):
+        backend = _build(
+            _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
+        )
+        prior = Belief(mean=np.zeros(5), cov=np.eye(5))
+        with pytest.raises(ValueError, match=rf"node {node} .* 0\.\.4"):
+            backend.marginal(node, prior)
+
+
 class TestTransforms:
     def test_jit_grad_vmap_through_infer_states(self):
         backend = _build(
