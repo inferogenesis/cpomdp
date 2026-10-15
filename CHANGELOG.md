@@ -403,6 +403,9 @@ certainty equivalence is optimal, and no use of the readings beats it.
   saying so. `AdditivityCheck` already refused through `predicted_belief`. A direct call
   did not. `RxInferBackend` refuses a state-dependent `Q(x)` too, since its Julia model
   takes one fixed `Q` as well, and it refuses before Julia starts.
+- `InferenceBackend` said nothing about state-dependent noise. It now states the rule
+  those refusals follow: a backend honours the model's `observation_model` and
+  `dynamics_noise_model`, or refuses the model.
 - `probe_model` added the plain `dynamics_noise` to every predicted covariance, whatever
   `Q(x)` the model carried. The EFE kernel adds `Q` at the predicted mean, so a `Q(x)`
   model under a fixed sensor reported a constant epistemic value the kernel never
