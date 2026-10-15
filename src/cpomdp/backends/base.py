@@ -44,6 +44,12 @@ class InferenceBackend(Protocol):
     recursive filter step: the current belief goes in as the ``prior`` and the
     updated belief comes back as the posterior.
 
+    A backend must honour the model's ``observation_model`` and
+    ``dynamics_noise_model`` or refuse the model. Reading only the plain
+    ``observation_noise`` and ``dynamics_noise`` would filter a state-dependent model
+    against constants. [`KalmanBackend`][cpomdp.KalmanBackend] honours both, and
+    ``RxInferBackend`` refuses a model whose noise depends on the state.
+
     The Protocol is structural: any class with a matching ``infer_states`` (and the
     ``model`` it was built from) is a backend, with no shared base class. This is the
     abstraction wall. The Kalman filter and the RxInfer oracle are interchangeable
