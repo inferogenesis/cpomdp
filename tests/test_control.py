@@ -8,12 +8,18 @@ from _support import (
     EFFORT_PENALTY,
     GOAL_PRECISION,
     brute_force_plan,
-    lqr_schedule,
     numpy_kalman_covariances,
     point_mass_model,
+    point_mass_schedule,
 )
 from cpomdp.backends.kalman import KalmanBackend
-from cpomdp.control import LQRController, finite_horizon_lqr, kalman_schedule
+from cpomdp.control import (
+    KalmanSchedule,
+    LQRController,
+    LQRSchedule,
+    kalman_schedule,
+    lqr_schedule,
+)
 from cpomdp.types import Belief, LinearGaussianModel
 
 # Inside this module the terse letters a/b/qc/rc are local scalars for the
@@ -184,9 +190,9 @@ class TestLQRValidation:
 # --- the finite-horizon schedule ------------------------------------------------------
 
 
-class TestFiniteHorizonSchedule:
+class TestLQRSchedule:
     def test_one_gain_per_step_and_one_cost_per_remaining_horizon(self):
-        schedule = lqr_schedule(6)
+        schedule = point_mass_schedule(6)
         assert schedule.horizon == 6
         assert schedule.gains.shape == (6, 1, 2)
         assert schedule.cost_to_go.shape == (7, 2, 2)
@@ -198,7 +204,9 @@ class TestFiniteHorizonSchedule:
         a, b = np.asarray(DYNAMICS), np.asarray(CONTROL)
         qc, rc = np.asarray(GOAL_PRECISION), np.asarray(EFFORT_PENALTY)
         expected = np.linalg.solve(rc + b.T @ qc @ b, b.T @ qc @ a)
-        np.testing.assert_allclose(lqr_schedule(1).first_gain, expected, rtol=1e-14)
+        np.testing.assert_allclose(
+            point_mass_schedule(1).first_gain, expected, rtol=1e-14
+        )
 
     @pytest.mark.parametrize("horizon", [1, 2, 5, 12])
     def test_the_first_gain_is_the_brute_force_optimum_first_action(self, horizon):
@@ -206,7 +214,7 @@ class TestFiniteHorizonSchedule:
         expected_action, expected_cost = brute_force_plan(
             DYNAMICS, CONTROL, GOAL_PRECISION, EFFORT_PENALTY, horizon, x0
         )
-        schedule = lqr_schedule(horizon)
+        schedule = point_mass_schedule(horizon)
         np.testing.assert_allclose(
             -schedule.first_gain @ x0, expected_action, rtol=1e-11, atol=1e-13
         )
@@ -217,10 +225,10 @@ class TestFiniteHorizonSchedule:
     def test_later_gains_are_the_shorter_schedules_first_gains(self):
         # The gain applied with j steps remaining depends on j alone, so the tail of
         # a long schedule is a shorter schedule. gains[k] has H − k steps remaining.
-        long = lqr_schedule(8)
+        long = point_mass_schedule(8)
         for horizon in (1, 3, 8):
             np.testing.assert_array_equal(
-                long.gains[8 - horizon], lqr_schedule(horizon).first_gain
+                long.gains[8 - horizon], point_mass_schedule(horizon).first_gain
             )
 
     def test_the_first_gain_converges_to_the_steady_state_gain_and_is_not_it(self):
@@ -230,27 +238,30 @@ class TestFiniteHorizonSchedule:
             effort_penalty=EFFORT_PENALTY,
         ).gain
         mismatch = [
-            float(np.abs(lqr_schedule(h).first_gain - steady).max()) for h in (1, 5, 20)
+            float(np.abs(point_mass_schedule(h).first_gain - steady).max())
+            for h in (1, 5, 20)
         ]
         # Shrinks with H and is not zero at any of them: an unmatched comparison
         # reads this as an error that fades with the horizon.
         assert mismatch[0] > mismatch[1] > mismatch[2] > 1e-6
-        np.testing.assert_allclose(lqr_schedule(400).first_gain, steady, atol=1e-10)
+        np.testing.assert_allclose(
+            point_mass_schedule(400).first_gain, steady, atol=1e-10
+        )
 
     def test_a_horizon_below_one_is_refused(self):
         with pytest.raises(ValueError, match="horizon"):
-            lqr_schedule(0)
+            point_mass_schedule(0)
 
     def test_the_costs_are_validated_as_the_controller_validates_them(self):
         with pytest.raises(ValueError, match="symmetric"):
-            finite_horizon_lqr(
+            lqr_schedule(
                 point_mass_model(),
                 goal_precision=[[1.0, 0.5], [-0.5, 1.0]],
                 effort_penalty=EFFORT_PENALTY,
                 horizon=3,
             )
         with pytest.raises(ValueError, match="control matrix"):
-            finite_horizon_lqr(
+            lqr_schedule(
                 LinearGaussianModel(
                     dynamics_matrix=DYNAMICS,
                     observation_matrix=[[1.0, 0.0]],
@@ -303,3 +314,35 @@ class TestKalmanSchedule:
             kalman_schedule(model, horizon=2, prior=sharper).covariances[0],
             sharper.cov,
         )
+
+
+# --- the dual pair -------------------------------------------------------------------
+
+
+class TestTheDualPair:
+    """The control schedule and the filter schedule are called and read alike."""
+
+    def test_both_take_the_horizon_by_keyword(self):
+        model = point_mass_model()
+        with pytest.raises(TypeError):
+            kalman_schedule(model, 3)  # ty: ignore[missing-argument, too-many-positional-arguments]
+        with pytest.raises(TypeError):
+            lqr_schedule(  # ty: ignore[missing-argument]
+                model,
+                3,  # ty: ignore[too-many-positional-arguments]
+                goal_precision=GOAL_PRECISION,
+                effort_penalty=EFFORT_PENALTY,
+            )
+
+    def test_both_are_schedules_that_report_their_horizon(self):
+        model = point_mass_model()
+        plan = lqr_schedule(
+            model,
+            horizon=4,
+            goal_precision=GOAL_PRECISION,
+            effort_penalty=EFFORT_PENALTY,
+        )
+        estimate = kalman_schedule(model, horizon=4)
+        assert isinstance(plan, LQRSchedule)
+        assert isinstance(estimate, KalmanSchedule)
+        assert plan.horizon == estimate.horizon == 4

@@ -8,7 +8,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from cpomdp import Belief, CouplingGraph
-from cpomdp.control import finite_horizon_lqr
+from cpomdp.control import lqr_schedule
 from cpomdp.types import LinearGaussianModel
 
 
@@ -49,12 +49,12 @@ def point_mass_model():
     )
 
 
-def lqr_schedule(horizon):
-    return finite_horizon_lqr(
+def point_mass_schedule(horizon):
+    return lqr_schedule(
         point_mass_model(),
+        horizon=horizon,
         goal_precision=GOAL_PRECISION,
         effort_penalty=EFFORT_PENALTY,
-        horizon=horizon,
     )
 
 
