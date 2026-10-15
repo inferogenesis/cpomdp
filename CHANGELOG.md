@@ -56,6 +56,11 @@ certainty equivalence is optimal, and no use of the readings beats it.
 - `LQRController` and `InadmissiblePartitionError` are exported at the top level, and
   each has an API page. `LQRSelector` cannot be built without the first, and the graph
   EFE selector raises the second (ADR-069).
+- `CouplingGraphBackend.stack_observations` takes one step's readings keyed by node, the
+  form `CouplingGraph.infer` takes, and returns the vector `infer_states` takes. It
+  refuses a missing node, a node with no sensor and a reading of the wrong width. The
+  vector's ascending node order lived in a private layout, so readings of one width
+  stacked in a dict's insertion order filtered each node against another's reading.
 - `cpomdp._lab.harness` — a world and an agent held apart, so what an agent's model gets
   wrong about the process is a measurable quantity rather than zero by construction.
   `World` runs the process and hands out observations, exposing no accessor that returns
