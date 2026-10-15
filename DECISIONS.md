@@ -4635,3 +4635,76 @@ versions break before 1.0, as cpomdp's do.
 - The next floor change meets the race again, with the two options ADR-040 lists.
 - A warrantlib 0.4 reaches cpomdp users only through a cpomdp release that lifts the
   cap.
+
+## ADR-071 — the EFE functions answer in one record and take one preference
+
+**Date:** 2026-10-15
+**Status:** Accepted
+**Extends:** ADR-005, ADR-009 and ADR-032, whose functions keep their arithmetic and
+change what they return. ADR-069, which made `cpomdp.efe` a documented module.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+The expected free energy functions answered in two forms. `expected_free_energy`,
+`policy_efe` and `policy_efe_ffg` returned `(G, {"pragmatic": ..., "epistemic": ...})`,
+and their trace siblings returned a `NamedTuple`. About seventy call sites indexed the
+dict by string. The trace named its moments by maths letters, `mu_pred`, `sigma_pred`,
+`sigma_post` and `s`. S had four names across the docstrings. The functions also
+refused the goal a user had just built. An `ObservationGoal` failed with
+`'ObservationGoal' object has no attribute 'goal'`.
+
+The finite-horizon pair in `cpomdp.control` did not read as a pair. `finite_horizon_lqr`
+took `horizon` by keyword and `kalman_schedule` took it by position. Only the filter's
+result was a schedule.
+
+### Decision
+
+- Every EFE scoring function returns an `EfeResult`, a `NamedTuple` of `g`, `pragmatic`
+  and `epistemic`. `g` is first, so `result[0]` reads G and the scorers that index it
+  are unchanged. `PolicyEfeTrace` leads with the same three fields. `g` keeps its
+  letter, because `EnumeratedSearchResult.g` and the rest of the library call G that.
+- The trace's moments are `predicted_mean`, `predicted_cov`, `posterior_cov` and
+  `predicted_observation_cov`, the words `Belief.cov` and `epistemic_value` already
+  use. `RolloutConditioning` names each condition number after the field it measures.
+  S is the predicted observation covariance in every docstring.
+- The functions take one type, a `Preference`. `ObservationGoal.preference` returns the
+  goal's target and precision as one, built once. Passing a goal raises a `TypeError`
+  that names `goal.preference`. A `StateGoal` is refused as aiming at a state.
+- `lqr_schedule` and `kalman_schedule` are the dual pair. Each takes `horizon` by
+  keyword and returns a schedule, `LQRSchedule` or `KalmanSchedule`, that reports its
+  `horizon`. Both names were new in 0.5.0, so the rename breaks no release.
+
+### Alternatives
+
+Accepting an `ObservationGoal` directly was the other way to let the functions take what
+a user holds. I did not take it. A goal carries search settings: the action box, the
+grid, the horizon and the node the epistemic term aims at. None is read by a function
+that scores an action or a sequence it is handed. `policy_efe_ffg` would then hold its
+aim twice, as the goal's `info_node` and as its required `info_block`, and ignore one of
+them. A goal is also not a pytree, so `jax.jit` could not take one as an argument. The
+property keeps one input type and puts the conversion on the goal, which knows its own
+fields.
+
+The review suggested keeping the two-tuple and making the parts a record with a
+string-key shim. That keeps `G, parts = ...` working. It also leaves a second shape
+beside the trace's. v0.5.0 already breaks, and before 1.0 a minor version is where a
+break lands.
+
+No deprecation shim was added. One for the dict keys or the letter fields would be a
+second way to read the same number.
+
+### Consequences
+
+- `G, parts = expected_free_energy(...)` raises at the unpack. The fix is `result.g` and
+  `result.pragmatic`. The changelog lists both renames under **Breaking**.
+- The per-cycle cost does not move. The record is built from scalars the scan already
+  returns. The preference is read by attribute, so a call that succeeds pays nothing for
+  the refusal.
+- A preference of another shape that has a `goal` and a `precision`, such as the mixture
+  RFC-002 defers, still scores.
+- `StateGoal` has no `preference` property. Its target is a state, and a `Preference`
+  does not record its space, so one built from a `StateGoal` would score as a reading
+  without complaint.
+- The Agent still builds its `Preference` from the goal's fields. Reading
+  `objective.preference` there would leave one place that converts a goal.
