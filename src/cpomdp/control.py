@@ -740,11 +740,16 @@ class LQRController:
         tol: float = 1e-12,
         max_iter: int = 1000,
     ) -> None:
-        self.model = model
+        self._model = model
         self._goal_precision, self._effort_penalty = _validated_costs(
             model, goal_precision, effort_penalty
         )
         self._gain = self._converge_to_steady_state(tol, max_iter)
+
+    @property
+    def model(self) -> LinearGaussianModel:
+        """The model the gain was solved for, fixed at construction."""
+        return self._model
 
     @property
     def gain(self) -> Float64[Array, "p n"]:

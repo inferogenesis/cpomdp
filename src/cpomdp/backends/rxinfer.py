@@ -138,8 +138,13 @@ class RxInferBackend:
             "the RxInfer model filters on one fixed Q and R. Use KalmanBackend for "
             "R(x) or Q(x).",
         )
-        self.model = model
+        self._model = model
         self._jl = _julia()
+
+    @property
+    def model(self) -> LinearGaussianModel:
+        """The model this backend filters under, fixed at construction."""
+        return self._model
 
     def infer_states(
         self,

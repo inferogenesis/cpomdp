@@ -408,10 +408,12 @@ no use of the readings beats it.
   read-only. Assigning `agent.model` changed what the agent reported while its backend,
   selector and controller kept the old model. A steady-state `KalmanBackend` kept its
   frozen gain under a reassigned model, and setting `steady_state` afterwards raised on
-  the next step. Build a new `Agent` or backend instead. Assigning `agent.belief` now
-  requires a `Belief` over the model's state. A list was accepted and failed on the next
-  step. `InferenceBackend.model` is declared a read-only property, which a plain
-  attribute still satisfies.
+  the next step. Build a new `Agent` or backend instead. `model` is read-only on
+  `ScoredAgent`, `LQRController`, `ChainBackend`, `RxInferBackend`, `WrongFixedRBackend`
+  and `DiagonalCovarianceBackend` too. Each builds a filter, a gain or a factor from it
+  at construction. Assigning `agent.belief` now requires a `Belief` over the model's
+  state. A list was accepted and failed on the next step. `InferenceBackend.model` is
+  declared a read-only property, which a plain attribute still satisfies.
 - **Breaking:** an `ObservationGoal`'s `horizon` defaults to `None`, and the `Agent` reads
   it off the model: the shortest horizon at which an action changes the expected free
   energy, found by scoring the candidate grid once at the prior. On a double integrator

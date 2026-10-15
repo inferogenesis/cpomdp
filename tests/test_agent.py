@@ -3,8 +3,11 @@ import numpy as np
 import pytest
 
 from cpomdp.agent import Agent
+from cpomdp.backends.degraded import DiagonalCovarianceBackend, WrongFixedRBackend
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.control import LQRController
+from cpomdp.ffg.chain import ChainBackend
+from cpomdp.harness import ScoredAgent
 from cpomdp.observation import CallableSensor
 from cpomdp.selection import EFESelector, LQRSelector, ObservationGoal, StateGoal
 from cpomdp.types import Belief, LinearGaussianModel
@@ -193,6 +196,24 @@ def test_kalman_backend_model_is_read_only():
         backend.model = _reaching_model()  # ty: ignore[invalid-assignment]
     with pytest.raises(AttributeError):
         backend.steady_state = True  # ty: ignore[invalid-assignment]
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        ScoredAgent,
+        lambda m: LQRController(m, goal_precision=np.eye(2), effort_penalty=np.eye(1)),
+        ChainBackend,
+        lambda m: WrongFixedRBackend(m, magnitude=0.5),
+        lambda m: DiagonalCovarianceBackend(KalmanBackend(m)),
+    ],
+    ids=["ScoredAgent", "LQRController", "ChainBackend", "WrongFixedR", "Diagonal"],
+)
+def test_every_holder_of_a_model_keeps_it_read_only(build):
+    # Each builds a filter, a gain or a factor from the model at construction.
+    holder = build(_reaching_model())
+    with pytest.raises(AttributeError):
+        holder.model = _reaching_model()
 
 
 def _damped_model() -> LinearGaussianModel:

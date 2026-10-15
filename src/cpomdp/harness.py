@@ -238,9 +238,14 @@ class ScoredAgent:
                 "the one the backend was built from. Pass whichever is intended, or "
                 "build the backend from that model."
             )
-        self.model = model
+        self._model = model
         self.belief = model.prior
         self._backend = backend
+
+    @property
+    def model(self) -> LinearGaussianModel:
+        """The model the agent filters and is scored under, fixed at construction."""
+        return self._model
 
     def driven_step(self, observation: ArrayLike, action: ArrayLike) -> Belief:
         """Fold one observation in, predicting with the action supplied.

@@ -96,7 +96,7 @@ class ChainBackend:
         Args:
             model: see the class docstring.
         """
-        self.model = model
+        self._model = model
         self._sensor_fixed = (
             model.observation_model is None or model.observation_model.is_fixed
         )
@@ -117,6 +117,11 @@ class ChainBackend:
             if self._sensor_fixed
             else None
         )
+
+    @property
+    def model(self) -> LinearGaussianModel:
+        """The model this backend filters under, fixed at construction."""
+        return self._model
 
     def infer_states(
         self,
