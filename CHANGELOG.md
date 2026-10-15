@@ -492,7 +492,9 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `RxInferBackend` and the steady-state `KalmanBackend` each held a copy of it. The
   `control` and `scoring` messages are unchanged. The free energy's refusal, new in this
   release, takes its own wording. The steady-state refusal now names the slot that
-  varies.
+  varies. The test it makes is `state_dependent` beside it. `KalmanBackend`,
+  `ChainBackend`, the `Agent` and the harness's `World` each spelled that test out
+  again, and now call it.
 - `LinearGaussianModel`'s `dynamics_noise` is optional when a `dynamics_noise_model` is
   given, on the rule `observation_noise` follows. Omitted, it is the process noise's `Q`
   at `prior.mean` (ADR-065). With no process-noise object the field is still required.
