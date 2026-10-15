@@ -88,9 +88,6 @@ class EfeBackend(InferenceBackend, Protocol):
     backend layer (Dependency Inversion).
     """
 
-    dims: tuple[int, ...]
-    n_total: int
-
     @property
     def observation_model(self) -> tuple[Float64[Array, "m n"], Float64[Array, "m m"]]:
         """The real sensor ``(C, R)`` embedded in the joint state (the EFE reads it)."""

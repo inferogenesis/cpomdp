@@ -94,7 +94,7 @@ class TestH1CollapsesToAnchors:
         # node-restricted 1.72 — the ledger records both so they are never confused.
         backend, belief, pref, _ = _setup()
         a_sense, a_myopic = _anchor_actions()
-        whole = tuple(range(backend.n_total))
+        whole = tuple(range(backend.model.n_states))
         stat = crossover_statistic(
             backend,
             belief,

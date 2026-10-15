@@ -474,7 +474,7 @@ class TestEnumerationCostPricesTheRealJoint:
         action_set = cue_maze.axis_action_set(n_dims)
         backend = cue_maze.build_maze(n_dims, context_dim=context_dim)
         priced = _priced_joint_width(action_set, 2, n_dims, context_dim)
-        assert priced == backend.n_total
+        assert priced == backend.model.n_states
 
     def test_a_wider_context_is_charged_for(self):
         # The regression itself: a hardcoded `1 + 2·n_dims` returns the same estimate at

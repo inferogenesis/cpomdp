@@ -386,7 +386,7 @@ def policy_efe_ffg(
         backend: The FFG inference backend — supplies ``predicted_belief`` (μ⁺, Σ⁺),
             ``observation_model`` (the constant sensor C), ``observation_noise_at``
             (R at μ⁺), and ``block``.
-        belief: The starting joint belief ``(μ, Σ)`` over the ``n_total``-D joint state.
+        belief: The starting joint belief ``(μ, Σ)`` over the backend's joint state.
         policy: The ``H`` actions to roll out, shape ``(H, p)``.
         preference: The OBSERVATION-space goal — ``goal`` (g) and ``precision`` (Λ).
         info_block: The joint-state indices whose info gain is the per-step epistemic
@@ -506,11 +506,12 @@ def _checked_info_block(
         raise ValueError("info_block is empty; name the joint-state indices to aim at")
     if len(set(block)) != len(block):
         raise ValueError(f"info_block {block} repeats an index")
-    out_of_range = [i for i in block if not 0 <= i < backend.n_total]
+    n_states = backend.model.n_states
+    out_of_range = [i for i in block if not 0 <= i < n_states]
     if out_of_range:
         raise ValueError(
             f"info_block {block} has indices {out_of_range} outside the "
-            f"{backend.n_total}-D joint state (0..{backend.n_total - 1})"
+            f"{n_states}-D joint state (0..{n_states - 1})"
         )
     return block
 

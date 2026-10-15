@@ -127,10 +127,10 @@ class CouplingGraphBackend:
             inverts it), the same divergence from moment-form Kalman that
             ``ChainBackend`` carries.
         prior: the belief over the joint state before any reading, a mean of length
-            ``n_total``. It is ``model.prior``, so an [`Agent`][cpomdp.Agent] built on
-            this backend starts from it, and ``to_flat_model`` carries it.
-        control_matrix: B, shape ``(n_total, p)``, mapping an action into the joint
-            ``None`` for a pure filtering model. ``n_total = sum(graph.dims)``.
+            ``sum(graph.dims)``. It is ``model.prior``, so an [`Agent`][cpomdp.Agent]
+            built on this backend starts from it, and ``to_flat_model`` carries it.
+        control_matrix: B, shape ``(n, p)`` with ``n = sum(graph.dims)``, mapping an
+            action into the joint state. ``None`` for a pure filtering model.
         readout_node: the node ``readout`` returns; defaults to ``graph.root``. The
             latent of interest need not be the root (issue #25).
 
@@ -157,10 +157,9 @@ class CouplingGraphBackend:
         self._validate_transitions(graph, transitions)
 
         self.graph = graph
-        self.dims = graph.dims
         self.transitions = tuple(transitions)
         self._offsets = tuple(int(o) for o in np.cumsum([0, *graph.dims]))
-        self.n_total = self._offsets[-1]
+        self._n_states = self._offsets[-1]  # n, the joint state's width
         self._prior = self._validate_prior(prior)
         self.readout_node = self._resolve_readout_node(readout_node)
         self._control = self._coerce_control(control_matrix)
@@ -173,7 +172,7 @@ class CouplingGraphBackend:
         # Front-loaded factor tier — built once, reused every step (ADR-002).
         self._transition = self._build_transition()
         self._structural_precision = self._assemble_structural_precision()
-        self._obs_layout, self.n_observations = self._build_observation_layout()
+        self._obs_layout, self._n_observations = self._build_observation_layout()
         self._flat_model = self._build_validation_model()
         self._partition_mask = self._build_partition_mask()
         self._sensor_is_fixed = all(
@@ -207,19 +206,19 @@ class CouplingGraphBackend:
         """Check the prior is a ``Belief`` over the whole joint state."""
         if not isinstance(prior, Belief):
             raise TypeError(f"prior must be a Belief, got {type(prior).__name__}")
-        if prior.mean.shape != (self.n_total,):
+        if prior.mean.shape != (self._n_states,):
             raise ValueError(
-                f"prior must be over the {self.n_total}-D joint state (the sum of the "
-                f"node dimensions), got a mean of shape {prior.mean.shape}"
+                f"prior must be over the {self._n_states}-D joint state (the sum of "
+                f"the node dimensions), got a mean of shape {prior.mean.shape}"
             )
         return prior
 
     def _resolve_readout_node(self, readout_node: int | None) -> int:
         """Default the readout node to the root and check it is in range."""
         node = self.graph.root if readout_node is None else int(readout_node)
-        if not 0 <= node < len(self.dims):
+        if not 0 <= node < len(self.graph.dims):
             raise ValueError(
-                f"readout_node {node} out of range for {len(self.dims)} nodes"
+                f"readout_node {node} out of range for {len(self.graph.dims)} nodes"
             )
         return node
 
@@ -232,7 +231,7 @@ class CouplingGraphBackend:
         carry). Otherwise ``partition`` must be a true partition of the node set: every
         node in exactly one cluster, no node repeated, no node missing.
         """
-        node_count = len(self.dims)
+        node_count = len(self.graph.dims)
         if partition is None:
             return (tuple(range(node_count)),)
         clusters = tuple(tuple(int(node) for node in cluster) for cluster in partition)
@@ -257,9 +256,9 @@ class CouplingGraphBackend:
         if control_matrix is None:
             return None
         matrix = jnp.asarray(control_matrix, dtype=float)
-        if matrix.ndim != 2 or matrix.shape[0] != self.n_total:
+        if matrix.ndim != 2 or matrix.shape[0] != self._n_states:
             raise ValueError(
-                f"control_matrix must be a 2-D matrix with {self.n_total} rows "
+                f"control_matrix must be a 2-D matrix with {self._n_states} rows "
                 f"(the joint state dim), got shape {matrix.shape}"
             )
         return matrix
@@ -304,7 +303,7 @@ class CouplingGraphBackend:
         rows, noise_blocks = [], []
         for node, _lo, _hi in self._obs_layout:
             obs = self.graph.observations[node]
-            embedded = jnp.zeros((obs.observation_matrix.shape[0], self.n_total))
+            embedded = jnp.zeros((obs.observation_matrix.shape[0], self._n_states))
             embedded = embedded.at[:, self._block(node)].set(obs.observation_matrix)
             rows.append(embedded)
             noise_blocks.append(self._representative_noise(obs))
@@ -336,7 +335,9 @@ class CouplingGraphBackend:
         representative value the ``observation_noise`` block carries for shape.
         """
         rows, noise_blocks = self._real_observation_blocks()
-        observation_matrix = jnp.vstack(rows) if rows else jnp.zeros((0, self.n_total))
+        observation_matrix = (
+            jnp.vstack(rows) if rows else jnp.zeros((0, self._n_states))
+        )
         if noise_blocks:
             observation_noise = jax.scipy.linalg.block_diag(*noise_blocks)
         else:
@@ -381,7 +382,7 @@ class CouplingGraphBackend:
         shared node accumulates a contribution from every incident edge (information
         form is additive), so any node degree works.
         """
-        precision = jnp.zeros((self.n_total, self.n_total))
+        precision = jnp.zeros((self._n_states, self._n_states))
         for edge in self.graph.couplings:
             W = edge.factor.coupling_matrix  # (child_dim, parent_dim)
             Q_inv = jnp.linalg.inv(edge.factor.coupling_noise)
@@ -403,8 +404,8 @@ class CouplingGraphBackend:
         (``CᵀR⁻¹C``, ``CᵀR⁻¹y``); place each at the node's offset. Data-dependent — it
         reads ``y`` — unlike the front-loaded structural precision.
         """
-        precision = jnp.zeros((self.n_total, self.n_total))
-        potential = jnp.zeros(self.n_total)
+        precision = jnp.zeros((self._n_states, self._n_states))
+        potential = jnp.zeros(self._n_states)
         for node, lo, hi in self._obs_layout:
             message = self.graph.observations[node].message(observation[lo:hi])
             block = self._block(node)
@@ -424,8 +425,8 @@ class CouplingGraphBackend:
         action reaches the covariance — ``μ⁺`` moves with the action, so ``R(μ⁺)`` does
         too, and the epistemic term stops being action-invariant (ADR-003).
         """
-        precision = jnp.zeros((self.n_total, self.n_total))
-        potential = jnp.zeros(self.n_total)
+        precision = jnp.zeros((self._n_states, self._n_states))
+        potential = jnp.zeros(self._n_states)
         for node, lo, hi in self._obs_layout:
             block = self._block(node)
             # Uniform call: a fixed factor ignores the state, a state-dependent one
@@ -465,7 +466,7 @@ class CouplingGraphBackend:
         Built in NumPy (mutable slice-assignment) then frozen — front-loaded, never in
         the hot path.
         """
-        mask = np.zeros((self.n_total, self.n_total))
+        mask = np.zeros((self._n_states, self._n_states))
         for cluster in self._partition:
             for a in cluster:
                 for b in cluster:
@@ -488,7 +489,7 @@ class CouplingGraphBackend:
 
         Args:
             observation: the observed nodes' readings, stacked in ascending node-index
-                order, shape ``(n_observations,)``.
+                order, shape ``(model.n_observations,)``.
             prior: the current *joint* belief over all nodes. Never mutated.
             action: the action just taken, shape ``(p,)``; required iff the model has a
                 control matrix, ``None`` for pure filtering.
@@ -534,7 +535,7 @@ class CouplingGraphBackend:
         """
         control_term = self._control_shift(action)  # b = B·action over the joint state
         predicted = {}
-        for node in range(len(self.dims)):
+        for node in range(len(self.graph.dims)):
             block = self._block(node)
             node_precision = jnp.linalg.inv(prior.cov[block, block])  # Λ_i = Σ_i⁻¹
             node_prior = CanonicalGaussian._unchecked(
@@ -553,7 +554,7 @@ class CouplingGraphBackend:
             mu_plus = jnp.concatenate(
                 [
                     predicted_marginals[node].to_moment()[0]
-                    for node in range(len(self.dims))
+                    for node in range(len(self.graph.dims))
                 ]
             )
             obs_precision, obs_potential = self._observation_messages_at(
@@ -561,14 +562,14 @@ class CouplingGraphBackend:
             )
 
         seeds = {}
-        for node in range(len(self.dims)):
+        for node in range(len(self.graph.dims)):
             block = self._block(node)
             seeds[node] = CanonicalGaussian._unchecked(
                 predicted[node].precision + obs_precision[block, block],
                 predicted[node].potential + obs_potential[block],
             )
         marginals = self.graph.infer_all(seeds)
-        moments = [marginals[node].to_moment() for node in range(len(self.dims))]
+        moments = [marginals[node].to_moment() for node in range(len(self.graph.dims))]
         mean = jnp.concatenate([node_mean for node_mean, _ in moments])
         cov = jax.scipy.linalg.block_diag(*[node_cov for _, node_cov in moments])
         return Belief(mean=mean, cov=cov)
@@ -612,21 +613,22 @@ class CouplingGraphBackend:
 
         Args:
             prior: the joint belief the run starts from.
-            observations: the stacked readings per step, shape ``(T, n_observations)``.
+            observations: the stacked readings per step, shape
+                ``(T, model.n_observations)``.
             actions: the per-step actions, shape ``(T, p)``, required iff the model has
                 a control matrix; ``None`` for pure filtering.
 
         Returns:
             ``(beliefs, severed_masses)`` — the time-stacked posteriors (a
             [`Belief`][cpomdp.Belief] with a leading time axis: ``mean``
-            ``(T, n_total)``, ``cov`` ``(T, n_total, n_total)``) and the length-``T``
+            ``(T, n)``, ``cov`` ``(T, n, n)``) and the length-``T``
             severed-mass profile. The full-joint ``[[all]]`` partition profiles
             all-zero.
         """
         observations = jnp.asarray(observations, dtype=float)
-        if observations.ndim != 2 or observations.shape[1] != self.n_observations:
+        if observations.ndim != 2 or observations.shape[1] != self._n_observations:
             raise ValueError(
-                f"observations must have shape (T, {self.n_observations}), "
+                f"observations must have shape (T, {self._n_observations}), "
                 f"got {observations.shape}"
             )
 
@@ -753,7 +755,7 @@ class CouplingGraphBackend:
         """The control shift ``b = B·action`` (zero when the model has no control)."""
         control_matrix = self._control
         if control_matrix is None:
-            return jnp.zeros(self.n_total)
+            return jnp.zeros(self._n_states)
         assert action is not None  # _validate_step_inputs guarantees this
         return control_matrix @ action  # b = B·action
 
@@ -903,7 +905,7 @@ class CouplingGraphBackend:
         for edge in self.graph.couplings:  # child − W·parent ~ N(0, Q_struct)
             coupling = edge.factor.coupling_matrix  # W
             child_dim = coupling.shape[0]
-            row = jnp.zeros((child_dim, self.n_total))
+            row = jnp.zeros((child_dim, self._n_states))
             row = row.at[:, self._block(edge.child)].set(jnp.eye(child_dim))
             row = row.at[:, self._block(edge.parent)].set(-coupling)
             rows.append(row)

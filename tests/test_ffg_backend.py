@@ -612,6 +612,29 @@ class TestProtocolAndReadout:
         np.testing.assert_array_equal(np.asarray(prior.cov), before)
 
 
+class TestOneNamePerQuantity:
+    """Each size the backend knows has one home: the model it hands out, or its graph.
+
+    The backend carried `n_total`, `dims` and `n_observations` beside `model.n_states`,
+    `graph.dims` and `model.n_observations`, the same numbers under other names.
+    """
+
+    def test_sizes_are_read_off_the_model_and_the_graph(self):
+        backend = _build(
+            _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
+        )
+        assert backend.model.n_states == 5
+        assert backend.model.n_observations == 3
+        assert backend.graph.dims == _CHEMOTAXIS_DIMS
+
+    @pytest.mark.parametrize("duplicate", ["n_total", "dims", "n_observations"])
+    def test_the_backend_carries_no_second_name_for_a_size(self, duplicate):
+        backend = _build(
+            _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
+        )
+        assert not hasattr(backend, duplicate)
+
+
 class TestNodeLookup:
     """A node outside the graph is refused by name, never read as an empty block.
 

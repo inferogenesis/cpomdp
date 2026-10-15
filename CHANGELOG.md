@@ -588,6 +588,11 @@ certainty equivalence is optimal, and no use of the readings beats it.
   an `Agent` built on the backend planned and filtered from a belief the caller never
   chose, and `to_flat_model()` carried the same placeholder. The flagship example
   overwrote `agent.belief` to work around it. Pass the starting belief at construction.
+- **Breaking:** `CouplingGraphBackend` has one name for each size it knows. `n_total` is
+  `backend.model.n_states`, `dims` is `backend.graph.dims` and `n_observations` is
+  `backend.model.n_observations`. Each was the same number under a second name, and
+  `n_total` was the only place the joint width was not called `n_states`. The `Agent`
+  leaves an `info_node` range check to `backend.block`, which names the valid nodes.
 - **Breaking:** every `LinearGaussianModel` argument after `dynamics` is keyword-only.
   The four matrices are two maps and two covariances of the same rank, and only the
   covariances are content-checked, so a transposed pair constructed in silence whenever
