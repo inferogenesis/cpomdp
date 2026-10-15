@@ -115,8 +115,8 @@ class EfeBackend(InferenceBackend, Protocol):
         """The EFE-relevant edges this carry partition cuts (ADR-018 diagnostic).
 
         Non-empty means the partition drops a covariance path the epistemic integrates
-        over, so the EFE selector refuses it; empty for the exact ``[[all]]`` carry and
-        for any cut that only severs unflagged edges.
+        over, so every EFE entry point refuses it; empty for the exact ``[[all]]`` carry
+        and for any cut that only severs unflagged edges.
         """
         ...
 

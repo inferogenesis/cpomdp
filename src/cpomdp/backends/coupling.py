@@ -782,10 +782,11 @@ class CouplingGraphBackend:
 
         Each ``efe_relevant`` coupling whose parent and child fall in different clusters
         — so the carry drops the cross-temporal covariance it holds, breaking the
-        integration of that information about the targeted latent. Non-empty means the
-        EFE selector must refuse this partition; empty for the exact ``[[all]]`` carry
-        and for any cut that only severs unflagged edges (e.g. the methylation cut). A
-        structural read, not a filter step — no covariance is formed here.
+        integration of that information about the targeted latent. Non-empty means
+        every EFE entry point must refuse this partition; empty for the exact
+        ``[[all]]`` carry and for any cut that only severs unflagged edges (e.g. the
+        methylation cut). A structural read, not a filter step — no covariance is
+        formed here.
         """
         return tuple(
             edge

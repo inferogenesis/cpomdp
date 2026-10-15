@@ -274,6 +274,13 @@ class EnumeratedEfeSearch:
         graph with the epistemic aimed at ``info_block`` — a node's block (via
         ``backend.block``) or the whole state. This runs the coupled-tree model the flat
         constructor cannot express.
+
+        Raises:
+            InadmissiblePartitionError: If the backend's carry partition severs an
+                EFE-load-bearing edge.
+            ValueError: If the backend has no control matrix, if ``info_block`` is
+                empty, repeats an index or names one outside the joint state, or if
+                the action set's dimension or the horizon does not fit.
         """
         if backend.model.control_matrix is None:
             raise ValueError(
@@ -482,7 +489,16 @@ class ChunkedEfeSearch:
         horizon: int,
         chunk: int = DEFAULT_CHUNK,
     ) -> "ChunkedEfeSearch":
-        """Chunked search that scores on an FFG ``backend`` via ``policy_efe_ffg``."""
+        """Chunked search that scores on an FFG ``backend`` via ``policy_efe_ffg``.
+
+        Raises:
+            InadmissiblePartitionError: If the backend's carry partition severs an
+                EFE-load-bearing edge.
+            ValueError: If the backend has no control matrix, if ``info_block`` is
+                empty, repeats an index or names one outside the joint state, if the
+                action set's dimension or the horizon does not fit, or if ``chunk`` is
+                below 1.
+        """
         if backend.model.control_matrix is None:
             raise ValueError(
                 "ChunkedEfeSearch.over_backend needs a backend with a control "

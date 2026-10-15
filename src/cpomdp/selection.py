@@ -275,6 +275,16 @@ class FfgEfeSelector:
         n_candidates: int,
         action_bounds: tuple[float, float],
     ) -> None:
+        """Front-load the candidate grid, after checking the backend and the target.
+
+        Raises:
+            InadmissiblePartitionError: If the backend's carry partition severs an
+                EFE-load-bearing edge.
+            ValueError: If the backend has no control matrix or more than one action
+                dimension, if ``action_bounds`` is not ``(lo, hi)`` with ``lo < hi``,
+                if ``n_candidates`` is below 2, or if ``info_block`` is empty, repeats
+                an index or names one outside the joint state.
+        """
         _require_scalar_control(
             backend.model.control_matrix,
             "FfgEfeSelector",
