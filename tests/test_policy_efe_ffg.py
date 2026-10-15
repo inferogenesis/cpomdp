@@ -224,7 +224,7 @@ class TestFfgTraceShape:
         assert trace.g.shape == (3,)
         assert trace.pragmatic.shape == (3,)
         assert trace.epistemic.shape == (3,)
-        assert trace.mu_pred.shape == (3, 2)  # n_total = 2
+        assert trace.mu_pred.shape == (3, 2)  # n = 2
         assert trace.sigma_pred.shape == (3, 2, 2)
         assert trace.sigma_post.shape == (3, 2, 2)
         assert trace.s.shape == (3, 1, 1)  # m = 1 (one observed channel)

@@ -368,15 +368,9 @@ class Agent:
                 "must be 1 with a CouplingGraphBackend."
             )
         if objective.info_node is None:
-            info_block: range = range(backend.n_total)  # whole-state info gain
+            info_block = range(backend.model.n_states)  # whole-state info gain
         else:
-            n_nodes = len(backend.dims)
-            if not 0 <= objective.info_node < n_nodes:
-                raise ValueError(
-                    f"info_node {objective.info_node} is not a node index "
-                    f"(0..{n_nodes - 1})."
-                )
-            info_block = backend.block(objective.info_node)
+            info_block = backend.block(objective.info_node)  # refuses a stray node
         return FfgEfeSelector(
             backend,
             info_block=info_block,

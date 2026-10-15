@@ -59,7 +59,7 @@ def test_filtering_matches_flat_kalman():
 
     rng = np.random.default_rng(0)
     prior = Belief(mean=np.zeros(5), cov=np.eye(5))
-    obs_seq = [rng.standard_normal(backend.n_observations) for _ in range(6)]
+    obs_seq = [rng.standard_normal(backend.model.n_observations) for _ in range(6)]
 
     belief = flat_belief = prior
     for y in obs_seq:
@@ -83,7 +83,7 @@ def test_filtering_matches_rxinfer_on_flat_model():
 
     rng = np.random.default_rng(1)
     prior = Belief(mean=np.zeros(5), cov=np.eye(5))
-    obs_seq = [rng.standard_normal(backend.n_observations) for _ in range(4)]
+    obs_seq = [rng.standard_normal(backend.model.n_observations) for _ in range(4)]
 
     belief = oracle_belief = prior
     for y in obs_seq:
