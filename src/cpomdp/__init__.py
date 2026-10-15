@@ -35,6 +35,8 @@ defaults to float64. The filter is checked to 1e-9 against its oracles, which fl
 cannot hold (ADR-004).
 """
 
+from importlib import metadata as _metadata
+
 import jax as _jax
 
 from cpomdp.agent import Agent
@@ -73,7 +75,8 @@ from warrantlib import Warrant
 # Process-global by necessity; see ADR-004.
 _jax.config.update("jax_enable_x64", True)
 
-__version__ = "0.5.0"
+__version__ = _metadata.version("cpomdp")
+"""The installed version, read from the package metadata `pyproject.toml` sets."""
 
 __all__ = [
     "ActionSelector",
