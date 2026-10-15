@@ -566,7 +566,7 @@ class TestProtocolAndReadout:
         np.testing.assert_allclose(root_belief.mean, node0.mean)
         np.testing.assert_allclose(root_belief.cov, node0.cov)
 
-    def _one_node_backend(self, prior):
+    def _one_node_backend(self, prior, control_matrix=None):
         graph = CouplingGraph(
             root=0,
             dims=(2,),
@@ -576,7 +576,15 @@ class TestProtocolAndReadout:
             },
         )
         transition = GaussianTransition(np.eye(2), dynamics_noise=np.eye(2) * 0.1)
-        return CouplingGraphBackend(graph, (transition,), prior=prior)
+        return CouplingGraphBackend(
+            graph, (transition,), prior=prior, control_matrix=control_matrix
+        )
+
+    def test_control_matrix_over_the_wrong_rows_is_refused_by_name(self):
+        with pytest.raises(ValueError, match="control_matrix must be a 2-D matrix"):
+            self._one_node_backend(
+                Belief(mean=np.zeros(2), cov=np.eye(2)), control_matrix=[[1.0]]
+            )
 
     def test_prior_starts_the_agent_and_the_flat_model(self):
         # Both used to start from an N(0, I) placeholder the caller never chose.

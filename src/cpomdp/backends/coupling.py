@@ -257,7 +257,7 @@ class CouplingGraphBackend:
         matrix = jnp.asarray(control_matrix, dtype=float)
         if matrix.ndim != 2 or matrix.shape[0] != self.n_total:
             raise ValueError(
-                f"control must be a 2-D matrix with {self.n_total} rows "
+                f"control_matrix must be a 2-D matrix with {self.n_total} rows "
                 f"(the joint state dim), got shape {matrix.shape}"
             )
         return matrix
