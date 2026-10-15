@@ -278,6 +278,14 @@ class FfgEfeSelector:
     ) -> None:
         """Front-load the candidate grid, after checking the backend and the target.
 
+        Args:
+            backend: the graph backend to plan over, a
+                [`CouplingGraphBackend`][cpomdp.CouplingGraphBackend].
+            info_block: the joint-state indices whose information gain is the
+                epistemic value. ``backend.block(node)`` gives a node's indices.
+            n_candidates: how many evenly spaced actions the grid holds, at least 2.
+            action_bounds: the grid's ends ``(lo, hi)``, with ``lo < hi``.
+
         Raises:
             InadmissiblePartitionError: If the backend's carry partition severs an
                 EFE-load-bearing edge.
