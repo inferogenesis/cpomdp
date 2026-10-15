@@ -468,18 +468,15 @@ class CouplingGraphBackend:
     def observation_noise_at(self, mean: ArrayLike) -> Float64[jax.Array, "m m"]:
         """The stacked observation noise R at a predicted mean.
 
-        Each observed node's R is linearized at ``mean[node_block]`` (fixed sensors
-        ignore the mean and return their constant R); the block-diagonal stack is the
-        action-dependent ``R(μ⁺)`` the EFE selector folds per candidate (issue #27).
+        Each observed node's R is linearized at ``mean[node_block]``, and the
+        block-diagonal stack is the action-dependent ``R(μ⁺)`` the EFE selector folds
+        per candidate (issue #27). A graph whose sensors are all fixed returns the
+        constant R it front-loaded and reads no mean.
         """
-        mean = jnp.asarray(mean, dtype=float)
-        blocks = [
-            self.graph.observations[node].linearize(mean[self._block(node)])[1]
-            for node, _lo, _hi in self._obs_layout
-        ]
-        if not blocks:
-            return jnp.zeros((0, 0))
-        return jax.scipy.linalg.block_diag(*blocks)
+        joint_observation = self._flat_model.observation_model
+        if joint_observation is None:  # every sensor fixed
+            return self._flat_model.observation_noise
+        return joint_observation.linearize(mean)[1]
 
     def _build_partition_mask(self) -> jax.Array:
         """The carry mask: 1 on within-cluster precision blocks, 0 between clusters.
