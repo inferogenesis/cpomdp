@@ -4531,3 +4531,66 @@ because a push that has not reached the reading within that many steps never wil
 - Reading the target does not make it win. On the velocity-noise plant at the default
   precision of 1, the agent at the prior stays at rest for any target. The information
   term outweighs the pull. At a precision of 100 it pushes toward the target.
+
+## ADR-069 — a name is private until a user needs it
+
+**Date:** 2026-10-15
+**Status:** Accepted
+**Extends:** ADR-021, which made the top-level names the documented entry point and kept
+every deep path working.
+**Supersedes:** ADR-047's consequence that "the import paths are `cpomdp.harness` and
+`cpomdp.constructors`", for the paths only, since the seam it built is unchanged. ADR-039's
+decision that "`cpomdp.warrant` stays, as a re-export", and with it ADR-042's Decision 4.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+Nothing said which import paths a user could build on. Every module without a leading
+underscore was importable, and v0.5.0 was about to publish roughly 97 names no release
+had carried: the harness, the constructor cross and its scoring, the additivity check,
+the error on a difference, the reference filter, the degraded backends and the control
+bracket. Most had no API page. The research boundary they sit on is still moving
+(ADR-052), and a break to any of them after release would be a break to cpomdp.
+
+### Decision
+
+A name is private until a user needs it to work with cpomdp. Promoting a private name
+later breaks no caller. Withdrawing a public one breaks every caller, so the surface
+starts small.
+
+- **Public:** the names in `cpomdp.__all__`, and the names in the `__all__` of the
+  documented modules the README teaches: `cpomdp.efe`, `cpomdp.enumeration`,
+  `cpomdp.diagnostics`, `cpomdp.control` and `cpomdp.backends.rxinfer`. Before 1.0 a
+  break to one lands only in a minor version, listed in the changelog with what
+  replaces it.
+- **Private:** any path with a leading underscore on it. No promise.
+- **Implementation modules** such as `cpomdp.types` and `cpomdp.selection` stay
+  importable, since ADR-021 kept them working. Their names are reached through the top
+  level, and the path itself carries no promise.
+
+What that moves:
+
+- The research apparatus goes to `cpomdp._lab`, which stays in the wheel because the
+  test suite and the research package build on it. The control bracket goes with it.
+  The finite-horizon regulator and its Kalman schedule stay in `cpomdp.control`.
+- `cpomdp.warrant` is removed. warrantlib is the vocabulary's one home, and cpomdp's
+  top level keeps only `Warrant`, the type `EFESelector.warrant` returns. ADR-039 kept
+  the module so that import paths from before the split would keep working. No release
+  carried it or the top-level names it backed, so removing them breaks no published
+  caller, and keeping them would promise twelve names twice.
+- Helpers that are implementation detail take a leading underscore.
+- `LQRController` and `InadmissiblePartitionError` join the top level. `LQRSelector`
+  cannot be built without the first. `FfgEfeSelector`, the graph EFE rollouts and both
+  searches' `over_backend` raise the second.
+
+### Consequences
+
+- About 22 test files and six research modules import from `cpomdp._lab`.
+  `tests/test_module_boundary.py` names the seam, the evaluator and the reference by
+  their new paths and holds the same boundary.
+- The protected records that cite `cpomdp.reference` and `cpomdp.resolution` gain dated
+  amendments naming the new paths. Their original lines stand.
+- The 0.5.0 changelog keeps the apparatus under Added, at its private paths, so the
+  record of what landed stays whole.
+- Promoting a piece of `_lab` later is additive: a public module re-exports it and an
+  API page documents it.
