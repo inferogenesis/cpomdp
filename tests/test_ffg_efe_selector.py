@@ -30,6 +30,7 @@ from cpomdp.selection import (
     Preference,
 )
 from cpomdp.types import Belief, LinearGaussianModel
+from warrantlib import Warrant
 
 
 def _rx_noise(x, params):
@@ -151,6 +152,34 @@ def test_selector_refuses_a_backend_it_cannot_search(control_matrix, match):
         )
 
 
+class TestSameQuestionsAsEFESelector:
+    """ADR-021 calls the two grid selectors one family, so they answer alike."""
+
+    def test_defaults_match_the_flat_selector_and_the_goal(self):
+        # 21 candidates as on ObservationGoal and EFESelector, and the whole joint
+        # state as info_node=None means on the goal.
+        selector = FfgEfeSelector(_two_node_backend(), action_bounds=(-2.0, 2.0))
+        assert selector.n_candidates == 21
+        assert repr(selector).endswith("info_block=[0, 1])")
+
+    def test_reports_a_sampled_warrant(self):
+        selector = FfgEfeSelector(_two_node_backend(), action_bounds=(-2.0, 2.0))
+        assert selector.warrant is Warrant.CORROBORATED
+
+    def test_the_grid_is_readable_as_the_actions_searched(self):
+        selector = FfgEfeSelector(
+            _two_node_backend(), action_bounds=(-1.0, 1.0), n_candidates=3
+        )
+        np.testing.assert_array_equal(selector.candidates, [[-1.0], [0.0], [1.0]])
+
+    def test_per_axis_bounds_are_refused_with_the_flat_selectors_words(self):
+        with pytest.raises(ValueError, match="two scalars"):
+            FfgEfeSelector(
+                _two_node_backend(),
+                action_bounds=([-1, 5], [1, -5]),  # ty: ignore[invalid-argument-type]
+            )
+
+
 def test_agent_on_ffg_backend_acts_via_ffg_selector():
     # B5 (issue #26): a user drives a branching FFG as an Agent. info_node aims the
     # epistemic at a chosen node; the Agent routes to the FFG EFE selector, and the
@@ -200,7 +229,7 @@ def test_agent_ffg_whole_state_when_info_target_none():
         ObservationGoal([0.5], action_bounds=(-2.0, 2.0)),  # no info_node
     )
     assert isinstance(agent.selector, FfgEfeSelector)
-    assert tuple(agent.selector._target) == (0, 1)  # whole joint state
+    assert repr(agent.selector).endswith("info_block=[0, 1])")  # whole joint state
 
 
 def test_info_target_on_flat_backend_raises():

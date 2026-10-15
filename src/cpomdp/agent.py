@@ -170,9 +170,8 @@ def _graph_efe_selector(
             "H-step EFE on the FFG backend is deferred; ObservationGoal.horizon "
             "must be 1 with a CouplingGraphBackend."
         )
-    if objective.info_node is None:
-        info_block: range = range(backend.n_total)  # whole-state info gain
-    else:
+    info_block = None  # the whole joint state
+    if objective.info_node is not None:
         n_nodes = len(backend.dims)
         if not 0 <= objective.info_node < n_nodes:
             raise ValueError(

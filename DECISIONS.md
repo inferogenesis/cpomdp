@@ -4702,6 +4702,20 @@ whether a selector comes with it, so the pairing is a type check at construction
 - The override form is assembled from the parts a `jax.lax.scan` loop uses: a backend, a
   selector and a `Preference`.
 
+### The grid a goal describes
+
+An `ObservationGoal` describes a grid, `action_bounds` and `n_candidates`. Both keep their
+names, and their meaning at more than one action dimension is fixed now, while no such
+grid exists. `n_candidates` is the grid's total count, the number of actions scored each
+cycle, which is what `cost_per_cycle` multiplies. `action_bounds` is a pair of finite
+scalars. A per-axis pair is refused rather than misread. When a grid over `p > 1` lands, a
+scalar pair broadcasts to every axis and a pair of length-`p` bounds sets each axis.
+Neither changes what a `p = 1` caller writes.
+
+An `ActionGrid` object holding the three numbers was the alternative. It would name the
+clump. It would also add a public type and move about sixty test lines before any search
+over it exists. Promoting one later breaks nothing the keywords do now.
+
 ## ADR-072 — an `ObservationGoal` is curious wherever a noise depends on the state
 
 **Date:** 2026-10-15
