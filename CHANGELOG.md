@@ -451,6 +451,10 @@ certainty equivalence is optimal, and no use of the readings beats it.
   at construction. Assigning `agent.belief` now requires a `Belief` over the model's
   state. A list was accepted and failed on the next step. `InferenceBackend.model` is
   declared a read-only property, which a plain attribute still satisfies.
+- **Breaking:** `CouplingGraph.root`, `dims`, `couplings` and `observations` are
+  read-only, and `observations` is a read-only mapping. Construction is the only place
+  the wiring is checked. A sensor added afterwards to node 7 of a two-node graph skipped
+  the range check and reached the backend. Build a new graph instead.
 - **Breaking:** an `ObservationGoal`'s `horizon` defaults to `None`, and the `Agent` reads
   it off the model: the shortest horizon at which the target moves the expected free
   energy, found by differentiating the candidate grid's scores with respect to the
