@@ -432,7 +432,8 @@ statistic (`cpomdp.crossover`, ADR-033), and the constant-null motivation
 - Rollout carry (predict-only mean, contracting cov): `src/cpomdp/efe.py::_ffg_rollout_body`.
 - One-step EFE, node-restricted epistemic, and the Cholesky `ln det` guard:
   `src/cpomdp/efe.py::_ffg_efe_step`, `_state_info_gain`, `_logdet_pd`.
-- Per-step decomposition (`mu_pred`, `s` give the mean/ambiguity split):
+- Per-step decomposition (`predicted_mean`, `predicted_observation_cov` give the
+  mean/ambiguity split):
   `src/cpomdp/efe.py::policy_efe_ffg_trace`.
 - Exhaustive FFG search: `src/cpomdp/enumeration.py::EnumeratedEfeSearch.over_backend`.
 - Crossover statistic: `src/cpomdp/crossover.py`.
