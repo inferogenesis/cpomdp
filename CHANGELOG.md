@@ -489,10 +489,11 @@ certainty equivalence is optimal, and no use of the readings beats it.
   calls neither (ADR-069). `import cpomdp` no longer leaves `cpomdp.jax` behind.
 - **Breaking:** the graph model's message passing is private. `GaussianTransition.predict`,
   `GaussianCoupling.message_to_parent` and `message_to_child` and `CouplingGraph.infer_all`
-  take a leading underscore, and `cpomdp.ffg.message` is `cpomdp.ffg._message`. v0.4.4 published them on the top-level
-  construction classes, typed on a `CanonicalGaussian` no page documents. They are the hot
-  path the energy work will change. A user builds the graph and runs it through
-  `CouplingGraphBackend` or `CouplingGraph.infer`, and neither needs them (ADR-069).
+  take a leading underscore, and `cpomdp.ffg.message` is `cpomdp.ffg._message`. v0.4.4
+  published them on the top-level construction classes, typed on a `CanonicalGaussian`
+  no page documents. They are the hot path the energy work will change. A user builds
+  the graph and runs it through `CouplingGraphBackend` or `CouplingGraph.infer`, and
+  neither needs them (ADR-069, ADR-071).
 - **Breaking:** a *fixed* `observation_model` or `dynamics_noise_model` must now restate
   the model's `observation_noise` / `dynamics_noise` exactly, and a sensor's linearized
   observation matrix must equal `observation_matrix`. `LinearGaussianModel` previously
