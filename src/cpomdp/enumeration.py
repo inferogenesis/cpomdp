@@ -24,6 +24,7 @@ import itertools
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass
+from functools import partial
 from typing import TYPE_CHECKING, Any, NamedTuple, Protocol
 
 import jax
@@ -240,6 +241,27 @@ class _FfgScorer:
         )[0]
 
 
+class _Scored(NamedTuple):
+    """What the compiled front-loaded scorer returns in one call."""
+
+    g: Float64[Array, "N"]
+    best_index: Int[Array, ""]
+    best_g: Float64[Array, ""]
+    best_policy: Float64[Array, "H p"]
+
+
+def _score_every_policy(
+    scorer: _PolicyScorer,
+    policies: Float64[Array, "N H p"],
+    belief: Belief,
+    preference: "Preference",
+) -> _Scored:
+    """Every policy's summed EFE, then the NaN-safe argmin, its score and its policy."""
+    g = jax.vmap(lambda policy: scorer.score(belief, policy, preference))(policies)
+    best_index = jnp.argmin(jnp.where(jnp.isnan(g), jnp.inf, g))
+    return _Scored(g, best_index, g[best_index], policies[best_index])
+
+
 class EnumeratedEfeSearch:
     """Exhaustive EFE search over ``A^H`` for a declared finite action set (ADR-031).
 
@@ -329,6 +351,9 @@ class EnumeratedEfeSearch:
         self._certificate = _certify(
             action_set, self._horizon, int(self._policies.shape[0])
         )
+        # Compiled on the first plan and reused by every later one. The belief and the
+        # preference are arguments, so a new one is new data rather than a new program.
+        self._score_every_policy = jax.jit(partial(_score_every_policy, scorer))
 
     def evaluate(
         self, belief: Belief, preference: "Preference"
@@ -338,7 +363,8 @@ class EnumeratedEfeSearch:
         One ``vmap`` of the scorer over the front-loaded ``|A|^H`` policies, then a
         NaN-safe ``argmin`` (a NaN-scoring policy must not silently win). The scorer
         holds the flat model or the FFG backend as a closure constant, so the ``vmap``
-        maps only over the policies.
+        maps only over the policies. It is compiled once per search, so a plan after
+        the first runs the compiled program.
 
         Args:
             belief: the belief to plan from.
@@ -347,15 +373,12 @@ class EnumeratedEfeSearch:
         Returns:
             The argmin, its score, its index, the certificate and the score vector.
         """
-        g = jax.vmap(lambda pol: self._scorer.score(belief, pol, preference))(
-            self._policies
-        )
-        best = jnp.argmin(jnp.where(jnp.isnan(g), jnp.inf, g))
+        scored = self._score_every_policy(self._policies, belief, preference)
         return EnumeratedSearchResult(
-            best_policy=self._policies[best],
-            g=g,
-            best_g=g[best],
-            best_index=best,
+            best_policy=scored.best_policy,
+            g=scored.g,
+            best_g=scored.best_g,
+            best_index=scored.best_index,
             certificate=self._certificate,
         )
 
@@ -560,13 +583,17 @@ class ChunkedEfeSearch:
                 f"{ceiling}. Enable x64, or declare a smaller set: an index that "
                 "wraps would enumerate the wrong policies and still certify."
             )
+        # Compiled on the first plan and reused by every later one, as on the
+        # front-loaded path.
+        self._scan_compiled = jax.jit(partial(self._scan_blocks, reducer=None))
 
     def evaluate(self, belief: Belief, preference: "Preference") -> ChunkedSearchResult:
         """Score every policy in blocks, and return the argmin with its evidence.
 
         One ``lax.scan`` over ``ceil(|A|^H / chunk)`` blocks. Each block decodes its own
         indices, scores them under one ``vmap``, and folds the result into running
-        scalars, so nothing of size ``|A|^H`` is ever alive.
+        scalars, so nothing of size ``|A|^H`` is ever alive. The loop is compiled once
+        per search, so a plan after the first runs the compiled program.
 
         Args:
             belief: the belief to plan from.
@@ -576,7 +603,8 @@ class ChunkedEfeSearch:
             The argmin, its score, its index, and the certificate the loop's own count
             earns.
         """
-        return self._reduce(belief, preference, None)[0]
+        argmin, best_policy, _ = self._scan_compiled(belief, preference)
+        return self._result(argmin, best_policy)
 
     def _reduce(
         self,
@@ -588,8 +616,30 @@ class ChunkedEfeSearch:
 
         The seam for evidence the argmin does not carry. The carry is ``Any`` because it
         is whatever the fold accumulates, and one seam with one consumer does not repay
-        making the result and the protocol generic.
+        making the result and the protocol generic. Each call compiles its own fold.
         """
+        scan = jax.jit(partial(self._scan_blocks, reducer=reducer))
+        argmin, best_policy, extra = scan(belief, preference)
+        return self._result(argmin, best_policy), extra
+
+    def _result(
+        self, argmin: _ArgminCarry, best_policy: Float64[Array, "H p"]
+    ) -> ChunkedSearchResult:
+        """The loop's answer, certified on the count the loop itself carried."""
+        return ChunkedSearchResult(
+            best_policy=best_policy,
+            best_g=argmin.best_g,
+            best_index=argmin.best_index,
+            certificate=_certify(self._action_set, self._horizon, int(argmin.visited)),
+        )
+
+    def _scan_blocks(
+        self,
+        belief: Belief,
+        preference: "Preference",
+        reducer: _BlockReducer | None,
+    ) -> tuple[_ArgminCarry, Float64[Array, "H p"], Any]:
+        """The block loop, returning the argmin, its decoded policy and the fold."""
         chunk, total = self._chunk, self._n_policies
         n_blocks = -(-total // chunk)  # ceil
         offsets = jnp.arange(chunk)
@@ -631,15 +681,10 @@ class ChunkedEfeSearch:
             None if reducer is None else reducer.init(),
         )
         (argmin, extra), _ = jax.lax.scan(run_block, start, jnp.arange(n_blocks))
-
-        return ChunkedSearchResult(
-            best_policy=_decode_policies(
-                argmin.best_index, self._action_set, self._horizon
-            ),
-            best_g=argmin.best_g,
-            best_index=argmin.best_index,
-            certificate=_certify(self._action_set, self._horizon, int(argmin.visited)),
-        ), extra
+        best_policy = _decode_policies(
+            argmin.best_index, self._action_set, self._horizon
+        )
+        return argmin, best_policy, extra
 
     def policies_at(self, indices: Array) -> Float64[Array, "... H p"]:
         """The policies named by ``indices``, decoded rather than looked up.
