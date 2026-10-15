@@ -154,7 +154,6 @@ def build_backend(
             coupling_matrix=[[0.0], [1.0]],
             coupling_noise=[[COUPLE_Q_POSITION, 0.0], [0.0, COUPLE_Q_ARM]],
         ),
-        tau=1.0,
         efe_relevant=True,  # the covariance path the instrumental epistemic rides
     )
     graph = CouplingGraph(

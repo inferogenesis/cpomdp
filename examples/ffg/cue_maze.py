@@ -360,7 +360,6 @@ def build_maze(
             coupling_matrix=coupling_weights.tolist(),
             coupling_noise=coupling_noise.tolist(),
         ),
-        tau=1.0,
         efe_relevant=True,  # the covariance path the instrumental epistemic rides
     )
     graph = CouplingGraph(
