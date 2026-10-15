@@ -50,6 +50,50 @@ The stateful façade you drive: `infer_states` to perceive, `sample_action` to a
     | `StateGoal` + an EFE selector, or `ObservationGoal` + `LQRSelector` | Refused | Refused |
     | Any selector with no goal | Ignored, and the agent tracks | Ignored, and the agent tracks |
 
+    An `ObservationGoal` with no horizon set gets the shortest horizon at which the
+    actions score apart. `agent.selector.horizon` reads it back,
+    `agent.selector.cost_per_cycle` gives what each `sample_action` costs, and printing
+    the agent shows both. A longer horizon looks further ahead for more work per step,
+    and can change what the agent does. To compare, build one agent per horizon and run
+    each. The sensor below is sharpest at the goal, position 1, and the push reaches the
+    reading a step after it changes the velocity, so the shortest horizon is 2.
+
+    ```python
+    import jax.numpy as jnp
+
+    from cpomdp import Agent, Belief, CallableSensor, LinearGaussianModel, ObservationGoal
+
+
+    def sharper_near_goal(x, params):
+        return jnp.array([[0.01 + (x[0] - 1.0) ** 2]])
+
+
+    model = LinearGaussianModel(
+        [[1.0, 0.1], [0.0, 1.0]],
+        control_matrix=[[0.0], [0.1]],
+        observation_matrix=[[1.0, 0.0]],
+        dynamics_noise=jnp.eye(2) * 1e-6,
+        observation_model=CallableSensor([[1.0, 0.0]], sharper_near_goal, ()),
+        prior=Belief(mean=[0.0, 0.0], cov=jnp.eye(2)),
+    )
+
+    for horizon in (None, 4, 8):
+        goal = ObservationGoal([1.0], action_bounds=(-2.0, 2.0), horizon=horizon)
+        agent = Agent(model, goal)
+        state = jnp.zeros(2)
+        for _ in range(40):
+            agent.infer_states(model.observation_matrix @ state)
+            action = agent.sample_action()
+            state = model.dynamics_matrix @ state + model.control_matrix @ action
+        print(agent.selector.horizon, agent.selector.cost_per_cycle, jnp.round(state, 2))
+    # 2 42 [1.08 0.4 ]
+    # 4 84 [1. 0.]
+    # 8 168 [0.99 0.  ]
+    ```
+
+    At the shortest horizon the agent overshoots and is still moving after 40 steps. At
+    4 it settles on the goal, for twice the work per step.
+
 The `Agent` is eager. Its methods update the belief it holds, so `jax.jit`, `vmap` and
 `grad` do not apply to them. A jitted `infer_states` returns the posterior it was traced
 with on every call. To compile a loop, drive a backend directly under `jax.lax.scan`.

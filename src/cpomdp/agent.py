@@ -91,6 +91,15 @@ def _reaching_efe_selector(
     )
 
 
+def _short_repr(selector: ActionSelector | None) -> str:
+    """A selector's own repr where it defines one, and its class name otherwise."""
+    if selector is None:
+        return "None"
+    if type(selector).__repr__ is object.__repr__:
+        return type(selector).__name__
+    return repr(selector)
+
+
 class Agent:
     """A continuous active-inference agent — the continuous sibling of pymdp's Agent.
 
@@ -228,6 +237,7 @@ class Agent:
         """Hold the backend and dispatch the objective to a selector."""
         model = backend.model
         self._backend = backend
+        self._objective = objective
         self._belief = model.prior
         sensor_is_fixed = (
             model.observation_model is None or model.observation_model.is_fixed
@@ -401,6 +411,24 @@ class Agent:
         """
         return self.belief
 
+    @property
+    def selector(self) -> ActionSelector | None:
+        """The selector that chooses the agent's actions, read-only.
+
+        ``None`` for a tracker. For an ``ObservationGoal`` with no horizon set,
+        ``selector.horizon`` is the horizon read off the model, and
+        ``selector.cost_per_cycle`` is what each ``sample_action`` costs.
+        """
+        return self._selector
+
+    def __repr__(self) -> str:
+        """The objective, the selector and the backend, as built."""
+        objective = None if self._objective is None else type(self._objective).__name__
+        return (
+            f"Agent(objective={objective}, selector={_short_repr(self._selector)}, "
+            f"backend={type(self._backend).__name__})"
+        )
+
     def infer_states(self, observation: ArrayLike) -> Belief:
         """Fold one observation into the belief and return the updated belief.
 
@@ -441,8 +469,8 @@ class Agent:
         ``ObservationGoal`` it is the EFE-minimising action over the front-loaded
         candidate grid. Deterministic, not a sample, and it takes no ``rng_key`` (see
         the class docstring). There is no separate ``infer_policies`` step — policy
-        evaluation is folded in here, its per-cycle cost exposed as
-        ``EFESelector.cost_per_cycle``. The chosen action is remembered so the next
+        evaluation is folded in here, its per-cycle cost readable as
+        ``agent.selector.cost_per_cycle``. The chosen action is remembered so the next
         ``infer_states`` predicts with it.
 
         Returns:

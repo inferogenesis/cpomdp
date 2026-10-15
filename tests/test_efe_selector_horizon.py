@@ -160,7 +160,7 @@ class TestAgentThreadsHorizon:
                 [0.0], action_bounds=(-3.0, 3.0), n_candidates=11, horizon=3
             ),
         )
-        sel = agent._selector
+        sel = agent.selector
         assert isinstance(sel, EFESelector)
         assert sel.horizon == 3
         assert sel.cost_per_cycle == 33
@@ -170,7 +170,7 @@ class TestAgentThreadsHorizon:
         agent = Agent(
             model, ObservationGoal([0.0], action_bounds=(-3.0, 3.0), n_candidates=11)
         )
-        sel = agent._selector
+        sel = agent.selector
         assert isinstance(sel, EFESelector)
         assert sel.horizon == 1
 

@@ -228,6 +228,14 @@ class EFESelector:
         """
         return SearchWarrant.CORROBORATED
 
+    def __repr__(self) -> str:
+        """The horizon and the grid, the numbers that set what each cycle costs."""
+        lo, hi = float(self._candidates[0, 0]), float(self._candidates[-1, 0])
+        return (
+            f"EFESelector(horizon={self._horizon}, n_candidates={self.n_candidates}, "
+            f"action_bounds=({lo}, {hi}))"
+        )
+
 
 class FfgEfeSelector:
     """EFE action selection over a branching FFG backend (issue #26).
@@ -329,6 +337,14 @@ class FfgEfeSelector:
         """Per-cycle step-evals = n_candidates (horizon is 1)."""
         return self.n_candidates
 
+    def __repr__(self) -> str:
+        """The horizon, the grid and the joint-state block the epistemic aims at."""
+        lo, hi = float(self._candidates[0, 0]), float(self._candidates[-1, 0])
+        return (
+            f"FfgEfeSelector(horizon={self.horizon}, n_candidates={self.n_candidates}, "
+            f"action_bounds=({lo}, {hi}), info_block={list(self._target)})"
+        )
+
 
 @dataclass(frozen=True, init=False)
 class StateGoal:
@@ -390,12 +406,13 @@ class ObservationGoal:
     EFESelector front-loads: ``action_bounds`` is the action box, ``n_candidates`` its
     resolution, ``horizon`` its lookahead depth. Left as ``None``, the horizon is the
     shortest at which an action changes the scores, which the Agent reads off the model
-    (ADR-068). On a double integrator observed in position that is 2. ``info_node``
-    optionally aims the epistemic term at a single latent *node* (info gain about that
-    node's marginal, the factored-EFE regime on a branching backend, issue #26);
-    ``None`` = whole-state info gain (the default, unchanged behaviour). The Agent
-    dispatches an ObservationGoal to an EFESelector. Not a pytree - construction-time
-    only; the Agent extracts a Preference.
+    (ADR-068). On a double integrator observed in position that is 2.
+    ``agent.selector.horizon`` reads it back. ``info_node`` optionally aims the
+    epistemic term at a single latent *node* (info gain about that node's marginal, the
+    factored-EFE regime on a branching backend, issue #26); ``None`` = whole-state info
+    gain (the default, unchanged behaviour). The Agent dispatches an ObservationGoal to
+    an EFESelector. Not a pytree - construction-time only; the Agent extracts a
+    Preference.
     """
 
     target: Float64[Array, "m"]

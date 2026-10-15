@@ -287,11 +287,11 @@ class TestRegimeDispatch:
 
     def test_state_goal_on_fixed_sensor_uses_lqr_selector(self):
         agent = Agent(_reaching_model(), StateGoal(GOAL))
-        assert isinstance(agent._selector, LQRSelector)  # white-box: dispatch wiring
+        assert isinstance(agent.selector, LQRSelector)
 
     def test_observation_goal_on_callable_sensor_uses_efe_selector(self):
         agent = Agent(_corridor_model(fixed=False), _OBS_GOAL)
-        assert isinstance(agent._selector, EFESelector)
+        assert isinstance(agent.selector, EFESelector)
 
     def test_explicit_selector_is_used_verbatim(self):
         # An explicit selector= overrides the dispatched selector, used as given.
@@ -299,7 +299,7 @@ class TestRegimeDispatch:
             _corridor_model(fixed=False), n_candidates=11, action_bounds=_BOUNDS
         )
         agent = Agent(_corridor_model(fixed=False), _OBS_GOAL, selector=sel)
-        assert agent._selector is sel
+        assert agent.selector is sel
 
     def test_explicit_selector_rescues_fixed_sensor_observation_goal(self):
         # The escape hatch: an ObservationGoal on a fixed sensor raises under auto-
@@ -309,7 +309,7 @@ class TestRegimeDispatch:
             _corridor_model(fixed=True), n_candidates=11, action_bounds=_BOUNDS
         )
         agent = Agent(_corridor_model(fixed=True), _OBS_GOAL, selector=sel)
-        assert agent._selector is sel
+        assert agent.selector is sel
 
     def test_efe_agent_completes_a_perceive_act_cycle(self):
         # The EFE path wires end-to-end: perceive (Kalman) then act (EFE selection).
@@ -408,9 +408,9 @@ _REACH_ONE = ObservationGoal([1.0], action_bounds=(-2.0, 2.0))
 
 
 def _horizon(agent):
-    """The horizon of the EFE selector the Agent built (white-box)."""
-    assert isinstance(agent._selector, EFESelector)
-    return agent._selector.horizon
+    """The horizon of the EFE selector the Agent built."""
+    assert isinstance(agent.selector, EFESelector)
+    return agent.selector.horizon
 
 
 class TestDerivedHorizon:
@@ -439,6 +439,40 @@ class TestDerivedHorizon:
         model = _double_integrator(_sharp_near_one, dynamics=np.eye(2))
         with pytest.raises(ValueError, match="cannot tell its candidates apart"):
             Agent(model, _REACH_ONE)
+
+
+class TestSelectorAccess:
+    def test_the_selector_is_read_only(self):
+        agent = Agent(_corridor_model(fixed=False), _OBS_GOAL)
+        with pytest.raises(AttributeError):
+            agent.selector = None  # ty: ignore[invalid-assignment]
+
+    def test_a_tracker_has_no_selector(self):
+        tracker = Agent(_corridor_model(fixed=False, control_matrix=False))
+        assert tracker.selector is None
+
+    def test_printing_the_agent_shows_the_horizon_it_chose(self):
+        agent = Agent(_double_integrator(_sharp_near_one), _REACH_ONE)
+        assert repr(agent) == (
+            "Agent(objective=ObservationGoal, selector=EFESelector(horizon=2, "
+            "n_candidates=21, action_bounds=(-2.0, 2.0)), backend=KalmanBackend)"
+        )
+
+    def test_the_lqr_path_prints_the_gain_it_solved_for(self):
+        printed = repr(Agent(_reaching_model(), StateGoal(GOAL)))
+        assert printed.startswith(
+            "Agent(objective=StateGoal, selector=LQRSelector(controller=LQRController("
+            "gain=[["
+        )
+        assert printed.endswith(")), backend=KalmanBackend)")
+
+    def test_a_selector_without_a_repr_prints_its_name(self):
+        class Fixed:
+            def select(self, belief, preference):
+                return jnp.zeros(1)
+
+        agent = Agent(_corridor_model(fixed=False), _OBS_GOAL, selector=Fixed())
+        assert "selector=Fixed," in repr(agent)
 
 
 def test_state_goal_path_is_byte_identical_to_lqr():

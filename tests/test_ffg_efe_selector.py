@@ -124,7 +124,18 @@ def test_agent_on_ffg_backend_acts_via_ffg_selector():
     action = agent.sample_action()
 
     assert np.asarray(action).shape == (1,)
-    assert isinstance(agent._selector, FfgEfeSelector)
+    assert isinstance(agent.selector, FfgEfeSelector)
+
+
+def test_the_graph_selector_prints_its_horizon_and_target():
+    agent = Agent.from_backend(
+        _two_node_backend(),
+        ObservationGoal([0.5], action_bounds=(-2.0, 2.0), info_node=0),
+    )
+    assert repr(agent.selector) == (
+        "FfgEfeSelector(horizon=1, n_candidates=21, action_bounds=(-2.0, 2.0), "
+        "info_block=[0])"
+    )
 
 
 def test_agent_ffg_whole_state_when_info_target_none():
@@ -135,8 +146,8 @@ def test_agent_ffg_whole_state_when_info_target_none():
         backend,
         ObservationGoal([0.5], action_bounds=(-2.0, 2.0)),  # no info_node
     )
-    assert isinstance(agent._selector, FfgEfeSelector)
-    assert tuple(agent._selector._target) == (0, 1)  # whole joint state
+    assert isinstance(agent.selector, FfgEfeSelector)
+    assert tuple(agent.selector._target) == (0, 1)  # whole joint state
 
 
 def test_info_target_on_flat_backend_raises():

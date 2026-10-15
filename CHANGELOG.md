@@ -327,6 +327,12 @@ no use of the readings beats it.
   compressors. `docs/guides/surge_margin_derivation.md` derives the meter model and the
   law, fixes the one calibration constant and lists what the demo does not model. Both
   sit under a new **Applications** section of the docs.
+- `Agent.selector`, read-only: the selector that chooses the agent's actions. For an
+  `ObservationGoal` with no horizon set, `agent.selector.horizon` reads back the horizon
+  taken from the model, and `agent.selector.cost_per_cycle` gives what each
+  `sample_action` costs. `Agent`, `EFESelector`, `FfgEfeSelector` and `LQRController`
+  print what they were built with, so an agent typed at a prompt shows the horizon or
+  the gain it chose. The Agent page shows how to compare horizons.
 
 ### Fixed
 

@@ -782,6 +782,11 @@ class LQRController:
             )
         return -self._gain @ (mean - goal)
 
+    def __repr__(self) -> str:
+        """The steady-state gain, the one number the Riccati solve leaves behind."""
+        gain = [[round(float(entry), 4) for entry in row] for row in self._gain]
+        return f"LQRController(gain={gain})"
+
     def _converge_to_steady_state(
         self, tol: float, max_iter: int
     ) -> Float64[Array, "p n"]:
