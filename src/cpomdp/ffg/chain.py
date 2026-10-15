@@ -13,7 +13,7 @@ One step decomposes into the owned algebra exactly as the factor docstrings prom
                      ▼  to canonical: Λ₀ = Σ⁻¹, h₀ = Λ₀μ
         GaussianTransition._predict(prior_msg, control_term)  # predict  (x → x')
                      ▼
-        predicted_msg + GaussianObservation._message(y)       # update   (+ = product)
+        predicted_msg + likelihood_message(C, R, y)           # update   (+ = product)
                      ▼  to_moment: Σ = Λ⁻¹, μ = Λ⁻¹h
                 posterior (moment)
 
@@ -40,9 +40,10 @@ the protocol bridge, flagged here rather than hidden.
 import jax.numpy as jnp
 from numpy.typing import ArrayLike
 
+from cpomdp._validation import validate_covariance
 from cpomdp.backends.base import _validate_step_inputs
-from cpomdp.ffg._message import CanonicalGaussian
-from cpomdp.ffg.factors.linear_gaussian import GaussianObservation, GaussianTransition
+from cpomdp.ffg._message import CanonicalGaussian, likelihood_message
+from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
 from cpomdp.types import Belief, LinearGaussianModel
 
 __all__ = ["ChainBackend"]
@@ -72,9 +73,9 @@ class ChainBackend:
     def __init__(self, model: LinearGaussianModel) -> None:
         """Front-load the fixed factor nodes; leave state-dependent ones for later.
 
-        Build the ``GaussianObservation`` (from C, R) and ``GaussianTransition``
-        (from A, Q) *once* here when they are data-independent — constructing them
-        per step would burn compute the fixed regime doesn't need (RFC-001). Test
+        Build the ``GaussianTransition`` (from A, Q) *once* here when it is
+        data-independent, and read the fixed (C, R) off the model. Building them per
+        step would burn compute the fixed regime doesn't need (RFC-001). Test
         fixedness with the ``is_fixed`` flag, not ``is None`` (an
         ``observation_model`` can be present but fixed, e.g. a ``FixedSensor``),
         mirroring ``KalmanBackend``::
@@ -110,13 +111,6 @@ class ChainBackend:
             if self._process_fixed
             else None
         )
-        self._observation: GaussianObservation | None = (
-            GaussianObservation(
-                model.observation_matrix, observation_noise=model.observation_noise
-            )  # C, R
-            if self._sensor_fixed
-            else None
-        )
 
     @property
     def model(self) -> LinearGaussianModel:
@@ -136,11 +130,11 @@ class ChainBackend:
         same errors), form the control shift ``b = control @ action`` (zero when the
         model is uncontrolled), then run the module-docstring pipeline: lift the
         prior into canonical form, ``predict`` through the transition factor, add the
-        observation factor's ``message(y)`` (the measurement update), and
+        likelihood message of ``y`` (the measurement update), and
         ``to_moment`` the result back into a ``Belief``.
 
-        On a state-dependent side, the transition/observation factor for
-        *this* step is built from ``dynamics_noise_model.noise_at(μ⁻)`` /
+        On a state-dependent side, the transition factor or the observation ``(C, R)``
+        for *this* step comes from ``dynamics_noise_model.noise_at(μ⁻)`` /
         ``observation_model.linearize(μ⁻)``, where ``μ⁻ = A·prior.mean + b`` is the
         predicted mean — pure mean-propagation, so it needs no Q and can be computed
         before any factor exists. This is exactly ``KalmanBackend``'s linearization
@@ -195,15 +189,16 @@ class ChainBackend:
             )
 
         if self._sensor_fixed:
-            assert self._observation is not None  # built in __init__ on this path
-            observation_factor = self._observation
+            observation_matrix = model.observation_matrix  # C
+            observation_noise = model.observation_noise  # R
         else:
             assert model.observation_model is not None  # guaranteed by _sensor_fixed
             observation_matrix, observation_noise = model.observation_model.linearize(
                 mean_pred
             )
-            observation_factor = GaussianObservation(
-                observation_matrix, observation_noise=observation_noise
+            # R(μ⁻) is inverted in the message, so it must be positive-definite.
+            validate_covariance(
+                observation_noise, "observation_noise", require_definite=True
             )
 
         prior_precision = jnp.linalg.inv(prior.cov)  # Λ₀ = Σ⁻¹
@@ -212,7 +207,9 @@ class ChainBackend:
         )  # h₀ = Λ₀μ; invariant-preserving lift of a validated Belief — no re-validate
 
         predicted = transition._predict(prior_msg, control_term)
-        posterior_msg = predicted + observation_factor._message(observation)
+        posterior_msg = predicted + likelihood_message(
+            observation_matrix, observation_noise, observation
+        )
 
         mean_post, cov_post = posterior_msg.to_moment()  # Σ = Λ⁻¹, μ = Λ⁻¹h
 

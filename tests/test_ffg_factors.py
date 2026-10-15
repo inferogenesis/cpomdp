@@ -1,19 +1,17 @@
-"""Tier-1 linear-Gaussian factor nodes (v0.4 Phase 2, DECISIONS.md ADR-012).
+"""Tier-1 linear-Gaussian factor nodes and the likelihood message (ADR-012, ADR-071).
 
-Oracle-first: these pin ``GaussianObservation`` and ``GaussianTransition`` before
-they exist, so the file is RED until ``cpomdp.ffg.factors.linear_gaussian`` lands.
-Each oracle is an independent path — the moment-form measurement update and the
-moment-form predict, computed in plain NumPy — never the canonical-form math
-under test.
+Each oracle is an independent path, the moment-form measurement update or the
+moment-form predict computed in plain NumPy, never the canonical-form maths under test.
 
-The decomposition these factors implement (one Kalman step = Phase 1 ops):
+The decomposition these pieces implement (one Kalman step = canonical-form ops):
 
-- ``GaussianObservation(C, R)._message(y)`` -> ``CanonicalGaussian`` on x, the
-  information form ``(CᵀR⁻¹C, CᵀR⁻¹y)``. The measurement *update* is then
-  ``belief + message`` (``CanonicalGaussian.__add__``).
-- ``GaussianTransition(A, Q)._predict(message, control_term)`` -> the *predict*
-  step: build the joint over ``[x, x']``, fold the message into the x block,
-  marginalize x out. Moment form: ``AΣAᵀ+Q``, ``Aμ+b``.
+- ``likelihood_message(C, R, y)`` -> ``CanonicalGaussian`` on x, the information form
+  ``(CᵀR⁻¹C, CᵀR⁻¹y)``. The measurement *update* is then ``belief + message``
+  (``CanonicalGaussian.__add__``). A graph node's sensor supplies ``(C, R)`` through
+  ``linearize``, the seam it shares with the flat model.
+- ``GaussianTransition(A, Q)._predict(message, control_term)`` -> the *predict* step:
+  build the joint over ``[x, x']``, fold the message into the x block, marginalize x
+  out. Moment form: ``AΣAᵀ+Q``, ``Aμ+b``.
 """
 
 import jax
@@ -21,13 +19,10 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from cpomdp.ffg._message import CanonicalGaussian
-from cpomdp.ffg.factors.linear_gaussian import (
-    CallableGaussianObservation,
-    GaussianCoupling,
-    GaussianObservation,
-    GaussianTransition,
-)
+from cpomdp.ffg._message import CanonicalGaussian, likelihood_message
+from cpomdp.ffg.factors.linear_gaussian import GaussianCoupling, GaussianTransition
+from cpomdp.ffg.graph import CouplingGraph
+from cpomdp.observation import CallableSensor, FixedSensor
 
 
 def _spd(rng, n):
@@ -36,7 +31,7 @@ def _spd(rng, n):
     return a @ a.T + n * np.eye(n)
 
 
-# Module-level noise_fns for the callable-observation tests: a closure/lambda is
+# Module-level noise_fns for the callable-sensor tests: a closure/lambda is
 # hashable only by identity and would defeat jit caching (mirrors CallableSensor's
 # contract — all tunables live in params, the function stays static aux).
 
@@ -58,45 +53,17 @@ def _belief_as_canonical(mean, cov):
     return CanonicalGaussian(precision, precision @ mean)
 
 
-# --- Observation factor: the measurement update -------------------------------
+# --- The likelihood message: the measurement update ----------------------------
 
 
-class TestGaussianObservation:
-    def test_observation_noise_is_keyword_only(self):
-        # Same pair as FixedSensor, same reason: (m, n) against (m, m) is only
-        # distinguishable when m != n, and the factor validates just the noise.
-        with pytest.raises(TypeError, match="positional"):
-            # Calling it wrongly is the test, so ty's arity errors are expected.
-            GaussianObservation(  # ty: ignore[missing-argument]
-                jnp.eye(2),
-                jnp.eye(2) * 0.1,  # ty: ignore[too-many-positional-arguments]
-            )
-
-    def test_stores_coerced_arrays(self):
-        fac = GaussianObservation([[1.0, 0.0]], observation_noise=[[2.0]])
-        assert isinstance(fac.observation_matrix, jax.Array)
-        np.testing.assert_array_equal(fac.observation_matrix, [[1.0, 0.0]])
-        np.testing.assert_array_equal(fac.observation_noise, [[2.0]])
-
-    def test_rejects_singular_observation_noise(self):
-        # R is inverted in the message, so a singular R is rejected at construction.
-        with pytest.raises(ValueError, match="positive-definite"):
-            GaussianObservation([[1.0]], observation_noise=[[0.0]])
-
-    def test_rejects_observation_noise_shape_mismatch(self):
-        # C is 1xn (m=1) but R is 2x2 — R must be m x m.
-        with pytest.raises(ValueError, match="match"):
-            GaussianObservation(
-                [[1.0, 0.0]], observation_noise=[[1.0, 0.0], [0.0, 1.0]]
-            )
-
+class TestLikelihoodMessage:
     def test_message_is_information_form_of_likelihood(self):
         rng = np.random.default_rng(0)
         n, m = 3, 2
         C = rng.standard_normal((m, n))
         R = _spd(rng, m)
         y = rng.standard_normal(m)
-        msg = GaussianObservation(C, observation_noise=R)._message(y)
+        msg = likelihood_message(jnp.asarray(C), jnp.asarray(R), y)
         Rinv = np.linalg.inv(R)
         np.testing.assert_allclose(msg.precision, C.T @ Rinv @ C, atol=1e-10)
         np.testing.assert_allclose(msg.potential, C.T @ Rinv @ y, atol=1e-10)
@@ -114,60 +81,57 @@ class TestGaussianObservation:
         mean_post = mean + gain @ (y - C @ mean)
         cov_post = (np.eye(n) - gain @ C) @ cov
 
-        post = _belief_as_canonical(mean, cov) + GaussianObservation(
-            C, observation_noise=R
-        )._message(y)
+        post = _belief_as_canonical(mean, cov) + likelihood_message(
+            jnp.asarray(C), jnp.asarray(R), y
+        )
         out_mean, out_cov = post.to_moment()
         np.testing.assert_allclose(out_mean, mean_post, atol=1e-8)
         np.testing.assert_allclose(out_cov, cov_post, atol=1e-8)
 
     def test_jit_and_grad_through_message(self):
-        fac = GaussianObservation(
-            [[1.0, 0.5], [0.0, 1.0]], observation_noise=[[1.0, 0.0], [0.0, 1.0]]
-        )
+        C = jnp.array([[1.0, 0.5], [0.0, 1.0]])
+        R = jnp.eye(2)
         y = jnp.array([1.0, -1.0])
-        eager = fac._message(y).potential
-        jitted = jax.jit(lambda yy: fac._message(yy).potential)(y)
+        eager = likelihood_message(C, R, y).potential
+        jitted = jax.jit(lambda yy: likelihood_message(C, R, yy).potential)(y)
         np.testing.assert_allclose(jitted, eager, atol=1e-12)
-        grad = jax.grad(lambda yy: fac._message(yy).potential.sum())(y)
+        grad = jax.grad(lambda yy: likelihood_message(C, R, yy).potential.sum())(y)
         assert bool(jnp.all(jnp.isfinite(grad)))
 
 
-# --- Callable observation factor: state-dependent R(x) (issue #27, Phase 1) ----
+# --- A node's sensor: R read at the plug-in state (issue #27, ADR-071) ----------
 
 
-class TestCallableGaussianObservation:
-    """The FFG twin of ``CallableSensor``: constant C, ``noise_fn(x, params) -> R(x)``.
+def _node_message(sensor, reading, state=None):
+    """The message a one-node graph builds from ``sensor``'s reading at ``state``."""
+    n = sensor.linearize(jnp.zeros(1))[0].shape[1] if state is None else len(state)
+    graph = CouplingGraph(root=0, dims=(n,), couplings=(), observations={0: sensor})
+    return graph._observation_message(0, reading, state)
 
-    Oracle-first, and the *fixed* factor is the oracle: a constant ``noise_fn`` must
-    reproduce ``GaussianObservation`` exactly (the reduction), and the state-dependent
-    case is pinned against the moment-form Kalman update at the plug-in ``R(x)``. This
-    is the primitive that lets the chosen action move the covariance (the dual effect,
-    ADR-014 finding #1); without it the FFG epistemic is action-invariant (ADR-003).
+
+class TestNodeSensorMessage:
+    """A graph node carries the flat model's sensor and reads ``(C, R)`` off it.
+
+    The fixed sensor is the oracle: a constant ``noise_fn`` must reproduce it exactly
+    (the reduction), and the state-dependent case is pinned against the moment-form
+    Kalman update at the plug-in ``R(x)``. This is what lets the chosen action move the
+    covariance (the dual effect, ADR-014 finding #1). Without it the graph epistemic is
+    action-invariant (ADR-003).
     """
 
-    def test_stores_coerced_arrays(self):
-        params = {"R0": jnp.array([[2.0]]), "gain": 0.5}
-        fac = CallableGaussianObservation([[1.0, 0.0]], _scaled_noise, params)
-        assert isinstance(fac.observation_matrix, jax.Array)
-        np.testing.assert_array_equal(fac.observation_matrix, [[1.0, 0.0]])
-        assert fac.noise_fn is _scaled_noise
+    def test_fixed_sensor_message_reads_the_front_loaded_pair(self):
+        # A fixed sensor's message needs no state: the graph reuses the (C, R) it read
+        # once at construction.
+        C = np.array([[1.0, 0.5]])
+        R = np.array([[0.3]])
+        y = np.array([0.7])
+        msg = _node_message(FixedSensor(C, observation_noise=R), y)
+        ref = likelihood_message(jnp.asarray(C), jnp.asarray(R), y)
+        np.testing.assert_array_equal(msg.precision, ref.precision)
+        np.testing.assert_array_equal(msg.potential, ref.potential)
 
-    def test_rejects_non_pd_noise_at_probe(self):
-        # noise_fn is probed once at construction; a singular R(x) is rejected there —
-        # the construction-time analogue of the fixed factor's positive-definite check.
-        params = {"R0": jnp.array([[0.0]]), "gain": 0.0}
-        with pytest.raises(ValueError, match="positive-definite"):
-            CallableGaussianObservation([[1.0]], _constant_noise, params)
-
-    def test_rejects_noise_shape_mismatch(self):
-        # C is 1xn (m=1) but noise_fn returns 2x2 — R(x) must be m x m.
-        params = {"R0": jnp.eye(2), "gain": 0.0}
-        with pytest.raises(ValueError, match="covariance"):
-            CallableGaussianObservation([[1.0, 0.0]], _constant_noise, params)
-
-    def test_constant_noise_fn_matches_fixed_observation(self):
-        # The reduction: with noise_fn ≡ R0 the message equals the fixed factor's, at
+    def test_constant_noise_fn_matches_fixed_sensor(self):
+        # The reduction: with noise_fn ≡ R0 the message equals the fixed sensor's, at
         # ANY plug-in state — the "reduces to fixed" gate the whole feature rides on.
         rng = np.random.default_rng(0)
         n, m = 3, 2
@@ -175,12 +139,11 @@ class TestCallableGaussianObservation:
         R0 = _spd(rng, m)
         y = rng.standard_normal(m)
         params = {"R0": jnp.asarray(R0), "gain": 0.0}
-        callable_fac = CallableGaussianObservation(C, _constant_noise, params)
-        fixed = GaussianObservation(C, observation_noise=R0)
+        callable_sensor = CallableSensor(C, _constant_noise, params)
+        ref = _node_message(FixedSensor(C, observation_noise=R0), y)
         states = (np.zeros(n), rng.standard_normal(n), 3.0 * rng.standard_normal(n))
         for state in states:
-            msg = callable_fac._message(y, jnp.asarray(state))
-            ref = fixed._message(y)
+            msg = _node_message(callable_sensor, y, jnp.asarray(state))
             np.testing.assert_allclose(msg.precision, ref.precision, atol=1e-10)
             np.testing.assert_allclose(msg.potential, ref.potential, atol=1e-10)
 
@@ -193,10 +156,10 @@ class TestCallableGaussianObservation:
         y = rng.standard_normal(m)
         state = rng.standard_normal(n)
         params = {"R0": jnp.asarray(R0), "gain": 0.3}
-        fac = CallableGaussianObservation(C, _scaled_noise, params)
+        sensor = CallableSensor(C, _scaled_noise, params)
         r_at = R0 * (1.0 + 0.3 * float(state @ state))
         r_inv = np.linalg.inv(r_at)
-        msg = fac._message(y, jnp.asarray(state))
+        msg = _node_message(sensor, y, jnp.asarray(state))
         np.testing.assert_allclose(msg.precision, C.T @ r_inv @ C, atol=1e-9)
         np.testing.assert_allclose(msg.potential, C.T @ r_inv @ y, atol=1e-9)
 
@@ -216,8 +179,10 @@ class TestCallableGaussianObservation:
         cov_post = (np.eye(n) - gain @ C) @ cov
 
         params = {"R0": jnp.asarray(R0), "gain": 0.2}
-        fac = CallableGaussianObservation(C, _scaled_noise, params)
-        post = _belief_as_canonical(mean, cov) + fac._message(y, jnp.asarray(state))
+        sensor = CallableSensor(C, _scaled_noise, params)
+        post = _belief_as_canonical(mean, cov) + _node_message(
+            sensor, y, jnp.asarray(state)
+        )
         out_mean, out_cov = post.to_moment()
         np.testing.assert_allclose(out_mean, mean_post, atol=1e-8)
         np.testing.assert_allclose(out_cov, cov_post, atol=1e-8)
@@ -228,51 +193,28 @@ class TestCallableGaussianObservation:
         # (which ADR-003 broke for a fixed sensor).
         C = np.array([[1.0, 0.0]])
         params = {"R0": jnp.array([[1.0]]), "gain": 0.5}
-        fac = CallableGaussianObservation(C, _scaled_noise, params)
-        near = fac._message(np.array([0.0]), jnp.zeros(2)).precision  # R small ⇒ sharp
-        far = fac._message(np.array([0.0]), jnp.array([3.0, 0.0])).precision  # R big
-        assert float(near[0, 0]) > float(far[0, 0])
-
-    def test_linearize_returns_C_and_R_at_state(self):
-        # The seam the backend/selector reads R(μ⁺) from: linearize(x) -> (C, R(x)).
-        C = np.array([[1.0, 0.0], [0.0, 1.0]])
-        params = {"R0": jnp.eye(2), "gain": 0.25}
-        fac = CallableGaussianObservation(C, _scaled_noise, params)
-        state = jnp.array([1.0, -1.0])
-        out_C, out_R = fac.linearize(state)
-        np.testing.assert_allclose(out_C, C, atol=1e-12)
-        np.testing.assert_allclose(out_R, np.eye(2) * (1.0 + 0.25 * 2.0), atol=1e-12)
-
-    def test_pytree_roundtrip_keeps_params_as_leaf(self):
-        # noise_params is a traced leaf (so EFE is grad-able w.r.t. it — sensor
-        # learning); noise_fn is static aux. Flatten/unflatten must preserve both.
-        params = {"R0": jnp.array([[2.0]]), "gain": 0.5}
-        fac = CallableGaussianObservation([[1.0, 0.0]], _scaled_noise, params)
-        leaves, treedef = jax.tree_util.tree_flatten(fac)
-        assert any(np.asarray(leaf).shape == (1, 1) for leaf in leaves)  # R0 is a leaf
-        rebuilt = jax.tree_util.tree_unflatten(treedef, leaves)
-        assert rebuilt.noise_fn is _scaled_noise
-        np.testing.assert_array_equal(
-            rebuilt.observation_matrix, fac.observation_matrix
-        )
+        sensor = CallableSensor(C, _scaled_noise, params)
+        near = _node_message(sensor, np.array([0.0]), jnp.zeros(2)).precision
+        far = _node_message(sensor, np.array([0.0]), jnp.array([3.0, 0.0])).precision
+        assert float(near[0, 0]) > float(far[0, 0])  # R small near 0, so sharper
 
     def test_jit_and_grad_through_message(self):
         params = {"R0": jnp.array([[1.0]]), "gain": 0.5}
-        fac = CallableGaussianObservation([[1.0, 0.0]], _scaled_noise, params)
+        sensor = CallableSensor([[1.0, 0.0]], _scaled_noise, params)
         y = jnp.array([0.7])
         state = jnp.array([1.2, -0.3])
-        eager = fac._message(y, state).potential
-        jitted = jax.jit(lambda s: fac._message(y, s).potential)(state)
+        eager = _node_message(sensor, y, state).potential
+        jitted = jax.jit(lambda s: _node_message(sensor, y, s).potential)(state)
         np.testing.assert_allclose(jitted, eager, atol=1e-12)
         # grad w.r.t. the noise params (the sensor-learning gradient must be finite).
         grad = jax.grad(
-            lambda g: (
-                CallableGaussianObservation(
+            lambda g: _node_message(
+                CallableSensor(
                     [[1.0, 0.0]], _scaled_noise, {"R0": params["R0"], "gain": g}
-                )
-                ._message(y, state)
-                .potential.sum()
-            )
+                ),
+                y,
+                state,
+            ).potential.sum()
         )(0.5)
         assert bool(jnp.isfinite(grad))
 
@@ -459,7 +401,7 @@ class TestGaussianCoupling:
         cov_post = (np.eye(p + c) - gain @ H) @ cov_j
         parent_mean, parent_cov = mean_post[:p], cov_post[:p, :p]
 
-        child_msg = GaussianObservation(np.eye(c), observation_noise=R)._message(y)
+        child_msg = likelihood_message(jnp.eye(c), jnp.asarray(R), y)
         up = GaussianCoupling(W, coupling_noise=Q)._message_to_parent(child_msg)
         out_mean, out_cov = (_belief_as_canonical(m0, P0) + up).to_moment()
 

@@ -31,12 +31,12 @@ import jax.numpy as jnp
 import numpy as np
 
 from cpomdp import (
-    CallableGaussianObservation,
+    CallableSensor,
     Coupling,
     CouplingGraph,
     CouplingGraphBackend,
+    FixedSensor,
     GaussianCoupling,
-    GaussianObservation,
     GaussianTransition,
     Preference,
 )
@@ -342,9 +342,9 @@ def build_maze(
         )
     )
     arena_sensor = (
-        CallableGaussianObservation(observed, cue_noise, params)
+        CallableSensor(observed, cue_noise, params)
         if epistemic_alive
-        else GaussianObservation(observed, observation_noise=fixed_noise)
+        else FixedSensor(observed, observation_noise=fixed_noise)
     )
 
     # W: the context drives the goal belief on axis 0 and nothing else. A wider context

@@ -474,9 +474,8 @@ certainty equivalence is optimal, and no use of the readings beats it.
   built-in backends share and the second is the RxInfer test oracle, and a cpomdp user
   calls neither (ADR-069). `import cpomdp` no longer leaves `cpomdp.jax` behind.
 - **Breaking:** the graph model's message passing is private. `GaussianTransition.predict`,
-  `GaussianCoupling.message_to_parent` and `message_to_child`, the graph observation
-  factors' `message` and `CouplingGraph.infer_all` take a leading underscore, and
-  `cpomdp.ffg.message` is `cpomdp.ffg._message`. v0.4.4 published them on the top-level
+  `GaussianCoupling.message_to_parent` and `message_to_child` and `CouplingGraph.infer_all`
+  take a leading underscore, and `cpomdp.ffg.message` is `cpomdp.ffg._message`. v0.4.4 published them on the top-level
   construction classes, typed on a `CanonicalGaussian` no page documents. They are the hot
   path the energy work will change. A user builds the graph and runs it through
   `CouplingGraphBackend` or `CouplingGraph.infer`, and neither needs them (ADR-069).
@@ -569,13 +568,21 @@ certainty equivalence is optimal, and no use of the readings beats it.
   public pair a reader meets together. The two positional slots also transposed without
   raising for a 2-D increasing target, since `(lo, hi)` then satisfies the target's shape
   check and the target satisfies `lo < hi`. 24 call sites moved to keywords.
-- **Breaking:** `FixedSensor` and `GaussianObservation` take `observation_noise` by
-  keyword. The observation pair is (m, n) against (m, m), so the two are distinguishable
-  by shape only when m != n, and a 1-D sensor is the case where they coincide. Only the
-  noise is content-checked, and a square symmetric observation matrix passes that check,
-  so a transposed pair built a sensor whose Jacobian was its noise. `CallableSensor` and
-  `CallableGaussianObservation` are left alone: their arguments are a matrix, a callable
-  and a pytree, so a swap raises rather than going quiet. 46 call sites moved to keywords.
+- **Breaking:** `FixedSensor` takes `observation_noise` by keyword. The observation pair
+  is (m, n) against (m, m), so the two are distinguishable by shape only when m != n, and
+  a 1-D sensor is the case where they coincide. Only the noise is content-checked, and a
+  square symmetric observation matrix passes that check, so a transposed pair built a
+  sensor whose Jacobian was its noise. `CallableSensor` is left alone: its arguments are
+  a matrix, a callable and a pytree, so a swap raises rather than going quiet. 46 call
+  sites moved to keywords.
+- **Breaking:** a graph node takes the sensor a flat model takes. `GaussianObservation` and
+  `CallableGaussianObservation` are removed. Pass a `FixedSensor` or a `CallableSensor`
+  in `CouplingGraph`'s `observations`, with the same arguments. The two pairs had
+  identical constructors and fields, and each failed in the other's slot.
+  `LinearGaussianModel` refused the graph classes, and a `FixedSensor` on a graph node
+  constructed and then raised at the first filter step. A node now takes any
+  `ObservationModel`, and the graph reads `C` and `R` through `linearize` as the flat
+  model does (ADR-071).
 - **Breaking:** `GaussianTransition` takes `dynamics_noise` by keyword, and
   `GaussianTransition.from_ou` takes `stationary_var` and `dt` by keyword. Both follow
   `LinearGaussianModel` for the same reason, and the transition factor is the worse of
@@ -614,7 +621,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
   dependent sensor field later claimed. The `.C` alias is unchanged, and no numerical
   behaviour moved.
 - **Breaking:** `sensor_noise` is now `observation_noise`, on `LinearGaussianModel`,
-  `FixedSensor`, `CallableSensor`, the FFG observation factors and `epistemic_value`.
+  `FixedSensor`, `CallableSensor` and `epistemic_value`.
   R is the *observation noise covariance* in the state-space literature this library
   writes in, and it is the noun in "state-dependent observation noise", the phrase the
   `R(x)` work is published under. The backends already said it. `observation_noise_at`

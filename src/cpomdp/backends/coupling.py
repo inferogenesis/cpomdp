@@ -23,8 +23,9 @@ from numpy.typing import ArrayLike
 
 from cpomdp.backends.base import _validate_step_inputs
 from cpomdp.ffg._message import CanonicalGaussian
-from cpomdp.ffg.factors.linear_gaussian import GaussianTransition, ObservationFactor
+from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
 from cpomdp.ffg.graph import Coupling, CouplingGraph
+from cpomdp.observation import ObservationModel
 from cpomdp.types import Belief, LinearGaussianModel
 
 __all__ = ["CouplingGraphBackend", "IncompatibleLinearizationError"]
@@ -58,7 +59,7 @@ class _JointObservation:
     def __init__(
         self,
         observation_matrix: jax.Array,
-        factors: tuple[ObservationFactor, ...],
+        factors: tuple[ObservationModel, ...],
         blocks: tuple[tuple[int, int], ...],
     ) -> None:
         self.observation_matrix = observation_matrix
@@ -285,7 +286,7 @@ class CouplingGraphBackend:
         """
         layout, cursor = [], 0
         for node in sorted(self.graph.observations):
-            width = self.graph.observations[node].observation_matrix.shape[0]
+            width = self.graph._linearized_sensor(node)[0].shape[0]
             layout.append((node, cursor, cursor + width))
             cursor += width
         return tuple(layout), cursor
@@ -303,24 +304,13 @@ class CouplingGraphBackend:
         """
         rows, noise_blocks = [], []
         for node, _lo, _hi in self._obs_layout:
-            obs = self.graph.observations[node]
-            embedded = jnp.zeros((obs.observation_matrix.shape[0], self.n_total))
-            embedded = embedded.at[:, self._block(node)].set(obs.observation_matrix)
+            # R (fixed) or the representative R(0) (state-dependent).
+            observation_matrix, observation_noise = self.graph._linearized_sensor(node)
+            embedded = jnp.zeros((observation_matrix.shape[0], self.n_total))
+            embedded = embedded.at[:, self._block(node)].set(observation_matrix)
             rows.append(embedded)
-            noise_blocks.append(self._representative_noise(obs))
+            noise_blocks.append(observation_noise)
         return rows, noise_blocks
-
-    @staticmethod
-    def _representative_noise(obs: ObservationFactor) -> jax.Array:
-        """An ``(m, m)`` noise block for the validation/flat model.
-
-        The constant ``R`` for a fixed sensor; a representative ``R(0)`` for a
-        state-dependent one — used only to size and shape-check the validation model,
-        never as a filter value (the filter linearizes ``R`` at μ⁺ per step). Reads it
-        through the shared ``linearize`` seam, so no per-type branch.
-        """
-        node_dim = obs.observation_matrix.shape[1]
-        return obs.linearize(jnp.zeros(node_dim))[1]  # R (fixed) or R(0) (state-dep.)
 
     def _build_validation_model(self) -> LinearGaussianModel:
         """A flat model so ``_validate_step_inputs`` shape-checks inputs identically.
@@ -399,14 +389,14 @@ class CouplingGraphBackend:
         """Scatter each node's observation message into the joint (Λ_obs, h_obs).
 
         The per-step twin of ``_assemble_structural_precision``: each observed node's
-        ``GaussianObservation._message(y_node)`` is a canonical message on that node
-        (``CᵀR⁻¹C``, ``CᵀR⁻¹y``); place each at the node's offset. Data-dependent — it
-        reads ``y`` — unlike the front-loaded structural precision.
+        reading is a canonical message on that node (``CᵀR⁻¹C``, ``CᵀR⁻¹y``), built
+        from the sensor's front-loaded ``(C, R)``. Each lands at its node's offset. It
+        reads ``y``, so it runs per step, unlike the front-loaded structural precision.
         """
         precision = jnp.zeros((self.n_total, self.n_total))
         potential = jnp.zeros(self.n_total)
         for node, lo, hi in self._obs_layout:
-            message = self.graph.observations[node]._message(observation[lo:hi])
+            message = self.graph._observation_message(node, observation[lo:hi])
             block = self._block(node)
             precision = precision.at[block, block].add(message.precision)
             potential = potential.at[block].add(message.potential)
@@ -419,19 +409,19 @@ class CouplingGraphBackend:
 
         The state-dependent twin of ``_observation_messages``: a node with a
         state-dependent sensor evaluates its ``R`` at that node's block of the predicted
-        mean ``μ⁺`` (``obs._message(y_node, μ⁺[block])``); a fixed sensor ignores it
-        (``obs._message(y_node)``), so a mixed graph works. This is where the chosen
-        action reaches the covariance — ``μ⁺`` moves with the action, so ``R(μ⁺)`` does
-        too, and the epistemic term stops being action-invariant (ADR-003).
+        mean ``μ⁺``. A fixed sensor's ``linearize`` ignores it, so a mixed graph works.
+        This is where the chosen action reaches the covariance. ``μ⁺`` moves with the
+        action, so ``R(μ⁺)`` does too, and the epistemic term stops being
+        action-invariant (ADR-003).
         """
         precision = jnp.zeros((self.n_total, self.n_total))
         potential = jnp.zeros(self.n_total)
         for node, lo, hi in self._obs_layout:
             block = self._block(node)
-            # Uniform call: a fixed factor ignores the state, a state-dependent one
-            # evaluates R at μ⁺[block] — no type branch (shared message interface).
-            message = self.graph.observations[node]._message(
-                observation[lo:hi], predicted_mean[block]
+            # A fixed sensor ignores the state and a state-dependent one evaluates R at
+            # μ⁺[block], so one call serves both.
+            message = self.graph._observation_message(
+                node, observation[lo:hi], predicted_mean[block]
             )
             precision = precision.at[block, block].add(message.precision)
             potential = potential.at[block].add(message.potential)
