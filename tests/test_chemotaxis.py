@@ -133,9 +133,11 @@ def test_epistemic_can_target_the_hidden_hub():
     # info gain the flat observation-space EFE is limited to.
     graph, transitions = chemotaxis_ffg(dt=0.01)
     backend = CouplingGraphBackend(graph, transitions, prior=unit_prior(graph))
-    observation_matrix, observation_noise = backend.observation_model
+    observation_matrix = backend.model.observation_matrix
     prior = Belief(mean=np.zeros(5), cov=np.eye(5))
-    sigma_pred = backend.predicted_belief(prior).cov  # Σ⁺
+    predicted = backend.predicted_belief(prior)
+    sigma_pred = predicted.cov  # Σ⁺
+    observation_noise = backend.observation_noise_at(predicted.mean)  # R(μ⁺)
 
     def info_gain(info_block):
         return float(

@@ -635,6 +635,49 @@ class TestOneNamePerQuantity:
         assert not hasattr(backend, duplicate)
 
 
+def _noise_rising_off_zero(x, params):
+    """``R(x) = 0.5 + x₀²``, so ``R(0)`` and ``R`` anywhere else differ."""
+    return jnp.array([[0.5 + x[0] ** 2]])
+
+
+class TestObservationChannel:
+    """C is read off the model and R at a mean, so no accessor hands out ``R(0)``.
+
+    The backend's `observation_model` returned `(C, R)` with R linearized at zero,
+    beside `model.observation_model`, which is a sensor object.
+    """
+
+    def test_c_is_the_model_s_observation_matrix(self):
+        backend = _build(
+            _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
+        )
+        expected = np.zeros((3, 5))
+        expected[[0, 1, 2], [2, 3, 4]] = 1.0  # nodes 2, 3, 4 in ascending order
+        np.testing.assert_array_equal(
+            np.asarray(backend.model.observation_matrix), expected
+        )
+
+    def test_r_is_read_at_the_mean_it_is_asked_about(self):
+        backend = _build_rx(
+            (2,),
+            [],
+            {0: (np.array([[1.0, 0.0]]), _noise_rising_off_zero, ())},
+            [(np.eye(2), np.eye(2) * 0.1)],
+        )
+        np.testing.assert_allclose(
+            np.asarray(backend.observation_noise_at([3.0, 3.0])), [[9.5]]
+        )
+
+    def test_no_tuple_freezes_r_at_zero(self):
+        backend = _build_rx(
+            (2,),
+            [],
+            {0: (np.array([[1.0, 0.0]]), _noise_rising_off_zero, ())},
+            [(np.eye(2), np.eye(2) * 0.1)],
+        )
+        assert not hasattr(backend, "observation_model")
+
+
 class TestNodeLookup:
     """A node outside the graph is refused by name, never read as an empty block.
 

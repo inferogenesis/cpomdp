@@ -309,7 +309,7 @@ class FfgEfeSelector:
         # returns the same constant each time.
         self._backend = backend
         self._target = target
-        self._observation_matrix, _ = backend.observation_model  # C (constant)
+        self._observation_matrix = backend.model.observation_matrix  # C (constant)
         self._candidates = jnp.linspace(lo, hi, n_candidates)[:, None]
 
     @staticmethod
