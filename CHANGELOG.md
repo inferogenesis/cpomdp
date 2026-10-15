@@ -347,6 +347,13 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `sample_action` costs. `Agent`, `EFESelector`, `FfgEfeSelector` and `LQRController`
   print what they were built with, so an agent typed at a prompt shows the horizon or
   the gain it chose. The Agent page shows how to compare horizons.
+- The two grid selectors answer the same questions. `candidates` on each is the grid
+  searched, shape `(n_candidates, p)`, so an example plotting the scores reads it rather
+  than rebuilding it. `FfgEfeSelector.warrant` reads `CORROBORATED`, as
+  `EFESelector.warrant` does. Both default to 21 candidates, as `ObservationGoal` does,
+  and `FfgEfeSelector` aims at the whole joint state when `info_block` is left out, as
+  `info_node=None` does on the goal. `n_candidates` is the grid's total count
+  everywhere. `ObservationGoal` called it a resolution, which reads as per axis.
 
 ### Fixed
 
@@ -417,6 +424,12 @@ certainty equivalence is optimal, and no use of the readings beats it.
   dimension, as `EFESelector` does. A control-free backend returned the grid's first
   action, and `p = 2` constructed and then failed at the first `select`. The two
   selectors now share one check.
+- `ObservationGoal`, `EFESelector` and `FfgEfeSelector` check `action_bounds` through
+  one helper, as two finite scalars with the lower first. Each compared the pair with
+  Python's `<`, which stops at the first element that differs, so
+  `action_bounds=([-1, 5], [1, -5])` constructed with its second axis inverted and the
+  selectors then failed inside JAX's `linspace`. An infinite bound and a fractional
+  `n_candidates` are refused too, and `ObservationGoal.action_bounds` holds two floats.
 
 ### Changed
 
