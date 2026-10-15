@@ -87,6 +87,30 @@ def _candidate_grid(
     return jnp.linspace(lo, hi, _checked_n_candidates(n_candidates))[:, None]
 
 
+_TIE_TOLERANCE = 1e-9
+"""Scores within this of the best, relative to it, tie. The difference is roundoff."""
+
+
+def _grid_choice(
+    candidates: Float64[Array, "k p"],
+    distance_from_zero: Float64[Array, "k"],
+    g: Float64[Array, "k"],
+) -> Float64[Array, "p"]:
+    """The candidate with the lowest finite ``G``, or NaN when no score is finite.
+
+    Among candidates whose scores tie, the one nearest zero wins. A tie means the action
+    reaches nothing the scores read, so the least action is the honest choice. The
+    graph backend's canonical form leaves roundoff of about ``1e-12`` on such a tie,
+    so scores within ``_TIE_TOLERANCE`` of the best count as tied. Jit-safe, and one
+    more pass over ``k`` scores than a plain argmin.
+    """
+    scores = jnp.where(jnp.isfinite(g), g, jnp.inf)  # NaN or inf never wins
+    best = jnp.min(scores)
+    tied = scores <= best + _TIE_TOLERANCE * jnp.maximum(1.0, jnp.abs(best))
+    index = jnp.argmin(jnp.where(tied, distance_from_zero, jnp.inf))
+    return jnp.where(jnp.isfinite(best), candidates[index], jnp.nan)
+
+
 @jax.tree_util.register_pytree_node_class
 @dataclass(frozen=True, init=False)
 class Preference:
@@ -214,8 +238,13 @@ class EFESelector:
     Built directly, the selector uses the ``horizon`` it is given. On a model where a
     push takes more than one step to reach the reading, ``horizon = 1`` leaves the
     target out of every comparison. The candidates then differ by their noise alone, or
-    tie and the first wins. The ``Agent`` reads the horizon for an ``ObservationGoal``
-    off the model and refuses one too short for the target to move the scores.
+    tie. The ``Agent`` reads the horizon for an ``ObservationGoal`` off the model and
+    refuses one too short for the target to move the scores.
+
+    Candidates whose scores tie to within roundoff go to the one nearest zero. When no
+    candidate scores a finite ``G``, ``select`` returns NaN rather than an edge of the
+    box. A state-dependent noise that is not a covariance at the predicted states does
+    that, and [`Agent`][cpomdp.Agent] refuses the NaN.
 
     Honest caveat: ``horizon`` selects the best *constant* action, not the best
     *sequence*. A genuinely sequential epistemic policy — move to sense, then exploit —
@@ -260,22 +289,18 @@ class EFESelector:
         self._model = model
         self._horizon = horizon
         self._candidates = candidates
-
-    @staticmethod
-    def _argmin(g: Float64[Array, "k"]) -> Array:
-        # A NaN-scoring candidate must not silently win: map NaN -> +inf so it loses
-        # the search (jnp.argmin otherwise treats NaN as the minimum).
-        return jnp.argmin(jnp.where(jnp.isnan(g), jnp.inf, g))
+        self._distance_from_zero = jnp.linalg.norm(candidates, axis=1)
 
     def select(self, belief: Belief, preference: Preference) -> Float64[Array, "p"]:
         """The grid action minimising ``G`` over the horizon (the per-cycle work).
 
         At ``horizon = 1`` one ``vmap`` of the one-step kernel + ``argmin``. At
         ``horizon > 1`` one ``vmap`` of ``policy_efe`` over the constant-action policies
-        + ``argmin``, returning the first (= constant) action of the best policy.
+        + ``argmin``, returning the first (= constant) action of the best policy. NaN
+        when no candidate scores a finite ``G``.
         """
         g = self._scores(belief, preference)
-        return self._candidates[self._argmin(g)]  # first (= constant) action
+        return _grid_choice(self._candidates, self._distance_from_zero, g)
 
     def _scores(self, belief: Belief, preference: Preference) -> Float64[Array, "k"]:
         """``G`` for every candidate over the horizon, in grid order."""
@@ -389,11 +414,7 @@ class FfgEfeSelector:
         self._info_block = checked_info_block
         self._observation_matrix, _ = backend.observation_model  # C (constant)
         self._candidates = candidates
-
-    @staticmethod
-    def _argmin(g: Float64[Array, "k"]) -> Array:
-        # A NaN-scoring candidate must not silently win: map NaN -> +inf so it loses.
-        return jnp.argmin(jnp.where(jnp.isnan(g), jnp.inf, g))
+        self._distance_from_zero = jnp.linalg.norm(candidates, axis=1)
 
     def select(self, belief: Belief, preference: Preference) -> Float64[Array, "p"]:
         """The grid action minimising ``G`` (the per-cycle work).
@@ -401,7 +422,9 @@ class FfgEfeSelector:
         For each candidate: predict the joint (``predicted_belief`` → ``μ⁺``, ``Σ⁺``),
         score with ``_ffg_efe_step``, ``argmin`` over the grid. ``R`` is re-read at
         ``μ⁺`` per candidate — constant under a fixed sensor, action-dependent under
-        ``R(x)`` (the dual effect). This is the RFC-001 hot path; keep it lean.
+        ``R(x)`` (the dual effect). This is the RFC-001 hot path; keep it lean. Ties
+        and scores that are not finite go as for
+        [`EFESelector`][cpomdp.EFESelector].
         """
 
         def g_of(action: Float64[Array, "p"]) -> Float64[Array, ""]:
@@ -421,7 +444,7 @@ class FfgEfeSelector:
             return g
 
         g = jax.vmap(g_of)(self._candidates)
-        return self._candidates[self._argmin(g)]
+        return _grid_choice(self._candidates, self._distance_from_zero, g)
 
     @property
     def candidates(self) -> Float64[Array, "k p"]:

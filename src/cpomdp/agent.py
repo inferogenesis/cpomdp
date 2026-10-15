@@ -542,7 +542,10 @@ class Agent:
 
         Raises:
             ValueError: If this is a perceive-only agent (built without an
-                ``objective``) — there is nothing to act toward.
+                ``objective``) — there is nothing to act toward. Also raised when the
+                selector returns NaN, which the grid selectors do when no candidate
+                scores a finite ``G``. The action is then not remembered. The check
+                is one host read of the ``p`` action entries per cycle.
         """
         if self._selector is None:
             raise ValueError(
@@ -551,5 +554,12 @@ class Agent:
                 "sample_action()."
             )
         assert self._preference is not None  # set with _selector; narrows the type
-        self._last_action = self._selector.select(self.belief, self._preference)
-        return self._last_action
+        action = self._selector.select(self.belief, self._preference)
+        if bool(jnp.isnan(action).any()):
+            raise ValueError(
+                "the selector returned no action: no candidate scored a finite "
+                "expected free energy at this belief. A state-dependent R(x) or Q(x) "
+                "that is not a covariance at the predicted states does this."
+            )
+        self._last_action = action
+        return action
