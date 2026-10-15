@@ -112,7 +112,7 @@ def _posteriors() -> tuple[Belief, Belief, float]:
     graph = _graph()
     edges, obs_r = _topology(graph)
     readings = {node: np.array([READINGS[node]]) for node in obs_r}
-    native = graph.infer(Belief(mean=[PRIOR_MEAN], cov=[[PRIOR_VAR]]), readings)
+    native = graph.infer(readings, Belief(mean=[PRIOR_MEAN], cov=[[PRIOR_VAR]]))
     flat = _infer_flattened(edges, obs_r)
     gap = max(
         float(np.max(np.abs(np.asarray(native.mean) - np.asarray(flat.mean)))),

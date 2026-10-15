@@ -180,7 +180,7 @@ def _check_infer(root, dims, edges, obs_specs, m0, P0, readings, atol=1e-8):
         root=root, dims=dims, couplings=couplings, observations=observations
     )
     m0, P0 = np.asarray(m0, float), np.asarray(P0, float)
-    out = graph.infer(Belief(mean=m0, cov=P0), readings)
+    out = graph.infer(readings, Belief(mean=m0, cov=P0))
     mu_o, cov_o = _tree_marginal_oracle(root, dims, edges, obs_specs, m0, P0, readings)
     np.testing.assert_allclose(np.asarray(out.mean), mu_o, atol=atol)
     np.testing.assert_allclose(np.asarray(out.cov), cov_o, atol=atol)
@@ -313,7 +313,7 @@ class TestCouplingGraphInfer:
             0, (2, 1), (Coupling(0, 1, GaussianCoupling(w, coupling_noise=q)),), {}
         )
         m0, P0 = rng.standard_normal(2), _spd(rng, 2)
-        out = graph.infer(Belief(mean=m0, cov=P0), {})
+        out = graph.infer({}, Belief(mean=m0, cov=P0))
         np.testing.assert_allclose(np.asarray(out.mean), m0, atol=1e-8)
         np.testing.assert_allclose(np.asarray(out.cov), P0, atol=1e-8)
 
@@ -330,24 +330,38 @@ class TestCouplingGraphInfer:
         # It used to raise a bare KeyError: 1.
         graph = self._two_node_graph({})
         with pytest.raises(ValueError, match=r"node 1 has no sensor"):
-            graph.infer(Belief(mean=np.zeros(1), cov=np.eye(1)), {1: np.zeros(1)})
+            graph.infer({1: np.zeros(1)}, Belief(mean=np.zeros(1), cov=np.eye(1)))
 
     def test_prior_over_the_wrong_dimension_is_refused_by_name(self):
         # It used to raise "cannot add messages of shape (2, 2) and (1, 1)".
         graph = self._two_node_graph({})
         with pytest.raises(ValueError, match=r"prior.*root node 0.*1-D"):
-            graph.infer(Belief(mean=np.zeros(2), cov=np.eye(2)), {})
+            graph.infer({}, Belief(mean=np.zeros(2), cov=np.eye(2)))
 
     def test_prior_that_is_not_a_belief_is_refused(self):
         graph = self._two_node_graph({})
         with pytest.raises(TypeError, match="prior must be a Belief"):
-            graph.infer({1: np.zeros(1)}, {})
+            graph.infer({}, {1: np.zeros(1)})
 
     def test_reading_of_the_wrong_width_is_refused_by_name(self):
         sensor = FixedSensor(np.eye(1), observation_noise=np.eye(1))
         graph = self._two_node_graph({1: sensor})
         with pytest.raises(ValueError, match=r"reading on node 1.*\(1,\)"):
-            graph.infer(Belief(mean=np.zeros(1), cov=np.eye(1)), {1: np.zeros(2)})
+            graph.infer({1: np.zeros(2)}, Belief(mean=np.zeros(1), cov=np.eye(1)))
+
+    def test_takes_the_readings_first_as_infer_states_does(self):
+        # infer_states(observation, prior) sets the order every inference call follows.
+        sensor = FixedSensor(np.eye(1), observation_noise=np.eye(1))
+        graph = self._two_node_graph({1: sensor})
+        prior = Belief(mean=np.zeros(1), cov=np.eye(1))
+        out = graph.infer({1: np.ones(1)}, prior)
+        assert float(out.mean[0]) > 0.0  # the reading pulled the root up
+
+    def test_readings_that_are_not_a_mapping_are_refused(self):
+        graph = self._two_node_graph({})
+        prior = Belief(mean=np.zeros(1), cov=np.eye(1))
+        with pytest.raises(TypeError, match="readings must map"):
+            graph.infer(prior, prior)
 
     def test_jit_grad_vmap_through_infer(self):
         # The collect is static structure over traced array data, so it jits, vmaps over
@@ -369,7 +383,7 @@ class TestCouplingGraphInfer:
         prior = Belief(mean=jnp.zeros(2), cov=jnp.eye(2))
 
         def root_mean(y):
-            return graph.infer(prior, {1: y}).mean
+            return graph.infer({1: y}, prior).mean
 
         y = jnp.array([0.7])
         np.testing.assert_allclose(
@@ -663,7 +677,7 @@ class TestCouplingGraphValidation:
         )
         graph = CouplingGraph(0, (1, 1), (Coupling(0, 1, self._w(1, 1)),), {1: sensor})
         with pytest.raises(ValueError, match=r"node 1.*CouplingGraphBackend"):
-            graph.infer(Belief(mean=np.zeros(1), cov=np.eye(1)), {1: np.zeros(1)})
+            graph.infer({1: np.zeros(1)}, Belief(mean=np.zeros(1), cov=np.eye(1)))
 
 
 # --- CouplingGraph.infer vs the normal backend on the hand-flattened joint ---
@@ -767,7 +781,7 @@ class TestFlattenedKalmanParity:
             root=root, dims=dims, couplings=couplings, observations=observations
         )
         m0, p0 = np.asarray(m0, float), np.asarray(p0, float)
-        out = graph.infer(Belief(mean=m0, cov=p0), readings)
+        out = graph.infer(readings, Belief(mean=m0, cov=p0))
         km, kc = _flattened_kalman_root(root, dims, edges, obs_specs, m0, p0, readings)
         np.testing.assert_allclose(np.asarray(out.mean), km, atol=atol)
         np.testing.assert_allclose(np.asarray(out.cov), kc, atol=atol)

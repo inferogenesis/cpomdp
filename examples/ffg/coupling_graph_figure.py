@@ -171,7 +171,7 @@ def assemble_joint_precision() -> np.ndarray:
 def _posteriors() -> tuple[Belief, Belief, float]:
     """Both routes' root beliefs and the max absolute gap between them."""
     graph, prior, readings = build_graph()
-    native = graph.infer(prior, readings)
+    native = graph.infer(readings, prior)
     flat = infer_flattened()
     gap = max(
         float(np.max(np.abs(np.asarray(native.mean) - np.asarray(flat.mean)))),
@@ -203,7 +203,7 @@ couplings = (
 )
 graph  = CouplingGraph(root=r, dims=dims,
                        couplings=couplings, observations=obs)
-belief = graph.infer(prior, {a: y_a, b: y_b})"""
+belief = graph.infer({a: y_a, b: y_b}, prior)"""
 
 
 def _draw_tree(ax) -> None:
