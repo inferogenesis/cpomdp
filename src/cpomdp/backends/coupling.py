@@ -10,7 +10,7 @@ The composition is driven relaxation (ADR-017): each node evolves on its own tim
 is the *joint* over every node (ADR-016) — purity forces it (the protocol is prior-in /
 posterior-out, and ``Agent`` feeds the returned belief back as next step's prior), and
 it makes the recursion exact. A chosen node's belief is then a pure slice of that joint
-(``marginal`` / ``readout``).
+(``marginal``).
 """
 
 from collections.abc import Mapping, Sequence
@@ -116,7 +116,7 @@ class CouplingGraphBackend:
     [`CouplingGraph`][cpomdp.CouplingGraph] whose nodes each carry their own temporal
     dynamics. Constructed once from the graph and the per-node transitions, then
     advances a *joint* belief over every node one step at a time (prior in, posterior
-    out). Read a single node back with ``marginal`` / ``readout``.
+    out). Read a single node back with ``marginal``.
 
     Args:
         graph: the rooted tree — the structural couplings (the within-slice drive
@@ -131,8 +131,6 @@ class CouplingGraphBackend:
             built on this backend starts from it, and ``to_flat_model`` carries it.
         control_matrix: B, shape ``(n, p)`` with ``n = sum(graph.dims)``, mapping an
             action into the joint state. ``None`` for a pure filtering model.
-        readout_node: the node ``readout`` returns; defaults to ``graph.root``. The
-            latent of interest need not be the root (issue #25).
 
     An ``observation`` passed to ``infer_states`` is the readings of the observed nodes
     stacked in **ascending node-index order**, each node contributing its sensor's rows.
@@ -146,7 +144,6 @@ class CouplingGraphBackend:
         *,
         prior: Belief,
         control_matrix: ArrayLike | None = None,
-        readout_node: int | None = None,
         partition: Sequence[Sequence[int]] | None = None,
     ) -> None:
         """Validate the wiring and front-load the data-independent work (ADR-002).
@@ -162,7 +159,6 @@ class CouplingGraphBackend:
         self._offsets = tuple(int(o) for o in np.cumsum([0, *graph.dims]))
         self._n_states = self._offsets[-1]  # n, the joint state's width
         self._prior = self._validate_prior(prior)
-        self.readout_node = self._resolve_readout_node(readout_node)
         self._control = self._coerce_control(control_matrix)
         self._partition = self._resolve_partition(partition)
         # Fully-factored (every cluster a singleton) → the carry keeps the belief
@@ -213,15 +209,6 @@ class CouplingGraphBackend:
                 f"the node dimensions), got a mean of shape {prior.mean.shape}"
             )
         return prior
-
-    def _resolve_readout_node(self, readout_node: int | None) -> int:
-        """Default the readout node to the root and check it is in range."""
-        node = self.graph.root if readout_node is None else int(readout_node)
-        if not 0 <= node < len(self.graph.dims):
-            raise ValueError(
-                f"readout_node {node} out of range for {len(self.graph.dims)} nodes"
-            )
-        return node
 
     def _resolve_partition(
         self, partition: Sequence[Sequence[int]] | None
@@ -536,7 +523,7 @@ class CouplingGraphBackend:
 
         Returns:
             The posterior *joint* belief over all nodes; slice one node out with
-            ``marginal`` / ``readout``.
+            ``marginal``.
         """
         observation, action = _validate_step_inputs(
             self._flat_model, observation, prior, action
@@ -809,10 +796,6 @@ class CouplingGraphBackend:
         """
         block = self._block(self._checked_node(node))
         return Belief(mean=belief.mean[block], cov=belief.cov[block, block])
-
-    def readout(self, belief: Belief) -> Belief:
-        """The marginal at ``readout_node`` (the root by default)."""
-        return self.marginal(self.readout_node, belief)
 
     def block(self, node: int) -> range:
         """The state indices node ``node`` occupies in the joint (a public ``_block``).
