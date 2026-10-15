@@ -42,7 +42,7 @@ if TYPE_CHECKING:
     # Duck-typed at runtime (read for .goal/.precision via the efe kernels, and the
     # backend's predict/observation methods), so no runtime dependency on selection or
     # the backends package — keeps selection/backends -> enumeration the only edges.
-    from cpomdp.backends.base import EfeBackend
+    from cpomdp.backends.base import GraphBackend
     from cpomdp.selection import Preference
 
 __all__ = [
@@ -209,7 +209,7 @@ class _FfgScorer:
     The block is checked once, by ``over_backend``, so ``score`` skips the check.
     """
 
-    backend: "EfeBackend"
+    backend: "GraphBackend"
     info_block: tuple[int, ...]
 
     @property
@@ -260,7 +260,7 @@ class EnumeratedEfeSearch:
     @classmethod
     def over_backend(
         cls,
-        backend: "EfeBackend",
+        backend: "GraphBackend",
         action_set: FiniteActionSet,
         *,
         info_block: Sequence[int],
@@ -477,7 +477,7 @@ class ChunkedEfeSearch:
     @classmethod
     def over_backend(
         cls,
-        backend: "EfeBackend",
+        backend: "GraphBackend",
         action_set: FiniteActionSet,
         *,
         info_block: Sequence[int],

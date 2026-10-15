@@ -10,7 +10,7 @@ from cpomdp.ffg.graph import Coupling
 from cpomdp.types import Belief, LinearGaussianModel
 
 __all__ = [
-    "EfeBackend",
+    "GraphBackend",
     "InadmissiblePartitionError",
     "InferenceBackend",
 ]
@@ -77,16 +77,20 @@ class InferenceBackend(Protocol):
 
 
 @runtime_checkable
-class EfeBackend(InferenceBackend, Protocol):
-    """An ``InferenceBackend`` that also supports *factored* EFE action selection.
+class GraphBackend(InferenceBackend, Protocol):
+    """An ``InferenceBackend`` over a graph of nodes, whose joint state stacks them.
 
-    A node-structured backend: beyond ``infer_states`` it exposes the pre-observation
-    predicted joint (``predicted_belief`` → Σ⁺), the observation noise at a predicted
-    mean (``observation_noise_at`` → R), and the per-node ``block`` the epistemic term
-    can target (issue #26). The sensor C is ``model.observation_matrix``, as on every
-    backend. ``FfgEfeSelector`` and the Agent's EFE dispatch depend on *this*
-    abstraction, never the concrete backend class — so action selection stays above the
-    backend layer (Dependency Inversion).
+    Beyond ``infer_states`` a graph backend exposes the joint predicted before an
+    observation (``predicted_belief`` → μ⁺, Σ⁺), the observation noise at a predicted
+    mean (``observation_noise_at`` → R), the joint-state block a node occupies
+    (``block``) and the EFE-load-bearing edges its carry partition cuts
+    (``severed_efe_edges``). The sensor C is ``model.observation_matrix`` and the joint
+    width ``model.n_states``, as on every backend.
+
+    The graph EFE paths, ``probe_model`` and the Agent's dispatch read a backend
+    through this protocol, never the concrete class (Dependency Inversion).
+    ``CouplingGraphBackend`` satisfies it. Like this module, the protocol carries no
+    promise (ADR-069).
     """
 
     def predicted_belief(

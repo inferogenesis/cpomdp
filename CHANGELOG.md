@@ -599,6 +599,13 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `backend.observation_noise_at(mean)`. Under a state-dependent sensor
   `backend.model.observation_noise` is now R at the prior mean, the rule every flat model
   follows (ADR-064). It was R at zero.
+- **Breaking:** one protocol describes a graph backend, `GraphBackend` in
+  `cpomdp.backends.base`. It was `EfeBackend`, a name that suggested `KalmanBackend`
+  cannot score EFE, and `cpomdp.diagnostics.ProbeBackend` restated part of it for
+  `probe_model`. `ProbeBackend` is removed, and `probe_model` takes a
+  `CouplingGraphBackend` as before. `GraphBackend` declares no `dims`, `n_total` or
+  `observation_model`, which the entries above retire. Like `EfeBackend` before it, it
+  carries no promise (ADR-069).
 - **Breaking:** every `LinearGaussianModel` argument after `dynamics` is keyword-only.
   The four matrices are two maps and two covariances of the same rank, and only the
   covariances are content-checked, so a transposed pair constructed in silence whenever

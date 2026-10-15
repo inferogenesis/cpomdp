@@ -110,7 +110,7 @@ if TYPE_CHECKING:
     # on a backend at runtime. Its one runtime import from the backends package is the
     # exception the graph rollouts raise, and `backends.base` imports nothing that
     # imports this module, so EFESelector / FfgEfeSelector import it without a cycle.
-    from cpomdp.backends.base import EfeBackend
+    from cpomdp.backends.base import GraphBackend
     from cpomdp.selection import Preference
 
 __all__ = [
@@ -359,7 +359,7 @@ def _rollout_body(
 
 
 def policy_efe_ffg(
-    backend: "EfeBackend",
+    backend: "GraphBackend",
     belief: Belief,
     policy: Float64[Array, "H p"],
     preference: "Preference",
@@ -408,7 +408,7 @@ def policy_efe_ffg(
 
 
 def _policy_efe_ffg(
-    backend: "EfeBackend",
+    backend: "GraphBackend",
     belief: Belief,
     policy: Float64[Array, "H p"],
     preference: "Preference",
@@ -444,7 +444,7 @@ _FfgRolloutStep = Callable[
 
 
 def policy_efe_ffg_trace(
-    backend: "EfeBackend",
+    backend: "GraphBackend",
     belief: Belief,
     policy: Float64[Array, "H p"],
     preference: "Preference",
@@ -482,7 +482,7 @@ def policy_efe_ffg_trace(
 
 
 def _checked_info_block(
-    backend: "EfeBackend", info_block: Sequence[int]
+    backend: "GraphBackend", info_block: Sequence[int]
 ) -> tuple[int, ...]:
     """``info_block`` as a tuple, refused unless an FFG EFE can be aimed at it.
 
@@ -517,7 +517,7 @@ def _checked_info_block(
 
 
 def _ffg_rollout_body(
-    backend: "EfeBackend",
+    backend: "GraphBackend",
     goal: Float64[Array, "m"],
     precision: Float64[Array, "m m"],
     info_block: Sequence[int],
