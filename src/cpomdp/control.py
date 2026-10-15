@@ -13,7 +13,7 @@ import jax.numpy as jnp
 from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
-from cpomdp._validation import equilibrium_drift, require_fixed_noise
+from cpomdp._validation import require_fixed_noise
 from cpomdp.backends.kalman import _gain_and_posterior_cov
 from cpomdp.types import Belief, LinearGaussianModel
 
@@ -238,29 +238,6 @@ def finite_horizon_lqr(
         gains=jnp.stack(gains[::-1]),
         cost_to_go=jnp.stack(costs),
     )
-
-
-def _held_goal(model: LinearGaussianModel, goal: ArrayLike) -> Float64[Array, "n"]:
-    """``goal`` as an array, refused unless the dynamics hold it at zero action.
-
-    The plan regulates the offset from the goal, and the offset obeys the model's
-    dynamics only when ``A · goal = goal``.
-    """
-    n = model.n_states
-    goal = jnp.asarray(goal, dtype=float)
-    if goal.shape != (n,):
-        raise ValueError(
-            f"goal must be a 1-D vector of length {n} (the state dimension), got "
-            f"shape {goal.shape}"
-        )
-    held = equilibrium_drift(model.dynamics_matrix, goal)
-    if held is not None:
-        raise ValueError(
-            "goal is not an equilibrium of the dynamics: at zero action it moves to "
-            f"{held}. The plan regulates the offset from the goal, and the offset only "
-            "obeys the same dynamics when the goal holds still."
-        )
-    return goal
 
 
 def _prior_over(model: LinearGaussianModel, prior: Belief | None) -> Belief:

@@ -32,15 +32,14 @@ from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
 from cpomdp._lab.resolution import Bar, Bounded
-from cpomdp._validation import require_fixed_noise
+from cpomdp._validation import equilibrium_drift, require_fixed_noise
 from cpomdp.control import (
     _PRICES_FIXED_NOISE,
     FiniteHorizonLQR,
-    _held_goal,
     _prior_over,
     kalman_schedule,
 )
-from cpomdp.types import Belief
+from cpomdp.types import Belief, LinearGaussianModel
 
 __all__ = [
     "CertaintyEquivalentController",
@@ -51,6 +50,29 @@ __all__ = [
     "full_information_cost",
     "optimal_cost",
 ]
+
+
+def _held_goal(model: LinearGaussianModel, goal: ArrayLike) -> Float64[Array, "n"]:
+    """``goal`` as an array, refused unless the dynamics hold it at zero action.
+
+    The plan regulates the offset from the goal, and the offset obeys the model's
+    dynamics only when ``A · goal = goal``.
+    """
+    n = model.n_states
+    goal = jnp.asarray(goal, dtype=float)
+    if goal.shape != (n,):
+        raise ValueError(
+            f"goal must be a 1-D vector of length {n} (the state dimension), got "
+            f"shape {goal.shape}"
+        )
+    held = equilibrium_drift(model.dynamics_matrix, goal)
+    if held is not None:
+        raise ValueError(
+            "goal is not an equilibrium of the dynamics: at zero action it moves to "
+            f"{held}. The plan regulates the offset from the goal, and the offset only "
+            "obeys the same dynamics when the goal holds still."
+        )
+    return goal
 
 
 def closed_loop_cost(
