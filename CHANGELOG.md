@@ -265,8 +265,8 @@ certainty equivalence is optimal, and no use of the readings beats it.
   write-up published it before any commit built the set, and the numbers hold.
 - `cpomdp.enumeration.ChunkedEfeSearch` — the exhaustive search run in blocks, at a
   footprint the block sets rather than `|A|^H`. It enumerates the same set as
-  `EnumeratedEfeSearch`, earns the same `PROVED` certificate and takes the same
-  arguments plus `chunk`. `evaluate` returns a `ChunkedSearchResult` with the argmin,
+  `EnumeratedEfeSearch`, earns the same `PROVED` certificate and takes the same model,
+  set and horizon, with `chunk` in place of a policy budget. `evaluate` returns a `ChunkedSearchResult` with the argmin,
   its `G`, its index and the certificate. The front-loaded result has those fields under
   the same names and adds only the score vector. The two paths agree under `==`, ties
   included (ADR-036). Both drivers take it, and the refinement cells of the fourth
