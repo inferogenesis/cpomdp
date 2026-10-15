@@ -406,6 +406,14 @@ no use of the readings beats it.
   requires a `Belief` over the model's state. A list was accepted and failed on the next
   step. `InferenceBackend.model` is declared a read-only property, which a plain
   attribute still satisfies.
+- **Breaking:** an `ObservationGoal`'s `horizon` defaults to `None`, and the `Agent` reads
+  it off the model: the shortest horizon at which an action changes the expected free
+  energy, found by scoring the candidate grid once at the prior. On a double integrator
+  observed in position a push reaches the reading only after two steps. At the old
+  default of 1 every candidate scored the same, and the agent pushed at full effort
+  toward `action_bounds[0]`, away from a goal at +1. An explicit horizon that leaves every
+  candidate tied is refused, naming the shortest that works. Single integrators keep
+  horizon 1 (ADR-068).
 - `cpomdp.diagnostics.condition_numbers` — the batched condition number
   `rollout_conditioning` computed inline, now a function of its own so a rollout and a
   scored cell read the same number for the same matrix.

@@ -1,6 +1,7 @@
 """The ``Agent`` façade: a stateful perceive/act loop over a ``LinearGaussianModel``."""
 
 import jax.numpy as jnp
+import numpy as np
 from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
@@ -31,6 +32,63 @@ _OBSERVATION_SPACE_SELECTORS = (
     RecedingHorizonSelector,
     OpenLoopSelector,
 )
+
+
+def _reaching_efe_selector(
+    model: LinearGaussianModel, objective: ObservationGoal, preference: Preference
+) -> EFESelector:
+    """The EFE selector for ``objective``, at a horizon where actions score apart.
+
+    A push that reaches neither the predicted reading nor its noise within the horizon
+    leaves every candidate with the same ``G``, and the argmin then takes the first
+    candidate whatever the goal. The scores are probed once, at the prior, so the check
+    adds nothing per cycle (DECISIONS.md ADR-068).
+    """
+
+    def at(horizon: int) -> EFESelector:
+        return EFESelector(
+            model,
+            n_candidates=objective.n_candidates,
+            action_bounds=objective.action_bounds,
+            horizon=horizon,
+        )
+
+    def moves(selector: EFESelector) -> bool:
+        g = np.asarray(selector._scores(model.prior, preference))
+        finite = g[np.isfinite(g)]
+        if finite.size < 2:
+            return True  # a NaN score is a different failure, reported elsewhere
+        spread = float(finite.max() - finite.min())
+        return spread > 1e-12 * max(1.0, float(np.abs(finite).max()))
+
+    # A push that has not reached the reading or the state its noise reads within n
+    # steps never will, so the search stops at the state dimension.
+    longest = model.n_states
+    if objective.horizon is not None:
+        selector = at(objective.horizon)
+        if moves(selector):
+            return selector
+        shortest = next(
+            (h for h in range(objective.horizon + 1, longest + 1) if moves(at(h))), None
+        )
+        if shortest is not None:
+            raise ValueError(
+                f"no action changes the expected free energy within horizon "
+                f"{objective.horizon}: a push first reaches the reading or its noise "
+                f"after {shortest} steps, so every candidate scores the same and the "
+                f"agent would take the first. Pass horizon={shortest} or more, or "
+                f"leave horizon unset."
+            )
+    else:
+        for horizon in range(1, longest + 1):
+            selector = at(horizon)
+            if moves(selector):
+                return selector
+    raise ValueError(
+        f"no action changes the expected free energy within {longest} steps, the "
+        f"state dimension, so the agent cannot tell its candidates apart. The control "
+        f"matrix does not reach the reading or the state its noise depends on."
+    )
 
 
 class Agent:
@@ -261,11 +319,8 @@ class Agent:
             elif is_ffg:
                 self._selector = self._build_ffg_selector(objective)
             else:
-                self._selector = EFESelector(
-                    model,
-                    n_candidates=objective.n_candidates,
-                    action_bounds=objective.action_bounds,
-                    horizon=objective.horizon,
+                self._selector = _reaching_efe_selector(
+                    model, objective, self._preference
                 )
             self._last_action = jnp.zeros(model.n_controls)
 
@@ -284,7 +339,7 @@ class Agent:
         """
         backend = self._backend
         assert isinstance(backend, EfeBackend)  # only built for the FFG path
-        if objective.horizon != 1:
+        if objective.horizon not in (None, 1):
             raise ValueError(
                 "H-step EFE on the FFG backend is deferred; ObservationGoal.horizon "
                 "must be 1 with a CouplingGraphBackend."

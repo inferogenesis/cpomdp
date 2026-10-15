@@ -376,6 +376,71 @@ class TestRegimeDispatch:
             Agent(_reaching_model(), "reach the goal")  # ty: ignore[invalid-argument-type]
 
 
+# --- the horizon an ObservationGoal is searched over --------------------------------
+#
+# On the double integrator a push changes velocity, and velocity reaches the observed
+# position a step later. At horizon 1 every candidate scores the same G, and the
+# argmin's first candidate, a full push away from the goal, won the tie.
+
+
+def _sharp_near_one(x, params):
+    """R(x) sharpest at position 1, so the noise reads only what the sensor reads."""
+    return jnp.array([[0.01 + (x[0] - 1.0) ** 2]])
+
+
+def _sharp_at_rest(x, params):
+    """R(x) sharpest at zero velocity, a state a push changes at once."""
+    return jnp.array([[0.01 + x[1] ** 2]])
+
+
+def _double_integrator(noise_fn, dynamics=DYNAMICS):
+    return LinearGaussianModel(
+        dynamics_matrix=dynamics,
+        observation_matrix=SENSOR_MODEL,
+        dynamics_noise=np.eye(2) * 1e-6,
+        prior=Belief(mean=[0.0, 0.0], cov=np.eye(2)),
+        control_matrix=CONTROL,
+        observation_model=CallableSensor(SENSOR_MODEL, noise_fn, ()),
+    )
+
+
+_REACH_ONE = ObservationGoal([1.0], action_bounds=(-2.0, 2.0))
+
+
+def _horizon(agent):
+    """The horizon of the EFE selector the Agent built (white-box)."""
+    assert isinstance(agent._selector, EFESelector)
+    return agent._selector.horizon
+
+
+class TestDerivedHorizon:
+    def test_a_push_two_steps_from_the_reading_is_searched_over_two(self):
+        agent = Agent(_double_integrator(_sharp_near_one), _REACH_ONE)
+        assert _horizon(agent) == 2
+        agent.infer_states([0.0])
+        assert float(agent.sample_action()[0]) > 0.0  # toward the goal at +1
+
+    def test_a_horizon_that_leaves_every_candidate_tied_is_refused(self):
+        goal = ObservationGoal([1.0], action_bounds=(-2.0, 2.0), horizon=1)
+        with pytest.raises(ValueError, match="horizon=2"):
+            Agent(_double_integrator(_sharp_near_one), goal)
+
+    def test_noise_that_reads_velocity_is_searched_over_one(self):
+        # C·B = 0, so the reading cannot move in one step. The noise can.
+        agent = Agent(_double_integrator(_sharp_at_rest), _REACH_ONE)
+        assert _horizon(agent) == 1
+
+    def test_a_single_integrator_keeps_horizon_one(self):
+        agent = Agent(_corridor_model(fixed=False), _OBS_GOAL)
+        assert _horizon(agent) == 1
+
+    def test_an_action_that_never_reaches_the_scores_is_refused(self):
+        # Velocity never feeds position, and the noise reads position alone.
+        model = _double_integrator(_sharp_near_one, dynamics=np.eye(2))
+        with pytest.raises(ValueError, match="cannot tell its candidates apart"):
+            Agent(model, _REACH_ONE)
+
+
 def test_state_goal_path_is_byte_identical_to_lqr():
     # Regression (hard constraint): the typed-objective refactor must not perturb
     # the v0.2 LQR path by even a ULP. The sampled action equals a standalone
