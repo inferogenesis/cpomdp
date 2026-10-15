@@ -571,104 +571,102 @@ class CouplingGraphBackend:
         cov = jax.scipy.linalg.block_diag(*[node_cov for _, node_cov in moments])
         return Belief(mean=mean, cov=cov)
 
-    def partition_error(
+    def severed_mass(
         self,
         observation: ArrayLike,
         prior: Belief,
         action: ArrayLike | None = None,
     ) -> float:
-        """The severed mass a step under this partition drops (ADR-016 diagnostic).
+        """The covariance one step's carry drops under this partition (ADR-016).
 
-        The norm of the between-cluster *covariance* blocks the carry zeros — how much
+        The norm of the between-cluster *covariance* blocks the carry zeros: how much
         cross-cluster correlation the partition drops at the time boundary, the
         approximation cost of the cut. A covariance magnitude, not bits and not a rate.
         ``0.0`` for the full-joint ``[[all]]`` partition (exact), growing as the cut
-        severs more correlation. The per-node marginals this slice are unaffected — the
+        severs more correlation. The per-node marginals this slice are unaffected. The
         carry only drops what is *carried forward* (ADR-017).
 
-        This is the eager convenience surface: it forces a host ``float`` and so is not
-        itself jit-able. For a per-run profile with no host syncs, stack the
-        ``_carry`` scalar inside a traced rollout instead.
+        This is the eager surface, so it returns a host ``float`` and is not itself
+        jit-able. ``filter_sequence`` profiles the same quantity over a whole run
+        inside one trace.
         """
         precision, potential = self._assemble_posterior(observation, prior, action)
         _mean, cov = CanonicalGaussian._unchecked(precision, potential).to_moment()
         _factored, severed = self._carry(cov)
         return float(severed)
 
-    def rollout(
+    def filter_sequence(
         self,
-        prior: Belief,
         observations: ArrayLike,
+        prior: Belief,
         actions: ArrayLike | None = None,
-    ) -> tuple[Belief, jax.Array]:
-        """Filter a whole sequence, profiling the severed mass at each step (ADR-016).
+    ) -> tuple[
+        Float64[jax.Array, "T n"], Float64[jax.Array, "T n n"], Float64[jax.Array, "T"]
+    ]:
+        """Filter a whole run in one traced pass, profiling the severed mass (ADR-016).
 
-        One traced ``lax.scan`` pass with no per-step host syncs: the joint belief is
-        the scan carry, and each step emits its posterior and the severed mass its carry
-        drops. This is the per-run diagnostic a mutable per-step field could not give —
-        the profile is produced *inside* the traced rollout, not read off ``self``.
+        ``infer_states`` over every step as one ``lax.scan``, with no per-step host
+        syncs. Each step emits its posterior moments and the severed mass its carry
+        drops, so the per-run profile comes out of the trace rather than off ``self``.
+        The prior and the first step are checked as ``infer_states`` checks them,
+        before the scan starts.
 
         Args:
-            prior: the joint belief the run starts from.
             observations: the stacked readings per step, shape
-                ``(T, model.n_observations)``.
-            actions: the per-step actions, shape ``(T, p)``, required iff the model has
-                a control matrix; ``None`` for pure filtering.
+                ``(T, model.n_observations)`` with ``T >= 1``.
+            prior: the joint belief the run starts from. Never mutated.
+            actions: the per-step actions, shape ``(T, p)``. Required iff the model has
+                a control matrix, ``None`` for pure filtering.
 
         Returns:
-            ``(beliefs, severed_masses)`` — the time-stacked posteriors (a
-            [`Belief`][cpomdp.Belief] with a leading time axis: ``mean``
-            ``(T, n)``, ``cov`` ``(T, n, n)``) and the length-``T``
-            severed-mass profile. The full-joint ``[[all]]`` partition profiles
-            all-zero.
+            ``(means, covs, severed_mass)``: the posterior means, shape ``(T, n)``, the
+            posterior covariances, shape ``(T, n, n)``, and the severed mass at each
+            step, shape ``(T,)``. The full-joint ``[[all]]`` partition severs nothing.
+
+        Raises:
+            ValueError: If ``observations`` is not a ``(T, m)`` stack with at least one
+                step, if ``prior`` is not over the joint state, or if ``actions`` is
+                missing, unexpected or not one ``(p,)`` action per step.
         """
         observations = jnp.asarray(observations, dtype=float)
-        if observations.ndim != 2 or observations.shape[1] != self._n_observations:
+        if observations.ndim != 2 or observations.shape[0] == 0:
             raise ValueError(
-                f"observations must have shape (T, {self._n_observations}), "
-                f"got {observations.shape}"
+                "observations must be a (T, m) stack of readings with at least one "
+                f"step, got shape {observations.shape}"
             )
-
+        steps = observations.shape[0]
         if self._control is None:
             if actions is not None:
                 raise ValueError("actions given, but this model has no control matrix")
+            first_action = None
+            actions = jnp.zeros((steps, 0))  # scanned beside the readings, never read
+        else:
+            if actions is None:
+                raise ValueError(
+                    "this model has a control matrix; actions are required"
+                )
+            actions = jnp.asarray(actions, dtype=float)
+            if actions.ndim != 2 or actions.shape[0] != steps:
+                raise ValueError(
+                    f"actions must be a ({steps}, p) stack, one action per reading, "
+                    f"got shape {actions.shape}"
+                )
+            first_action = actions[0]
+        _validate_step_inputs(self._flat_model, observations[0], prior, first_action)
 
-            def step(belief: Belief, observation: jax.Array):
-                return self._instrumented_step(belief, observation, None)
-
-            _final, outputs = jax.lax.scan(step, prior, observations)
-            return outputs
-
-        if actions is None:
-            raise ValueError("this model has a control matrix; actions are required")
-        actions = jnp.asarray(actions, dtype=float)
-        if actions.shape[0] != observations.shape[0]:
-            raise ValueError(
-                f"actions has {actions.shape[0]} steps, but observations "
-                f"has {observations.shape[0]}"
-            )
-
-        def controlled_step(belief: Belief, step_inputs: tuple[jax.Array, jax.Array]):
+        def step(
+            belief: Belief, step_inputs: tuple[jax.Array, jax.Array]
+        ) -> tuple[Belief, tuple[jax.Array, jax.Array, jax.Array]]:
             observation, action = step_inputs
-            return self._instrumented_step(belief, observation, action)
+            precision, potential = self._assemble_unchecked(observation, belief, action)
+            mean, cov = CanonicalGaussian._unchecked(precision, potential).to_moment()
+            factored_cov, severed = self._carry(cov)
+            return Belief(mean=mean, cov=factored_cov), (mean, factored_cov, severed)
 
-        _final, outputs = jax.lax.scan(controlled_step, prior, (observations, actions))
-        return outputs
-
-    def _instrumented_step(
-        self, belief: Belief, observation: jax.Array, action: jax.Array | None
-    ) -> tuple[Belief, tuple[Belief, jax.Array]]:
-        """One traced filter step for ``rollout``: the ``lax.scan`` body.
-
-        The pure numerical step (``_assemble_unchecked`` → ``to_moment`` → ``_carry``)
-        packaged as ``(carry, output)`` for ``lax.scan``: the joint posterior is both
-        the next carry and, with the severed scalar, the emitted per-step output.
-        """
-        precision, potential = self._assemble_unchecked(observation, belief, action)
-        mean, cov = CanonicalGaussian._unchecked(precision, potential).to_moment()
-        factored_cov, severed = self._carry(cov)
-        posterior = Belief(mean=mean, cov=factored_cov)
-        return posterior, (posterior, severed)
+        _final, (means, covs, severed_mass) = jax.lax.scan(
+            step, prior, (observations, actions)
+        )
+        return means, covs, severed_mass
 
     def _assemble_posterior(
         self, observation: ArrayLike, prior: Belief, action: ArrayLike | None
@@ -677,7 +675,7 @@ class CouplingGraphBackend:
 
         The driven-relaxation update (ADR-017): validate the inputs, then delegate to
         ``_assemble_unchecked``. Shared by ``infer_states`` (which factorises +
-        moment-forms it) and ``partition_error`` (which measures the mass a partition
+        moment-forms it) and ``severed_mass`` (which measures the mass a partition
         would sever), so the two can never drift.
         """
         observation, action = _validate_step_inputs(
@@ -690,7 +688,7 @@ class CouplingGraphBackend:
     ) -> tuple[jax.Array, jax.Array]:
         """The within-slice joint posterior (Λ, h) without input validation.
 
-        The pure numerical core, so a traced rollout (``rollout``) can call it inside a
+        The pure numerical core, so ``filter_sequence`` can call it inside a
         ``lax.scan`` body where the host-side ``_validate_step_inputs`` cannot run. Lift
         the joint prior to canonical, ``predict`` through the block-diagonal per-node
         dynamics (the temporal edges), then add the structural coupling precision and
