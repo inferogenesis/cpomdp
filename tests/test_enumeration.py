@@ -42,11 +42,11 @@ from cpomdp.enumeration import (
     EnumeratedEfeSearch,
     FiniteActionSet,
     IncompleteEnumerationError,
-    SearchWarrant,
 )
 from cpomdp.observation import CallableSensor
 from cpomdp.selection import EFESelector, Preference
 from cpomdp.types import Belief, LinearGaussianModel
+from warrantlib import Warrant
 
 # The beacon fixture's best varying policy beats its best constant policy by ~27 nats,
 # so a strict win of at least 1 nat is cleared ~27x and sits ~15 orders above float64
@@ -178,7 +178,7 @@ class TestCompletenessCertificate:
         assert cert.expected == 27  # |A|^H = 3^3
         assert cert.visited == 27
         assert cert.complete
-        assert cert.warrant is SearchWarrant.PROVED
+        assert cert.warrant is Warrant.PROVED
         assert "PROVED" in str(cert)
         assert "27" in str(cert)
 
@@ -190,7 +190,7 @@ class TestCompletenessCertificate:
             CompletenessCertificate(
                 expected=9,
                 visited=8,
-                warrant=SearchWarrant.PROVED,
+                warrant=Warrant.PROVED,
                 action_set_size=3,
                 horizon=2,
                 action_set_version="v1",
@@ -204,7 +204,7 @@ class TestCompletenessCertificate:
             CompletenessCertificate(
                 expected=81,
                 visited=81,
-                warrant=SearchWarrant.PROVED,
+                warrant=Warrant.PROVED,
                 action_set_size=3,
                 horizon=2,
                 action_set_version="v1",
@@ -215,7 +215,7 @@ class TestCompletenessCertificate:
         cert = CompletenessCertificate(
             expected=9,
             visited=8,
-            warrant=SearchWarrant.CORROBORATED,
+            warrant=Warrant.CORROBORATED,
             action_set_size=3,
             horizon=2,
             action_set_version="v1",
@@ -271,17 +271,17 @@ class TestEnumeratedSearch:
 # --- the warrant seam --------------------------------------------------------------
 class TestWarrantSeam:
     def test_two_distinct_warrant_classes(self):
-        assert SearchWarrant.PROVED is not SearchWarrant.CORROBORATED
-        assert SearchWarrant.PROVED.value == "PROVED"
-        assert SearchWarrant.CORROBORATED.value == "CORROBORATED"
+        assert Warrant.PROVED is not Warrant.CORROBORATED
+        assert Warrant.PROVED.value == "PROVED"
+        assert Warrant.CORROBORATED.value == "CORROBORATED"
 
     def test_enumerated_search_is_proved(self):
         search = EnumeratedEfeSearch(_model(), _finite_set([-1.0, 1.0]), horizon=2)
-        assert search.warrant is SearchWarrant.PROVED
+        assert search.warrant is Warrant.PROVED
 
     def test_grid_selector_is_corroborated(self):
         selector = EFESelector(_model(), n_candidates=5, action_bounds=(-1.0, 1.0))
-        assert selector.warrant is SearchWarrant.CORROBORATED
+        assert selector.warrant is Warrant.CORROBORATED
 
 
 # --- cost and transforms -----------------------------------------------------------

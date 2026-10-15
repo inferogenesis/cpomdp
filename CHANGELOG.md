@@ -624,8 +624,9 @@ certainty equivalence is optimal, and no use of the readings beats it.
   import it at call time to run the `isinstance` guard behind `PROVED`.
 - The check suites moved to `research/src/research/checks/`. The `research.checks.<module>`
   import path is unchanged, and so is every registered count.
-- `SearchWarrant` is an alias of `Warrant`. Every call site keeps its members and its
-  return type, so `EFESelector.warrant` still reads `CORROBORATED` and
+- **Breaking:** `SearchWarrant` is removed from `cpomdp.enumeration`. Import `Warrant`
+  from `cpomdp` or `warrantlib`, the one enum it was an alias of. Its members are the
+  same objects, so `EFESelector.warrant` still reads `CORROBORATED` and
   `EnumeratedEfeSearch.warrant` still reads `PROVED`.
 - `PROVED` without evidence does not construct, enforced in `CheckReport`. Two kinds
   qualify, one per decisive prover: a completeness certificate for an exhaustive

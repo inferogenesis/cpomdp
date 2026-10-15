@@ -18,8 +18,8 @@ from cpomdp.efe import (
     expected_free_energy,
     policy_efe,
 )
-from cpomdp.enumeration import SearchWarrant
 from cpomdp.types import Belief, LinearGaussianModel
+from warrantlib import Warrant
 
 __all__ = [
     "ActionSelector",
@@ -237,14 +237,14 @@ class EFESelector:
         return self.n_candidates * self._horizon
 
     @property
-    def warrant(self) -> SearchWarrant:
+    def warrant(self) -> Warrant:
         """``CORROBORATED`` — the grid samples a continuum, it does not decide it.
 
         The counterpart to ``EnumeratedEfeSearch.warrant`` (``PROVED``): the two search
         families print in different vocabulary so a sampled result is never read as a
         decided one (standing rule 6; ADR-031).
         """
-        return SearchWarrant.CORROBORATED
+        return Warrant.CORROBORATED
 
     def __repr__(self) -> str:
         """The horizon and the grid, the numbers that set what each cycle costs."""
