@@ -112,11 +112,11 @@ def test_methylation_is_the_cheapest_node_to_sever():
         backend = CouplingGraphBackend(
             graph, transitions, prior=unit_prior(graph), partition=partition
         )
-        return backend.partition_error(y, prior)
+        return backend.severed_mass(y, prior)
 
     exact = CouplingGraphBackend(
         graph, transitions, prior=unit_prior(graph)
-    ).partition_error(y, prior)
+    ).severed_mass(y, prior)
     assert exact == pytest.approx(0.0)  # the full carry drops nothing
 
     cheb = sever_one(CHEB)

@@ -27,8 +27,8 @@ class InadmissiblePartitionError(ValueError):
     behavioural drift can still look right while the *accumulated* information about the
     latent — what the instrumental epistemic rides on — degrades, up to collapse for an
     integration-limited latent. Whether the degradation is mild or total is
-    model-specific (measure it with the severed-mass diagnostic ``partition_error``), so
-    the guard refuses conservatively rather than sever and hope. Keep the flagged edge's
+    model-specific (measure it with ``CouplingGraphBackend.severed_mass``), so the
+    guard refuses conservatively rather than sever and hope. Keep the flagged edge's
     endpoints in one cluster, or, if a check shows the cut is safe, drop its
     ``efe_relevant`` flag.
     """

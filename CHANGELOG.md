@@ -606,6 +606,14 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `CouplingGraphBackend` as before. `GraphBackend` declares no `dims`, `n_total` or
   `observation_model`, which the entries above retire. Like `EfeBackend` before it, it
   carries no promise (ADR-069).
+- **Breaking:** `CouplingGraphBackend.partition_error` is `severed_mass`, the name its
+  docstring and its second output already used. `rollout` is `filter_sequence`. Elsewhere
+  a rollout is the H-step policy rollout the EFE scores, and this one filters. It takes
+  `(observations, prior, actions)`, the order `infer_states` takes, where it put the
+  prior first. It returns `(means, covs, severed_mass)` as arrays. The `Belief` it
+  returned had a time axis on its mean, which broke `Belief`'s invariant, and the
+  backend's own `marginal` refused it. It now checks the prior and the first step
+  before it scans.
 - **Breaking:** every `LinearGaussianModel` argument after `dynamics` is keyword-only.
   The four matrices are two maps and two covariances of the same rank, and only the
   covariances are content-checked, so a transposed pair constructed in silence whenever
