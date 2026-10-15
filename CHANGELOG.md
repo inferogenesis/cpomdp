@@ -603,6 +603,17 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `node` and `block` are the words the rest of the tree already uses for those two kinds.
   `ObservationGoal.info_target` becomes `info_node`. `StateGoal.target` and
   `ObservationGoal.target` keep the name, which now has one meaning.
+- **Breaking:** `Preference` calls its vector `target`, as `StateGoal`, `ObservationGoal`
+  and `LQRController.action` do. `Preference(goal=...)` and `preference.goal` become
+  `Preference(target=...)` and `preference.target`. The wish a user typed as a goal's
+  `target` reached the selector under another name.
+- **Breaking:** `LQRController` takes its weights as `precision` and `effort`, the names
+  a `StateGoal` carries, where they were `goal_precision` and `effort_penalty`, and
+  `LQRController.action` takes `target` where it took `goal`. A `StateGoal` whose effort
+  had the wrong size raised "effort_penalty must be 1x1", naming a parameter the caller
+  never typed. The refusal says `effort` now, and `StateGoal` refuses at construction an
+  effort that is not square, symmetric and positive-definite. Its docstring no longer
+  calls the two weights `Q` and `R`, the letters of the model's noises.
 - **Breaking:** `ObservationGoal` takes `action_bounds` by keyword. `StateGoal` already
   takes everything after its first argument by keyword, so this was the odd one out in a
   public pair a reader meets together. The two positional slots also transposed without

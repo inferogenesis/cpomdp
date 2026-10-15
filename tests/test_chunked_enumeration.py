@@ -106,7 +106,7 @@ def _beacon_belief():
 
 
 def _pref(goal=0.0):
-    return Preference(goal=[goal], precision=[[2.0]])
+    return Preference(target=[goal], precision=[[2.0]])
 
 
 def _finite_set(values, version="v1"):

@@ -56,7 +56,7 @@ def _corridor_model(*, fixed=False):
     )
 
 
-_PREF = Preference(goal=[0.0], precision=[[0.4]])  # obs-space: prefer to observe 0
+_PREF = Preference(target=[0.0], precision=[[0.4]])  # obs-space: prefer to observe 0
 
 
 def _numpy_g(model, belief, action, goal, precision):
@@ -88,7 +88,8 @@ def _brute_force(model, belief, pref, lo, hi, n, key="g"):
     """argmin of the NumPy G (or pragmatic) over a fine independent 1-D grid."""
     grid = np.linspace(lo, hi, n)
     vals = [
-        _numpy_g(model, belief, np.array([a]), pref.goal, pref.precision) for a in grid
+        _numpy_g(model, belief, np.array([a]), pref.target, pref.precision)
+        for a in grid
     ]
     idx = 0 if key == "g" else 1
     return grid[int(np.argmin([v[idx] for v in vals]))]
@@ -153,7 +154,7 @@ class TestEFESelector:
         # regime, which is where H=1 EFE ≠ H=∞ LQR is visible. Do not lower the
         # penalty back toward 0 — that collapses the very distinction being asserted.
         lqr = float(
-            LQRController(model, goal_precision=[[1.0]], effort_penalty=[[1.0]]).action(
+            LQRController(model, precision=[[1.0]], effort=[[1.0]]).action(
                 belief.mean, jnp.array([0.0])
             )[0]
         )

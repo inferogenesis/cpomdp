@@ -268,7 +268,7 @@ def preference() -> Preference:
     matter of construction rather than of interpretation.
     """
     weights = [GOAL_PRECISION] * CONTEXT_DIMS + [BEACON_PRECISION] * CONTEXT_DIMS
-    return Preference(goal=[0.0] * STATE_DIMS, precision=np.diag(weights).tolist())
+    return Preference(target=[0.0] * STATE_DIMS, precision=np.diag(weights).tolist())
 
 
 def true_goal() -> np.ndarray:

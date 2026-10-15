@@ -39,7 +39,7 @@ from cpomdp.types import Belief, LinearGaussianModel
 from warrantlib import CompletenessCertificate, Warrant
 
 if TYPE_CHECKING:
-    # Duck-typed at runtime (read for .goal/.precision via the efe kernels, and the
+    # Duck-typed at runtime (read for .target/.precision via the efe kernels, and the
     # backend's predict/observation methods), so no runtime dependency on selection or
     # the backends package — keeps selection/backends -> enumeration the only edges.
     from cpomdp.backends.base import EfeBackend

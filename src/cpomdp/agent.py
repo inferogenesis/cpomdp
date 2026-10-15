@@ -74,13 +74,13 @@ def _preference_for_selector(
         space, length = "an observation", model.n_observations
     else:
         return objective  # a custom selector reads its preference in its own space
-    if objective.goal.shape != (length,):
+    if objective.target.shape != (length,):
         raise ValueError(
             f"{type(selector).__name__} reads the Preference's target as {space}, a "
-            f"vector of length {length}, got shape {objective.goal.shape}"
+            f"vector of length {length}, got shape {objective.target.shape}"
         )
     if isinstance(selector, _STATE_SPACE_SELECTORS):
-        _require_held_target(model, objective.goal, "the Preference's target")
+        _require_held_target(model, objective.target, "the Preference's target")
     return objective
 
 
@@ -103,9 +103,7 @@ def _lqr_path(
         )
     _require_held_target(model, target, "StateGoal target")
     effort = jnp.eye(p) if objective.effort is None else objective.effort
-    controller = LQRController(
-        model, goal_precision=objective.precision, effort_penalty=effort
-    )
+    controller = LQRController(model, precision=objective.precision, effort=effort)
     return Preference(target, objective.precision), LQRSelector(controller)
 
 
@@ -213,7 +211,7 @@ def _reaching_efe_selector(
             moved = Preference(target, preference.precision)
             return selector._scores(model.prior, moved)
 
-        sensitivity = np.asarray(jax.jacfwd(scores)(preference.goal))  # (k, m)
+        sensitivity = np.asarray(jax.jacfwd(scores)(preference.target))  # (k, m)
         finite = sensitivity[np.isfinite(sensitivity).all(axis=1)]
         if finite.shape[0] < 2:
             return True  # a NaN score is a different failure, reported elsewhere

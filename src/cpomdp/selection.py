@@ -14,7 +14,7 @@ from numpy.typing import ArrayLike
 
 from cpomdp._validation import validate_covariance
 from cpomdp.backends.base import EfeBackend
-from cpomdp.control import LQRController
+from cpomdp.control import LQRController, _validate_cost
 from cpomdp.efe import (
     _checked_info_block,
     _ffg_efe_step,
@@ -114,11 +114,11 @@ def _grid_choice(
 @jax.tree_util.register_pytree_node_class
 @dataclass(frozen=True, init=False)
 class Preference:
-    """What the agent wants: a goal and how sharply it is preferred.
+    """What the agent wants: a target and how sharply it is preferred.
 
     Every selector's ``select`` reads one. The [`Agent`][cpomdp.Agent] builds it from a
-    goal, or takes it as the objective beside a selector of your own, in the space
-    that selector reads.
+    goal's ``target`` and ``precision``, or takes it as the objective beside a selector
+    of your own, in the space that selector reads.
 
     Single-mode for v0.3 — one Gaussian preference. The disjunctive *mixture*
     case (visit one of several goals) is RFC-002, deferred; this type is the seam
@@ -128,13 +128,15 @@ class Preference:
     solved for its own weights at construction. The EFE pragmatic term reads it.
     """
 
-    goal: Float64[Array, "n"]
+    target: Float64[Array, "n"]
     precision: Float64[Array, "n n"]
 
-    def __init__(self, goal: ArrayLike, precision: ArrayLike | None = None) -> None:
-        goal = jnp.asarray(goal, dtype=float)
-        object.__setattr__(self, "goal", goal)
-        n = goal.shape[0]
+    def __init__(self, target: ArrayLike, precision: ArrayLike | None = None) -> None:
+        target = jnp.asarray(target, dtype=float)
+        if target.ndim != 1:
+            raise ValueError(f"target must be a 1-D vector, got shape {target.shape}")
+        object.__setattr__(self, "target", target)
+        n = target.shape[0]
         object.__setattr__(
             self,
             "precision",
@@ -143,26 +145,24 @@ class Preference:
         self._validate()
 
     def _validate(self) -> None:
-        if self.goal.ndim != 1:
-            raise ValueError(f"goal must be a 1-D vector, got shape {self.goal.shape}")
         validate_covariance(self.precision, "precision")
-        n = self.goal.shape[0]
+        n = self.target.shape[0]
         if self.precision.shape != (n, n):
             raise ValueError(
-                f"precision must be {n}x{n} to match the {n}-D goal, "
+                f"precision must be {n}x{n} to match the {n}-D target, "
                 f"got shape {self.precision.shape}"
             )
 
     def tree_flatten(self):
-        """Leaves: (goal, precision); no static aux. Lets jit/vmap take a Preference."""
-        return (self.goal, self.precision), None
+        """Leaves: (target, precision); no static aux. Lets jit/vmap take one."""
+        return (self.target, self.precision), None
 
     @classmethod
     def tree_unflatten(cls, aux_data, children):
         """Rebuild without re-validating — the leaves may be tracers."""
-        goal, precision = children
+        target, precision = children
         obj = object.__new__(cls)
-        object.__setattr__(obj, "goal", goal)
+        object.__setattr__(obj, "target", target)
         object.__setattr__(obj, "precision", precision)
         return obj
 
@@ -189,20 +189,20 @@ class LQRSelector:
 
     A thin wrapper: it owns no control logic, it just forwards to the
     front-loaded controller, unpacking the belief's mean and the preference's
-    goal. EFE collapses to LQR under a fixed sensor and fixed process noise
+    target. EFE collapses to LQR under a fixed sensor and fixed process noise
     (ADR-003), so for that regime this *is* the action selector.
     """
 
     controller: LQRController
 
     def select(self, belief: Belief, preference: Preference) -> Float64[Array, "p"]:
-        """Forward to the controller: ``action(belief.mean, preference.goal)``.
+        """Forward to the controller: ``action(belief.mean, preference.target)``.
 
         No control logic of its own — the Riccati solve was front-loaded into the
         controller at construction. This just unpacks the belief and preference
-        into the controller's ``(mean, goal)`` signature.
+        into the controller's ``(mean, target)`` signature.
         """
-        return self.controller.action(belief.mean, preference.goal)
+        return self.controller.action(belief.mean, preference.target)
 
 
 def _require_scalar_control(
@@ -454,7 +454,7 @@ class FfgEfeSelector:
                 predicted.cov,
                 self._observation_matrix,
                 observation_noise,
-                preference.goal,
+                preference.target,
                 preference.precision,
                 self._info_block,
             )
@@ -505,11 +505,13 @@ class StateGoal:
     """A state-space objective: reach a target state (the LQR / fixed-sensor regime).
 
     The complete spec for the state-tracking path - the target plus the LQR cost
-    weights it implies. ``precision`` is LQR's state weight Q; ``effort`` is its
-    action weight R, left None here because the action dimension p isn't known
-    until the Agent pairs this with a model (the Agent fills the identity). The
-    Agent dispatches a StateGoal to an LQRSelector. Not a pytree - construction-
-    time only; the Agent extracts a Preference for the selector.
+    weights it implies. ``precision`` is the state-cost weight and ``effort`` the
+    action-cost weight, under the names
+    [`LQRController`][cpomdp.LQRController] takes. ``effort`` is left None here
+    because the action dimension p isn't known until the Agent pairs this with a
+    model (the Agent fills the identity). The Agent dispatches a StateGoal to an
+    LQRSelector. Not a pytree - construction-time only; the Agent extracts a
+    Preference for the selector.
 
     The target must hold still under the model's dynamics at zero action,
     ``A · target = target``. LQR regulates the offset from the target and charges for
@@ -549,6 +551,14 @@ class StateGoal:
                 f"precision must be {n}x{n} to match the {n}-D target, "
                 f"got shape {self.precision.shape}"
             )
+        if self.effort is not None:
+            # The controller inverts against it, so it must be positive-definite. Its
+            # size waits for the model, where the Agent checks it.
+            if self.effort.ndim != 2 or self.effort.shape[0] != self.effort.shape[1]:
+                raise ValueError(
+                    f"effort must be a square 2-D matrix, got shape {self.effort.shape}"
+                )
+            _validate_cost(self.effort, "effort", require_definite=True)
 
 
 @dataclass(frozen=True, init=False)

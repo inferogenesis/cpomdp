@@ -41,7 +41,7 @@ def _belief():
 
 def _obs_preference():
     # Observation-space goal: m = 1 here, so goal is (1,), precision (1, 1).
-    return Preference(goal=[1.0], precision=[[2.0]])
+    return Preference(target=[1.0], precision=[[2.0]])
 
 
 def _numpy_efe(model, belief, action, goal, precision):
@@ -79,7 +79,7 @@ class TestAgainstNumpyOracle:
 
         g, parts = expected_free_energy(model, belief, action, pref)
         g_ref, prag_ref, epi_ref = _numpy_efe(
-            model, belief, action, pref.goal, pref.precision
+            model, belief, action, pref.target, pref.precision
         )
 
         np.testing.assert_allclose(g, g_ref, atol=1e-10)
@@ -102,7 +102,7 @@ class TestAgainstNumpyOracle:
             observation_noise=[[0.5]],
             prior=Belief(mean=[0.0], cov=[[1.0]]),
         )
-        pref = Preference(goal=[0.0], precision=[[1.0]])
+        pref = Preference(target=[0.0], precision=[[1.0]])
         with np.testing.assert_raises(ValueError):
             expected_free_energy(
                 control_free, control_free.prior, jnp.array([0.0]), pref
@@ -327,7 +327,7 @@ def _ramp_model():
 
 
 _RAMP_BELIEF = Belief(mean=[0.0], cov=[[0.4]])
-_RAMP_PREF = Preference(goal=[0.0], precision=[[1.0]])
+_RAMP_PREF = Preference(target=[0.0], precision=[[1.0]])
 
 
 def _form_components(model, belief, action):
@@ -344,7 +344,7 @@ def _form_components(model, belief, action):
     c, r = np.asarray(c), np.asarray(r)
     o = c @ mu_pred
     s = c @ sigma_pred @ c.T + r
-    g, lam = np.asarray(_RAMP_PREF.goal), np.asarray(_RAMP_PREF.precision)
+    g, lam = np.asarray(_RAMP_PREF.target), np.asarray(_RAMP_PREF.precision)
     resid = o - g
     mean_term = 0.5 * resid @ lam @ resid
     var_term = 0.5 * np.trace(lam @ s)
@@ -391,7 +391,7 @@ class TestFormProof:
         )
         c = _form_components(model, _RAMP_BELIEF, action)
         o, s = c["o"], c["s"]
-        g, lam = np.asarray(_RAMP_PREF.goal), np.asarray(_RAMP_PREF.precision)
+        g, lam = np.asarray(_RAMP_PREF.target), np.asarray(_RAMP_PREF.precision)
         rng = np.random.default_rng(0)
         samples = rng.multivariate_normal(o, s, size=200_000)
         diff = samples - g
@@ -441,7 +441,7 @@ def _internal_q_model():
 
 
 _INTERNAL_BELIEF = Belief(mean=[0.0], cov=[[0.2]])
-_INTERNAL_PREF = Preference(goal=[0.0], precision=[[1.0]])
+_INTERNAL_PREF = Preference(target=[0.0], precision=[[1.0]])
 
 
 class TestInternalProcessNoise:
@@ -499,7 +499,7 @@ class TestInternalProcessNoise:
             base,
             _INTERNAL_BELIEF,
             action,
-            _INTERNAL_PREF.goal,
+            _INTERNAL_PREF.target,
             _INTERNAL_PREF.precision,
         )[0]
         g_kernel = expected_free_energy(base, _INTERNAL_BELIEF, action, _INTERNAL_PREF)[
@@ -558,7 +558,7 @@ class TestStraddledSFlip:
     def test_full_picks_low_S_forbidden_picks_high_S(self):
         model = _flip_model()
         belief = Belief(mean=[0.0], cov=[[0.1]])
-        pref = Preference(goal=[0.0], precision=[[1.0]])
+        pref = Preference(target=[0.0], precision=[[1.0]])
         a_low, a_high = jnp.array([1.0]), jnp.array([-1.0])  # S≈1/Λ, S≈2/Λ; tied mean
 
         def s_of(action):

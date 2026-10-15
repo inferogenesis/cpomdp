@@ -120,7 +120,7 @@ def _single_belief():
 
 
 def _pref():
-    return Preference(goal=[0.5], precision=[[2.0]])
+    return Preference(target=[0.5], precision=[[2.0]])
 
 
 def _policy(values):
@@ -163,7 +163,7 @@ class TestFfgH1ReducesToFfgEfeStep:
             predicted.cov,
             observation_matrix,
             observation_noise,
-            pref.goal,
+            pref.target,
             pref.precision,
             info_block,
         )
@@ -188,7 +188,7 @@ class TestFfgNoCouplingReducesToPolicyEfe:
     def _check(self, *, state_dependent):
         backend, model = _single_node_pair(state_dependent=state_dependent)
         belief, info_block = _single_belief(), range(2)
-        pref = Preference(goal=[1.0], precision=[[2.0]])
+        pref = Preference(target=[1.0], precision=[[2.0]])
         for h in (2, 3):
             policy = _policy([0.5, -0.4, 0.2][:h])
             g, parts = policy_efe_ffg(

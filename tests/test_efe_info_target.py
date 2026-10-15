@@ -90,7 +90,7 @@ def test_full_state_gain_matches_expected_free_energy_epistemic():
     )
     belief = Belief(mean=[0.3, -0.2], cov=[[0.7, 0.1], [0.1, 0.4]])
     action = jnp.array([0.5])
-    preference = Preference(goal=[1.0], precision=[[2.0]])
+    preference = Preference(target=[1.0], precision=[[2.0]])
 
     _, parts = expected_free_energy(model, belief, action, preference)
 
@@ -123,7 +123,7 @@ def test_ffg_efe_step_reduces_to_expected_free_energy():
     )
     belief = Belief(mean=[0.3, -0.2], cov=[[0.7, 0.1], [0.1, 0.4]])
     action = jnp.array([0.5])
-    preference = Preference(goal=[1.0], precision=[[2.0]])
+    preference = Preference(target=[1.0], precision=[[2.0]])
 
     g_ref, parts_ref = expected_free_energy(model, belief, action, preference)
 
@@ -136,7 +136,7 @@ def test_ffg_efe_step_reduces_to_expected_free_energy():
         jnp.asarray(sigma_plus),
         jnp.asarray(observation_matrix),
         jnp.asarray(observation_noise),
-        preference.goal,
+        preference.target,
         preference.precision,
         info_block=range(2),
     )
