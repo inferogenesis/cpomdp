@@ -101,7 +101,9 @@ def _two_node_backend():
     graph = CouplingGraph(
         root=0,
         dims=(1, 1),
-        couplings=(Coupling(0, 1, GaussianCoupling([[0.8]], [[0.05]]), 1.0),),
+        couplings=(
+            Coupling(0, 1, GaussianCoupling([[0.8]], coupling_noise=[[0.05]]), 1.0),
+        ),
         observations={1: GaussianObservation([[1.0]], observation_noise=[[0.1]])},
     )
     transitions = (

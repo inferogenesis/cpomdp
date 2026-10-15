@@ -150,7 +150,8 @@ def build_backend(
         parent=CONTEXT,
         child=ARM_NODE,
         factor=GaussianCoupling(
-            coupling=[[0.0], [1.0]],  # W: the context drives the perceived arm f only
+            # W: the context drives the perceived arm f only
+            coupling_matrix=[[0.0], [1.0]],
             coupling_noise=[[COUPLE_Q_POSITION, 0.0], [0.0, COUPLE_Q_ARM]],
         ),
         tau=1.0,

@@ -103,7 +103,7 @@ class CouplingGraph:
                 if not 0 <= idx < n:
                     raise ValueError(f"coupling references unknown node {idx}")
             expected = (self.dims[edge.child], self.dims[edge.parent])
-            actual = tuple(edge.factor.coupling.shape)
+            actual = tuple(edge.factor.coupling_matrix.shape)
             if actual != expected:
                 raise ValueError(
                     f"coupling {edge.parent}->{edge.child}: factor W shape {actual} "

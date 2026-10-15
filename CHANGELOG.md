@@ -536,6 +536,12 @@ no use of the readings beats it.
   noise is content-checked. `from_ou`'s `tau` and `dt` are both positive scalars in the
   same time unit and `A = exp(-dt/tau)` is finite either way round. 45 call sites moved
   to keywords.
+- **Breaking:** `GaussianCoupling` takes `coupling_noise` by keyword, and its matrix is
+  `coupling_matrix`, as argument and field, where it was `coupling`. A scalar edge's gain
+  and noise are both (1, 1), and only the noise is content-checked, so
+  `GaussianCoupling([[0.05]], [[0.9]])` built an edge with the two swapped. The new name
+  follows the `_matrix` suffix every other linear map carries. 33 call sites moved to
+  keywords.
 - **Breaking:** every `LinearGaussianModel` argument after `dynamics` is keyword-only.
   The four matrices are two maps and two covariances of the same rank, and only the
   covariances are content-checked, so a transposed pair constructed in silence whenever

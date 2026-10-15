@@ -242,7 +242,7 @@ class TestProbeGraphBackend:
                     parent=0,
                     child=1,
                     factor=GaussianCoupling(
-                        coupling=[[0.0], [1.0]],
+                        coupling_matrix=[[0.0], [1.0]],
                         coupling_noise=[[0.5, 0.0], [0.0, 0.5]],
                     ),
                     tau=1.0,

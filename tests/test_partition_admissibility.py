@@ -35,14 +35,14 @@ def _hub_graph(*, fast_relevant=True, slow_relevant=False):
             Coupling(
                 0,
                 1,
-                GaussianCoupling([[0.8]], [[0.05]]),
+                GaussianCoupling([[0.8]], coupling_noise=[[0.05]]),
                 1.0,
                 efe_relevant=fast_relevant,
             ),
             Coupling(
                 0,
                 2,
-                GaussianCoupling([[0.6]], [[0.05]]),
+                GaussianCoupling([[0.6]], coupling_noise=[[0.05]]),
                 1.0,
                 efe_relevant=slow_relevant,
             ),
@@ -73,9 +73,11 @@ def _selector(backend):
 
 def test_coupling_carries_efe_relevant_flag():
     # The declared-relevance seam: an edge can be flagged EFE-load-bearing; default off.
-    flagged = Coupling(0, 1, GaussianCoupling([[1.0]], [[0.1]]), 1.0, efe_relevant=True)
+    flagged = Coupling(
+        0, 1, GaussianCoupling([[1.0]], coupling_noise=[[0.1]]), 1.0, efe_relevant=True
+    )
     assert flagged.efe_relevant is True
-    plain = Coupling(0, 1, GaussianCoupling([[1.0]], [[0.1]]), 1.0)
+    plain = Coupling(0, 1, GaussianCoupling([[1.0]], coupling_noise=[[0.1]]), 1.0)
     assert plain.efe_relevant is False
 
 

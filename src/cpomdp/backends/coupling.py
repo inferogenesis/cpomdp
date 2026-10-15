@@ -365,7 +365,7 @@ class CouplingGraphBackend:
         """
         precision = jnp.zeros((self.n_total, self.n_total))
         for edge in self.graph.couplings:
-            W = edge.factor.coupling  # (child_dim, parent_dim)
+            W = edge.factor.coupling_matrix  # (child_dim, parent_dim)
             Q_inv = jnp.linalg.inv(edge.factor.coupling_noise)
             weighted = Q_inv @ W  # Q⁻¹W   (reused twice)
             parent, child = self._block(edge.parent), self._block(edge.child)
@@ -862,7 +862,7 @@ class CouplingGraphBackend:
             None if self._sensor_is_fixed else self._flat_model.observation_model
         )
         for edge in self.graph.couplings:  # child − W·parent ~ N(0, Q_struct)
-            coupling = edge.factor.coupling  # W
+            coupling = edge.factor.coupling_matrix  # W
             child_dim = coupling.shape[0]
             row = jnp.zeros((child_dim, self.n_total))
             row = row.at[:, self._block(edge.child)].set(jnp.eye(child_dim))
@@ -887,6 +887,6 @@ class CouplingGraphBackend:
         """
         observation = jnp.asarray(observation, dtype=float)
         n_structural = sum(
-            edge.factor.coupling.shape[0] for edge in self.graph.couplings
+            edge.factor.coupling_matrix.shape[0] for edge in self.graph.couplings
         )
         return jnp.concatenate([observation, jnp.zeros(n_structural)])

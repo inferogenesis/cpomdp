@@ -56,7 +56,12 @@ def chemotaxis_ffg(dt):
     )
 
     couplings = tuple(
-        Coupling(parent, child, GaussianCoupling([[gain]], [[noise]]), tau=TAU[child])
+        Coupling(
+            parent,
+            child,
+            GaussianCoupling([[gain]], coupling_noise=[[noise]]),
+            tau=TAU[child],
+        )
         for parent, child, gain, noise in _EDGES
     )
 

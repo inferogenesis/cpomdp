@@ -357,7 +357,8 @@ def build_maze(
         parent=CONTEXT,
         child=ARENA,
         factor=GaussianCoupling(
-            coupling=coupling_weights.tolist(), coupling_noise=coupling_noise.tolist()
+            coupling_matrix=coupling_weights.tolist(),
+            coupling_noise=coupling_noise.tolist(),
         ),
         tau=1.0,
         efe_relevant=True,  # the covariance path the instrumental epistemic rides

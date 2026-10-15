@@ -188,7 +188,7 @@ def _build(
 ):
     """Build a ``CouplingGraphBackend`` (graph + per-node transitions) for a spec."""
     couplings = tuple(
-        Coupling(parent, child, GaussianCoupling(w, q), 1.0)
+        Coupling(parent, child, GaussianCoupling(w, coupling_noise=q), 1.0)
         for parent, child, w, q in edges
     )
     observations = {
@@ -802,7 +802,7 @@ def _rx_relaxation_oracle(
 def _build_rx(dims, edges, rx_obs, dyn, *, control_matrix=None, partition=None):
     """Build a ``CouplingGraphBackend`` with state-dependent (callable) observations."""
     couplings = tuple(
-        Coupling(parent, child, GaussianCoupling(w, q), 1.0)
+        Coupling(parent, child, GaussianCoupling(w, coupling_noise=q), 1.0)
         for parent, child, w, q in edges
     )
     observations = {
