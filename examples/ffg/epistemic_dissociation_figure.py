@@ -61,11 +61,12 @@ from cpomdp import (
     Coupling,
     CouplingGraph,
     CouplingGraphBackend,
+    FfgEfeSelector,
     GaussianCoupling,
     GaussianObservation,
     GaussianTransition,
     IncompatibleLinearizationError,
-    ObservationGoal,
+    Preference,
 )
 
 # --- the T-maze, as one rooted tree -------------------------------------------
@@ -193,17 +194,22 @@ def build_agent(backend: CouplingGraphBackend) -> Agent:
 
     Because the predicted commit reading is ``E[f]+ - x+`` and f tracks the context,
     "observe zero displacement" drives ``x -> E[context]`` -- resolving the context
-    changes where the agent heads. ``info_node`` aims the epistemic at the context.
+    changes where the agent heads. The epistemic term aims at the context's block.
+
+    Both agents get the same hand-built selector. The Agent builds one only where a
+    noise depends on the state, and A's fixed cue removes exactly that.
     """
-    objective = ObservationGoal(
-        target=[0.0, 0.0],  # observe zero displacement on both channels
-        action_bounds=ACTION_BOUNDS,
-        precision=[[GOAL_PRECISION, 0.0], [0.0, INFO_PRECISION]],  # weight commit only
-        n_candidates=GRID_N,
-        horizon=1,
-        info_node=CONTEXT,
+    preference = Preference(
+        [0.0, 0.0],  # observe zero displacement on both channels
+        [[GOAL_PRECISION, 0.0], [0.0, INFO_PRECISION]],  # weight commit only
     )
-    return Agent.from_backend(backend, objective)
+    selector = FfgEfeSelector(
+        backend,
+        info_block=backend.block(CONTEXT),
+        n_candidates=GRID_N,
+        action_bounds=ACTION_BOUNDS,
+    )
+    return Agent.from_backend(backend, preference, selector=selector)
 
 
 def simulate(*, epistemic_alive: bool, seed: int = 7, cue_x: float = CUE_X) -> dict:

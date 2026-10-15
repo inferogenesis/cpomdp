@@ -99,15 +99,17 @@ def test_ffg_selector_reduces_to_efe_selector_single_node():
     )
 
 
-def _two_node_backend():
+def _two_node_backend(observation=None):
     # CheA(0) -> CheY(1); observe CheY; the action drives CheA (the root).
+    if observation is None:
+        observation = GaussianObservation([[1.0]], observation_noise=[[0.1]])
     graph = CouplingGraph(
         root=0,
         dims=(1, 1),
         couplings=(
             Coupling(0, 1, GaussianCoupling([[0.8]], coupling_noise=[[0.05]]), 1.0),
         ),
-        observations={1: GaussianObservation([[1.0]], observation_noise=[[0.1]])},
+        observations={1: observation},
     )
     transitions = (
         GaussianTransition([[0.7]], dynamics_noise=[[0.1]]),
@@ -116,6 +118,13 @@ def _two_node_backend():
     return CouplingGraphBackend(
         graph, transitions, prior=unit_prior(graph), control_matrix=[[1.0], [0.0]]
     )
+
+
+def _two_node_rx_backend():
+    # The same graph with CheY read by a sensor sharpest near zero, so the action moves
+    # the information term.
+    params = {"R0": np.array([[0.1]]), "gain": 2.0}
+    return _two_node_backend(CallableGaussianObservation([[1.0]], _rx_noise, params))
 
 
 @pytest.mark.parametrize(
@@ -146,7 +155,7 @@ def test_agent_on_ffg_backend_acts_via_ffg_selector():
     # B5 (issue #26): a user drives a branching FFG as an Agent. info_node aims the
     # epistemic at a chosen node; the Agent routes to the FFG EFE selector, and the
     # perceive -> act cycle completes.
-    backend = _two_node_backend()
+    backend = _two_node_rx_backend()
     agent = Agent.from_backend(
         backend,
         ObservationGoal([0.5], action_bounds=(-2.0, 2.0), info_node=0),  # info: CheA
@@ -158,9 +167,22 @@ def test_agent_on_ffg_backend_acts_via_ffg_selector():
     assert isinstance(agent.selector, FfgEfeSelector)
 
 
+def test_an_observation_goal_on_fixed_graph_sensors_is_refused():
+    # Both noises are fixed, so the information term is flat on the graph as on a flat
+    # model, and the two refuse alike. A hand-built selector still chooses by EFE.
+    backend = _two_node_backend()
+    with pytest.raises(ValueError, match="both noises are fixed"):
+        Agent.from_backend(backend, ObservationGoal([0.5], action_bounds=(-2.0, 2.0)))
+    selector = FfgEfeSelector(
+        backend, info_block=[0], n_candidates=21, action_bounds=(-2.0, 2.0)
+    )
+    agent = Agent.from_backend(backend, Preference([0.5]), selector=selector)
+    assert agent.selector is selector
+
+
 def test_the_graph_selector_prints_its_horizon_and_target():
     agent = Agent.from_backend(
-        _two_node_backend(),
+        _two_node_rx_backend(),
         ObservationGoal([0.5], action_bounds=(-2.0, 2.0), info_node=0),
     )
     assert repr(agent.selector) == (
@@ -172,7 +194,7 @@ def test_the_graph_selector_prints_its_horizon_and_target():
 def test_agent_ffg_whole_state_when_info_target_none():
     # info_node=None on the FFG backend still routes to the FFG selector, aimed at the
     # whole state (the default epistemic).
-    backend = _two_node_backend()
+    backend = _two_node_rx_backend()
     agent = Agent.from_backend(
         backend,
         ObservationGoal([0.5], action_bounds=(-2.0, 2.0)),  # no info_node
@@ -196,9 +218,10 @@ def test_info_target_on_flat_backend_raises():
 
 
 def test_ffg_agent_matches_kalman_efe_agent_end_to_end():
-    # B6 gate (issue #26): the whole FFG EFE Agent path — single node, info_node=None,
-    # so the epistemic is whole-state — must reproduce a KalmanBackend + EFESelector
-    # Agent step for step. The non-negotiable "v0.3 behaviour is not broken" check.
+    # B6 gate (issue #26): the whole FFG EFE Agent loop — single node, whole-state
+    # info block — must reproduce a KalmanBackend + EFESelector Agent step for step.
+    # The non-negotiable "v0.3 behaviour is not broken" check. Both sensors are fixed,
+    # so each agent is handed its selector.
     dynamics = np.array([[1.0, 0.1], [0.0, 1.0]])  # A
     dynamics_noise = np.array([[0.1, 0.0], [0.0, 0.1]])  # Q
     observation_matrix = np.array([[1.0, 0.0]])  # C
@@ -232,7 +255,11 @@ def test_ffg_agent_matches_kalman_efe_agent_end_to_end():
     bounds, k = (-2.0, 2.0), 21
 
     ffg_agent = Agent.from_backend(
-        backend, ObservationGoal([0.5], action_bounds=bounds, n_candidates=k)
+        backend,
+        Preference([0.5]),
+        selector=FfgEfeSelector(
+            backend, info_block=range(2), n_candidates=k, action_bounds=bounds
+        ),
     )
     ref_agent = Agent(
         model,
