@@ -54,10 +54,10 @@ class TestSharedNodeTwoBranches:
 
         # --- FFG: combine the prior with each branch's upward message ---
         prior = _belief_as_canonical(m0, P0)
-        msg1 = GaussianCoupling(W1, Q1).message_to_parent(
+        msg1 = GaussianCoupling(W1, coupling_noise=Q1).message_to_parent(
             GaussianObservation(np.eye(c1), observation_noise=R1).message(y1)
         )
-        msg2 = GaussianCoupling(W2, Q2).message_to_parent(
+        msg2 = GaussianCoupling(W2, coupling_noise=Q2).message_to_parent(
             GaussianObservation(np.eye(c2), observation_noise=R2).message(y2)
         )
         out_mean, out_cov = (prior + msg1 + msg2).to_moment()
@@ -98,10 +98,10 @@ class TestSharedNodeTwoBranches:
         y1, y2 = rng.standard_normal(1), rng.standard_normal(1)
 
         prior = _belief_as_canonical(m0, P0)
-        msg1 = GaussianCoupling(W1, Q1).message_to_parent(
+        msg1 = GaussianCoupling(W1, coupling_noise=Q1).message_to_parent(
             GaussianObservation(np.eye(1), observation_noise=R1).message(y1)
         )
-        msg2 = GaussianCoupling(W2, Q2).message_to_parent(
+        msg2 = GaussianCoupling(W2, coupling_noise=Q2).message_to_parent(
             GaussianObservation(np.eye(1), observation_noise=R2).message(y2)
         )
         a_mean, a_cov = (prior + msg1 + msg2).to_moment()
@@ -167,7 +167,7 @@ def _tree_marginal_oracle(root, dims, edges, obs_specs, m0, P0, readings):
 def _check_infer(root, dims, edges, obs_specs, m0, P0, readings, atol=1e-8):
     """Build the graph, run ``infer``, and check its marginal against the oracle."""
     couplings = tuple(
-        Coupling(parent, child, GaussianCoupling(w, q), 1.0)
+        Coupling(parent, child, GaussianCoupling(w, coupling_noise=q), 1.0)
         for parent, child, w, q in edges
     )
     observations = {
@@ -308,7 +308,7 @@ class TestCouplingGraphInfer:
         rng = np.random.default_rng(19)
         w, q = rng.standard_normal((1, 2)), _spd(rng, 1)
         graph = CouplingGraph(
-            0, (2, 1), (Coupling(0, 1, GaussianCoupling(w, q), 1.0),), {}
+            0, (2, 1), (Coupling(0, 1, GaussianCoupling(w, coupling_noise=q), 1.0),), {}
         )
         m0, P0 = rng.standard_normal(2), _spd(rng, 2)
         out = graph.infer(Belief(mean=m0, cov=P0), {})
@@ -318,7 +318,10 @@ class TestCouplingGraphInfer:
     def test_reading_without_observation_factor_raises(self):
         # A reading for a node that has no observation factor is a usage error.
         graph = CouplingGraph(
-            0, (1, 1), (Coupling(0, 1, GaussianCoupling([[1.0]], [[0.5]]), 1.0),), {}
+            0,
+            (1, 1),
+            (Coupling(0, 1, GaussianCoupling([[1.0]], coupling_noise=[[0.5]]), 1.0),),
+            {},
         )
         with pytest.raises(KeyError):
             graph.infer(Belief(mean=np.zeros(1), cov=np.eye(1)), {1: np.zeros(1)})
@@ -333,7 +336,9 @@ class TestCouplingGraphInfer:
                 Coupling(
                     0,
                     1,
-                    GaussianCoupling(jnp.array([[1.5, -0.5]]), jnp.array([[0.3]])),
+                    GaussianCoupling(
+                        jnp.array([[1.5, -0.5]]), coupling_noise=jnp.array([[0.3]])
+                    ),
                     1.0,
                 ),
             ),
@@ -396,7 +401,7 @@ def _joint_all_marginals_oracle(dims, edges, seeds):
 def _check_infer_all(dims, edges, seeds, atol=1e-8):
     """Build the graph, run infer_all, check *every* node's marginal vs the oracle."""
     couplings = tuple(
-        Coupling(parent, child, GaussianCoupling(w, q), 1.0)
+        Coupling(parent, child, GaussianCoupling(w, coupling_noise=q), 1.0)
         for parent, child, w, q in edges
     )
     graph = CouplingGraph(root=0, dims=dims, couplings=couplings, observations={})
@@ -446,7 +451,7 @@ class TestCouplingGraphInferAll:
 
 class TestCouplingGraphValidation:
     def _w(self, c, p):
-        return GaussianCoupling(np.zeros((c, p)) + 0.5, np.eye(c) * 0.3)
+        return GaussianCoupling(np.zeros((c, p)) + 0.5, coupling_noise=np.eye(c) * 0.3)
 
     def test_valid_tree_builds(self):
         g = CouplingGraph(
@@ -514,6 +519,17 @@ class TestCouplingGraphValidation:
                 (1, 1),
                 (Coupling(0, 1, self._w(1, 1), 1.0),),
                 {9: GaussianObservation(np.eye(1), observation_noise=np.eye(1))},
+            )
+
+    def test_rejects_sensor_narrower_than_its_node(self):
+        # A one-column C on a 2-D node would broadcast into both columns of the
+        # node's block and read the sum of its components.
+        with pytest.raises(ValueError, match="sensor C width 1"):
+            CouplingGraph(
+                0,
+                (2, 1),
+                (Coupling(0, 1, self._w(1, 2), 1.0),),
+                {0: GaussianObservation(np.eye(1), observation_noise=np.eye(1))},
             )
 
 
@@ -608,7 +624,8 @@ class TestFlattenedKalmanParity:
 
     def _check(self, root, dims, edges, obs_specs, m0, p0, readings, atol=1e-7):
         couplings = tuple(
-            Coupling(p, c, GaussianCoupling(w, q), 1.0) for p, c, w, q in edges
+            Coupling(p, c, GaussianCoupling(w, coupling_noise=q), 1.0)
+            for p, c, w, q in edges
         )
         observations = {
             n: GaussianObservation(c, observation_noise=r)

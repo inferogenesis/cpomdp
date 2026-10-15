@@ -9,7 +9,9 @@ must pick the same action as the existing ``EFESelector`` on the equivalent flat
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pytest
 
+from _support import unit_prior
 from cpomdp.agent import Agent
 from cpomdp.backends.coupling import CouplingGraphBackend
 from cpomdp.efe import _ffg_efe_step
@@ -69,6 +71,7 @@ def test_ffg_selector_reduces_to_efe_selector_single_node():
     backend = CouplingGraphBackend(
         graph,
         (GaussianTransition(dynamics, dynamics_noise=dynamics_noise),),
+        prior=unit_prior(graph),
         control_matrix=control,
     )
     model = LinearGaussianModel(
@@ -101,14 +104,36 @@ def _two_node_backend():
     graph = CouplingGraph(
         root=0,
         dims=(1, 1),
-        couplings=(Coupling(0, 1, GaussianCoupling([[0.8]], [[0.05]]), 1.0),),
+        couplings=(
+            Coupling(0, 1, GaussianCoupling([[0.8]], coupling_noise=[[0.05]]), 1.0),
+        ),
         observations={1: GaussianObservation([[1.0]], observation_noise=[[0.1]])},
     )
     transitions = (
         GaussianTransition([[0.7]], dynamics_noise=[[0.1]]),
         GaussianTransition([[0.5]], dynamics_noise=[[0.08]]),
     )
-    return CouplingGraphBackend(graph, transitions, control_matrix=[[1.0], [0.0]])
+    return CouplingGraphBackend(
+        graph, transitions, prior=unit_prior(graph), control_matrix=[[1.0], [0.0]]
+    )
+
+
+@pytest.mark.parametrize(
+    ("control_matrix", "match"),
+    [(None, "control matrix"), ([[1.0, 0.0], [0.0, 1.0]], "p=1")],
+)
+def test_selector_refuses_a_backend_it_cannot_search(control_matrix, match):
+    # Unrefused, a control-free backend returned the grid's first action, and p = 2
+    # constructed and failed at the first select.
+    graph = _two_node_backend().graph
+    transitions = _two_node_backend().transitions
+    backend = CouplingGraphBackend(
+        graph, transitions, prior=unit_prior(graph), control_matrix=control_matrix
+    )
+    with pytest.raises(ValueError, match=match):
+        FfgEfeSelector(
+            backend, info_block=range(2), n_candidates=5, action_bounds=(-1.0, 1.0)
+        )
 
 
 def test_agent_on_ffg_backend_acts_via_ffg_selector():
@@ -195,6 +220,7 @@ def test_ffg_agent_matches_kalman_efe_agent_end_to_end():
     backend = CouplingGraphBackend(
         graph,
         (GaussianTransition(dynamics, dynamics_noise=dynamics_noise),),
+        prior=unit_prior(graph),
         control_matrix=control,
     )
     bounds, k = (-2.0, 2.0), 21
@@ -259,7 +285,10 @@ def _single_node_rx_backend(params):
         observations={0: CallableGaussianObservation(C, _rx_noise, params)},
     )
     backend = CouplingGraphBackend(
-        graph, (GaussianTransition(A, dynamics_noise=Q),), control_matrix=B
+        graph,
+        (GaussianTransition(A, dynamics_noise=Q),),
+        prior=unit_prior(graph),
+        control_matrix=B,
     )
     return backend, A, Q, C, B
 
@@ -286,7 +315,10 @@ class TestStateDependentSelection:
             observations={0: GaussianObservation(C, observation_noise=params["R0"])},
         )
         fx = CouplingGraphBackend(
-            graph_fx, (GaussianTransition(A, dynamics_noise=Q),), control_matrix=B
+            graph_fx,
+            (GaussianTransition(A, dynamics_noise=Q),),
+            prior=unit_prior(graph_fx),
+            control_matrix=B,
         )
         _, epi_fx = _score_components(fx, belief, pref, cands, range(2))
         np.testing.assert_allclose(np.asarray(epi_fx), float(epi_fx[0]), atol=1e-9)
@@ -339,6 +371,7 @@ class TestStateDependentSelection:
         rx = CouplingGraphBackend(
             graph,
             (GaussianTransition([[1.0]], dynamics_noise=[[0.1]]),),
+            prior=unit_prior(graph),
             control_matrix=[[1.0]],
         )
         belief = Belief(mean=[0.0], cov=[[1.0]])

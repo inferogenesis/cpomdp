@@ -357,7 +357,8 @@ def build_maze(
         parent=CONTEXT,
         child=ARENA,
         factor=GaussianCoupling(
-            coupling=coupling_weights.tolist(), coupling_noise=coupling_noise.tolist()
+            coupling_matrix=coupling_weights.tolist(),
+            coupling_noise=coupling_noise.tolist(),
         ),
         tau=1.0,
         efe_relevant=True,  # the covariance path the instrumental epistemic rides
@@ -386,7 +387,10 @@ def build_maze(
     for axis in range(n_dims):
         control_matrix[context_dim + axis, axis] = 1.0
     return CouplingGraphBackend(
-        graph, transitions, control_matrix=control_matrix.tolist()
+        graph,
+        transitions,
+        prior=start_belief(n_dims, context_dim=context_dim),
+        control_matrix=control_matrix.tolist(),
     )
 
 

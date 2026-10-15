@@ -25,6 +25,8 @@ pytest_plugins = ["pytester"]
 _examples = Path(__file__).parent / "examples"
 sys.path.insert(0, str(_examples))
 sys.path.insert(0, str(_examples / "ffg"))
+# The builders test modules share live in `tests/_support.py`.
+sys.path.insert(0, str(Path(__file__).parent / "tests"))
 
 # Read at jax import time. The zero threshold caches sub-second compiles too.
 # The per-version subdirectory is because jax's entry format differs by python

@@ -10,9 +10,14 @@ from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
 from cpomdp._validation import validate_covariance
-from cpomdp.backends.base import EfeBackend, InadmissiblePartitionError
+from cpomdp.backends.base import EfeBackend
 from cpomdp.control import LQRController
-from cpomdp.efe import _ffg_efe_step, expected_free_energy, policy_efe
+from cpomdp.efe import (
+    _checked_info_block,
+    _ffg_efe_step,
+    expected_free_energy,
+    policy_efe,
+)
 from cpomdp.enumeration import SearchWarrant
 from cpomdp.types import Belief, LinearGaussianModel
 
@@ -117,6 +122,24 @@ class LQRSelector:
         return self.controller.action(belief.mean, preference.goal)
 
 
+def _require_scalar_control(
+    control_matrix: Float64[Array, "n p"] | None, selector: str
+) -> None:
+    """Refuse a model a one-dimensional action grid cannot search."""
+    if control_matrix is None:
+        raise ValueError(
+            f"{selector} needs a model with a control matrix; an action has no "
+            "effect on a control-free (pure-tracking) model."
+        )
+    p = control_matrix.shape[1]
+    if p != 1:
+        raise ValueError(
+            f"{selector} searches a 1-D action grid (p=1); got p={p}. "
+            "For p>1 use EnumeratedEfeSearch over a declared FiniteActionSet "
+            "(cpomdp.enumeration), or pass a custom selector."
+        )
+
+
 class EFESelector:
     """EFE action selection over a front-loaded candidate grid, horizon-aware.
 
@@ -148,18 +171,7 @@ class EFESelector:
         action_bounds: tuple[float, float],
         horizon: int = 1,
     ) -> None:
-        if model.control_matrix is None:
-            raise ValueError(
-                "EFESelector needs a model with a control matrix; an action has no "
-                "effect on a control-free (pure-tracking) model."
-            )
-        p = model.control_matrix.shape[1]
-        if p != 1:
-            raise ValueError(
-                f"EFESelector searches a 1-D action grid (p=1); got p={p}. "
-                "For p>1 use EnumeratedEfeSearch over a declared FiniteActionSet "
-                "(cpomdp.enumeration), or pass a custom selector."
-            )
+        _require_scalar_control(model.control_matrix, "EFESelector")
         lo, hi = action_bounds
         if not lo < hi:
             raise ValueError(
@@ -258,6 +270,7 @@ class FfgEfeSelector:
         n_candidates: int,
         action_bounds: tuple[float, float],
     ) -> None:
+        _require_scalar_control(backend.model.control_matrix, "FfgEfeSelector")
         lo, hi = action_bounds
         if not lo < hi:
             raise ValueError(
@@ -267,25 +280,15 @@ class FfgEfeSelector:
             raise ValueError(
                 f"n_candidates must be at least 2 to search, got {n_candidates}"
             )
-        # ADR-018 admissibility: refuse a carry partition that severs an edge the model
-        # declares EFE-load-bearing — it would break the temporal integration the
-        # epistemic rides on (the drift could still look right; see the error). Enforced
-        # here, at the EFE path; pure filtering on any partition is never blocked.
-        severed = backend.severed_efe_edges()
-        if severed:
-            edges = ", ".join(f"{e.parent}->{e.child}" for e in severed)
-            raise InadmissiblePartitionError(
-                f"the carry partition severs EFE-load-bearing edge(s) [{edges}]; the "
-                "epistemic about the targeted latent would degrade while the drift may "
-                "still pass. Keep the edge's endpoints in one cluster, or unflag it if "
-                "a severed-mass check shows the cut is safe."
-            )
+        # ADR-018 admissibility, and a block the epistemic can be aimed at. Enforced on
+        # the EFE paths; pure filtering on any partition is never blocked.
+        target = _checked_info_block(backend, info_block)
         # Front-load (ADR-002): the candidate grid, the info block, the constant C.
         # R is *not* front-loaded — it may be state-dependent, so it is read per
         # candidate at μ⁺ via ``observation_noise_at`` (issue #27); a fixed sensor
         # returns the same constant each time.
         self._backend = backend
-        self._target = tuple(info_block)
+        self._target = target
         self._observation_matrix, _ = backend.observation_model  # C (constant)
         self._candidates = jnp.linspace(lo, hi, n_candidates)[:, None]
 

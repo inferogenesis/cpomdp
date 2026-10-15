@@ -164,7 +164,8 @@ def test_branching_tree_matches_coupling_graph():
         root=chea,
         dims=(1, 1, 1, 1, 1),
         couplings=tuple(
-            Coupling(p, c, GaussianCoupling([[w]], [[q]]), 1.0) for p, c, w, q in edges
+            Coupling(p, c, GaussianCoupling([[w]], coupling_noise=[[q]]), 1.0)
+            for p, c, w, q in edges
         ),
         observations={
             n: GaussianObservation([[1.0]], observation_noise=[[obs_r]])

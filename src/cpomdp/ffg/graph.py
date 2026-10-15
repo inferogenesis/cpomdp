@@ -103,15 +103,21 @@ class CouplingGraph:
                 if not 0 <= idx < n:
                     raise ValueError(f"coupling references unknown node {idx}")
             expected = (self.dims[edge.child], self.dims[edge.parent])
-            actual = tuple(edge.factor.coupling.shape)
+            actual = tuple(edge.factor.coupling_matrix.shape)
             if actual != expected:
                 raise ValueError(
                     f"coupling {edge.parent}->{edge.child}: factor W shape {actual} "
                     f"!= expected {expected} (dim[child], dim[parent])"
                 )
-        for idx in self.observations:
+        for idx, factor in self.observations.items():
             if not 0 <= idx < n:
                 raise ValueError(f"observation references unknown node {idx}")
+            width = factor.observation_matrix.shape[1]
+            if width != self.dims[idx]:
+                raise ValueError(
+                    f"observation on node {idx}: sensor C width {width} "
+                    f"!= node dimension {self.dims[idx]}"
+                )
 
         # The edges must form a tree rooted at `root`: each non-root node has exactly
         # one parent, the root has none, and every node walks up to the root.

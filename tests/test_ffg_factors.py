@@ -405,27 +405,37 @@ class TestGaussianTransition:
 
 class TestGaussianCoupling:
     def test_stores_coerced_arrays(self):
-        fac = GaussianCoupling([[2.0, -1.0]], [[0.3]])
-        assert isinstance(fac.coupling, jax.Array)
-        np.testing.assert_array_equal(fac.coupling, [[2.0, -1.0]])
+        fac = GaussianCoupling([[2.0, -1.0]], coupling_noise=[[0.3]])
+        assert isinstance(fac.coupling_matrix, jax.Array)
+        np.testing.assert_array_equal(fac.coupling_matrix, [[2.0, -1.0]])
         np.testing.assert_array_equal(fac.coupling_noise, [[0.3]])
+
+    def test_coupling_noise_is_keyword_only(self):
+        # A scalar edge's W and Q are both (1, 1), and only Q is content-checked, so a
+        # swapped pair builds an edge whose messages are quietly wrong.
+        with pytest.raises(TypeError, match="positional"):
+            # Calling it wrongly is the test, so ty's arity errors are expected.
+            GaussianCoupling(  # ty: ignore[missing-argument]
+                [[0.05]],
+                [[0.9]],  # ty: ignore[too-many-positional-arguments]
+            )
 
     def test_rejects_singular_coupling_noise(self):
         # Q is inverted in the message, so a singular Q is rejected at construction.
         with pytest.raises(ValueError, match="positive-definite"):
-            GaussianCoupling([[1.0]], [[0.0]])
+            GaussianCoupling([[1.0]], coupling_noise=[[0.0]])
 
     def test_rejects_coupling_noise_shape_mismatch(self):
         # W is 1x2 (c=1) but Q is 2x2 — Q must be c x c.
         with pytest.raises(ValueError, match="match"):
-            GaussianCoupling([[1.0, 0.0]], [[1.0, 0.0], [0.0, 1.0]])
+            GaussianCoupling([[1.0, 0.0]], coupling_noise=[[1.0, 0.0], [0.0, 1.0]])
 
     def test_accepts_nonsquare_coupling(self):
         # The defining difference from GaussianTransition: a structural coupling's W
         # maps parent -> child and need NOT be square. The very shape the transition
         # factor rejects ("square") must construct cleanly here.
-        fac = GaussianCoupling([[1.0, 0.0]], [[1.0]])
-        assert fac.coupling.shape == (1, 2)
+        fac = GaussianCoupling([[1.0, 0.0]], coupling_noise=[[1.0]])
+        assert fac.coupling_matrix.shape == (1, 2)
 
     @pytest.mark.parametrize(("p", "c"), [(1, 1), (2, 1), (1, 2), (3, 2)])
     def test_message_to_parent_matches_moment_form(self, p, c):
@@ -450,7 +460,7 @@ class TestGaussianCoupling:
         parent_mean, parent_cov = mean_post[:p], cov_post[:p, :p]
 
         child_msg = GaussianObservation(np.eye(c), observation_noise=R).message(y)
-        up = GaussianCoupling(W, Q).message_to_parent(child_msg)
+        up = GaussianCoupling(W, coupling_noise=Q).message_to_parent(child_msg)
         out_mean, out_cov = (_belief_as_canonical(m0, P0) + up).to_moment()
 
         np.testing.assert_allclose(out_mean, parent_mean, atol=1e-8)
@@ -473,14 +483,15 @@ class TestGaussianCoupling:
         cov_child = W @ Pp @ W.T + Q
 
         parent_msg = _belief_as_canonical(mp, Pp)
-        down = GaussianCoupling(W, Q).message_to_child(parent_msg)
+        down = GaussianCoupling(W, coupling_noise=Q).message_to_child(parent_msg)
         out_mean, out_cov = down.to_moment()
 
         np.testing.assert_allclose(out_mean, mean_child, atol=1e-8)
         np.testing.assert_allclose(out_cov, cov_child, atol=1e-8)
 
     def test_jit_and_grad_through_message_to_parent(self):
-        coupling = GaussianCoupling([[1.5, -0.5]], [[0.3]])  # non-square W (1x2)
+        # non-square W (1x2)
+        coupling = GaussianCoupling([[1.5, -0.5]], coupling_noise=[[0.3]])
         m = CanonicalGaussian([[2.0]], [1.0])  # a message on the 1-D child
         eager = coupling.message_to_parent(m).potential
         jitted = jax.jit(

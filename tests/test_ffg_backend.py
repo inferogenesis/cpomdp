@@ -20,6 +20,8 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
+from _support import unit_prior
+from cpomdp.agent import Agent
 from cpomdp.backends.base import InferenceBackend
 from cpomdp.backends.coupling import (
     CouplingGraphBackend,
@@ -188,7 +190,7 @@ def _build(
 ):
     """Build a ``CouplingGraphBackend`` (graph + per-node transitions) for a spec."""
     couplings = tuple(
-        Coupling(parent, child, GaussianCoupling(w, q), 1.0)
+        Coupling(parent, child, GaussianCoupling(w, coupling_noise=q), 1.0)
         for parent, child, w, q in edges
     )
     observations = {
@@ -202,7 +204,7 @@ def _build(
     kwargs = {"control_matrix": control_matrix, "readout_node": readout_node}
     if partition is not None:
         kwargs["partition"] = partition
-    return CouplingGraphBackend(graph, transitions, **kwargs)
+    return CouplingGraphBackend(graph, transitions, prior=unit_prior(graph), **kwargs)
 
 
 # The Phase-5 demo tree, now dynamic: shared CheA (root, 0) feeds fast CheY-P (1, the
@@ -564,6 +566,30 @@ class TestProtocolAndReadout:
         np.testing.assert_allclose(root_belief.mean, node0.mean)
         np.testing.assert_allclose(root_belief.cov, node0.cov)
 
+    def _one_node_backend(self, prior):
+        graph = CouplingGraph(
+            root=0,
+            dims=(2,),
+            couplings=(),
+            observations={
+                0: GaussianObservation([[1.0, 0.0]], observation_noise=[[0.1]])
+            },
+        )
+        transition = GaussianTransition(np.eye(2), dynamics_noise=np.eye(2) * 0.1)
+        return CouplingGraphBackend(graph, (transition,), prior=prior)
+
+    def test_prior_starts_the_agent_and_the_flat_model(self):
+        # Both used to start from an N(0, I) placeholder the caller never chose.
+        prior = Belief(mean=[0.5, -0.5], cov=np.eye(2) * 3.0)
+        backend = self._one_node_backend(prior)
+        assert backend.model.prior is prior
+        assert backend.to_flat_model().prior is prior
+        assert Agent.from_backend(backend).belief is prior
+
+    def test_prior_over_the_wrong_dimension_is_refused(self):
+        with pytest.raises(ValueError, match="2-D joint state"):
+            self._one_node_backend(Belief(mean=[0.0], cov=[[1.0]]))
+
     def test_prior_not_mutated(self):
         backend = _build(
             _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
@@ -802,7 +828,7 @@ def _rx_relaxation_oracle(
 def _build_rx(dims, edges, rx_obs, dyn, *, control_matrix=None, partition=None):
     """Build a ``CouplingGraphBackend`` with state-dependent (callable) observations."""
     couplings = tuple(
-        Coupling(parent, child, GaussianCoupling(w, q), 1.0)
+        Coupling(parent, child, GaussianCoupling(w, coupling_noise=q), 1.0)
         for parent, child, w, q in edges
     )
     observations = {
@@ -816,7 +842,7 @@ def _build_rx(dims, edges, rx_obs, dyn, *, control_matrix=None, partition=None):
     kwargs = {"control_matrix": control_matrix}
     if partition is not None:
         kwargs["partition"] = partition
-    return CouplingGraphBackend(graph, transitions, **kwargs)
+    return CouplingGraphBackend(graph, transitions, prior=unit_prior(graph), **kwargs)
 
 
 # A branching R(x) spec: the chemotaxis tree, but the three observed nodes each sense

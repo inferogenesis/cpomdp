@@ -30,7 +30,7 @@ import jax.numpy as jnp
 import numpy as np
 from jaxtyping import Array, Float64
 
-from cpomdp.efe import policy_efe, policy_efe_ffg
+from cpomdp.efe import _checked_info_block, _policy_efe_ffg, policy_efe
 from cpomdp.types import Belief, LinearGaussianModel
 
 # `CompletenessCertificate` is an evidence kind of the warrant vocabulary, so it is
@@ -205,7 +205,10 @@ class _FlatScorer:
 
 @dataclass(frozen=True)
 class _FfgScorer:
-    """Scores with ``policy_efe_ffg`` on an FFG backend, aimed at ``info_block``."""
+    """Scores with ``policy_efe_ffg`` on an FFG backend, aimed at ``info_block``.
+
+    The block is checked once, by ``over_backend``, so ``score`` skips the check.
+    """
 
     backend: "EfeBackend"
     info_block: tuple[int, ...]
@@ -217,8 +220,8 @@ class _FfgScorer:
     def score(
         self, belief: Belief, policy: Float64[Array, "H p"], preference: "Preference"
     ) -> Float64[Array, ""]:
-        return policy_efe_ffg(
-            self.backend, belief, policy, preference, info_block=self.info_block
+        return _policy_efe_ffg(
+            self.backend, belief, policy, preference, self.info_block
         )[0]
 
 
@@ -278,7 +281,8 @@ class EnumeratedEfeSearch:
                 "matrix; an action has no effect without one."
             )
         search = cls.__new__(cls)
-        search._setup(_FfgScorer(backend, tuple(info_block)), action_set, horizon)
+        target = _checked_info_block(backend, info_block)
+        search._setup(_FfgScorer(backend, target), action_set, horizon)
         return search
 
     def _setup(
@@ -485,9 +489,8 @@ class ChunkedEfeSearch:
                 "matrix; an action has no effect without one."
             )
         search = cls.__new__(cls)
-        search._setup(
-            _FfgScorer(backend, tuple(info_block)), action_set, horizon, chunk
-        )
+        target = _checked_info_block(backend, info_block)
+        search._setup(_FfgScorer(backend, target), action_set, horizon, chunk)
         return search
 
     def _setup(

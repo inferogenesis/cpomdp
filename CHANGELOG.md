@@ -382,6 +382,22 @@ no use of the readings beats it.
   `epistemic_range`. `SensorReport` gains `process_non_constant` and
   `process_noise_spread`, and `flattens` needs both noises constant. Under `Q(x)` the
   action reaches the recursion with `R` fixed.
+- `CouplingGraph` checks each sensor's width against the node it observes. A one-column
+  `C` on a two-dimensional node used to construct, and `CouplingGraphBackend` broadcast
+  it across the node's block, so the sensor read the sum of the node's components and
+  the filter returned a plausible posterior from the wrong model.
+- The graph EFE rollouts and searches skipped the checks `FfgEfeSelector` makes on its
+  target. `policy_efe_ffg`, `policy_efe_ffg_trace`, the crossover statistic and both
+  searches' `over_backend` scored on a carry partition that severs an EFE-load-bearing
+  edge, and the searches certified the argmin `PROVED`. None of them checked
+  `info_block`. JAX clamps an out-of-range gather, so index 99 on a 3-state joint scored
+  as index 2. An empty block gave a zero epistemic and a repeated one gave NaN. All of
+  them now refuse both through one check. A search makes it once at construction, so
+  scoring each policy costs nothing extra.
+- `FfgEfeSelector` refuses a backend with no control matrix or with more than one action
+  dimension, as `EFESelector` does. A control-free backend returned the grid's first
+  action, and `p = 2` constructed and then failed at the first `select`. The two
+  selectors now share one check.
 
 ### Changed
 
@@ -534,6 +550,17 @@ no use of the readings beats it.
   noise is content-checked. `from_ou`'s `tau` and `dt` are both positive scalars in the
   same time unit and `A = exp(-dt/tau)` is finite either way round. 45 call sites moved
   to keywords.
+- **Breaking:** `GaussianCoupling` takes `coupling_noise` by keyword, and its matrix is
+  `coupling_matrix`, as argument and field, where it was `coupling`. A scalar edge's gain
+  and noise are both (1, 1), and only the noise is content-checked, so
+  `GaussianCoupling([[0.05]], [[0.9]])` built an edge with the two swapped. The new name
+  follows the `_matrix` suffix every other linear map carries. 33 call sites moved to
+  keywords.
+- **Breaking:** `CouplingGraphBackend` takes a required keyword `prior`, the belief over
+  the joint state before any reading. Its `model.prior` was an N(0, I) placeholder, so
+  an `Agent` built on the backend planned and filtered from a belief the caller never
+  chose, and `to_flat_model()` carried the same placeholder. The flagship example
+  overwrote `agent.belief` to work around it. Pass the starting belief at construction.
 - **Breaking:** every `LinearGaussianModel` argument after `dynamics` is keyword-only.
   The four matrices are two maps and two covariances of the same rank, and only the
   covariances are content-checked, so a transposed pair constructed in silence whenever

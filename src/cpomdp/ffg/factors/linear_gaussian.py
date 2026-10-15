@@ -477,32 +477,40 @@ class GaussianCoupling:
     ``CheA`` node to a branch latent). The maths is identical — a linear-Gaussian
     coupling — but a coupling carries no time semantics and ``W`` need not be square.
 
-    - ``coupling`` — W, shape ``(c, p)``: maps the p-D parent's mean to the c-D child.
+    - ``coupling_matrix`` — W, shape ``(c, p)``: maps the p-D parent's mean to the c-D
+      child.
     - ``coupling_noise`` — Q, shape ``(c, c)``, positive-definite (it is inverted).
     """
 
-    coupling: Float64[Array, "c p"]  # W: child-rows × parent-cols
+    coupling_matrix: Float64[Array, "c p"]  # W: child-rows × parent-cols
     coupling_noise: Float64[Array, "c c"]  # Q: child × child, positive-definite
 
-    def __init__(self, coupling: ArrayLike, coupling_noise: ArrayLike) -> None:
-        object.__setattr__(self, "coupling", jnp.asarray(coupling, dtype=float))
+    def __init__(
+        self, coupling_matrix: ArrayLike, *, coupling_noise: ArrayLike
+    ) -> None:
+        object.__setattr__(
+            self, "coupling_matrix", jnp.asarray(coupling_matrix, dtype=float)
+        )
         object.__setattr__(
             self, "coupling_noise", jnp.asarray(coupling_noise, dtype=float)
         )
         self._validate()
 
     def _validate(self) -> None:
-        coupling, coupling_noise = self.coupling, self.coupling_noise  # W, Q
+        coupling_matrix = self.coupling_matrix  # W
+        coupling_noise = self.coupling_noise  # Q
         # Unlike GaussianTransition's square dynamics, the parent→child map W need
         # NOT be square — parent and child may differ in dimension.
-        if coupling.ndim != 2:
-            raise ValueError(f"coupling must be 2-D (c, p), got shape {coupling.shape}")
+        if coupling_matrix.ndim != 2:
+            raise ValueError(
+                f"coupling_matrix must be 2-D (c, p), got shape {coupling_matrix.shape}"
+            )
         # Q is inverted in the message, so it must be positive-definite.
         validate_covariance(coupling_noise, "coupling_noise", require_definite=True)
-        c = coupling.shape[0]
+        c = coupling_matrix.shape[0]
         if coupling_noise.shape != (c, c):
             raise ValueError(
-                f"coupling_noise must be {c}x{c} to match the {c}-row coupling, "
+                f"coupling_noise must be {c}x{c} to match the {c}-row coupling_matrix, "
                 f"got shape {coupling_noise.shape}"
             )
 
@@ -532,14 +540,15 @@ class GaussianCoupling:
         Returns:
             A ``CanonicalGaussian`` over the p-D parent.
         """
-        coupling, coupling_noise = self.coupling, self.coupling_noise  # W, Q
-        c, p = coupling.shape  # W is (child, parent)
+        coupling_matrix = self.coupling_matrix  # W
+        coupling_noise = self.coupling_noise  # Q
+        c, p = coupling_matrix.shape  # W is (child, parent)
         noise_precision = jnp.linalg.inv(coupling_noise)  # Q⁻¹
-        noise_weighted_coupling = noise_precision @ coupling  # Q⁻¹W
+        noise_weighted_coupling = noise_precision @ coupling_matrix  # Q⁻¹W
 
         # The incoming message is on the CHILD, so it folds into the child block —
         # the mirror of predict, where the message folds into the parent (state) block.
-        parent_block = coupling.T @ noise_weighted_coupling  # WᵀQ⁻¹W
+        parent_block = coupling_matrix.T @ noise_weighted_coupling  # WᵀQ⁻¹W
         child_block = noise_precision + child_message.precision  # Q⁻¹ + message
 
         precision = jnp.block(
@@ -576,14 +585,15 @@ class GaussianCoupling:
         Returns:
             A ``CanonicalGaussian`` over the c-D child.
         """
-        coupling, coupling_noise = self.coupling, self.coupling_noise  # W, Q
-        c, p = coupling.shape  # W is (child, parent)
+        coupling_matrix = self.coupling_matrix  # W
+        coupling_noise = self.coupling_noise  # Q
+        c, p = coupling_matrix.shape  # W is (child, parent)
 
         noise_precision = jnp.linalg.inv(coupling_noise)  # Q⁻¹
-        noise_weighted_coupling = noise_precision @ coupling  # Q⁻¹W
+        noise_weighted_coupling = noise_precision @ coupling_matrix  # Q⁻¹W
 
         parent_block = (
-            coupling.T @ noise_weighted_coupling + parent_message.precision
+            coupling_matrix.T @ noise_weighted_coupling + parent_message.precision
         )  # WᵀQ⁻¹W + message
         child_block = noise_precision
 
@@ -602,8 +612,8 @@ class GaussianCoupling:
     def tree_flatten(
         self,
     ) -> tuple[tuple[Float64[Array, "c p"], Float64[Array, "c c"]], None]:
-        """Leaves for JAX: ``(coupling, coupling_noise)``, no static aux data."""
-        return (self.coupling, self.coupling_noise), None
+        """Leaves for JAX: ``(coupling_matrix, coupling_noise)``, no static aux data."""
+        return (self.coupling_matrix, self.coupling_noise), None
 
     @classmethod
     def tree_unflatten(
@@ -612,9 +622,9 @@ class GaussianCoupling:
         children: tuple[Float64[Array, "c p"], Float64[Array, "c c"]],
     ) -> "GaussianCoupling":
         """Rebuild from leaves without validating — the leaves may be tracers."""
-        coupling, coupling_noise = children
+        coupling_matrix, coupling_noise = children
         obj = object.__new__(cls)
-        object.__setattr__(obj, "coupling", coupling)
+        object.__setattr__(obj, "coupling_matrix", coupling_matrix)
         object.__setattr__(obj, "coupling_noise", coupling_noise)
         return obj
 

@@ -29,6 +29,7 @@ import numpy as np
 import pytest
 
 import cpomdp.crossover
+from _support import unit_prior
 from cpomdp.backends.coupling import CouplingGraphBackend
 from cpomdp.crossover import CrossoverStatistic, crossover_horizon, crossover_statistic
 from cpomdp.diagnostics import rollout_conditioning
@@ -134,7 +135,10 @@ def _flat_pair():
     sensor = CallableGaussianObservation(_ARENA_C, _cue_noise, _CUE_PARAMS)
     graph = CouplingGraph(root=0, dims=(4,), couplings=(), observations={0: sensor})
     backend = CouplingGraphBackend(
-        graph, (GaussianTransition(a, dynamics_noise=q),), control_matrix=b
+        graph,
+        (GaussianTransition(a, dynamics_noise=q),),
+        prior=unit_prior(graph),
+        control_matrix=b,
     )
     model = LinearGaussianModel(
         dynamics_matrix=a,

@@ -73,7 +73,7 @@ EQUIV_TOL = 1e-7
 def build_graph() -> tuple[CouplingGraph, Belief, dict[int, np.ndarray]]:
     """The tree as a `CouplingGraph`, with its root prior and the leaf readings."""
     couplings = tuple(
-        Coupling(parent, child, GaussianCoupling([[w]], [[q]]), tau=0.0)
+        Coupling(parent, child, GaussianCoupling([[w]], coupling_noise=[[q]]), tau=0.0)
         for parent, child, w, q in EDGES
     )
     observations = {
@@ -197,9 +197,9 @@ NODE_META = {
 
 CODE = """\
 couplings = (
-    Coupling(r, h, GaussianCoupling([[0.9]], [[0.05]]), tau=0.0),
-    Coupling(h, a, GaussianCoupling([[1.0]], [[0.03]]), tau=0.0),
-    Coupling(h, b, GaussianCoupling([[1.0]], [[0.03]]), tau=0.0),
+    Coupling(r, h, GaussianCoupling([[0.9]], coupling_noise=[[0.05]]), tau=0.0),
+    Coupling(h, a, GaussianCoupling([[1.0]], coupling_noise=[[0.03]]), tau=0.0),
+    Coupling(h, b, GaussianCoupling([[1.0]], coupling_noise=[[0.03]]), tau=0.0),
 )
 graph  = CouplingGraph(root=r, dims=dims,
                        couplings=couplings, observations=obs)
@@ -320,7 +320,7 @@ def _draw_code(ax) -> None:
         va="top",
         ha="left",
         family="monospace",
-        fontsize=8.0,
+        fontsize=7.2,
         color=INK,
         zorder=2,
     )
