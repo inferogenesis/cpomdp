@@ -397,6 +397,9 @@ certainty equivalence is optimal, and no use of the readings beats it.
   PyPI, on GitHub and on the docs site. The figures are pinned to the commit that last
   changed them, so a later rename on `main` cannot break a published page, and the docs
   site still serves its own copies.
+- The README's pymdp table said only `C` and `D` are spelled differently. It and the
+  `Agent` docstring now map `A`, `B` and `infer_policies` as well, and say that
+  `model.A` and `model.C` are control-theory letters for pymdp's `B` and `A`.
 - `cpomdp._lab.additivity.variational_free_energy` and `RxInferBackend` refuse a
   state-dependent sensor. Both read the plain `observation_noise` whatever the model
   carried, so a model with `R(x)` was priced or filtered against a constant without
