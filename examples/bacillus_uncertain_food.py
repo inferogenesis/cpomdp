@@ -62,9 +62,9 @@ This needs zero core-library changes (ADR-013): the model is just a bigger
 ``LinearGaussianModel``, the sensor is one ``CallableSensor`` with a 4x4
 block-diagonal ``R(x)``, and ``expected_free_energy``/``LQRController`` don't care
 how the observation/state vectors are built up. The mechanism is checked, not
-just rendered: ``--scan`` runs the identical model through both
-``KalmanBackend`` and ``ChainBackend`` (ADR-012 Phase 2.5) and checks they agree
-to ``atol=1e-7``.
+just rendered: ``tests/test_ffg_chain.py`` runs this model through both
+``KalmanBackend`` and the FFG chain filter (ADR-012 Phase 2.5) and holds them to
+``atol=1e-7``.
 
 Needs the ``examples`` extra (matplotlib + pillow, neither a runtime dependency of
 the library itself)::
@@ -88,7 +88,6 @@ import numpy as np
 
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.control import LQRController
-from cpomdp.ffg.chain import ChainBackend
 from cpomdp.observation import CallableSensor
 from cpomdp.selection import Preference
 from cpomdp.types import Belief, LinearGaussianModel
@@ -115,7 +114,7 @@ BEACON_PT = np.array([0.0, 2.7])  # up and central, clearly off the start→food
 R_LO, R_HI, R_WIDTH = 0.02, 1.30, 2.3
 R_SELF = 0.05  # fixed proprioceptive noise: the agent always senses ITSELF clearly
 Q_AGENT = 2e-5  # near-zero process noise on the agent block (existing idiom)
-Q_FOOD = 1e-6  # strictly positive (ChainBackend rejects Q=0) — food is stationary
+Q_FOOD = 1e-6  # the food is stationary. The FFG chain filter needs Q > 0
 PRIOR_COV_AGENT = 2.6
 LQR_GOAL_PRECISION = 0.22  # the LQR agent's cost weight on (agent - food-belief)
 LQR_EFFORT = 1e-6
@@ -267,8 +266,8 @@ def simulate(regime, backend_cls=KalmanBackend, *, seed=7):
     Args:
         regime: one of the ``REGIMES`` dicts (``kind`` "lqr" or "efe", plus
             ``precision``).
-        backend_cls: ``KalmanBackend`` or ``ChainBackend`` — same model, same
-            perceive/act shape, swappable behind the ``InferenceBackend`` protocol.
+        backend_cls: the ``InferenceBackend`` class to filter with, built from the
+            model. ``KalmanBackend`` by default.
         seed: RNG seed for the observation noise draws.
 
     Returns:
@@ -364,45 +363,8 @@ def _arrival_step(true_states, *, threshold=ARRIVAL_THRESHOLD):
     return int(np.argmax(settled)) if settled.any() else None
 
 
-def check_backend_agreement(*, seed=11, n_steps=30):
-    """``KalmanBackend`` vs ``ChainBackend`` on an IDENTICAL scripted input sequence.
-
-    Deliberately not two independent closed loops: each regime's argmin (or LQR's
-    belief-dependent goal) could in principle land on a different choice from a
-    near-tied score under tiny numerical differences, and the resulting
-    trajectories would then diverge for a reason that has nothing to do with the
-    backends actually disagreeing. Feeding both backends the same scripted
-    ``(observation, action)`` pairs isolates exactly the claim ADR-013/
-    BUILD_PLAN.md Phase 3 cares about: do the two backends compute the same
-    belief from the same inputs, on a sensor topology (a channel reading one
-    state block, noise keyed on a different block) neither backend's existing
-    test suite exercises. Mirrors the methodology in ``tests/test_ffg_chain.py``.
-
-    Returns:
-        ``(max_mean_diff, max_cov_diff)`` — the largest elementwise absolute
-        difference between the two backends' beliefs, over every step.
-    """
-    rng = np.random.default_rng(seed)
-    model = build_model()
-    kalman, chain = KalmanBackend(model), ChainBackend(model)
-    k_belief = c_belief = model.prior
-    max_mean_diff = max_cov_diff = 0.0
-    for _ in range(n_steps):
-        obs = rng.standard_normal(4)
-        action = rng.standard_normal(2)
-        k_belief = kalman.infer_states(obs, k_belief, action)
-        c_belief = chain.infer_states(obs, c_belief, action)
-        max_mean_diff = max(
-            max_mean_diff, float(np.abs(k_belief.mean - c_belief.mean).max())
-        )
-        max_cov_diff = max(
-            max_cov_diff, float(np.abs(k_belief.cov - c_belief.cov).max())
-        )
-    return max_mean_diff, max_cov_diff
-
-
 def scan():
-    """Print each regime's behaviour metrics, then the backend agreement check."""
+    """Print each regime's behaviour metrics."""
     print(
         f"world: start={START}  food_true={FOOD_TRUE}  "
         f"food_prior_mean={FOOD_PRIOR_MEAN}  beacon={BEACON_PT}\n"
@@ -418,16 +380,6 @@ def scan():
             f"foodBeliefErr={food_err:5.2f}  finalAgentToFood={agent_to_food:5.2f}  "
             f"finalFoodCovTr={food_cov_tr:.4f}"
         )
-
-    print("\n  Kalman vs ChainBackend agreement (scripted inputs, atol=1e-7):")
-    max_mean_diff, max_cov_diff = check_backend_agreement()
-    ok = max_mean_diff < 1e-7 and max_cov_diff < 1e-7
-    print(
-        f"    max |Δmean|={max_mean_diff:.2e}  max |Δcov|={max_cov_diff:.2e}  "
-        f"{'OK' if ok else 'MISMATCH'}"
-    )
-    if not ok:
-        raise SystemExit("Kalman/ChainBackend disagree beyond atol=1e-7")
 
 
 def _ellipse(ax, mean, cov, color, *, alpha_fill=0.16, max_diameter=None):
