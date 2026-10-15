@@ -9,6 +9,7 @@ must pick the same action as the existing ``EFESelector`` on the equivalent flat
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pytest
 
 from _support import unit_prior
 from cpomdp.agent import Agent
@@ -115,6 +116,24 @@ def _two_node_backend():
     return CouplingGraphBackend(
         graph, transitions, prior=unit_prior(graph), control_matrix=[[1.0], [0.0]]
     )
+
+
+@pytest.mark.parametrize(
+    ("control_matrix", "match"),
+    [(None, "control matrix"), ([[1.0, 0.0], [0.0, 1.0]], "p=1")],
+)
+def test_selector_refuses_a_backend_it_cannot_search(control_matrix, match):
+    # Unrefused, a control-free backend returned the grid's first action, and p = 2
+    # constructed and failed at the first select.
+    graph = _two_node_backend().graph
+    transitions = _two_node_backend().transitions
+    backend = CouplingGraphBackend(
+        graph, transitions, prior=unit_prior(graph), control_matrix=control_matrix
+    )
+    with pytest.raises(ValueError, match=match):
+        FfgEfeSelector(
+            backend, info_block=range(2), n_candidates=5, action_bounds=(-1.0, 1.0)
+        )
 
 
 def test_agent_on_ffg_backend_acts_via_ffg_selector():

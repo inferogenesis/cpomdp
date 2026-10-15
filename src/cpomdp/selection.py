@@ -122,6 +122,24 @@ class LQRSelector:
         return self.controller.action(belief.mean, preference.goal)
 
 
+def _require_scalar_control(
+    control_matrix: Float64[Array, "n p"] | None, selector: str
+) -> None:
+    """Refuse a model a one-dimensional action grid cannot search."""
+    if control_matrix is None:
+        raise ValueError(
+            f"{selector} needs a model with a control matrix; an action has no "
+            "effect on a control-free (pure-tracking) model."
+        )
+    p = control_matrix.shape[1]
+    if p != 1:
+        raise ValueError(
+            f"{selector} searches a 1-D action grid (p=1); got p={p}. "
+            "For p>1 use EnumeratedEfeSearch over a declared FiniteActionSet "
+            "(cpomdp.enumeration), or pass a custom selector."
+        )
+
+
 class EFESelector:
     """EFE action selection over a front-loaded candidate grid, horizon-aware.
 
@@ -153,18 +171,7 @@ class EFESelector:
         action_bounds: tuple[float, float],
         horizon: int = 1,
     ) -> None:
-        if model.control_matrix is None:
-            raise ValueError(
-                "EFESelector needs a model with a control matrix; an action has no "
-                "effect on a control-free (pure-tracking) model."
-            )
-        p = model.control_matrix.shape[1]
-        if p != 1:
-            raise ValueError(
-                f"EFESelector searches a 1-D action grid (p=1); got p={p}. "
-                "For p>1 use EnumeratedEfeSearch over a declared FiniteActionSet "
-                "(cpomdp.enumeration), or pass a custom selector."
-            )
+        _require_scalar_control(model.control_matrix, "EFESelector")
         lo, hi = action_bounds
         if not lo < hi:
             raise ValueError(
@@ -263,6 +270,7 @@ class FfgEfeSelector:
         n_candidates: int,
         action_bounds: tuple[float, float],
     ) -> None:
+        _require_scalar_control(backend.model.control_matrix, "FfgEfeSelector")
         lo, hi = action_bounds
         if not lo < hi:
             raise ValueError(
