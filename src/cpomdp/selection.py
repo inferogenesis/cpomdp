@@ -154,7 +154,7 @@ class Preference:
             )
 
     def tree_flatten(self):
-        """Leaves: (target, precision); no static aux. Lets jit/vmap take one."""
+        """Leaves: (target, precision), and no static aux. jit and vmap take one."""
         return (self.target, self.precision), None
 
     @classmethod
@@ -510,7 +510,7 @@ class StateGoal:
     [`LQRController`][cpomdp.LQRController] takes. ``effort`` is left None here
     because the action dimension p isn't known until the Agent pairs this with a
     model (the Agent fills the identity). The Agent dispatches a StateGoal to an
-    LQRSelector. Not a pytree - construction-time only; the Agent extracts a
+    LQRSelector. Not a pytree. The Agent reads it once at construction and keeps a
     Preference for the selector.
 
     The target must hold still under the model's dynamics at zero action,
