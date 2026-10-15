@@ -330,6 +330,11 @@ no use of the readings beats it.
 
 ### Fixed
 
+- The README called inference JIT-compilable end to end. The backends and selectors are.
+  The `Agent` is not. It holds its belief, so a jitted `agent.infer_states` returned the
+  belief it was traced with on every call, and the next eager call raised
+  `UnexpectedTracerError`. The `Agent` docstring, its API page and the README now say
+  it is eager, and the page shows a backend driven under `jax.lax.scan`.
 - `EFESelector` described varying-sequence search as a deferred v0.4 `GradientEFESelector`
   seam, in its rendered class docstring and in the `ValueError` a `p > 1` caller hits. That
   search shipped in v0.4.4 as `EnumeratedEfeSearch`, whose own docstring says it supports

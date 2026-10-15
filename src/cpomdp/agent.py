@@ -71,6 +71,12 @@ class Agent:
 
     An agent built without an ``objective`` is a pure tracker: ``infer_states``
     works, but ``sample_action`` raises — there is nothing to act toward.
+
+    The ``Agent`` is eager. It keeps the belief and the last action on itself, so
+    ``jax.jit``, ``vmap`` and ``grad`` do not apply to its methods. A jitted
+    ``infer_states`` bakes in the belief it was traced with and returns the same
+    posterior on every call. To compile a loop, call a backend's ``infer_states``
+    and a selector's ``select`` inside ``jax.lax.scan``, as the API page shows.
     """
 
     def __init__(
