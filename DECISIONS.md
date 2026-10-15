@@ -4541,6 +4541,8 @@ every deep path working.
 **Supersedes:** ADR-047's consequence that "the import paths are `cpomdp.harness` and
 `cpomdp.constructors`", for the paths only, since the seam it built is unchanged. ADR-039's
 decision that "`cpomdp.warrant` stays, as a re-export", and with it ADR-042's Decision 4.
+ADR-036's consequence that `_BlockReducer` is the seam for what a caller wants over every
+policy.
 **Phase:** v0.5.0, the public API review before release
 
 ### The question
@@ -4564,9 +4566,11 @@ starts small.
   break to one lands only in a minor version, listed in the changelog with what
   replaces it.
 - **Private:** any path with a leading underscore on it. No promise.
-- **Implementation modules** such as `cpomdp.types` and `cpomdp.selection` stay
-  importable, since ADR-021 kept them working. Their names are reached through the top
-  level, and the path itself carries no promise.
+- **Implementation modules:** every other module without a leading underscore, such as
+  `cpomdp.types`, `cpomdp.selection`, `cpomdp.crossover`, `cpomdp.ffg.chain` and
+  `cpomdp.backends.base`. They stay importable, since ADR-021 kept them working, and the
+  path carries no promise. A name a user needs from one is reached through the top
+  level.
 
 What that moves:
 
@@ -4582,6 +4586,10 @@ What that moves:
 - `LQRController` and `InadmissiblePartitionError` join the top level. `LQRSelector`
   cannot be built without the first. `FfgEfeSelector`, the graph EFE rollouts and both
   searches' `over_backend` raise the second.
+- `ChunkedEfeSearch.reduce` stops taking a reducer. ADR-036 named `_BlockReducer` the
+  seam for anything a caller wants over every policy. No release carried the chunked
+  search and the reducer's type was private, so the seam closes before anyone builds on
+  it. The search keeps it for its own folds.
 
 ### Consequences
 
@@ -4594,6 +4602,12 @@ What that moves:
   record of what landed stays whole.
 - Promoting a piece of `_lab` later is additive: a public module re-exports it and an
   API page documents it.
+- `EfeBackend` annotates `FfgEfeSelector` and `policy_efe_ffg` and carries no promise. A
+  user passes a `CouplingGraphBackend`, which is public. The protocol is needed only to
+  write a graph backend of one's own, and that user is who would promote it, as a user
+  of `LQRSelector` promoted `LQRController`.
+- `cpomdp.crossover` backs the crossover falsifiers and one gallery example. It has no
+  API page and carries no promise.
 
 ## ADR-070 — cpomdp's warrantlib floor is 0.3
 

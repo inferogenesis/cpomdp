@@ -396,8 +396,9 @@ class _BlockReducer(Protocol):
     """An extra fold over each block — the seam for evidence beyond the argmin.
 
     The search owns the enumeration, the certificate and the argmin (ADR-031). Anything
-    else a caller wants over all ``|A|^H`` policies folds here rather than reading a
-    materialised score vector, which is what keeps residency at ``O(chunk)``.
+    else wanted over all ``|A|^H`` policies folds here rather than reading a
+    materialised score vector, which is what keeps residency at ``O(chunk)``. Only
+    ``_reduce`` takes one, so the seam is internal (ADR-069).
 
     ``update`` receives scores already masked: NaN mapped to ``+inf``, so a NaN-scoring
     policy cannot silently win, and padded lanes likewise. A reduction phrased as "how
