@@ -516,6 +516,17 @@ class TestCouplingGraphValidation:
                 {9: GaussianObservation(np.eye(1), observation_noise=np.eye(1))},
             )
 
+    def test_rejects_sensor_narrower_than_its_node(self):
+        # A one-column C on a 2-D node would broadcast into both columns of the
+        # node's block and read the sum of its components.
+        with pytest.raises(ValueError, match="sensor C width 1"):
+            CouplingGraph(
+                0,
+                (2, 1),
+                (Coupling(0, 1, self._w(1, 2), 1.0),),
+                {0: GaussianObservation(np.eye(1), observation_noise=np.eye(1))},
+            )
+
 
 # --- CouplingGraph.infer vs the normal backend on the hand-flattened joint ---
 

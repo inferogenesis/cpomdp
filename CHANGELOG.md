@@ -382,6 +382,10 @@ no use of the readings beats it.
   `epistemic_range`. `SensorReport` gains `process_non_constant` and
   `process_noise_spread`, and `flattens` needs both noises constant. Under `Q(x)` the
   action reaches the recursion with `R` fixed.
+- `CouplingGraph` checks each sensor's width against the node it observes. A one-column
+  `C` on a two-dimensional node used to construct, and `CouplingGraphBackend` broadcast
+  it across the node's block, so the sensor read the sum of the node's components and
+  the filter returned a plausible posterior from the wrong model.
 
 ### Changed
 
