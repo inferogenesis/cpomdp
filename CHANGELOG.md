@@ -355,6 +355,11 @@ certainty equivalence is optimal, and no use of the readings beats it.
   belief it was traced with on every call, and the next eager call raised
   `UnexpectedTracerError`. The `Agent` docstring, its API page and the README now say
   it is eager, and the page shows a backend driven under `jax.lax.scan`.
+- No page said which public names survive `jit`, `vmap` and `grad`, and
+  `KalmanBackend.infer_states` called itself an eager orchestrator while it traces. The
+  backends page now carries one row per public name, and
+  `tests/test_transform_table.py` runs every row. The README and `InferenceBackend`
+  point at it.
 - `KalmanBackend`, its API page and the README called the filter exact for any
   linear-Gaussian model, and said `RxInferBackend` re-derives the same answers. Under a
   state-dependent `R(x)` or `Q(x)` the filter reads the noise at the predicted mean, a
