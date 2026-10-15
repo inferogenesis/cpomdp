@@ -386,6 +386,14 @@ no use of the readings beats it.
   `C` on a two-dimensional node used to construct, and `CouplingGraphBackend` broadcast
   it across the node's block, so the sensor read the sum of the node's components and
   the filter returned a plausible posterior from the wrong model.
+- The graph EFE rollouts and searches skipped the checks `FfgEfeSelector` makes on its
+  target. `policy_efe_ffg`, `policy_efe_ffg_trace`, the crossover statistic and both
+  searches' `over_backend` scored on a carry partition that severs an EFE-load-bearing
+  edge, and the searches certified the argmin `PROVED`. None of them checked
+  `info_block`. JAX clamps an out-of-range gather, so index 99 on a 3-state joint scored
+  as index 2. An empty block gave a zero epistemic and a repeated one gave NaN. All of
+  them now refuse both through one check. A search makes it once at construction, so
+  scoring each policy costs nothing extra.
 
 ### Changed
 

@@ -10,6 +10,7 @@ gradient-blind). So a per-edge ``efe_relevant`` flag on ``Coupling`` drives the 
 which fires at ``FfgEfeSelector`` construction (the EFE path), never on pure filtering.
 """
 
+import jax.numpy as jnp
 import numpy as np
 import pytest
 
@@ -17,6 +18,8 @@ from _support import unit_prior
 from cpomdp.agent import Agent
 from cpomdp.backends.base import InadmissiblePartitionError
 from cpomdp.backends.coupling import CouplingGraphBackend
+from cpomdp.efe import policy_efe_ffg, policy_efe_ffg_trace
+from cpomdp.enumeration import ChunkedEfeSearch, EnumeratedEfeSearch, FiniteActionSet
 from cpomdp.ffg.factors.linear_gaussian import (
     GaussianCoupling,
     GaussianObservation,
@@ -70,9 +73,9 @@ def _backend(graph, partition=None):
     )
 
 
-def _selector(backend):
+def _selector(backend, info_block=(0, 1, 2)):
     return FfgEfeSelector(
-        backend, info_block=range(3), n_candidates=11, action_bounds=(-2.0, 2.0)
+        backend, info_block=info_block, n_candidates=11, action_bounds=(-2.0, 2.0)
     )
 
 
@@ -138,3 +141,51 @@ def test_selector_still_selects_on_admissible_partition():
     belief = Belief(mean=np.zeros(3), cov=np.eye(3))
     action = sel.select(belief, Preference(goal=[0.5, 0.5], precision=np.eye(2)))
     assert np.asarray(action).shape == (1,)
+
+
+# The rollouts and searches the selector sits beside take the same target, and used
+# to skip both checks: a severing partition or a block JAX clamps scored as PROVED.
+
+_SEVERING = [[0, 2], [1]]  # cuts the flagged hub -> fast edge
+
+
+def _actions():
+    return FiniteActionSet([[-1.0], [0.0], [1.0]], version="v1")
+
+
+def test_searches_reject_partition_severing_efe_edge():
+    backend = _backend(_hub_graph(), partition=_SEVERING)
+    for search in (EnumeratedEfeSearch, ChunkedEfeSearch):
+        with pytest.raises(InadmissiblePartitionError, match="sever"):
+            search.over_backend(backend, _actions(), info_block=range(3), horizon=2)
+
+
+def test_rollouts_reject_partition_severing_efe_edge():
+    backend = _backend(_hub_graph(), partition=_SEVERING)
+    belief, policy = unit_prior(_hub_graph()), jnp.zeros((2, 1))
+    preference = Preference(jnp.zeros(2))
+    for rollout in (policy_efe_ffg, policy_efe_ffg_trace):
+        with pytest.raises(InadmissiblePartitionError, match="sever"):
+            rollout(backend, belief, policy, preference, info_block=range(3))
+
+
+@pytest.mark.parametrize(
+    ("info_block", "match"),
+    [([], "empty"), ([0, 0], "repeats"), ([99], "outside"), ([-1], "outside")],
+)
+def test_info_block_must_name_distinct_joint_indices(info_block, match):
+    backend = _backend(_hub_graph())
+    with pytest.raises(ValueError, match=match):
+        EnumeratedEfeSearch.over_backend(
+            backend, _actions(), info_block=info_block, horizon=2
+        )
+    with pytest.raises(ValueError, match=match):
+        policy_efe_ffg(
+            backend,
+            unit_prior(_hub_graph()),
+            jnp.zeros((2, 1)),
+            Preference(jnp.zeros(2)),
+            info_block=info_block,
+        )
+    with pytest.raises(ValueError, match=match):
+        _selector(backend, info_block)

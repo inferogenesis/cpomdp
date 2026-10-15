@@ -101,6 +101,7 @@ import jax.numpy as jnp
 from jax import lax
 from jaxtyping import Array, Float64
 
+from cpomdp.backends.base import InadmissiblePartitionError
 from cpomdp.types import Belief, LinearGaussianModel
 
 if TYPE_CHECKING:
@@ -393,6 +394,29 @@ def policy_efe_ffg(
     Returns:
         ``(G, {"pragmatic": ..., "epistemic": ...})`` — the summed EFE and its summed
         components over the horizon.
+
+    Raises:
+        InadmissiblePartitionError: If the backend's carry partition severs an
+            EFE-load-bearing edge.
+        ValueError: If ``info_block`` is empty, repeats an index, or names an index
+            outside the joint state.
+    """
+    return _policy_efe_ffg(
+        backend, belief, policy, preference, _checked_info_block(backend, info_block)
+    )
+
+
+def _policy_efe_ffg(
+    backend: "EfeBackend",
+    belief: Belief,
+    policy: Float64[Array, "H p"],
+    preference: "Preference",
+    info_block: tuple[int, ...],
+) -> tuple[Float64[Array, ""], dict[str, Float64[Array, ""]]]:
+    """``policy_efe_ffg`` on an ``info_block`` already checked, for the searches.
+
+    A search checks its target once at construction and then scores every policy in
+    the set, so the per-policy call skips the host-side check.
     """
     goal, precision = preference.goal, preference.precision
     policy = jnp.asarray(policy, dtype=float)
@@ -440,13 +464,54 @@ def policy_efe_ffg_trace(
     Returns:
         A ``PolicyEfeTrace`` (the same type the flat rollout emits) of arrays stacked
         along a leading H axis.
+
+    Raises:
+        InadmissiblePartitionError: If the backend's carry partition severs an
+            EFE-load-bearing edge.
+        ValueError: If ``info_block`` is empty, repeats an index, or names an index
+            outside the joint state.
     """
     goal, precision = preference.goal, preference.precision
     policy = jnp.asarray(policy, dtype=float)
-    body = _ffg_rollout_body(backend, goal, precision, info_block)
+    checked = _checked_info_block(backend, info_block)
+    body = _ffg_rollout_body(backend, goal, precision, checked)
 
     _, trace = lax.scan(body, belief, policy)
     return trace
+
+
+def _checked_info_block(
+    backend: "EfeBackend", info_block: Sequence[int]
+) -> tuple[int, ...]:
+    """``info_block`` as a tuple, refused unless an FFG EFE can be aimed at it.
+
+    The carry partition must keep every EFE-load-bearing edge whole (ADR-018), or the
+    epistemic about the targeted latent degrades while the drift may still look right.
+    The block must name distinct joint-state indices. JAX clamps an out-of-range
+    gather, so index 99 on a 3-state joint scores as index 2, and an empty or repeated
+    block gives a zero or NaN epistemic. None of them raises on its own.
+    """
+    severed = backend.severed_efe_edges()
+    if severed:
+        edges = ", ".join(f"{e.parent}->{e.child}" for e in severed)
+        raise InadmissiblePartitionError(
+            f"the carry partition severs EFE-load-bearing edge(s) [{edges}]; the "
+            "epistemic about the targeted latent would degrade while the drift may "
+            "still pass. Keep the edge's endpoints in one cluster, or unflag it if "
+            "a severed-mass check shows the cut is safe."
+        )
+    block = tuple(int(i) for i in info_block)
+    if not block:
+        raise ValueError("info_block is empty; name the joint-state indices to aim at")
+    if len(set(block)) != len(block):
+        raise ValueError(f"info_block {block} repeats an index")
+    out_of_range = [i for i in block if not 0 <= i < backend.n_total]
+    if out_of_range:
+        raise ValueError(
+            f"info_block {block} has indices {out_of_range} outside the "
+            f"{backend.n_total}-D joint state (0..{backend.n_total - 1})"
+        )
+    return block
 
 
 def _ffg_rollout_body(
