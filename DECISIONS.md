@@ -4635,3 +4635,62 @@ versions break before 1.0, as cpomdp's do.
 - The next floor change meets the race again, with the two options ADR-040 lists.
 - A warrantlib 0.4 reaches cpomdp users only through a cpomdp release that lifts the
   cap.
+
+## ADR-071 — RxInfer is declared to juliapkg when the backend first starts Julia
+
+**Date:** 2026-10-15
+**Status:** Accepted
+**Supersedes:** ADR-001's consequence that cpomdp ships its own `juliapkg.json`
+declaring RxInfer.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+Every cpomdp wheel carried `cpomdp/juliapkg.json`, declaring RxInfer `=5.4.0` and Julia
+`^1.10`. juliapkg reads a `juliapkg.json` at the top of every `sys.path` entry and in
+each directory directly under one. It found cpomdp's whether or not the `rxinfer` extra
+was installed and whether or not cpomdp was imported. The next `import juliacall` by
+anything in the environment, PySR say, added RxInfer to that environment's Julia project
+and precompiled it. On system Python that project is shared by every juliacall user.
+With `PYTHON_JULIAPKG_PROJECT` set it is the user's own, and the entry outlived an
+uninstall of cpomdp. ADR-001 meant the declaration for users of the extra only.
+
+The pin was exact. ADR-001 recorded RxInfer 5.4.0 as the version the spike ran on. That
+records what was tested. No ADR decided to pin it. juliapkg intersects every
+declaration in the environment, so an environment that needed RxInfer 5.5 for anything
+else could not hold cpomdp.
+
+### Decision
+
+The wheel ships no `juliapkg.json`. The first `RxInferBackend` built in a process
+declares RxInfer to juliapkg, resolves, and only then imports juliacall.
+
+- It reads the environment's own juliapkg file. Where RxInfer is absent it adds it at
+  the range `5.4`, which is 5.4 and up and below 6. Where Julia's version is unstated
+  it adds `^1.10`.
+- An entry already there belongs to whoever wrote it, and stays. A pin set by hand or
+  by CI holds.
+- Importing juliacall resolves the environment and starts Julia in it, so the
+  declaration has to come first.
+
+The `rxinfer` extra names juliapkg, since the backend now calls it directly.
+
+CI's oracle job pins RxInfer 5.4.0 by declaring it before the tests run, and the backend
+leaves that entry alone. The job's depot cache is keyed on the pin.
+
+### Consequences
+
+- A juliacall user who installs cpomdp and never builds an `RxInferBackend` sees no
+  change to their Julia project.
+- Building the first `RxInferBackend` is the consent. The declaration lands in the
+  environment's juliapkg file, which sits inside the environment for a venv or conda
+  install and in the shared `~/.julia/environments/pyjuliapkg` for system Python. It
+  stays after cpomdp is uninstalled. `juliapkg.rm("RxInfer")` takes it out.
+- `cpomdp[rxinfer]` takes RxInfer's releases within 5.x. RxInfer 6 needs a cpomdp
+  release.
+- `tests/test_wheel_contents.py` builds the wheel and fails on a `juliapkg.json`
+  anywhere juliapkg looks. `tests/test_rxinfer_bootstrap.py` checks the declaration with
+  juliapkg and juliacall stood in. CI's `rxinfer` job runs the live path.
+- The environment's file is read through `juliapkg.deps.load_cur_deps`, which juliapkg
+  has carried since 0.1.8 and does not list in its `__all__`. A juliapkg release that
+  moves it fails at the first `RxInferBackend`, and CI's oracle job meets it first.
