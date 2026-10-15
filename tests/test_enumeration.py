@@ -174,7 +174,7 @@ class TestCompletenessCertificate:
 
     def test_certificate_is_proved_and_complete(self):
         search = EnumeratedEfeSearch(_model(), _finite_set([-1.0, 0.0, 1.0]), horizon=3)
-        cert = search.certificate
+        cert = search.evaluate(_belief(), _pref()).certificate
         assert cert.expected == 27  # |A|^H = 3^3
         assert cert.visited == 27
         assert cert.complete
