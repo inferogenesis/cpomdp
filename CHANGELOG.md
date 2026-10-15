@@ -413,6 +413,9 @@ certainty equivalence is optimal, and no use of the readings beats it.
   as index 2. An empty block gave a zero epistemic and a repeated one gave NaN. All of
   them now refuse both through one check. A search makes it once at construction, so
   scoring each policy costs nothing extra.
+- `FiniteActionSet` refuses a non-finite action and names its row. A NaN action scored
+  NaN on every policy that took it, and a search over the set still certified it
+  `PROVED`. A repeated action is still accepted and counts toward `|A|`.
 - `FfgEfeSelector` refuses a backend with no control matrix or with more than one action
   dimension, as `EFESelector` does. A control-free backend returned the grid's first
   action, and `p = 2` constructed and then failed at the first `select`. The two
