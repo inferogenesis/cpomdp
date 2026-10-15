@@ -38,7 +38,8 @@ Documentation = "https://cpomdp.inferogenesis.com/"
 
 [project.optional-dependencies]
 # The RxInfer (Julia) backend. Optional so the pure-Python parts install without Julia.
-rxinfer = ["juliacall>=0.9.20"]
+# juliapkg is named because the backend declares RxInfer to it on first use (ADR-071).
+rxinfer = ["juliacall>=0.9.20", "juliapkg>=0.1.8"]
 # Plotting deps for the `examples/` scripts (the README figure + the gallery). Kept
 # out of the core install — `pip install "cpomdp[examples]"` to reproduce the figures.
 # The example *scripts* are not shipped in the wheel (only `src/cpomdp` is); this just

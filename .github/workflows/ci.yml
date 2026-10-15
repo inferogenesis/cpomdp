@@ -225,6 +225,10 @@ jobs:
   oracle:
     name: rxinfer oracle (Julia)
     runs-on: ubuntu-latest
+    env:
+      # The backend declares RxInfer as the range 5.4 (ADR-071). CI pins one version
+      # inside it, so the oracle's numbers move only when this line does.
+      RXINFER_VERSION: "5.4.0"
     steps:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v8.2.0
@@ -232,13 +236,20 @@ jobs:
           enable-cache: true
           python-version: "3.12"
       - run: uv sync --locked --extra rxinfer
-      # juliacall provisions its own Julia + RxInfer (per juliapkg.json) on first
-      # import; cache the depot so only the first run pays the full download/build.
+      # The first RxInferBackend has juliapkg provision Julia and RxInfer. Cache the
+      # depot so only the first run with this pin pays the download and the build.
       - name: Cache Julia depot
         uses: actions/cache@v5
         with:
           path: ~/.julia
-          key: julia-depot-${{ runner.os }}-${{ hashFiles('src/cpomdp/juliapkg.json') }}
+          key: julia-depot-${{ runner.os }}-rxinfer-${{ env.RXINFER_VERSION }}
           restore-keys: julia-depot-${{ runner.os }}-
+      # An entry the environment already declares is its owner's, and the backend
+      # leaves it alone, so this pin is the version the tests run against.
+      - name: pin RxInfer
+        run: >-
+          uv run --no-sync python -c "import juliapkg;
+          juliapkg.add('RxInfer', '86711068-29c9-4ff7-b620-ae75d7495b3d',
+          version='=$RXINFER_VERSION')"
       - name: pytest (rxinfer only)
         run: uv run --no-sync pytest -m rxinfer

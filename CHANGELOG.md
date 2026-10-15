@@ -414,6 +414,14 @@ certainty equivalence is optimal, and no use of the readings beats it.
 - `InferenceBackend` said nothing about state-dependent noise. It now states the rule
   those refusals follow: a backend honours the model's `observation_model` and
   `dynamics_noise_model`, or refuses the model.
+- Every cpomdp wheel shipped `cpomdp/juliapkg.json`, where juliapkg finds it from any
+  Python in the environment. The next `import juliacall` by anything there, cpomdp
+  imported or not, added RxInfer to that environment's Julia project and precompiled it.
+  The wheel ships no such file now. The first `RxInferBackend` declares RxInfer to
+  juliapkg where the environment does not already, then starts Julia (ADR-071).
+- RxInfer is declared as the range `5.4`, where it was pinned to exactly `5.4.0`.
+  `cpomdp[rxinfer]` takes RxInfer's releases within 5.x and can share an environment
+  that needs one of them. CI pins 5.4.0.
 - `probe_model` added the plain `dynamics_noise` to every predicted covariance, whatever
   `Q(x)` the model carried. The EFE kernel adds `Q` at the predicted mean, so a `Q(x)`
   model under a fixed sensor reported a constant epistemic value the kernel never

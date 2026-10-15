@@ -6,11 +6,14 @@ ADR-002). It shares no code with the JAX path, so it is the independent check th
 Kalman path's matrix algebra is right.
 
 Starting Julia is slow (import + ``using RxInfer`` + JIT warmup), so it is done
-once per process, lazily, on the first backend built — never per inference.
-Importing this module does not touch Julia.
+once per process, lazily, on the first backend built, and never per inference.
+Importing this module does not touch Julia. The first backend built also declares
+RxInfer to juliapkg, so nothing in the wheel declares it to anyone who never asks for
+this backend (ADR-071).
 """
 
 from functools import lru_cache
+from types import ModuleType
 from typing import Any
 
 import jax.numpy as jnp
@@ -26,6 +29,13 @@ __all__ = ["RxInferBackend"]
 # The juliacall `Main` handle is a runtime-constructed bridge object with no type
 # stubs.
 _JuliaModule = Any
+
+# RxInfer as this backend declares it to juliapkg. The version is a Julia compat range:
+# 5.4 and up, below 6. Julia's floor goes in only where the environment states none.
+_RXINFER_NAME = "RxInfer"
+_RXINFER_UUID = "86711068-29c9-4ff7-b620-ae75d7495b3d"
+_RXINFER_VERSION = "5.4"
+_JULIA_COMPAT = "^1.10"
 
 # One filter step as a one-timestep model: prior on the previous state, one
 # transition, one observation; the posterior over x is the Kalman predict+update.
@@ -97,21 +107,40 @@ end
 """
 
 
+def _declare_rxinfer(juliapkg: ModuleType) -> None:
+    """Add RxInfer, and Julia's floor, to juliapkg's environment file where absent.
+
+    An entry the environment already has is its owner's, and is left as it is, a pin
+    included. The resolve that follows installs whatever is missing.
+    """
+    declared = juliapkg.deps.load_cur_deps()
+    if "julia" not in declared:
+        juliapkg.require_julia(_JULIA_COMPAT)
+    if _RXINFER_NAME not in declared.get("packages", {}):
+        juliapkg.add(_RXINFER_NAME, _RXINFER_UUID, version=_RXINFER_VERSION)
+    juliapkg.resolve()
+
+
 @lru_cache(maxsize=1)
 def _julia() -> _JuliaModule:
-    """Load Julia + RxInfer and define the model, once per process.
+    """Declare RxInfer, load Julia with it and define the model, once per process.
 
-    juliacall is imported here, not at module top, so the module imports without
-    the optional ``rxinfer`` extra installed.
+    juliapkg and juliacall are imported here, not at module top, so the module imports
+    without the optional ``rxinfer`` extra installed. RxInfer is declared before
+    juliacall is imported, because that import resolves the environment and starts
+    Julia in it.
     """
     try:
-        from juliacall import Main as jl  # ty:ignore[unresolved-import]
-    except ImportError as exc:  # pragma: no cover - only hit without the extra
+        import juliapkg  # ty:ignore[unresolved-import]
+    except ImportError as exc:
         raise ImportError(
             "the RxInfer backend needs the optional Julia bridge, which isn't "
             "installed. Add cpomdp's 'rxinfer' extra "
             "(e.g. `pip install 'cpomdp[rxinfer]'`)."
         ) from exc
+
+    _declare_rxinfer(juliapkg)
+    from juliacall import Main as jl  # ty:ignore[unresolved-import]
 
     jl.seval("using RxInfer")
     jl.seval(_MODEL_SRC)
