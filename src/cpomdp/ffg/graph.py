@@ -262,6 +262,11 @@ class CouplingGraph:
 
     def _check_readings(self, readings: Mapping[int, ArrayLike]) -> None:
         """Refuse a reading static inference cannot fold in, naming its node."""
+        if not isinstance(readings, Mapping):
+            raise TypeError(
+                "readings must map a node index to its reading, got "
+                f"{type(readings).__name__}"
+            )
         for node, reading in readings.items():
             if node not in self.observations:
                 raise ValueError(
@@ -282,8 +287,8 @@ class CouplingGraph:
                     f"got {shape}"
                 )
 
-    def infer(self, prior: Belief, readings: Mapping[int, ArrayLike]) -> Belief:
-        """Compute the marginal belief at the root from a prior and per-node readings.
+    def infer(self, readings: Mapping[int, ArrayLike], prior: Belief) -> Belief:
+        """Compute the marginal belief at the root from per-node readings and a prior.
 
         Each reading becomes a message about its node; those messages are passed up the
         tree through the couplings and combined at the root with the prior, giving the
@@ -291,23 +296,27 @@ class CouplingGraph:
         moment form — once to lift the prior in, once to read the result out — while
         every message in between stays in canonical form.
 
+        The reading comes first and the belief second, the order
+        [`InferenceBackend.infer_states`][cpomdp.InferenceBackend.infer_states] takes.
+
         Args:
-            prior: the belief on the root node, taken as its prior.
             readings: maps a node index to that node's observation. Each such node must
                 carry a fixed sensor, since static inference has no predicted mean to
                 evaluate a state-dependent ``R(x)`` at.
+            prior: the belief on the root node, taken as its prior.
 
         Returns:
             The marginal belief at the root.
 
         Raises:
-            TypeError: if ``prior`` is not a ``Belief``.
+            TypeError: if ``readings`` is not a mapping or ``prior`` is not a
+                ``Belief``.
             ValueError: if ``prior`` is not over the root's state, or a reading is on
                 a node with no sensor, on a node whose sensor is state-dependent, or
                 not as wide as its sensor.
         """
-        self._check_prior(prior)
         self._check_readings(readings)
+        self._check_prior(prior)
 
         # Lift the moment-form prior into a canonical message on the root.
         prior_precision = jnp.linalg.inv(prior.cov)  # Λ₀ = Σ⁻¹

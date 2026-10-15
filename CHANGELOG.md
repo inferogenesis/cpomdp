@@ -462,6 +462,10 @@ certainty equivalence is optimal, and no use of the readings beats it.
   read-only, and `observations` is a read-only mapping. Construction is the only place
   the wiring is checked. A sensor added afterwards to node 7 of a two-node graph skipped
   the range check and reached the backend. Build a new graph instead.
+- **Breaking:** `CouplingGraph.infer` takes the readings first and the prior second,
+  `infer(readings, prior)`, the order `infer_states(observation, prior)` takes. It was
+  the one inference call that took the belief first. A call in the old order raises a
+  `TypeError` that names `readings`, since a `Belief` is not a mapping of readings.
 - **Breaking:** an `ObservationGoal`'s `horizon` defaults to `None`, and the `Agent` reads
   it off the model: the shortest horizon at which the target moves the expected free
   energy, found by differentiating the candidate grid's scores with respect to the
