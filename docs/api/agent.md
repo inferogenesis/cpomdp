@@ -10,8 +10,8 @@ The stateful façade you drive: `infer_states` to perceive, `sample_action` to a
 
     A curious agent is one whose information term changes with the action. The Agent
     builds one for an `ObservationGoal` wherever a noise depends on the state. That is
-    the sensor's `R(x)`, or the process noise `Q(x)` of a
-    [`CallableProcessNoise`][cpomdp.CallableProcessNoise], which is claimed at horizon 1
+    the sensor's `R(x)`, or the dynamics noise `Q(x)` of a
+    [`CallableDynamicsNoise`][cpomdp.CallableDynamicsNoise], which is claimed at horizon 1
     only. The rule is the same on a flat model and on a graph. With both noises fixed
     the information term is the same for every action, and the goal is refused.
     Green marks a curious agent, blue LQR, grey a tracker, a red outline a refusal at

@@ -250,17 +250,17 @@ def _model(
         live: ``True`` for the ``R(x)`` agent, ``False`` for the fixed-`R` twin.
 
     Returns:
-        The model. The live one reads its noise off a
-        [`CallableSensor`][cpomdp.CallableSensor], and its nominal ``observation_noise``
-        is that sensor's `R` at the prior mean, the operating point. The twin is handed
-        the same value as a constant.
+        The model. The live one reads its channel off a
+        [`CallableSensor`][cpomdp.CallableSensor], and its ``observation_noise`` is that
+        sensor's `R` at the prior mean, the operating point. The twin is handed the same
+        value as a constant.
     """
     sensor = None
     if live:
         sensor = CallableSensor(OBSERVATION_MATRIX, METERS[meter], _meter_params(e_ref))
     return LinearGaussianModel(
         DYNAMICS_MATRIX,
-        observation_matrix=OBSERVATION_MATRIX,
+        observation_matrix=None if live else OBSERVATION_MATRIX,
         dynamics_noise=DYNAMICS_NOISE,
         observation_noise=None if live else [[_frozen_noise(e_ref, meter)]],
         prior=_belief(),
@@ -320,13 +320,13 @@ def _cached_sweep(
     """
     model = _model(e_ref, live=live, meter=meter)
     belief, goal = _belief(), _goal(precision)
-    g, parts = jax.vmap(
+    efe = jax.vmap(
         lambda action: expected_free_energy(model, belief, action[None], goal)
     )(ACTIONS)
     return (
-        np.asarray(parts["pragmatic"]),
-        np.asarray(parts["epistemic"]),
-        np.asarray(g),
+        np.asarray(efe.pragmatic),
+        np.asarray(efe.epistemic),
+        np.asarray(efe.g),
     )
 
 
@@ -702,7 +702,7 @@ def _slope_deviation() -> tuple[float, float]:
 
 
 @cache
-def _sensor_report():
+def _probe_report():
     """The library's own verdict on whether the sensor earns its keep over the grid."""
     stride = len(ACTIONS) // PROBE_SAMPLES
     actions = [jnp.array([a]) for a in np.asarray(ACTIONS)[::stride]]
@@ -726,7 +726,7 @@ def falsifiers() -> tuple[CheckReport, ...]:
     ladder = _meter_ladder()
     economic = _economic_ladder()
     worst_slope, c2 = _slope_deviation()
-    report = _sensor_report()
+    report = _probe_report()
     agreement = _law_agreement()
     coriolis_first, coriolis_settled, coriolis_loop = _coriolis()
     settled = _settled_ladder()
@@ -926,8 +926,9 @@ def falsifiers() -> tuple[CheckReport, ...]:
             tier=Tier.COMPUTED,
             detail=(
                 f"probe_model over {report.n_samples} reachable means: R spread "
-                f"{report.noise_spread:.3e}, epistemic {report.epistemic_range[0]:.3f}"
-                f" .. {report.epistemic_range[1]:.3f} nats"
+                f"{report.observation_noise_spread:.3e}, epistemic "
+                f"{report.epistemic_range[0]:.3f} .. "
+                f"{report.epistemic_range[1]:.3f} nats"
             ),
         ),
         CheckReport(
@@ -1106,7 +1107,7 @@ def check() -> None:
         "surge line.\n      The ambiguity term can push the agent into surge.\n"
     )
 
-    print(_sensor_report().summary())
+    print(_probe_report().summary())
 
     reports = falsifiers()
     _print_falsifiers(reports)
