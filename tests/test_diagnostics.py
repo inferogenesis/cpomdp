@@ -14,7 +14,6 @@ from cpomdp import (
     CouplingGraph,
     CouplingGraphBackend,
     FixedSensor,
-    GaussianCoupling,
     GaussianTransition,
     LinearGaussianModel,
     ProbeReport,
@@ -270,10 +269,8 @@ class TestProbeGraphBackend:
                 Coupling(
                     parent=0,
                     child=1,
-                    factor=GaussianCoupling(
-                        coupling_matrix=[[0.0], [1.0]],
-                        coupling_noise=[[0.5, 0.0], [0.0, 0.5]],
-                    ),
+                    coupling_matrix=[[0.0], [1.0]],
+                    coupling_noise=[[0.5, 0.0], [0.0, 0.5]],
                 ),
             ),
             observations={1: cue},

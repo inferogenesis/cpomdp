@@ -6,6 +6,4 @@ A `CouplingGraph` declares a rooted tree of Gaussian-coupled variables. It holds
 
 ::: cpomdp.Coupling
 
-::: cpomdp.GaussianCoupling
-
 ::: cpomdp.GaussianTransition

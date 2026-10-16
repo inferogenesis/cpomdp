@@ -36,7 +36,6 @@ from cpomdp import (
     CouplingGraph,
     CouplingGraphBackend,
     FixedSensor,
-    GaussianCoupling,
     GaussianTransition,
     Preference,
 )
@@ -356,10 +355,8 @@ def build_maze(
     context_to_arena = Coupling(
         parent=CONTEXT,
         child=ARENA,
-        factor=GaussianCoupling(
-            coupling_matrix=coupling_weights.tolist(),
-            coupling_noise=coupling_noise.tolist(),
-        ),
+        coupling_matrix=coupling_weights.tolist(),
+        coupling_noise=coupling_noise.tolist(),
         efe_relevant=True,  # the covariance path the instrumental epistemic rides
     )
     graph = CouplingGraph(

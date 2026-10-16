@@ -38,7 +38,6 @@ import gallery
 import numpy as np
 
 from cpomdp.backends.kalman import KalmanBackend
-from cpomdp.ffg.factors.linear_gaussian import GaussianCoupling
 from cpomdp.ffg.graph import Coupling, CouplingGraph
 from cpomdp.observation import FixedSensor
 from cpomdp.types import Belief, LinearGaussianModel
@@ -74,7 +73,7 @@ EQUIV_TOL = 1e-7
 def build_graph() -> tuple[CouplingGraph, Belief, dict[int, np.ndarray]]:
     """The tree as a `CouplingGraph`, with its root prior and the leaf readings."""
     couplings = tuple(
-        Coupling(parent, child, GaussianCoupling([[w]], coupling_noise=[[q]]))
+        Coupling(parent, child, [[w]], coupling_noise=[[q]])
         for parent, child, w, q in EDGES
     )
     observations = {
@@ -197,9 +196,9 @@ NODE_META = {
 
 CODE = """\
 couplings = (
-    Coupling(r, h, GaussianCoupling([[0.9]], coupling_noise=[[0.05]])),
-    Coupling(h, a, GaussianCoupling([[1.0]], coupling_noise=[[0.03]])),
-    Coupling(h, b, GaussianCoupling([[1.0]], coupling_noise=[[0.03]])),
+    Coupling(r, h, [[0.9]], coupling_noise=[[0.05]]),
+    Coupling(h, a, [[1.0]], coupling_noise=[[0.03]]),
+    Coupling(h, b, [[1.0]], coupling_noise=[[0.03]]),
 )
 graph  = CouplingGraph(root=r, dims=dims,
                        couplings=couplings, observations=obs)

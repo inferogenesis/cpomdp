@@ -18,7 +18,7 @@ Julia-free.
 
 For a *branching* model, declare a ``CouplingGraph`` whose nodes carry the
 same sensors a flat model takes (``FixedSensor``, ``CallableSensor``) and whose
-``Coupling`` edges carry a ``GaussianCoupling``, then run it through a
+``Coupling`` edges each hold a coupling matrix and its noise, then run it through a
 ``CouplingGraphBackend`` with a per-node ``GaussianTransition``. A state-dependent
 ``R(x)`` on a coupled node cannot be flattened to a fixed linear-Gaussian model.
 Asking it to raises ``IncompatibleLinearizationError`` (ADR-019, ADR-020). The
@@ -43,7 +43,7 @@ from cpomdp.control import LQRController
 from cpomdp.diagnostics import ProbeReport, probe_model
 from cpomdp.dynamics import CallableDynamicsNoise, DynamicsNoiseModel
 from cpomdp.efe import expected_free_energy
-from cpomdp.ffg.factors.linear_gaussian import GaussianCoupling, GaussianTransition
+from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
 from cpomdp.ffg.graph import Coupling, CouplingGraph
 from cpomdp.observation import CallableSensor, FixedSensor, ObservationModel
 from cpomdp.selection import (
@@ -78,7 +78,6 @@ __all__ = [
     "EFESelector",
     "FfgEfeSelector",
     "FixedSensor",
-    "GaussianCoupling",
     "GaussianTransition",
     "InadmissiblePartitionError",
     "IncompatibleLinearizationError",

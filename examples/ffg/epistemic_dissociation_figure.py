@@ -62,7 +62,6 @@ from cpomdp import (
     CouplingGraph,
     CouplingGraphBackend,
     FixedSensor,
-    GaussianCoupling,
     GaussianTransition,
     IncompatibleLinearizationError,
     ObservationGoal,
@@ -149,11 +148,9 @@ def build_backend(
     context_to_arm = Coupling(
         parent=CONTEXT,
         child=ARM_NODE,
-        factor=GaussianCoupling(
-            # W: the context drives the perceived arm f only
-            coupling_matrix=[[0.0], [1.0]],
-            coupling_noise=[[COUPLE_Q_POSITION, 0.0], [0.0, COUPLE_Q_ARM]],
-        ),
+        # W: the context drives the perceived arm f only
+        coupling_matrix=[[0.0], [1.0]],
+        coupling_noise=[[COUPLE_Q_POSITION, 0.0], [0.0, COUPLE_Q_ARM]],
         efe_relevant=True,  # the covariance path the instrumental epistemic rides
     )
     graph = CouplingGraph(
