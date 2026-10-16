@@ -4644,8 +4644,6 @@ versions break before 1.0, as cpomdp's do.
 front-loaded path and accepts its ceiling", for the ceiling. The front-loaded path now
 refuses a set past a budget instead. ADR-030's "emits a `CompletenessCertificate` at
 construction", for where the certificate is read. The check still runs at construction.
-ADR-035's decision that `SearchWarrant` stays as an alias of `Warrant`. The alias is
-removed, so the type has one name.
 **Extends:** ADR-031 (the search family), ADR-034 (the injected scorer), ADR-036 (the
 chunked path).
 **Phase:** v0.5.0, the public API review before release
@@ -4688,33 +4686,14 @@ count is exact and a caller can reason about it. The floor goes in the message. 
 rollout carries for each policy.
 
 **The two searches are interchangeable.** Both searches answer
-`evaluate(belief, preference)`. The chunked search returns a `SearchResult` carrying
-`best_policy`, `best_g`, `best_index` and `certificate`. The front-loaded one returns
-`EnumeratedSearchResult`, a subclass that adds the score vector `g`. Both are frozen
-dataclasses read by name. A tuple would let one position name `g` on one search and
-`best_g` on the other. Each is a pytree with the certificate as static data, so
-`evaluate` composes with `jit` and `vmap`. The certificate is read off the result on
-both paths. On the chunked path its count is what the loop produces, so a certificate
-cannot exist before a run. The front-loaded search still checks completeness at
-construction and attaches that certificate to every result. The chunked result has no
-`visited`, which repeated `certificate.visited`. A driver's `certificate` is its last
-plan's, `None` before the first.
-
-**One base names the kind.** `ExhaustiveEfeSearch` is an abstract base both searches
-subclass. It owns the validation, the scorer each constructor builds, `policies_at`,
-`n_policies`, `horizon` and `warrant`, and declares `evaluate` and `cost_per_plan`. Both
-drivers take any `ExhaustiveEfeSearch` and refuse anything else with a `TypeError`. The
-check is nominal, so the `PROVED` a driver reports still comes from a search that
-declared itself exhaustive. A union of the two classes would have needed both drivers
-edited for a third search or a wrapper.
-
-**Both searches trace.** `evaluate` composes with `jit`, `vmap` and `lax.scan` on
-either search, so a receding-horizon loop compiles whichever one it drives. The chunked
-certificate rests on a count the loop produces, which a trace cannot read on the host.
-Inside a transformation the certificate states the expected count and a
-`jax.debug.callback` checks the loop's count in the run. A miscount fails the run. The
-alternative was an eager-only chunked search with a `TypeError` under a trace, which
-would have made the two searches differ at exactly the call a compiled agent loop makes.
+`evaluate(belief, preference)`. Both results carry `best_policy`, `best_g`,
+`best_index` and `certificate` under those names, and the front-loaded result adds the
+score vector `g`. The certificate is read off the result on both paths. On the chunked
+path its count is what the loop produces, so a certificate cannot exist before a run.
+The front-loaded search still checks completeness at construction and attaches that
+certificate to every result. `ChunkedSearchResult` drops `visited`, which repeated
+`certificate.visited`. Both drivers take either search and refuse anything else with a
+`TypeError`. A driver's `certificate` is its last plan's, `None` before the first.
 
 **`cost_per_plan` on a search, `cost_per_cycle` on a selector.** A search reports the
 step evaluations of one `evaluate` as `cost_per_plan`, the name the drivers already
@@ -4742,10 +4721,54 @@ certificate is unchanged. It certifies coverage (ADR-030), and every policy was 
   than materialised through `itertools.product` on the host. The order is unchanged, and
   a test still compares the set with an independent product.
 - A driver over the chunked search pays one host read per plan, the loop's count, which
-  the certificate needs. Inside `jit` or `scan` the read is a callback in the run. A
-  driver over the front-loaded search pays none.
+  the certificate needs. A driver over the front-loaded search pays none.
 - Compilation no longer lands on every plan, so RFC-001 measures the search rather than
   the compiler. `EFESelector` at a horizon above 1 is outside this decision.
+- `ChunkedEfeSearch.policies_at` refuses an index outside the enumeration, -1 included,
+  because a base-`|A|` decode wraps it to a real policy.
+
+## ADR-072 — one base names the exhaustive searches, and both trace
+
+**Date:** 2026-10-16
+**Status:** Accepted
+**Supersedes:** ADR-071's result shapes and its rule that the drivers take either of the
+two named classes. ADR-035's decision that `SearchWarrant` stays as an alias of
+`Warrant`, so the type has one name.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+ADR-071 made the two searches answer one `evaluate`. Their results still differed by
+position, so a tuple index could read `g` on one search and `best_g` on the other, and
+the drivers took a union of two classes that a third search would have had to join. The
+chunked search also ran eagerly only, so a compiled agent loop could drive the
+front-loaded search and not the chunked one.
+
+### Decision
+
+**Results are read by name.** The chunked search returns a `SearchResult` carrying
+`best_policy`, `best_g`, `best_index` and `certificate`. The front-loaded one returns
+`EnumeratedSearchResult`, a subclass that adds the score vector `g`. Both are frozen
+dataclasses and pytrees, with the certificate as static data. The chunked result has no
+`visited`, which repeated `certificate.visited`.
+
+**One base names the kind.** `ExhaustiveEfeSearch` is an abstract base both searches
+subclass. It owns the validation, the scorer each constructor builds, `policies_at`,
+`n_policies`, `horizon` and `warrant`, and declares `evaluate` and `cost_per_plan`. Both
+drivers take any `ExhaustiveEfeSearch` and refuse anything else with a `TypeError`. The
+check is nominal, so the `PROVED` a driver reports still comes from a search that
+declared itself exhaustive.
+
+**Both searches trace.** `evaluate` composes with `jit`, `vmap` and `lax.scan` on either
+search. The chunked certificate rests on a count the loop produces, which a trace cannot
+read on the host. Inside a transformation the certificate states the expected count and
+a `jax.debug.callback` checks the loop's count in the run, so a miscount fails the run.
+The count is read as an exact integer.
+
+### Consequences
+
+- A driver over the chunked search pays one host read per plan, the loop's count. Inside
+  `jit` or `scan` that read is a callback in the run.
 - `policies_at` is on both searches and refuses an index outside the enumeration, -1
-  included, because a base-`|A|` decode wraps it to a real policy. Under `jit` or
-  `vmap` it cannot raise, so it decodes such an index to a NaN policy.
+  included, because a base-`|A|` decode wraps it to a real policy. Under `jit` or `vmap`
+  it decodes such an index to a NaN policy.
