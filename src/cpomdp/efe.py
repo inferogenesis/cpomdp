@@ -849,7 +849,7 @@ def _ffg_efe_step(
         observation_matrix: C, the real observation matrix over the joint state (m x n).
         observation_noise: R, the observation noise covariance (m x m).
         target: o*, the preferred observation (m-D).
-        precision: Λ, how sharply the goal is preferred (m x m).
+        precision: Λ, how sharply the target is preferred (m x m).
         info_block: the joint-state indices whose info gain is the epistemic value,
             resolved from ``info_node`` by the public functions.
 

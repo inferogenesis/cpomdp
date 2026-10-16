@@ -215,6 +215,14 @@ class _CountingSearch(ExhaustiveEFESearch):
     def cost_per_plan(self):
         return self._inner.cost_per_plan
 
+    @property
+    def model(self):
+        return self._inner.model
+
+    @property
+    def backend(self):
+        return self._inner.backend
+
 
 @pytest.mark.parametrize("driver", [RecedingHorizonSelector, OpenLoopSelector])
 class TestDrivesEitherSearch:

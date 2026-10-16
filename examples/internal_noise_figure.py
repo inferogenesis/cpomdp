@@ -105,7 +105,7 @@ def main():
 
     fig, (ax_l, ax_r) = plt.subplots(1, 2, figsize=(12.5, 5.2), sharex=True)
     fig.suptitle(
-        "Internal process noise breaks the collapse from the inside (R held fixed)",
+        "Internal dynamics noise breaks the collapse from the inside (R held fixed)",
         fontsize=13.5,
         fontweight="bold",
     )

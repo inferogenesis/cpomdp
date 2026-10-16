@@ -308,8 +308,8 @@ class _PolicyScorer(Protocol):
     The enumerated search owns the enumeration, the certificate, and the argmin; *how* a
     policy is scored is injected here (ADR-034). ``n_controls`` lets the search validate
     the declared action set against the scorer's control dimension, and ``n_states``
-    sizes the memory floor a policy budget reports. ``model`` is the model the score is
-    computed under.
+    sizes the memory floor a policy budget reports. ``model`` is the model whose sizes,
+    sensor and control the score reads, a graph's interface model on that path.
     """
 
     n_controls: int
@@ -445,6 +445,7 @@ class ExhaustiveEFESearch(ABC):
         """Validate the specification and record the enumeration's size."""
         _validate_spec(scorer, action_set, horizon)
         self._model = scorer.model
+        self._backend = getattr(scorer, "backend", None)
         self._action_set = action_set
         self._horizon = int(horizon)
         self._n_policies = action_set.size**self._horizon
@@ -514,8 +515,17 @@ class ExhaustiveEFESearch(ABC):
 
     @property
     def model(self) -> LinearGaussianModel:
-        """The model every policy is scored under, on a graph the backend's own."""
+        """The model every policy is scored under, on a graph the backend's own.
+
+        On a coupled graph it is the interface model, which leaves out the couplings
+        the score reads off ``backend``.
+        """
         return self._model
+
+    @property
+    def backend(self) -> "GraphBackend | None":
+        """The graph backend the policies are scored on, or ``None`` on a flat model."""
+        return self._backend
 
     @property
     def horizon(self) -> int:
@@ -1011,6 +1021,11 @@ class _SearchDriver(ABC):
     def model(self) -> LinearGaussianModel:
         """The model the search plans under."""
         return self._search.model
+
+    @property
+    def backend(self) -> "GraphBackend | None":
+        """The graph backend the search scores on, or ``None`` on a flat model."""
+        return self._search.backend
 
     @property
     def warrant(self) -> Warrant:

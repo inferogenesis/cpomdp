@@ -523,8 +523,17 @@ class FFGEFESelector:
 
     @property
     def model(self) -> LinearGaussianModel:
-        """The backend's model, whose sizes, sensor and control the score reads."""
+        """The backend's model, whose sizes, sensor and control the score reads.
+
+        On a coupled graph it is the interface model, which leaves out the couplings
+        the score reads off ``backend``.
+        """
         return self._backend.model
+
+    @property
+    def backend(self) -> GraphBackend:
+        """The graph backend every candidate is scored on."""
+        return self._backend
 
     @property
     def horizon(self) -> int:

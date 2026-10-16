@@ -16,6 +16,7 @@ import pytest
 from _support import unit_prior
 from cpomdp import (
     Agent,
+    CallableSensor,
     Coupling,
     CouplingGraph,
     CouplingGraphBackend,
@@ -30,7 +31,12 @@ from cpomdp import (
 from cpomdp.control import kalman_schedule, lqr_schedule
 from cpomdp.diagnostics import probe_model
 from cpomdp.efe import expected_free_energy, policy_efe, policy_efe_trace
-from cpomdp.enumeration import ChunkedEFESearch, EnumeratedEFESearch, FiniteActionSet
+from cpomdp.enumeration import (
+    ChunkedEFESearch,
+    EnumeratedEFESearch,
+    FiniteActionSet,
+    RecedingHorizonSelector,
+)
 
 
 def _backend(*, coupled):
@@ -160,3 +166,61 @@ def test_the_chain_backend_refuses_a_coupled_graphs_model():
 
     with pytest.raises(TypeError, match="couplings"):
         ChainBackend(_backend(coupled=True).model)
+
+
+def _coupled_backend(coupling_noise):
+    graph = CouplingGraph(
+        dims=(1, 1),
+        couplings=(Coupling(0, 1, [[0.8]], coupling_noise=[[coupling_noise]]),),
+        observation_models={
+            0: CallableSensor([[1.0]], _sharp_near_zero, ()),
+            1: FixedSensor([[1.0]], observation_noise=[[0.1]]),
+        },
+    )
+    transitions = (
+        GaussianTransition([[0.9]], dynamics_noise=[[0.1]]),
+        GaussianTransition([[0.9]], dynamics_noise=[[0.1]]),
+    )
+    return CouplingGraphBackend(
+        graph, transitions, prior=unit_prior(graph), control_matrix=[[1.0], [0.0]]
+    )
+
+
+def _sharp_near_zero(state, params):
+    return jnp.array([[0.05 + state[0] ** 2]])
+
+
+def _driver_over(backend):
+    return RecedingHorizonSelector(
+        EnumeratedEFESearch.over_backend(backend, _ACTIONS, horizon=1)
+    )
+
+
+def test_a_driver_over_a_graph_with_other_couplings_is_refused():
+    # The interface models match. The couplings, which the score reads, do not.
+    agent_graph, other_graph = _coupled_backend(0.05), _coupled_backend(0.5)
+    with pytest.raises(ValueError, match="another"):
+        Agent.from_backend(
+            agent_graph, Preference(jnp.zeros(2)), selector=_driver_over(other_graph)
+        )
+
+
+def test_a_driver_over_an_equal_copy_of_the_graph_is_taken():
+    agent_graph, same_graph = _coupled_backend(0.05), _coupled_backend(0.05)
+    selector = _driver_over(same_graph)
+    agent = Agent.from_backend(agent_graph, Preference(jnp.zeros(2)), selector=selector)
+    assert agent.selector is selector
+
+
+def test_a_custom_selector_is_not_checked_whatever_it_calls_model():
+    # A misspecification ablation plans under a nominal plant on purpose (ADR-080).
+    true_model = _backend(coupled=False).to_flat_model()
+    nominal = dataclasses.replace(true_model, dynamics_noise=np.eye(2) * 0.5)
+
+    class NominalPlanner:
+        model = nominal
+
+        def select(self, belief, preference):
+            return jnp.zeros(1)
+
+    Agent(true_model, Preference(jnp.zeros(2)), selector=NominalPlanner())

@@ -14,6 +14,7 @@ from cpomdp._validation import (
     state_dependent,
 )
 from cpomdp.backends.base import GraphBackend, InferenceBackend
+from cpomdp.backends.coupling import CouplingGraphBackend
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.control import LQRController
 from cpomdp.enumeration import OpenLoopSelector, RecedingHorizonSelector
@@ -58,7 +59,7 @@ def _require_held_target(
 
 
 def _preference_for_selector(
-    model: LinearGaussianModel, objective: _Objective, selector: ActionSelector
+    backend: InferenceBackend, objective: _Objective, selector: ActionSelector
 ) -> Preference:
     """The ``Preference`` a selector of the caller's own chooses toward, checked.
 
@@ -72,13 +73,13 @@ def _preference_for_selector(
             f"chooses toward. Got {given}. A StateGoal or ObservationGoal configures "
             "the selector the Agent builds, so it goes without selector=."
         )
+    model = backend.model
     if model.control_matrix is None:
         raise ValueError("selector= needs a model with a control matrix to act with.")
-    selector_model = _selector_model(selector)
-    if selector_model is not None and not _same_model(selector_model, model):
+    if _scores_another_plant(selector, backend):
         raise ValueError(
-            f"this {type(selector).__name__} was built for another model. The Agent "
-            "filters under its own model, so build the selector from the same one."
+            f"this {type(selector).__name__} was built for another model or graph. The "
+            "Agent filters under its own, so build the selector from the same one."
         )
     if isinstance(selector, _STATE_SPACE_SELECTORS):
         space, length = "a state", model.n_states
@@ -118,13 +119,43 @@ def _same_model(first: LinearGaussianModel, second: LinearGaussianModel) -> bool
     return True
 
 
-def _selector_model(selector: ActionSelector) -> LinearGaussianModel | None:
-    """The model a selector names as the one it scores under, or None if it names none.
+_BUILT_IN_SELECTORS = (*_STATE_SPACE_SELECTORS, *_OBSERVATION_SPACE_SELECTORS)
+_GRAPH_SCORED_SELECTORS = (FFGEFESelector, RecedingHorizonSelector, OpenLoopSelector)
 
-    Every built-in selector and search driver exposes ``model``. A custom selector may.
+
+def _same_couplings(first: CouplingGraphBackend, second: CouplingGraphBackend) -> bool:
+    """Whether two graph backends' edges join the same nodes with equal factors."""
+    first_edges, second_edges = first.graph.couplings, second.graph.couplings
+    return len(first_edges) == len(second_edges) and all(
+        (a.parent, a.child) == (b.parent, b.child)
+        and np.array_equal(a.coupling_matrix, b.coupling_matrix)
+        and np.array_equal(a.coupling_noise, b.coupling_noise)
+        for a, b in zip(first_edges, second_edges, strict=True)
+    )
+
+
+def _scores_another_plant(selector: ActionSelector, backend: InferenceBackend) -> bool:
+    """Whether a built-in selector scores a different plant from ``backend``'s.
+
+    A custom selector is not checked (ADR-080). A graph-scored selector compares the
+    backend it scores on, its interface model and its couplings, since the couplings
+    are part of the plant and the interface model leaves them out.
     """
-    model = getattr(selector, "model", None)
-    return model if isinstance(model, LinearGaussianModel) else None
+    if not isinstance(selector, _BUILT_IN_SELECTORS):
+        return False
+    graph = selector.backend if isinstance(selector, _GRAPH_SCORED_SELECTORS) else None
+    if graph is None:
+        return not _same_model(selector.model, backend.model)
+    if graph is backend:
+        return False
+    if not (
+        isinstance(graph, CouplingGraphBackend)
+        and isinstance(backend, CouplingGraphBackend)
+    ):
+        return True
+    return not (
+        _same_model(graph.model, backend.model) and _same_couplings(graph, backend)
+    )
 
 
 def _lqr_path(
@@ -475,7 +506,7 @@ class Agent:
         self._last_action: Float64[Array, "p"] | None = None
 
         if selector is not None:
-            self._preference = _preference_for_selector(model, objective, selector)
+            self._preference = _preference_for_selector(backend, objective, selector)
             self._selector = selector
         elif objective is None:
             return  # a perceive-only tracker: nothing to act toward
