@@ -254,12 +254,22 @@ class TestLQRSchedule:
         with pytest.raises(ValueError, match="horizon"):
             point_mass_schedule(0)
 
+    def test_a_refusal_names_the_cost_as_the_caller_typed_it(self):
+        with pytest.raises(ValueError, match=r"^precision must be 2x2"):
+            lqr_schedule(
+                point_mass_model(), horizon=3, precision=[[1.0]], effort=EFFORT_PENALTY
+            )
+        with pytest.raises(ValueError, match=r"^effort must be positive-definite"):
+            lqr_schedule(
+                point_mass_model(), horizon=3, precision=GOAL_PRECISION, effort=[[0.0]]
+            )
+
     def test_the_costs_are_validated_as_the_controller_validates_them(self):
         with pytest.raises(ValueError, match="symmetric"):
             lqr_schedule(
                 point_mass_model(),
-                goal_precision=[[1.0, 0.5], [-0.5, 1.0]],
-                effort_penalty=EFFORT_PENALTY,
+                precision=[[1.0, 0.5], [-0.5, 1.0]],
+                effort=EFFORT_PENALTY,
                 horizon=3,
             )
         with pytest.raises(ValueError, match="control matrix"):
@@ -271,8 +281,8 @@ class TestLQRSchedule:
                     observation_noise=[[1e-2]],
                     prior=Belief(mean=[0.0, 0.0], cov=[[1.0, 0.0], [0.0, 1.0]]),
                 ),
-                goal_precision=GOAL_PRECISION,
-                effort_penalty=EFFORT_PENALTY,
+                precision=GOAL_PRECISION,
+                effort=EFFORT_PENALTY,
                 horizon=3,
             )
 
@@ -332,8 +342,8 @@ class TestTheDualPair:
             lqr_schedule(  # ty: ignore[missing-argument]
                 model,
                 3,  # ty: ignore[too-many-positional-arguments]
-                goal_precision=GOAL_PRECISION,
-                effort_penalty=EFFORT_PENALTY,
+                precision=GOAL_PRECISION,
+                effort=EFFORT_PENALTY,
             )
 
     def test_one_index_is_one_step_of_the_plan_in_every_stack(self):
@@ -360,8 +370,8 @@ class TestTheDualPair:
         plan = lqr_schedule(
             model,
             horizon=4,
-            goal_precision=GOAL_PRECISION,
-            effort_penalty=EFFORT_PENALTY,
+            precision=GOAL_PRECISION,
+            effort=EFFORT_PENALTY,
         )
         estimate = kalman_schedule(model, horizon=4)
         assert isinstance(plan, LQRSchedule)

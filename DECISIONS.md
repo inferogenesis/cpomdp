@@ -4674,6 +4674,9 @@ result was a schedule.
 - `lqr_schedule` and `kalman_schedule` are the dual pair. Each takes `horizon` by
   keyword and returns a schedule, `LQRSchedule` or `KalmanSchedule`, that reports its
   `horizon`. Both names were new in 0.5.0, so the rename breaks no release.
+- `lqr_schedule` takes its two costs as `precision` and `effort`, and `LQRSchedule`
+  keeps them under those names. A `StateGoal` already calls the same two matrices
+  that. `finite_horizon_lqr` called them `goal_precision` and `effort_penalty`.
 - Every stack in the pair is indexed by step of the plan. `costs_to_go[k]` is what
   remains to pay before acting at step `k`, beside `gains[k]` and `covariances[k]`.
   The control recursion counts steps remaining, and `finite_horizon_lqr` stored its

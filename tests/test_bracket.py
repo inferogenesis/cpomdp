@@ -70,13 +70,13 @@ class TestFullInformationCost:
         model = point_mass_model()
         schedule = lqr_schedule(
             model,
-            goal_precision=GOAL_PRECISION,
-            effort_penalty=EFFORT_PENALTY,
+            precision=GOAL_PRECISION,
+            effort=EFFORT_PENALTY,
             horizon=3,
         )
         assert schedule.model is model
-        np.testing.assert_array_equal(schedule.goal_precision, GOAL_PRECISION)
-        np.testing.assert_array_equal(schedule.effort_penalty, EFFORT_PENALTY)
+        np.testing.assert_array_equal(schedule.precision, GOAL_PRECISION)
+        np.testing.assert_array_equal(schedule.effort, EFFORT_PENALTY)
 
     def test_matches_a_sampled_rollout_with_the_state_known(self):
         schedule = point_mass_schedule(6)
@@ -100,8 +100,8 @@ class TestFullInformationCost:
         )
         schedule = lqr_schedule(
             model,
-            goal_precision=GOAL_PRECISION,
-            effort_penalty=EFFORT_PENALTY,
+            precision=GOAL_PRECISION,
+            effort=EFFORT_PENALTY,
             horizon=5,
         )
         x0 = np.array([0.8, -0.3])
@@ -313,8 +313,8 @@ def _point_mass_schedule(horizon, *, observation_noise=1e-2, prior_cov=None):
     )
     return lqr_schedule(
         model,
-        goal_precision=GOAL_PRECISION,
-        effort_penalty=EFFORT_PENALTY,
+        precision=GOAL_PRECISION,
+        effort=EFFORT_PENALTY,
         horizon=horizon,
     )
 
