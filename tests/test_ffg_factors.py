@@ -1,4 +1,4 @@
-"""Tier-1 linear-Gaussian factor nodes and the likelihood message (ADR-012, ADR-071).
+"""Tier-1 linear-Gaussian factor nodes and the likelihood message (ADR-012, ADR-073).
 
 Each oracle is an independent path, the moment-form measurement update or the
 moment-form predict computed in plain NumPy, never the canonical-form maths under test.
@@ -99,7 +99,7 @@ class TestLikelihoodMessage:
         assert bool(jnp.all(jnp.isfinite(grad)))
 
 
-# --- A node's sensor: R read at the plug-in state (issue #27, ADR-071) ----------
+# --- A node's sensor: R read at the plug-in state (issue #27, ADR-073) ----------
 
 
 def _node_message(sensor, reading, state=None):

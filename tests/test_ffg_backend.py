@@ -1178,7 +1178,7 @@ class TestStateDependentSensing:
             rx.infer_states(np.zeros(2), prior, np.array([0.0]))  # need 3 readings
 
 
-# --- one sensor family: a graph node takes the flat model's sensor (ADR-071) -------
+# --- one sensor family: a graph node takes the flat model's sensor (ADR-073) -------
 
 
 class _UnstoredSensor:

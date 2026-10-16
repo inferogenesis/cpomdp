@@ -40,7 +40,7 @@ class Coupling:
     [`GaussianCoupling`][cpomdp.GaussianCoupling] holding this edge's ``W`` (shape
     ``(dim[child], dim[parent])``) and its noise covariance. A node's timescale is
     its [`GaussianTransition`][cpomdp.GaussianTransition], so an edge carries none
-    (ADR-072).
+    (ADR-074).
 
     ``efe_relevant`` is a modeller's *declaration* that this edge carries information
     the instrumental epistemic depends on — a physics call, not a structural one (in

@@ -4636,7 +4636,7 @@ versions break before 1.0, as cpomdp's do.
 - A warrantlib 0.4 reaches cpomdp users only through a cpomdp release that lifts the
   cap.
 
-## ADR-071 — a graph node takes the flat model's sensor, and the message passing is private
+## ADR-073 — a graph node takes the flat model's sensor, and the message passing is private
 
 **Date:** 2026-10-15
 **Status:** Accepted
@@ -4699,7 +4699,7 @@ documents, and they are the hot path the energy work is most likely to change (R
 - ADR-019 and ADR-021 keep their wording. Their `CallableGaussianObservation` is this
   ADR's `CallableSensor` on a graph node.
 
-## ADR-072 — an edge carries no timescale
+## ADR-074 — an edge carries no timescale
 
 **Date:** 2026-10-15
 **Status:** Accepted

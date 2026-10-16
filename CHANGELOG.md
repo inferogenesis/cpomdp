@@ -493,7 +493,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
   published them on the top-level construction classes, typed on a `CanonicalGaussian`
   no page documents. They are the hot path the energy work will change. A user builds
   the graph and runs it through `CouplingGraphBackend` or `CouplingGraph.infer`, and
-  neither needs them (ADR-069, ADR-071).
+  neither needs them (ADR-069, ADR-073).
 - **Breaking:** a *fixed* `observation_model` or `dynamics_noise_model` must now restate
   the model's `observation_noise` / `dynamics_noise` exactly, and a sensor's linearized
   observation matrix must equal `observation_matrix`. `LinearGaussianModel` previously
@@ -597,7 +597,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `LinearGaussianModel` refused the graph classes, and a `FixedSensor` on a graph node
   constructed and then raised at the first filter step. A node now takes any
   `ObservationModel`, and the graph reads `C` and `R` through `linearize` as the flat
-  model does (ADR-071).
+  model does (ADR-073).
 - **Breaking:** `GaussianTransition` takes `dynamics_noise` by keyword, and
   `GaussianTransition.from_ou` takes `stationary_var` and `dt` by keyword. Both follow
   `LinearGaussianModel` for the same reason, and the transition factor is the worse of
@@ -618,7 +618,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
   timescale is its transition. `Coupling` now checks its fields at construction: a node
   index that is not an int, a factor that is not a `GaussianCoupling` and a non-bool
   `efe_relevant` raise `TypeError`. A bare matrix as the factor used to construct and
-  fail later on a missing attribute (ADR-072).
+  fail later on a missing attribute (ADR-074).
 - **Breaking:** `CouplingGraphBackend` takes a required keyword `prior`, the belief over
   the joint state before any reading. Its `model.prior` was an N(0, I) placeholder, so
   an `Agent` built on the backend planned and filtered from a belief the caller never
