@@ -22,10 +22,10 @@ observation factors (``GaussianObservation``,
 ``GaussianCoupling``, then run it through a ``CouplingGraphBackend``
 with a per-node ``GaussianTransition``. A state-dependent ``R(x)`` on a
 coupled node cannot be flattened to a fixed linear-Gaussian model; asking it to
-raises ``IncompatibleLinearizationError`` (ADR-019, ADR-020). The
-``Agent`` dispatches an ``FfgEfeSelector`` — the FFG peer of
-``EFESelector`` — for such a backend. To choose with a selector of your own,
-pass a ``Preference`` and ``selector=``.
+raises ``IncompatibleLinearizationError`` (ADR-019, ADR-020). For an
+``ObservationGoal`` on such a backend the ``Agent`` builds an
+``FfgEfeSelector``, the FFG peer of ``EFESelector``. To choose with a selector
+of your own, pass a ``Preference`` and ``selector=``.
 
 Whether a state-dependent sensor earns its keep is a question about the states an
 action can actually reach: ``probe_model`` samples that reachable set and

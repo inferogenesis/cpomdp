@@ -339,8 +339,9 @@ class Agent:
                 ``selector=``. ``None`` builds a pure tracker, which perceives and
                 never acts.
             selector: An [`ActionSelector`][cpomdp.ActionSelector] of your own, for a
-                search no goal describes: EFE on a fixed sensor, a varying-sequence
-                search driver, or a custom rule. It needs a ``Preference`` as the
+                search no goal describes: EFE with both noises fixed, a
+                varying-sequence search driver, an ``LQRSelector`` over a controller
+                of your own, or a custom rule. It needs a ``Preference`` as the
                 objective, in the space the selector reads. That is an observation
                 for the EFE selectors and the search drivers, and a state for
                 ``LQRSelector``.
@@ -526,12 +527,13 @@ class Agent:
 
         Delegates to the agent's ``ActionSelector``, handing it the current belief
         and the objective's ``Preference``. For a ``StateGoal`` under a fixed
-        sensor that selection is exactly the LQR optimum, ``-L∞·(mean − goal)`` —
-        one matrix-vector product, front-loaded at construction (ADR-003); for an
-        ``ObservationGoal`` it is the EFE-minimising action over the front-loaded
-        candidate grid. Deterministic, not a sample, and it takes no ``rng_key`` (see
-        the class docstring). There is no separate ``infer_policies`` step — policy
-        evaluation is folded in here. On the EFE path its per-cycle cost reads back as
+        sensor that selection is exactly the LQR optimum, ``-L∞·(mean − target)``
+        with ``L∞`` the steady-state gain solved at construction (ADR-003). That is
+        one matrix-vector product. For an ``ObservationGoal`` it is the
+        EFE-minimising action over the front-loaded candidate grid. Deterministic,
+        not a sample, and it takes no ``rng_key`` (see the class docstring). Policy
+        evaluation is folded in here, so there is no separate ``infer_policies``
+        step. On the EFE path its per-cycle cost reads back as
         ``agent.selector.cost_per_cycle``. The chosen action is remembered so the next
         ``infer_states`` predicts with it.
 
