@@ -15,6 +15,9 @@ canonical-form math under test. The keystone bar is atol 1e-7 on *every* node's 
 (not just the root), over multi-step sequences with and without control.
 """
 
+import copy
+import pickle
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -609,6 +612,24 @@ class TestProtocolAndReadout:
             CouplingGraphBackend(
                 graph, (transition, transition), prior=unit_prior(graph)
             )
+
+    @pytest.mark.parametrize(
+        "round_trip",
+        [copy.deepcopy, lambda backend: pickle.loads(pickle.dumps(backend))],
+        ids=["deepcopy", "pickle"],
+    )
+    def test_survives_a_copy_and_a_pickle(self, round_trip):
+        # An agent reaches a multiprocessing worker by pickle, backend and graph both.
+        backend = _build(
+            _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
+        )
+        prior = Belief(mean=np.zeros(5), cov=np.eye(5) * 2.0)
+        reading = np.array([0.4, -0.2, 0.1])
+        copied = round_trip(backend)
+        np.testing.assert_array_equal(
+            copied.infer_states(reading, prior).mean,
+            backend.infer_states(reading, prior).mean,
+        )
 
     def test_prior_not_mutated(self):
         backend = _build(

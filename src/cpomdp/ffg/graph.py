@@ -115,7 +115,7 @@ class CouplingGraph:
         self._root = _as_int(root, "root")
         self._dims = tuple(_as_int(dim, f"dims[{i}]") for i, dim in enumerate(dims))
         self._couplings = tuple(couplings)
-        self._observations = MappingProxyType(dict(observations))
+        self._observations = dict(observations)
         self._validate()
         self._sensor_at_zero = self._linearize_sensors_at_zero()
         self._parent_edge = {edge.child: edge for edge in self._couplings}
@@ -142,7 +142,7 @@ class CouplingGraph:
     @property
     def observations(self) -> Mapping[int, ObservationModel]:
         """Each observed node's sensor, keyed by node index. A read-only view."""
-        return self._observations
+        return MappingProxyType(self._observations)
 
     def _validate(self) -> None:
         n = len(self.dims)
