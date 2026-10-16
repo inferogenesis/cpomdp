@@ -5666,16 +5666,18 @@ plant. `Agent.from_backend(graph, StateGoal(...))` regulated it with LQR, and
 
 ### Decision
 
-A coupled graph backend marks its model. Both flat backends, `Agent`, `EFESelector`,
+A coupled graph backend marks its model. The flat backends, `Agent`, `EFESelector`,
 the flat search constructors, `LQRController`, `lqr_schedule`, `kalman_schedule`,
 `probe_model` and the flat EFE functions refuse a marked model and name the routes that
-keep the couplings, the backend itself or `backend.to_flat_model()`. A `StateGoal` on a coupled
-graph is refused. A graph with no couplings is its own plant and carries no mark.
+keep the couplings, the backend itself or `backend.to_flat_model()`. A `StateGoal` on a
+coupled graph is refused. A graph with no couplings is its own plant and carries no
+mark.
 
 ### Consequences
 
-- The mark is an attribute, not a field, so it adds no leaf. It rides in the model's
-  static aux data, so a copy rebuilt through `jax.tree.map`, `device_put` or a `jit`
+- The mark is a model field, `_leaves_out_couplings`, kept out of the printed form and
+  out of equality. It is static aux data in the pytree, not a leaf, so a copy made with
+  `dataclasses.replace` or rebuilt through `jax.tree.map`, `device_put` or a `jit`
   boundary keeps it, and the jit cache keys on it.
 - The constructors check once. The EFE functions check one attribute per eager call
   and once per trace under `jit`, which leaves the fixed-noise hot path a matrix

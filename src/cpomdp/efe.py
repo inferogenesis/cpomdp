@@ -266,6 +266,8 @@ def expected_free_energy(
         is preferred.
 
     Raises:
+        TypeError: If ``model`` is a coupled graph backend's model, which leaves
+            out the couplings.
         ValueError: If the model has no control matrix.
         TypeError: If ``preference`` is not a [`Preference`][cpomdp.Preference].
     """
@@ -320,6 +322,8 @@ def policy_efe(
         horizon.
 
     Raises:
+        TypeError: If ``model`` is a coupled graph backend's model, which leaves
+            out the couplings.
         ValueError: If the model has no control matrix.
         TypeError: If ``preference`` is not a [`Preference`][cpomdp.Preference].
     """
@@ -384,6 +388,8 @@ def policy_efe_trace(
         leading H axis.
 
     Raises:
+        TypeError: If ``model`` is a coupled graph backend's model, which leaves
+            out the couplings.
         ValueError: If the model has no control matrix.
         TypeError: If ``preference`` is not a [`Preference`][cpomdp.Preference].
     """

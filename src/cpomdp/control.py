@@ -219,6 +219,8 @@ def lqr_schedule(
         ``costs_to_go[k]`` the cost still to pay before it, ``P_{H−k}``.
 
     Raises:
+        TypeError: If ``model`` is a coupled graph backend's model, which leaves
+            out the couplings.
         ValueError: If ``horizon`` is below one, or on any of the cost and model
             conditions ``LQRController`` refuses.
     """
@@ -303,6 +305,8 @@ def kalman_schedule(
         The gains and covariances, indexed as the plan indexes its steps.
 
     Raises:
+        TypeError: If ``model`` is a coupled graph backend's model, which leaves
+            out the couplings.
         ValueError: If ``horizon`` is below one, if either noise depends on the state,
             or if ``prior`` is not over the model's state.
     """
@@ -366,6 +370,8 @@ class LQRController:
             failed to converge.
 
     Raises:
+        TypeError: If ``model`` is a coupled graph backend's model, which leaves
+            out the couplings.
         ValueError: If the model has no ``control_matrix``, or a cost matrix does
             not match the state/action dimensions, is not symmetric, or fails its
             definiteness requirement (``precision`` PSD, ``effort`` PD).

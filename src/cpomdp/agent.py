@@ -9,6 +9,7 @@ from numpy.typing import ArrayLike
 from cpomdp._validation import (
     concrete,
     equilibrium_drift,
+    is_graph_interface,
     refuse_graph_interface,
     state_dependent,
 )
@@ -481,14 +482,13 @@ class Agent:
         elif objective is None:
             return  # a perceive-only tracker: nothing to act toward
         elif isinstance(objective, StateGoal):
-            refuse_graph_interface(
-                model,
-                "a StateGoal, which regulates with LQR,",
-                remedy=(
-                    "Pass an ObservationGoal on a state-dependent sensor, or a "
-                    "Preference with selector=FFGEFESelector(...)."
-                ),
-            )
+            if is_graph_interface(model):
+                raise TypeError(
+                    "a StateGoal on a coupled CouplingGraphBackend would regulate with "
+                    "LQR on a model that leaves out the couplings. Pass a Preference "
+                    "with selector=FFGEFESelector(...), or an ObservationGoal if a "
+                    "sensor's noise depends on the state."
+                )
             self._preference, self._selector = _lqr_path(model, objective)
         elif isinstance(objective, ObservationGoal):
             self._preference, self._selector = _efe_path(backend, objective)

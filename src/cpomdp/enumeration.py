@@ -556,6 +556,8 @@ class EnumeratedEFESearch(ExhaustiveEFESearch):
             unless set. ``None`` lifts the budget.
 
     Raises:
+        TypeError: If ``model`` is a coupled graph backend's model, which leaves
+            out the couplings.
         PolicyBudgetError: If ``|A|^H`` exceeds ``max_policies``.
         ValueError: If the model has no control matrix, if the action set's dimension
             or the horizon does not fit, or if ``max_policies`` is below 1.
@@ -746,6 +748,8 @@ class ChunkedEFESearch(ExhaustiveEFESearch):
             ``|A|^H``. The answer does not depend on it.
 
     Raises:
+        TypeError: If ``model`` is a coupled graph backend's model, which leaves
+            out the couplings.
         ValueError: If the model has no control matrix, if the action set's dimension
             or the horizon does not fit, if ``chunk`` is below 1, or if ``|A|^H``
             exceeds the index dtype's ceiling.

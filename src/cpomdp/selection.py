@@ -311,6 +311,8 @@ class EFESelector:
                 1.
 
         Raises:
+            TypeError: If ``model`` is a coupled graph backend's model, which leaves
+                out the couplings.
             ValueError: If the model has no control matrix or more than one action
                 dimension, if ``action_bounds`` is not two finite scalars in order, if
                 ``n_candidates`` is below 2, or if ``horizon`` is below 1.
