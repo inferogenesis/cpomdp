@@ -532,7 +532,13 @@ class StateGoal:
     precision: Float64[Array, "n n"]
     effort: Float64[Array, "p p"] | None
 
-    def __init__(self, target: ArrayLike, *, precision=None, effort=None) -> None:
+    def __init__(
+        self,
+        target: ArrayLike,
+        *,
+        precision: ArrayLike | None = None,
+        effort: ArrayLike | None = None,
+    ) -> None:
         target = jnp.asarray(target, dtype=float)
         object.__setattr__(self, "target", target)
         n = target.shape[0]
@@ -604,13 +610,13 @@ class ObservationGoal:
 
     def __init__(
         self,
-        target,
+        target: ArrayLike,
         *,
-        action_bounds,
-        precision=None,
-        n_candidates=_DEFAULT_N_CANDIDATES,
-        horizon=None,
-        info_node=None,
+        action_bounds: tuple[float, float],
+        precision: ArrayLike | None = None,
+        n_candidates: int = _DEFAULT_N_CANDIDATES,
+        horizon: int | None = None,
+        info_node: int | None = None,
     ) -> None:
         target = jnp.asarray(target, dtype=float)
         object.__setattr__(self, "target", target)
