@@ -701,7 +701,7 @@ def _slope_deviation() -> tuple[float, float]:
 
 
 @cache
-def _sensor_report():
+def _probe_report():
     """The library's own verdict on whether the sensor earns its keep over the grid."""
     stride = len(ACTIONS) // PROBE_SAMPLES
     actions = [jnp.array([a]) for a in np.asarray(ACTIONS)[::stride]]
@@ -725,7 +725,7 @@ def falsifiers() -> tuple[CheckReport, ...]:
     ladder = _meter_ladder()
     economic = _economic_ladder()
     worst_slope, c2 = _slope_deviation()
-    report = _sensor_report()
+    report = _probe_report()
     agreement = _law_agreement()
     coriolis_first, coriolis_settled, coriolis_loop = _coriolis()
     settled = _settled_ladder()
@@ -1106,7 +1106,7 @@ def check() -> None:
         "surge line.\n      The ambiguity term can push the agent into surge.\n"
     )
 
-    print(_sensor_report().summary())
+    print(_probe_report().summary())
 
     reports = falsifiers()
     _print_falsifiers(reports)

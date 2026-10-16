@@ -52,7 +52,7 @@ class ObservationModel(Protocol):
 
     Attributes:
         is_fixed: ``True`` when ``(C, R)`` are constant in the state — the
-            fixed-sensor fast path. With fixed process noise as well, EFE's
+            fixed-sensor fast path. With fixed dynamics noise as well, EFE's
             epistemic term is constant there and EFE collapses to LQR. ``False``
             for a state-dependent sensor.
     """

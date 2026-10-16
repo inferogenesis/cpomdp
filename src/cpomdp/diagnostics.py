@@ -274,7 +274,7 @@ def _linearizations(
     return [np.asarray(observation.linearize(mu)[1], dtype=float) for mu in means]
 
 
-def _process_noises(
+def _dynamics_noises(
     process, dynamics_noise: ArrayLike, means: np.ndarray
 ) -> list[np.ndarray]:
     """Each mean's ``Q``, taken at that mean when the model carries a ``Q(x)``.
@@ -351,7 +351,7 @@ def probe_model(
         noises = [
             np.asarray(backend.observation_noise_at(mu), dtype=float) for mu in means
         ]
-        process_spread = 0.0  # the graph's transitions carry a fixed Q
+        dynamics_spread = 0.0  # the graph's transitions carry a fixed Q
     else:  # a flat LinearGaussianModel
         observation_matrix = np.asarray(model.observation_matrix, dtype=float)
         dynamics_matrix = np.asarray(model.dynamics_matrix, dtype=float)
@@ -371,11 +371,11 @@ def probe_model(
                 ]
             )
         propagated = dynamics_matrix @ prior_cov @ dynamics_matrix.T
-        process_noises = _process_noises(
+        dynamics_noises = _dynamics_noises(
             model.dynamics_noise_model, model.dynamics_noise, means
         )
-        covs = [propagated + q for q in process_noises]
-        process_spread = _spread(process_noises)
+        covs = [propagated + q for q in dynamics_noises]
+        dynamics_spread = _spread(dynamics_noises)
         fixed = np.asarray(model.observation_noise, dtype=float)
         noises = _linearizations(
             model.observation_model, observation_matrix, means
@@ -417,8 +417,8 @@ def probe_model(
         observation_noise_varies=spread > tol,
         observation_noise_spread=spread,
         observation_noise_loewner_ordered=comparable,
-        dynamics_noise_varies=process_spread > tol,
-        dynamics_noise_spread=process_spread,
+        dynamics_noise_varies=dynamics_spread > tol,
+        dynamics_noise_spread=dynamics_spread,
         epistemic_varies=bool(finite) and (hi - lo) > tol,
         epistemic_range=(lo, hi),
     )

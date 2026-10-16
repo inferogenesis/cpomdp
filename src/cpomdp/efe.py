@@ -717,15 +717,15 @@ def _efe_step(
     # Over a horizon the covariance does move with the policy; only the one-step
     # predicted covariance is blind to it.
     mu_pred = model.dynamics_matrix @ mu + control_matrix @ action
-    process_q = (
+    dynamics_noise = (
         model.dynamics_noise
         if model.dynamics_noise_model is None
         else model.dynamics_noise_model.noise_at(mu_pred)
     )
 
     sigma_pred = (
-        model.dynamics_matrix @ sigma @ model.dynamics_matrix.T + process_q
-    )  # Σ⁺ = AΣAᵀ + process_q
+        model.dynamics_matrix @ sigma @ model.dynamics_matrix.T + dynamics_noise
+    )  # Σ⁺ = AΣAᵀ + dynamics_noise
 
     # --- sense: predicted-observation moments (o⁺, S) + conditional noise R at μ⁺ ---
     # The sensor owns its moment-matching (D1): the kernel never reconstructs o⁺/S.
