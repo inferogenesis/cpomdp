@@ -22,7 +22,7 @@ Imported from ``cpomdp.enumeration``. None of it is re-exported at the top level
 
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import partial
 from typing import TYPE_CHECKING, Any, NamedTuple, Protocol
 
@@ -49,7 +49,6 @@ if TYPE_CHECKING:
 
 __all__ = [
     "ChunkedEfeSearch",
-    "ChunkedSearchResult",
     "CompletenessCertificate",
     "EnumeratedEfeSearch",
     "EnumeratedSearchResult",
@@ -58,6 +57,7 @@ __all__ = [
     "OpenLoopSelector",
     "PolicyBudgetError",
     "RecedingHorizonSelector",
+    "SearchResult",
 ]
 
 
@@ -244,17 +244,22 @@ def _decode_policies(
     return action_set.actions[digits]
 
 
-class EnumeratedSearchResult(NamedTuple):
-    """The outcome of one front-loaded exhaustive search.
+@jax.tree_util.register_dataclass
+@dataclass(frozen=True)
+class SearchResult:
+    """The outcome of one exhaustive search: the best plan and the evidence for it.
 
-    It carries every field of ``ChunkedSearchResult`` under the same name, so code
-    that reads those runs on either search. The one addition is the score vector,
-    which the chunked path never holds.
+    [`ChunkedEfeSearch`][cpomdp.enumeration.ChunkedEfeSearch] returns one. The
+    front-loaded search returns
+    [`EnumeratedSearchResult`][cpomdp.enumeration.EnumeratedSearchResult], which adds
+    the score vector. Fields are read by name. A result does not unpack or index, so
+    no position can name one field on one search and another on the other.
+
+    A JAX pytree whose certificate is static data, so a jitted or vmapped
+    ``evaluate`` returns the whole result.
 
     Attributes:
         best_policy: the argmin sequence, shape ``(H, p)``.
-        g: the summed EFE of every enumerated policy, in enumeration order, shape
-            ``(|A|^H,)``.
         best_g: the argmin's summed EFE, G.
         best_index: the argmin's position in the enumeration.
         certificate: the completeness certificate (ADR-030).
@@ -265,10 +270,26 @@ class EnumeratedSearchResult(NamedTuple):
     """
 
     best_policy: Float64[Array, "H p"]
-    g: Float64[Array, "N"]
     best_g: Float64[Array, ""]
     best_index: Int[Array, ""]
-    certificate: CompletenessCertificate
+    certificate: CompletenessCertificate = field(metadata={"static": True})
+
+
+@jax.tree_util.register_dataclass
+@dataclass(frozen=True)
+class EnumeratedSearchResult(SearchResult):
+    """The outcome of one front-loaded exhaustive search, every policy's score included.
+
+    A [`SearchResult`][cpomdp.enumeration.SearchResult] plus the score vector, which
+    only the front-loaded path holds. Code that reads the shared fields runs on either
+    search.
+
+    Attributes:
+        g: the summed EFE of every enumerated policy, in enumeration order, shape
+            ``(|A|^H,)``.
+    """
+
+    g: Float64[Array, "N"]
 
 
 class _PolicyScorer(Protocol):
@@ -596,31 +617,6 @@ class _BlockReducer(Protocol):
     ) -> Any: ...
 
 
-class ChunkedSearchResult(NamedTuple):
-    """The outcome of one chunked exhaustive search.
-
-    No score vector, which is the point: at ``17^7`` one would cost 3.28 GB. Every
-    field is also on the front-loaded result, under the same name.
-
-    Attributes:
-        best_policy: the argmin sequence, shape ``(H, p)``.
-        best_g: the argmin's summed EFE, G.
-        best_index: the argmin's position in the enumeration, the index
-            ``policies_at`` decodes.
-        certificate: the completeness certificate (ADR-030). Its ``visited`` is the
-            count of policies the loop scored, carried by the loop rather than read
-            off an array's length.
-
-    When no policy scores finitely there is no argmin, and the result reads as on the
-    front-loaded path: NaN, -1 and a NaN policy beside a certificate that still holds.
-    """
-
-    best_policy: Float64[Array, "H p"]
-    best_g: Float64[Array, ""]
-    best_index: Int[Array, ""]
-    certificate: CompletenessCertificate
-
-
 class ChunkedEfeSearch:
     """Exhaustive EFE search over ``A^H`` in blocks, at ``O(chunk)`` residency.
 
@@ -727,7 +723,7 @@ class ChunkedEfeSearch:
         # front-loaded path.
         self._scan_compiled = jax.jit(partial(self._scan_blocks, reducer=None))
 
-    def evaluate(self, belief: Belief, preference: "Preference") -> ChunkedSearchResult:
+    def evaluate(self, belief: Belief, preference: "Preference") -> SearchResult:
         """Score every policy in blocks, and return the argmin with its evidence.
 
         One ``lax.scan`` over ``ceil(|A|^H / chunk)`` blocks. Each block decodes its own
@@ -751,7 +747,7 @@ class ChunkedEfeSearch:
         belief: Belief,
         preference: "Preference",
         reducer: _BlockReducer | None,
-    ) -> tuple[ChunkedSearchResult, Any]:
+    ) -> tuple[SearchResult, Any]:
         """``evaluate`` with an extra per-block fold, and the fold's final carry.
 
         The seam for evidence the argmin does not carry. The carry is ``Any`` because it
@@ -764,9 +760,9 @@ class ChunkedEfeSearch:
 
     def _result(
         self, argmin: _ArgminCarry, best_policy: Float64[Array, "H p"]
-    ) -> ChunkedSearchResult:
+    ) -> SearchResult:
         """The loop's answer, certified on the count the loop itself carried."""
-        return ChunkedSearchResult(
+        return SearchResult(
             best_policy=best_policy,
             best_g=argmin.best_g,
             best_index=argmin.best_index,
