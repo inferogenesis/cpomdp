@@ -669,8 +669,8 @@ def _ffg_rollout_body(
     μ⁺, Σ⁺, the structural couplings folded in), scores the node-targeted EFE
     (``_ffg_efe_step`` at ``R(μ⁺)``), then contracts the covariance predict-only for the
     next step. The sensor ``C`` is constant, so it is fetched once here; ``R(μ⁺)`` is
-    re-read per step (it may be state-dependent). The carried mean is ``μ⁺`` — zero
-    expected innovation, so the observation moves only the covariance.
+    re-read per step (it may be state-dependent). The carried mean is ``μ⁺``. The
+    reading is expected to equal its prediction, so it moves only the covariance.
     """
     model = backend.model
     observation_matrix = model.observation_matrix  # C (constant, front-loaded)
