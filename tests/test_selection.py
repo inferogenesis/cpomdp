@@ -43,9 +43,9 @@ def _controller():
 
 class TestPreference:
     def test_stores_and_coerces_target(self):
-        p = Preference(target=[1.0, 2.0])
-        assert hasattr(p.target, "shape")
-        np.testing.assert_array_equal(p.target, [1.0, 2.0])
+        preference = Preference(target=[1.0, 2.0])
+        assert hasattr(preference.target, "shape")
+        np.testing.assert_array_equal(preference.target, [1.0, 2.0])
 
     def test_calls_its_vector_target_as_the_goals_do(self):
         # StateGoal, ObservationGoal and LQRController.action call it target too.
@@ -53,14 +53,14 @@ class TestPreference:
             Preference(goal=[1.0])  # ty: ignore[missing-argument, unknown-argument]
 
     def test_precision_defaults_to_identity(self):
-        p = Preference(target=[1.0, 2.0])
-        np.testing.assert_array_equal(p.precision, np.eye(2))
+        preference = Preference(target=[1.0, 2.0])
+        np.testing.assert_array_equal(preference.precision, np.eye(2))
 
     def test_accepts_an_explicit_precision(self):
-        p = Preference(target=[0.0, 0.0], precision=[[2.0, 0.0], [0.0, 3.0]])
-        np.testing.assert_array_equal(p.precision, [[2.0, 0.0], [0.0, 3.0]])
+        preference = Preference(target=[0.0, 0.0], precision=[[2.0, 0.0], [0.0, 3.0]])
+        np.testing.assert_array_equal(preference.precision, [[2.0, 0.0], [0.0, 3.0]])
 
-    def test_rejects_non_1d_goal(self):
+    def test_rejects_non_1d_target(self):
         with pytest.raises(ValueError, match="1-D"):
             Preference(target=[[1.0]])
 
@@ -88,11 +88,11 @@ class TestLQRSelector:
         controller = _controller()
         selector = LQRSelector(controller)
         belief = Belief(mean=[0.3, -0.2], cov=[[1.0, 0.0], [0.0, 1.0]])
-        pref = Preference(target=[1.0, 0.0])
+        preference = Preference(target=[1.0, 0.0])
 
         np.testing.assert_array_equal(
-            selector.select(belief, pref),
-            controller.action(belief.mean, pref.target),
+            selector.select(belief, preference),
+            controller.action(belief.mean, preference.target),
         )
 
 

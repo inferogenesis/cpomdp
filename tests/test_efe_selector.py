@@ -84,15 +84,17 @@ def _numpy_g(model, belief, action, goal, precision):
     return pragmatic - epistemic, pragmatic
 
 
-def _brute_force(model, belief, pref, lo, hi, n, key="g"):
+def _brute_force(model, belief, preference, lo, hi, n_points, key="g"):
     """argmin of the NumPy G (or pragmatic) over a fine independent 1-D grid."""
-    grid = np.linspace(lo, hi, n)
-    vals = [
-        _numpy_g(model, belief, np.array([a]), pref.target, pref.precision)
-        for a in grid
+    grid = np.linspace(lo, hi, n_points)
+    scores = [
+        _numpy_g(
+            model, belief, np.array([action]), preference.target, preference.precision
+        )
+        for action in grid
     ]
-    idx = 0 if key == "g" else 1
-    return grid[int(np.argmin([v[idx] for v in vals]))]
+    part = 0 if key == "g" else 1
+    return grid[int(np.argmin([score[part] for score in scores]))]
 
 
 class TestEFESelector:
@@ -192,27 +194,27 @@ def _counting(monkeypatch, name):
     return traced
 
 
-_BELIEFS = [Belief(mean=[m], cov=[[0.5]]) for m in (0.0, 0.4, -0.7)]
+_BELIEFS = [Belief(mean=[position], cov=[[0.5]]) for position in (0.0, 0.4, -0.7)]
 
 
 class TestCompiledOnce:
     def test_a_rollout_horizon_traces_its_rollout_once(self, monkeypatch):
         traced = _counting(monkeypatch, "policy_efe")
-        sel = EFESelector(_corridor_model(), action_bounds=(-3.0, 3.0), horizon=3)
+        selector = EFESelector(_corridor_model(), action_bounds=(-3.0, 3.0), horizon=3)
         for belief in _BELIEFS:
-            sel.select(belief, _PREF)
+            selector.select(belief, _PREF)
         assert len(traced) == 1
 
     def test_one_step_traces_its_kernel_once(self, monkeypatch):
         traced = _counting(monkeypatch, "expected_free_energy")
-        sel = EFESelector(_corridor_model(), action_bounds=(-3.0, 3.0))
+        selector = EFESelector(_corridor_model(), action_bounds=(-3.0, 3.0))
         for belief in _BELIEFS:
-            sel.select(belief, _PREF)
+            selector.select(belief, _PREF)
         assert len(traced) == 1
 
-    def test_the_compiled_choice_matches_the_eager_scores(self):
-        sel = EFESelector(_corridor_model(), action_bounds=(-3.0, 3.0), horizon=2)
+    def test_the_choice_is_the_argmin_of_the_scores(self):
+        selector = EFESelector(_corridor_model(), action_bounds=(-3.0, 3.0), horizon=2)
         for belief in _BELIEFS:
-            scores = np.asarray(sel._scores(belief, _PREF))
-            chosen = sel.candidates[int(np.argmin(scores))]
-            np.testing.assert_array_equal(sel.select(belief, _PREF), chosen)
+            scores = np.asarray(selector._scores(belief, _PREF))
+            chosen = selector.candidates[int(np.argmin(scores))]
+            np.testing.assert_array_equal(selector.select(belief, _PREF), chosen)
