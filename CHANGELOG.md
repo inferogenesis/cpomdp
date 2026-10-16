@@ -638,6 +638,9 @@ certainty equivalence is optimal, and no use of the readings beats it.
   int and an `efe_relevant` that is not a bool raise `TypeError`, and a NumPy bool is
   stored as a `bool`. A `coupling_matrix` that is not 2-D and a `coupling_noise` that is
   not positive-definite raise `ValueError` (ADR-073).
+- `CouplingGraphBackend` refuses a state-dependent sensor whose `R` is not
+  positive-definite at the predicted mean, as `ChainBackend` does. It returned a finite
+  belief that was wrong.
 - **Breaking:** `CouplingGraphBackend` takes a required keyword `prior`, the belief over
   the joint state before any reading. Its `model.prior` was an N(0, I) placeholder, so
   an `Agent` built on the backend planned and filtered from a belief the caller never

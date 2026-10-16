@@ -383,8 +383,19 @@ class CouplingGraph:
         A fixed sensor's message ignores ``state``, so the fixed paths pass ``None``
         and read the front-loaded ``(C, R)``. A state-dependent sensor needs the
         predicted mean of its node.
+
+        Raises:
+            ValueError: If ``R`` at ``state`` is not positive-definite.
         """
         observation_matrix, observation_noise = self._linearized_sensor(node, state)
+        if state is not None:
+            # R at the predicted mean is inverted in the message, so it must be
+            # positive-definite there. Skipped under a trace, like every such check.
+            validate_covariance(
+                observation_noise,
+                f"node {node}'s observation_noise at its predicted mean",
+                require_definite=True,
+            )
         return likelihood_message(observation_matrix, observation_noise, reading)
 
     def _check_prior(self, prior: Belief) -> None:

@@ -891,6 +891,24 @@ _RX_OBS = {
 _RX_CONTROL = [[1.0], [0.0], [0.0], [0.0], [0.0]]  # B: action drives CheA (root)
 
 
+def _goes_negative(state, params):
+    """R(x) = 1 - x0², a covariance only for |x0| < 1."""
+    return jnp.array([[1.0 - state[0] ** 2]])
+
+
+def test_an_r_that_is_not_a_covariance_at_the_predicted_mean_is_refused():
+    # ChainBackend refuses the same sensor. A finite but wrong belief was returned.
+    backend = _build_rx(
+        (1,),
+        (),
+        {0: (np.eye(1), _goes_negative, None)},
+        ((np.eye(1), np.eye(1) * 0.05),),
+    )
+    far = Belief(mean=[2.0], cov=[[0.1]])
+    with pytest.raises(ValueError, match="positive-definite"):
+        backend.infer_states(jnp.array([0.0]), far)
+
+
 class TestStateDependentSensing:
     """R(x) on the FFG backend: the chosen action moves the covariance (dual effect).
 
