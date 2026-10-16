@@ -4636,7 +4636,7 @@ versions break before 1.0, as cpomdp's do.
 - A warrantlib 0.4 reaches cpomdp users only through a cpomdp release that lifts the
   cap.
 
-## ADR-071 — a goal configures the selector the Agent builds, and `selector=` takes a `Preference`
+## ADR-080 — a goal configures the selector the Agent builds, and `selector=` takes a `Preference`
 
 **Date:** 2026-10-15
 **Status:** Accepted
@@ -4716,7 +4716,7 @@ An `ActionGrid` object holding the three numbers was the alternative. It would n
 clump. It would also add a public type and move about sixty test lines before any search
 over it exists. Promoting one later breaks nothing the keywords do now.
 
-## ADR-072 — an `ObservationGoal` is curious wherever a noise depends on the state
+## ADR-081 — an `ObservationGoal` is curious wherever a noise depends on the state
 
 **Date:** 2026-10-15
 **Status:** Accepted
@@ -4749,7 +4749,7 @@ The test is structural. It reads each noise object's `is_fixed` flag and evaluat
 noise.
 
 The review recommended relaxing the `Q(x)` half only and keeping the graph exception,
-since three tests and the flagship relied on it. I made the rule one. Since ADR-071 the
+since three tests and the flagship relied on it. I made the rule one. Since ADR-080 the
 ablation has a hand-built form, and a rule keyed on the backend's type cannot be read off
 the model.
 
