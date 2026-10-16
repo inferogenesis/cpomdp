@@ -142,11 +142,7 @@ def _flat_pair():
     )
     model = LinearGaussianModel(
         dynamics_matrix=a,
-        observation_matrix=_ARENA_C,
         dynamics_noise=q,
-        observation_noise=np.eye(
-            3
-        ),  # placeholder under a callable sensor, ignored there
         prior=Belief(mean=np.zeros(4), cov=np.eye(4)),
         control_matrix=b,
         observation_model=CallableSensor(_ARENA_C, _cue_noise, _CUE_PARAMS),

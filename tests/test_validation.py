@@ -19,8 +19,8 @@ def _model(**noise_models):
     return LinearGaussianModel(
         dynamics_matrix=[[0.9]],
         observation_matrix=[[1.0]],
-        dynamics_noise=[[0.5]],
-        observation_noise=[[1.0]],
+        dynamics_noise=None if "dynamics_noise_model" in noise_models else [[0.5]],
+        observation_noise=None if "observation_model" in noise_models else [[1.0]],
         prior=Belief(mean=[0.0], cov=[[10.0]]),
         **noise_models,
     )

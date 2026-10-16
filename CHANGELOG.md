@@ -480,13 +480,26 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `LinearGaussianModel(observation_matrix=[[1., 0.]], observation_noise=[[1.]],
   observation_model=FixedSensor([[1., 0.]], observation_noise=[[0.5]]), ...)` built
   before and now raises. Pass the same value twice, or drop the redundant field.
+- **Breaking:** an `observation_noise` or `dynamics_noise` passed beside a
+  *state-dependent* object must be that object's value at `prior.mean` exactly, as
+  beside a fixed one. The field used to take any covariance there, and nothing read it.
+  With `observation_noise=[[123.0]]` beside a `CallableSensor`, `model.observation_noise`
+  returned 123. Every filter used `R(x)`. A field now holds one value whichever object
+  is carried. Omit it and the model reads it from the object.
+  `dataclasses.replace(model, prior=...)` on such a model raises instead of keeping the
+  noise of the old prior. Pass the noises an object supplies as `None` to read them
+  again. `WrongFixedRBackend` takes the constant it scales as its own
+  `observation_noise=` (ADR-071).
+- `observation_matrix` is optional beside an `observation_model`, read from the sensor's
+  `C` on the same rule. A model with `R(x)` used to need `C` typed twice, once for the
+  sensor and once for the model (ADR-071).
 - `LinearGaussianModel`'s `observation_noise` is optional when an `observation_model` is
   given. Omitted, it is the sensor's `R` at `prior.mean`, read once at construction
   (ADR-064). A state-dependent sensor used to need a positive-definite `R` beside it that
   almost nothing read, so the channel was described twice. A fixed sensor's own `R` comes
   back unchanged and meets the restatement guard above by construction. With no sensor
-  the field is still required. A value passed beside a state-dependent sensor is kept as
-  the model's nominal `R`. No warning fires when it differs from the derived one.
+  the field is still required. A value passed beside a sensor must be that `R`, as the
+  entry above on state-dependent objects says.
 - Refusing state-dependent noise is one function, `require_fixed_noise`, in the internal
   `_validation` module. The closed forms in `control` and `scoring`, the free energy,
   `RxInferBackend` and the steady-state `KalmanBackend` each held a copy of it. The
@@ -494,14 +507,18 @@ certainty equivalence is optimal, and no use of the readings beats it.
   release, takes its own wording. The steady-state refusal now names the slot that
   varies. The test it makes is `state_dependent` beside it. `KalmanBackend`,
   `ChainBackend`, the `Agent` and the harness's `World` each spelled that test out
-  again, and now call it.
+  again, and now call it. `ModelStructure.validate` skipped its `Q` check beside any
+  `dynamics_noise_model`, and now skips it only beside a state-dependent one.
 - `LinearGaussianModel`'s `dynamics_noise` is optional when a `dynamics_noise_model` is
   given, on the rule `observation_noise` follows. Omitted, it is the process noise's `Q`
   at `prior.mean` (ADR-065). With no process-noise object the field is still required.
 - `ModelSpec` takes `observation_noise` and `dynamics_noise` as `None` beside the
   matching noise object and passes the `None` to the model, which derives the value
   (ADR-066). A perturbation naming a noise the spec leaves out is refused, as one naming
-  an absent `control_matrix` already was.
+  an absent `control_matrix` already was. `observation_matrix` may be `None` beside a
+  sensor too. A perturbation of a field the spec's object supplies is refused with one
+  message, fixed object or not, since the model refuses the scaled field either way
+  (ADR-071).
 - The `symbolic` CI job reconciles the three symbolic suites against
   `research/registered_checks.toml` instead of comparing three hand-typed strings. The
   strings said `23 registered, 23 tested here, none fired` and two more like it. They

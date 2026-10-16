@@ -351,9 +351,9 @@ def _process_noise_at(x, params):
 def _sensed_model(*, sensor=True, process=False) -> LinearGaussianModel:
     return LinearGaussianModel(
         dynamics_matrix=DYNAMICS,
-        observation_matrix=SENSOR,
-        dynamics_noise=[[1e-4, 0.0], [0.0, 1e-4]],
-        observation_noise=[[1e-2]],
+        observation_matrix=None if sensor else SENSOR,
+        dynamics_noise=None if process else [[1e-4, 0.0], [0.0, 1e-4]],
+        observation_noise=None if sensor else [[1e-2]],
         prior=Belief(mean=[1.0, 1.0], cov=np.eye(2)),
         control_matrix=CONTROL,
         observation_model=(
@@ -438,9 +438,7 @@ def test_the_process_noise_is_not_read_at_the_state_the_step_left():
 def test_a_fixed_sensor_carried_as_an_observation_model_reads_its_constant():
     fixed = LinearGaussianModel(
         dynamics_matrix=DYNAMICS,
-        observation_matrix=SENSOR,
         dynamics_noise=[[1e-4, 0.0], [0.0, 1e-4]],
-        observation_noise=[[1e-2]],
         prior=Belief(mean=[1.0, 1.0], cov=np.eye(2)),
         control_matrix=CONTROL,
         observation_model=FixedSensor(SENSOR, observation_noise=[[1e-2]]),
@@ -497,9 +495,7 @@ def test_a_sensor_noise_that_is_not_positive_definite_is_refused_not_drawn():
 
     model = LinearGaussianModel(
         dynamics_matrix=DYNAMICS,
-        observation_matrix=SENSOR,
         dynamics_noise=[[1e-8, 0.0], [0.0, 1e-8]],
-        observation_noise=[[1e-2]],
         prior=Belief(mean=[0.0, 0.0], cov=np.eye(2)),
         control_matrix=CONTROL,
         observation_model=CallableSensor(SENSOR, vanishing, ()),
@@ -524,7 +520,6 @@ def test_a_process_noise_that_goes_indefinite_is_refused_not_drawn():
     model = LinearGaussianModel(
         dynamics_matrix=DYNAMICS,
         observation_matrix=SENSOR,
-        dynamics_noise=[[1e-4, 0.0], [0.0, 1e-4]],
         observation_noise=[[1e-2]],
         prior=Belief(mean=[0.0, 0.0], cov=np.eye(2)),
         control_matrix=CONTROL,
@@ -546,7 +541,6 @@ def test_a_noiseless_dynamics_direction_is_still_legal():
     model = LinearGaussianModel(
         dynamics_matrix=DYNAMICS,
         observation_matrix=SENSOR,
-        dynamics_noise=[[1e-4, 0.0], [0.0, 1e-4]],
         observation_noise=[[1e-2]],
         prior=Belief(mean=[0.0, 0.0], cov=np.eye(2)),
         control_matrix=CONTROL,
