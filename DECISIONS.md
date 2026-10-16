@@ -4706,6 +4706,14 @@ check is nominal, so the `PROVED` a driver reports still comes from a search tha
 declared itself exhaustive. A union of the two classes would have needed both drivers
 edited for a third search or a wrapper.
 
+**Both searches trace.** `evaluate` composes with `jit`, `vmap` and `lax.scan` on
+either search, so a receding-horizon loop compiles whichever one it drives. The chunked
+certificate rests on a count the loop produces, which a trace cannot read on the host.
+Inside a transformation the certificate states the expected count and a
+`jax.debug.callback` checks the loop's count in the run. A miscount fails the run. The
+alternative was an eager-only chunked search with a `TypeError` under a trace, which
+would have made the two searches differ at exactly the call a compiled agent loop makes.
+
 **`cost_per_plan` on a search, `cost_per_cycle` on a selector.** A search reports the
 step evaluations of one `evaluate` as `cost_per_plan`, the name the drivers already
 used. `cost_per_cycle` is the cost of one agent step and only selectors report it:
@@ -4732,7 +4740,8 @@ certificate is unchanged. It certifies coverage (ADR-030), and every policy was 
   than materialised through `itertools.product` on the host. The order is unchanged, and
   a test still compares the set with an independent product.
 - A driver over the chunked search pays one host read per plan, the loop's count, which
-  the certificate needs. A driver over the front-loaded search pays none.
+  the certificate needs. Inside `jit` or `scan` the read is a callback in the run. A
+  driver over the front-loaded search pays none.
 - Compilation no longer lands on every plan, so RFC-001 measures the search rather than
   the compiler. `EFESelector` at a horizon above 1 is outside this decision.
 - `policies_at` is on both searches and refuses an index outside the enumeration, -1
