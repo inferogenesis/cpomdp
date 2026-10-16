@@ -2,9 +2,9 @@
 
 `policy_efe_trace(model, belief, policy, preference)` returns the `lax.scan` `ys`
 that `policy_efe` computes but sums-and-discards: per-step `(g, pragmatic, epistemic,
-μ⁺, Σ⁺, Σ_post, S)` as a `PolicyEFETrace` NamedTuple of arrays stacked along a leading
-H axis. It is a diagnostic surface; it is NOT on the `EFESelector` hot path — the
-selector still calls `policy_efe(...)[0]`, whose `ys` stays the three lean scalars, so
+μ⁺, Σ⁺, Σ_post, S)` as a `PolicyEFETrace` record of arrays stacked along a leading H
+axis. It is a diagnostic surface; it is NOT on the `EFESelector` hot path — the
+selector still reads `policy_efe(...).g`, whose `ys` stays the three lean scalars, so
 no H×n×n covariance is stacked under its `vmap`.
 
 Naming follows `efe.py`'s convention: `⁺` marks the one-step *prediction* (after the
@@ -24,7 +24,7 @@ The locks:
 - `TestTraceH1MatchesEfeStep`: at H=1 the traced predict moments equal `_efe_step`'s
   fields byte-for-byte, pinning the field→symbol mapping.
 - `TestTraceTransforms` / `TestTraceIsPytree`: jit / vmap-over-policies / grad survive,
-  and the NamedTuple is a pytree with seven leaves (no registration needed).
+  and the record is a registered pytree with seven leaves.
 
 Imports `policy_efe_trace`/`PolicyEFETrace` directly, so until they land this module is
 collection-red — the `ImportError` naming `policy_efe_trace` is the build cue.
@@ -344,7 +344,7 @@ class TestTraceTransforms:
 
 
 class TestTraceIsPytree:
-    """The NamedTuple is a JAX pytree with seven leaves (survives scan/jit/vmap)."""
+    """The record is a registered JAX pytree with seven leaves (scan/jit/vmap safe)."""
 
     def test_seven_leaves(self):
         model, belief, pref = _model(), _belief(), _obs_preference()
