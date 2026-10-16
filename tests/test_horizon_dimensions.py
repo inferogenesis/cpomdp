@@ -40,10 +40,7 @@ from cpomdp.efe import (
     policy_efe_ffg_trace,
 )
 from cpomdp.enumeration import EnumeratedEfeSearch
-from cpomdp.ffg.factors.linear_gaussian import (
-    CallableGaussianObservation,
-    GaussianTransition,
-)
+from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
 from cpomdp.ffg.graph import CouplingGraph
 from cpomdp.observation import CallableSensor
 from cpomdp.types import Belief, LinearGaussianModel
@@ -132,8 +129,8 @@ def _flat_pair():
     b = np.zeros((4, 2))
     b[0, 0] = 1.0
     b[1, 1] = 1.0
-    sensor = CallableGaussianObservation(_ARENA_C, _cue_noise, _CUE_PARAMS)
-    graph = CouplingGraph(root=0, dims=(4,), couplings=(), observations={0: sensor})
+    sensor = CallableSensor(_ARENA_C, _cue_noise, _CUE_PARAMS)
+    graph = CouplingGraph(dims=(4,), couplings=(), observation_models={0: sensor})
     backend = CouplingGraphBackend(
         graph,
         (GaussianTransition(a, dynamics_noise=q),),
@@ -142,11 +139,7 @@ def _flat_pair():
     )
     model = LinearGaussianModel(
         dynamics_matrix=a,
-        observation_matrix=_ARENA_C,
         dynamics_noise=q,
-        observation_noise=np.eye(
-            3
-        ),  # placeholder under a callable sensor, ignored there
         prior=Belief(mean=np.zeros(4), cov=np.eye(4)),
         control_matrix=b,
         observation_model=CallableSensor(_ARENA_C, _cue_noise, _CUE_PARAMS),
@@ -452,7 +445,7 @@ def _priced_joint_width(action_set, horizon: int, n_dims: int, context_dim: int)
         action_set, horizon, n_dims, context_dim=context_dim
     )
     per_policy = peak_gib * 1024**3 / policies
-    joint_squared = ((per_policy / 8) - horizon * action_set.action_dim) / 4
+    joint_squared = ((per_policy / 8) - horizon * action_set.n_controls) / 4
     return round(joint_squared**0.5)
 
 

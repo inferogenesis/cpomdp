@@ -31,12 +31,11 @@ import jax.numpy as jnp
 import numpy as np
 
 from cpomdp import (
-    CallableGaussianObservation,
+    CallableSensor,
     Coupling,
     CouplingGraph,
     CouplingGraphBackend,
-    GaussianCoupling,
-    GaussianObservation,
+    FixedSensor,
     GaussianTransition,
     Preference,
 )
@@ -193,7 +192,7 @@ def enumeration_cost(
     Args:
         action_set: the repertoire being enumerated.
         horizon: how many steps deep.
-        n_dims: spatial dimensions. Defaults to the action set's own `action_dim`,
+        n_dims: spatial dimensions. Defaults to the action set's own `n_controls`,
             which is what `axis_action_set` builds it from, so this one cannot drift.
         context_dim: how wide the context node is, matching `build_maze`'s argument of
             the same name. The joint is `context_dim + 2·n_dims` and the estimate is
@@ -205,10 +204,10 @@ def enumeration_cost(
         The policy count, the step-evaluation count, and a peak-memory estimate in GiB.
     """
     if n_dims is None:
-        n_dims = action_set.action_dim
+        n_dims = action_set.n_controls
     policies = action_set.size**horizon
     joint = context_dim + 2 * n_dims
-    per_policy = 8 * (horizon * action_set.action_dim + 4 * joint * joint)
+    per_policy = 8 * (horizon * action_set.n_controls + 4 * joint * joint)
     return policies, policies * horizon, policies * per_policy / 1024**3
 
 
@@ -342,9 +341,9 @@ def build_maze(
         )
     )
     arena_sensor = (
-        CallableGaussianObservation(observed, cue_noise, params)
+        CallableSensor(observed, cue_noise, params)
         if epistemic_alive
-        else GaussianObservation(observed, observation_noise=fixed_noise)
+        else FixedSensor(observed, observation_noise=fixed_noise)
     )
 
     # W: the context drives the goal belief on axis 0 and nothing else. A wider context
@@ -356,18 +355,14 @@ def build_maze(
     context_to_arena = Coupling(
         parent=CONTEXT,
         child=ARENA,
-        factor=GaussianCoupling(
-            coupling_matrix=coupling_weights.tolist(),
-            coupling_noise=coupling_noise.tolist(),
-        ),
-        tau=1.0,
+        coupling_matrix=coupling_weights.tolist(),
+        coupling_noise=coupling_noise.tolist(),
         efe_relevant=True,  # the covariance path the instrumental epistemic rides
     )
     graph = CouplingGraph(
-        root=CONTEXT,
         dims=(context_dim, arena_dim),
         couplings=(context_to_arena,),
-        observations={ARENA: arena_sensor},
+        observation_models={ARENA: arena_sensor},
     )
     transitions = (
         GaussianTransition(  # a near-static context
