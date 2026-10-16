@@ -398,8 +398,8 @@ certainty equivalence is optimal, and no use of the readings beats it.
   model under a fixed sensor reported a constant epistemic value the kernel never
   computes. The probe now takes `Q` at each predicted mean as the kernel does. Where a
   sampled `Q` is not a covariance it raises, instead of dropping that sample from
-  `epistemic_range`. `SensorReport` gains `process_non_constant` and
-  `process_noise_spread`, and `flattens` needs both noises constant. Under `Q(x)` the
+  `epistemic_range`. The report gains `dynamics_noise_varies` and
+  `dynamics_noise_spread`, and `flattens` needs both noises constant. Under `Q(x)` the
   action reaches the recursion with `R` fixed.
 - `CouplingGraph` checks each sensor's width against the node it observes. A one-column
   `C` on a two-dimensional node used to construct, and `CouplingGraphBackend` broadcast
@@ -513,26 +513,45 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `LinearGaussianModel(observation_matrix=[[1., 0.]], observation_noise=[[1.]],
   observation_model=FixedSensor([[1., 0.]], observation_noise=[[0.5]]), ...)` built
   before and now raises. Pass the same value twice, or drop the redundant field.
+- **Breaking:** an `observation_noise` or `dynamics_noise` passed beside a
+  *state-dependent* object must be that object's value at `prior.mean` exactly, as
+  beside a fixed one. The field used to take any covariance there, and nothing read it.
+  With `observation_noise=[[123.0]]` beside a `CallableSensor`, `model.observation_noise`
+  returned 123. Every filter used `R(x)`. A field now holds one value whichever object
+  is carried. Omit it and the model reads it from the object.
+  `dataclasses.replace(model, prior=...)` on such a model raises instead of keeping the
+  noise of the old prior. Pass the noises an object supplies as `None` to read them
+  again. `WrongFixedRBackend` takes the constant it scales as its own
+  `observation_noise=` (ADR-071).
+- `observation_matrix` is optional beside an `observation_model`, read from the sensor's
+  `C` on the same rule. A model with `R(x)` used to need `C` typed twice, once for the
+  sensor and once for the model (ADR-071).
 - `LinearGaussianModel`'s `observation_noise` is optional when an `observation_model` is
   given. Omitted, it is the sensor's `R` at `prior.mean`, read once at construction
   (ADR-064). A state-dependent sensor used to need a positive-definite `R` beside it that
   almost nothing read, so the channel was described twice. A fixed sensor's own `R` comes
   back unchanged and meets the restatement guard above by construction. With no sensor
-  the field is still required. A value passed beside a state-dependent sensor is kept as
-  the model's nominal `R`. No warning fires when it differs from the derived one.
+  the field is still required. A value passed beside a sensor must be that `R`, as the
+  entry above on state-dependent objects says.
 - Refusing state-dependent noise is one function, `require_fixed_noise`, in the internal
   `_validation` module. The closed forms in `control` and `scoring`, the free energy,
   `RxInferBackend` and the steady-state `KalmanBackend` each held a copy of it. The
   `control` and `scoring` messages are unchanged. The free energy's refusal, new in this
   release, takes its own wording. The steady-state refusal now names the slot that
-  varies.
+  varies. The test it makes is `state_dependent` beside it. `KalmanBackend`,
+  `ChainBackend`, the `Agent` and the harness's `World` each spelled that test out
+  again, and now call it. `ModelStructure.validate` skipped its `Q` check beside any
+  `dynamics_noise_model`, and now skips it only beside a state-dependent one.
 - `LinearGaussianModel`'s `dynamics_noise` is optional when a `dynamics_noise_model` is
   given, on the rule `observation_noise` follows. Omitted, it is the process noise's `Q`
   at `prior.mean` (ADR-065). With no process-noise object the field is still required.
 - `ModelSpec` takes `observation_noise` and `dynamics_noise` as `None` beside the
   matching noise object and passes the `None` to the model, which derives the value
   (ADR-066). A perturbation naming a noise the spec leaves out is refused, as one naming
-  an absent `control_matrix` already was.
+  an absent `control_matrix` already was. `observation_matrix` may be `None` beside a
+  sensor too. A perturbation of a field the spec's object supplies is refused with one
+  message, fixed object or not, since the model refuses the scaled field either way
+  (ADR-071).
 - The `symbolic` CI job reconciles the three symbolic suites against
   `research/registered_checks.toml` instead of comparing three hand-typed strings. The
   strings said `23 registered, 23 tested here, none fired` and two more like it. They
@@ -572,8 +591,39 @@ certainty equivalence is optimal, and no use of the readings beats it.
   constants (`SENSOR` is `OBSERVATION_MATRIX`, `PROCESS_NOISE` is `DYNAMICS_NOISE`).
   `LinearGaussianModel.observation_model` and `InferenceBackend.observation_model()` now
   share a name on two classes: the field holds the declaration, the method returns the
-  `(C, R)` it resolves to. The `.A`/`.B`/`.C`/`.Q`/`.R` aliases are unchanged, and no
-  numerical behaviour moved.
+  `(C, R)` it resolves to. No numerical behaviour moved.
+- **Breaking:** `LinearGaussianModel` drops its `.A`, `.B`, `.C`, `.Q` and `.R`
+  properties. Each field has its role name only. In pymdp `A` is the likelihood and `C`
+  the preferences, so `model.A` handed a pymdp user the dynamics matrix with no error,
+  and every field carried two public names.
+- **Breaking:** the dynamics-noise classes take the observation side's names.
+  `DynamicsNoise` is `DynamicsNoiseModel`, the protocol the `dynamics_noise_model` field
+  holds, as `observation_model` holds an `ObservationModel`. `CallableProcessNoise` is
+  `CallableDynamicsNoise`, and takes `noise_fn` and `noise_params` (were `q_fn` and
+  `q_params`), as `CallableSensor` does. A user who had written `R(x)` could not write
+  `Q(x)` by analogy, and "process" and "dynamics" named one channel. A noise object
+  passed for a matrix field now raises a `TypeError` naming the slot it belongs in. It
+  used to fail inside `float()`. The API page is "Dynamics noise", and no longer says a
+  plain matrix satisfies the protocol. A constant `Q` goes in `dynamics_noise`.
+- **Breaking:** `ObservationModel.linearize(state, /)`, `ObservationModel.gaussianize(mean,
+  cov, /)` and `DynamicsNoiseModel.noise_at(state, /)` take their arguments by position,
+  so an implementation may name them as it likes. `FixedSensor`, `CallableSensor` and
+  `CallableDynamicsNoise` name them that way. The flat sensors called the state `x`, and
+  `linearize(state=...)` worked on the graph factors and failed on them.
+  `CallableDynamicsNoise.noise_at` reads a list as an array, as the sensors do.
+- **Breaking:** `SensorReport` is `ProbeReport`, named for `probe_model`, which returns
+  it. It reports on `Q` as well as the sensor. Each field now carries the name of the
+  object it describes: `rank` and `full_row_rank` are `observation_matrix_rank` and
+  `observation_matrix_full_row_rank`. `definite`, `indefinite_at`, `non_constant`,
+  `noise_spread` and `loewner_comparable` are `observation_noise_definite`,
+  `observation_noise_indefinite_at`, `observation_noise_varies`,
+  `observation_noise_spread` and `observation_noise_loewner_ordered`.
+  `report.noise_spread` read as covering both noises and covered only `R`. The summary
+  says "R varies" and "Q varies" where it said "non-constant".
+- **Breaking:** `Belief.ndim` is `Belief.n_states` and `FiniteActionSet.action_dim` is
+  `FiniteActionSet.n_controls`, the names `LinearGaussianModel` gives the same two
+  dimensions. In NumPy and JAX `ndim` is an array's rank. A belief over two states read
+  `prior.ndim == 2` beside `prior.mean.ndim == 1`.
 - **Breaking:** the epistemic term's aim is named `info_node` and `info_block`, not
   `target`. `target` carried two unrelated types on exported API: a desired value
   (`Float64[Array, "n"]`) on `StateGoal` and `ObservationGoal`, and the joint-state

@@ -139,11 +139,7 @@ def _flat_pair():
     )
     model = LinearGaussianModel(
         dynamics_matrix=a,
-        observation_matrix=_ARENA_C,
         dynamics_noise=q,
-        observation_noise=np.eye(
-            3
-        ),  # placeholder under a callable sensor, ignored there
         prior=Belief(mean=np.zeros(4), cov=np.eye(4)),
         control_matrix=b,
         observation_model=CallableSensor(_ARENA_C, _cue_noise, _CUE_PARAMS),
@@ -449,7 +445,7 @@ def _priced_joint_width(action_set, horizon: int, n_dims: int, context_dim: int)
         action_set, horizon, n_dims, context_dim=context_dim
     )
     per_policy = peak_gib * 1024**3 / policies
-    joint_squared = ((per_policy / 8) - horizon * action_set.action_dim) / 4
+    joint_squared = ((per_policy / 8) - horizon * action_set.n_controls) / 4
     return round(joint_squared**0.5)
 
 
