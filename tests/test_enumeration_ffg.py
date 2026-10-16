@@ -20,17 +20,17 @@ import numpy as np
 
 from _support import unit_prior
 from cpomdp.backends.coupling import CouplingGraphBackend
-from cpomdp.enumeration import EnumeratedEfeSearch, FiniteActionSet, SearchWarrant
-from cpomdp.ffg.factors.linear_gaussian import (
-    CallableGaussianObservation,
-    GaussianCoupling,
-    GaussianObservation,
-    GaussianTransition,
+from cpomdp.enumeration import (
+    EnumeratedEfeSearch,
+    FiniteActionSet,
+    PolicyBudgetError,
 )
+from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
 from cpomdp.ffg.graph import Coupling, CouplingGraph
-from cpomdp.observation import CallableSensor
+from cpomdp.observation import CallableSensor, FixedSensor
 from cpomdp.selection import Preference
 from cpomdp.types import Belief, LinearGaussianModel
+from warrantlib import Warrant
 
 
 # --- fixtures (mirror tests/test_policy_efe_ffg.py) --------------------------------
@@ -47,12 +47,12 @@ def _single_node_pair(*, state_dependent):
     r0 = np.array([[0.5]])
     params = {"R0": r0, "gain": 0.4}
     if state_dependent:
-        obs_ffg = CallableGaussianObservation(c, _rx_noise, params)
+        obs_ffg = CallableSensor(c, _rx_noise, params)
         obs_flat = CallableSensor(c, _rx_noise, params)
     else:
-        obs_ffg = GaussianObservation(c, observation_noise=r0)
+        obs_ffg = FixedSensor(c, observation_noise=r0)
         obs_flat = None
-    graph = CouplingGraph(root=0, dims=(2,), couplings=(), observations={0: obs_ffg})
+    graph = CouplingGraph(dims=(2,), couplings=(), observation_models={0: obs_ffg})
     backend = CouplingGraphBackend(
         graph,
         (GaussianTransition(a, dynamics_noise=q),),
@@ -61,9 +61,9 @@ def _single_node_pair(*, state_dependent):
     )
     model = LinearGaussianModel(
         dynamics_matrix=a,
-        observation_matrix=c,
+        observation_matrix=None if state_dependent else c,
         dynamics_noise=q,
-        observation_noise=r0,
+        observation_noise=None if state_dependent else r0,
         prior=Belief(mean=np.zeros(2), cov=np.eye(2)),
         control_matrix=b,
         observation_model=obs_flat,
@@ -73,12 +73,9 @@ def _single_node_pair(*, state_dependent):
 
 def _coupled_backend():
     graph = CouplingGraph(
-        root=0,
         dims=(1, 1),
-        couplings=(
-            Coupling(0, 1, GaussianCoupling([[0.8]], coupling_noise=[[0.05]]), 1.0),
-        ),
-        observations={1: GaussianObservation([[1.0]], observation_noise=[[0.1]])},
+        couplings=(Coupling(0, 1, [[0.8]], coupling_noise=[[0.05]]),),
+        observation_models={1: FixedSensor([[1.0]], observation_noise=[[0.1]])},
     )
     transitions = (
         GaussianTransition([[0.7]], dynamics_noise=[[0.1]]),
@@ -98,7 +95,7 @@ def _single_belief():
 
 
 def _pref():
-    return Preference(goal=[1.0], precision=[[2.0]])
+    return Preference(target=[1.0], precision=[[2.0]])
 
 
 # --- oracle: no couplings + whole-state info block reduces to the flat search ------
@@ -132,12 +129,19 @@ class TestOverBackendSharedAccounting:
         ffg = EnumeratedEfeSearch.over_backend(
             backend, _action_set(), info_block=range(2), horizon=2
         )
-        assert ffg.warrant is SearchWarrant.PROVED
-        assert ffg.certificate.complete
+        assert ffg.warrant is Warrant.PROVED
+        assert ffg.evaluate(_single_belief(), _pref()).certificate.complete
         assert ffg.n_policies == 9  # 3^2
-        assert ffg.cost_per_cycle == 18  # |A|^H * H = 9 * 2
+        assert ffg.cost_per_plan == 18  # |A|^H * H = 9 * 2
 
-    def test_rejects_wrong_action_dim(self):
+    def test_takes_the_same_policy_budget(self):
+        backend, _ = _single_node_pair(state_dependent=False)
+        with np.testing.assert_raises(PolicyBudgetError):
+            EnumeratedEfeSearch.over_backend(
+                backend, _action_set(), info_block=range(2), horizon=2, max_policies=8
+            )
+
+    def test_rejects_an_action_set_of_other_n_controls(self):
         backend, _ = _single_node_pair(state_dependent=False)  # p = 1
         wrong = FiniteActionSet([[-1.0, 0.0], [1.0, 0.0]], version="v1")  # p = 2
         with np.testing.assert_raises(ValueError):
@@ -151,7 +155,7 @@ class TestOverBackendOnCoupledTree:
     def test_runs_and_enumerates_varying_sequences(self):
         backend = _coupled_backend()
         belief = Belief(mean=[0.2, -0.1], cov=[[0.7, 0.1], [0.1, 0.4]])
-        pref = Preference(goal=[0.5], precision=[[2.0]])
+        pref = Preference(target=[0.5], precision=[[2.0]])
         info_block = tuple(backend.block(0))
         ffg = EnumeratedEfeSearch.over_backend(
             backend, _action_set(), info_block=info_block, horizon=2
@@ -159,4 +163,4 @@ class TestOverBackendOnCoupledTree:
         result = ffg.evaluate(belief, pref)
         assert result.best_policy.shape == (2, 1)
         assert result.g.shape == (9,)
-        assert ffg.certificate.complete
+        assert result.certificate.complete

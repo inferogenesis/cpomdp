@@ -25,7 +25,7 @@ Full documentation, including API reference and guides, lives at [cpomdp.inferog
 
 **One knob between exploiting and exploring.** `StateGoal` and `ObservationGoal` carry a precision Λ. The pragmatic term scales with Λ and the epistemic term does not, so Λ alone decides whether an agent beelines for the goal or detours to sharpen its belief first. The four bacilli above differ in that number and nothing else.
 
-**Multi-step EFE, searched and certified.** `cpomdp.efe.policy_efe` scores an H-step horizon. `cpomdp.enumeration.EnumeratedEfeSearch` sweeps the full action space `A^H` and returns a `CompletenessCertificate`, so "this is the best plan" is decided over the declared action set rather than sampled from it, and the object that says so is checkable. Receding-horizon and open-loop selectors wrap the search, and both report the true per-cycle cost `|A|^H · H`. Drop the epistemic term and steady-state LQR is what remains.
+**Multi-step EFE, searched and certified.** `cpomdp.efe.policy_efe` scores an H-step horizon. `cpomdp.enumeration.EnumeratedEfeSearch` sweeps the full action space `A^H` and returns a `CompletenessCertificate`, so "this is the best plan" is decided over the declared action set rather than sampled from it, and the object that says so is checkable. Receding-horizon and open-loop selectors wrap the search. The search reports `cost_per_plan`, the `|A|^H · H` step evaluations one plan costs. Each selector reports `cost_per_cycle`, the cost of one agent step. That is a whole plan for the receding-horizon selector, which re-plans every step, and `|A|^H` for the open-loop one, which plans once every H steps. Past `2^21` policies the search refuses at construction and names `ChunkedEfeSearch`, which runs the same enumeration in blocks at a flat footprint and drives both selectors. Drop the epistemic term and steady-state LQR is what remains.
 
 **Inference as message passing.** Beliefs propagate over a Forney factor graph through the `CouplingGraph` backend, with a temporal-edge partition controlling which off-diagonal precision blocks cross the time boundary. Where a model cannot be flattened, cpomdp raises `IncompatibleLinearizationError` rather than returning a quietly wrong number: state-dependent `R(x)` combined with a mean-shifting coupling makes flattening structurally impossible, and the two-pass linearisation is the supported route.
 
@@ -144,7 +144,7 @@ The model's parts and the policy step are spelled differently:
 | `D`              | `model.prior`                                         | belief before you've seen anything              |
 | `infer_policies` | folded into `sample_action`                           | scoring the actions on offer                    |
 
-The model also answers to `.A`, `.B`, `.C`, `.Q` and `.R`. Those are control-theory letters. `model.A` is the dynamics matrix, pymdp's `B`, and `model.C` is the observation matrix, pymdp's `A`.
+The model has no letter aliases. Control theory's `A` is pymdp's `B`, and its `C` is pymdp's `A`, so each field goes by its role name only.
 
 One honest difference in behaviour. `sample_action` here is deterministic, not a sample from a policy posterior. For a linear-Gaussian model with fixed noise the action that minimises expected free energy turns out to be exactly the LQR optimum ([Koudahl, Kouw and de Vries 2021](https://doi.org/10.3390/e23121565)), so there's a single best action and that's what comes back. Same loop, exact answer. The reasoning is in [DECISIONS.md](https://github.com/inferogenesis/cpomdp/blob/main/DECISIONS.md) (ADR-003) if you want it.
 
@@ -171,13 +171,13 @@ agent.sample_action()                 # ValueError: this Agent has no objective 
 | ----------------------------------------- | ---------------------------------------------------------------------------- |
 | perceive, exactly under fixed noise | `Agent.infer_states`, `KalmanBackend` |
 | reach a target state | `StateGoal` with `LQRSelector` |
-| act on expected free energy | `ObservationGoal` with `EFESelector`, `expected_free_energy` |
+| act on expected free energy, where `R(x)` or `Q(x)` varies | `ObservationGoal` (the `Agent` builds an `EFESelector` and reads its horizon off the model), `expected_free_energy` |
 | ...over an H-step horizon | `cpomdp.efe.policy_efe`, `policy_efe_trace` |
 | ...searched exhaustively, with a certificate | `cpomdp.enumeration`, `EnumeratedEfeSearch`, `RecedingHorizonSelector`, `OpenLoopSelector` |
 | sense more sharply in some places than others | `CallableSensor`, state-dependent `R(x)` |
-| diffuse more in some states than others | `CallableProcessNoise`, state-dependent `Q(x)` |
+| diffuse more in some states than others | `CallableDynamicsNoise`, state-dependent `Q(x)` |
 | declare a branching model | `CouplingGraph`, `Coupling`, `CouplingGraphBackend` |
-| ask whether a state-dependent sensor earns its keep | `probe_model` → `SensorReport` |
+| ask whether a state-dependent sensor earns its keep | `probe_model` → `ProbeReport` |
 | check a rollout stayed well conditioned | `cpomdp.diagnostics.rollout_conditioning` |
 | perceive but never act | a model with no `control_matrix`, `Agent(model)` alone |
 | re-plan every step, closed loop | `cpomdp.enumeration.RecedingHorizonSelector` (`replan_interval = 1`) |

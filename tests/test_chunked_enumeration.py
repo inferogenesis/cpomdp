@@ -24,12 +24,16 @@ numbers, bit for bit.
 - `TestReducerSeam`: an injected fold reproduces a NumPy count over the front-loaded
   score vector, which is how evidence beyond the argmin is obtained without a vector.
 - `TestGuards`: the preconditions, including the index dtype's ceiling.
+- `TestInterchangeable`: one verb, one shape of answer and one certificate rule on both
+  paths, so swapping one search for the other changes no call site.
 """
 
 import subprocess
 import sys
 import textwrap
+from dataclasses import fields
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -37,12 +41,15 @@ import pytest
 from cpomdp.enumeration import (
     ChunkedEfeSearch,
     EnumeratedEfeSearch,
+    EnumeratedSearchResult,
+    ExhaustiveEfeSearch,
     FiniteActionSet,
-    SearchWarrant,
+    SearchResult,
 )
 from cpomdp.observation import CallableSensor
 from cpomdp.selection import Preference
 from cpomdp.types import Belief, LinearGaussianModel
+from warrantlib import Warrant
 
 # Block sizes spanning every shape the loop can take: one lane per block, a block that
 # divides N, blocks that do not, the last block exactly full, and a single block wider
@@ -88,9 +95,7 @@ def _beacon_model():
     )
     return LinearGaussianModel(
         dynamics_matrix=[[1.0]],
-        observation_matrix=[[1.0]],
         dynamics_noise=[[0.05]],
-        observation_noise=[[0.5]],
         prior=Belief(mean=[0.0], cov=[[1.0]]),
         control_matrix=[[1.0]],
         observation_model=sensor,
@@ -106,7 +111,7 @@ def _beacon_belief():
 
 
 def _pref(goal=0.0):
-    return Preference(goal=[goal], precision=[[2.0]])
+    return Preference(target=[goal], precision=[[2.0]])
 
 
 def _finite_set(values, version="v1"):
@@ -135,7 +140,7 @@ def _probe_peak_gib(horizon):
             TestAtScale._refined(0.5),
             horizon=int(sys.argv[1]),
             chunk=8192,
-        ).reduce(_beacon_belief(), _pref())
+        ).evaluate(_beacon_belief(), _pref())
         print(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024**2)
         """
     )
@@ -179,7 +184,7 @@ class TestCrossPathIdentity:
         )
 
         search = ChunkedEfeSearch(model, action_set, horizon=horizon, chunk=7)
-        result = search.reduce(belief, preference)
+        result = search.evaluate(belief, preference)
 
         assert result.best_index == best
         assert float(result.best_g) == g[best]
@@ -204,13 +209,13 @@ class TestChunkSizeInvariance:
         belief, preference = _belief(), _pref()
         g, best, best_policy = _front_loaded(model, action_set, 3, belief, preference)
 
-        result = ChunkedEfeSearch(model, action_set, horizon=3, chunk=chunk).reduce(
+        result = ChunkedEfeSearch(model, action_set, horizon=3, chunk=chunk).evaluate(
             belief, preference
         )
 
         assert result.best_index == best
         assert float(result.best_g) == g[best]
-        assert result.visited == g.shape[0]
+        assert result.certificate.visited == g.shape[0]
         np.testing.assert_array_equal(np.asarray(result.best_policy), best_policy)
 
 
@@ -234,9 +239,8 @@ class TestTieBreak:
         action_set = self._tied_set()
         g, best, _ = _front_loaded(_model(), action_set, 3, _belief(), _pref())
 
-        result = ChunkedEfeSearch(_model(), action_set, horizon=3, chunk=chunk).reduce(
-            _belief(), _pref()
-        )
+        search = ChunkedEfeSearch(_model(), action_set, horizon=3, chunk=chunk)
+        result = search.evaluate(_belief(), _pref())
 
         assert best == int(np.flatnonzero(g == g.min()).min())
         assert result.best_index == best
@@ -252,10 +256,10 @@ class TestCompleteness:
             _model(), _finite_set([-1.0, 0.0, 1.0]), horizon=3, chunk=chunk
         )
         assert search.n_policies % chunk != 0 or chunk >= search.n_policies
-        result = search.reduce(_belief(), _pref())
-        assert result.visited == 27
+        result = search.evaluate(_belief(), _pref())
+        assert result.certificate.visited == 27
         assert result.certificate.complete
-        assert result.certificate.warrant is SearchWarrant.PROVED
+        assert result.certificate.warrant is Warrant.PROVED
 
     def test_the_certificate_names_the_set_it_decided_over(self):
         result = ChunkedEfeSearch(
@@ -263,7 +267,7 @@ class TestCompleteness:
             _finite_set([-1.0, 0.0, 1.0], version="named-v1"),
             horizon=3,
             chunk=7,
-        ).reduce(_belief(), _pref())
+        ).evaluate(_belief(), _pref())
         certificate = result.certificate
         assert certificate.action_set_version == "named-v1"
         assert certificate.action_set_size == 3
@@ -278,7 +282,7 @@ class TestCompleteness:
         model, action_set = _beacon_model(), _finite_set([0.0, 1.0, 2.0])
         g, best, _ = _front_loaded(model, action_set, 4, _beacon_belief(), _pref())
         assert best != 0  # otherwise a leaked pad would agree by accident
-        result = ChunkedEfeSearch(model, action_set, horizon=4, chunk=7).reduce(
+        result = ChunkedEfeSearch(model, action_set, horizon=4, chunk=7).evaluate(
             _beacon_belief(), _pref()
         )
         assert result.best_index == best
@@ -354,6 +358,160 @@ class TestGuards:
             ChunkedEfeSearch(_model(), _finite_set([-1.0, 1.0]), horizon=64)
 
 
+class TestInterchangeable:
+    """Swapping one search for the other changes the residency and no call site."""
+
+    @staticmethod
+    def _both(horizon=3):
+        model, action_set = _beacon_model(), _finite_set([0.0, 1.0, 2.0])
+        return (
+            EnumeratedEfeSearch(model, action_set, horizon=horizon),
+            ChunkedEfeSearch(model, action_set, horizon=horizon, chunk=5),
+        )
+
+    def test_one_verb_returns_the_same_decision(self):
+        front, chunked = self._both()
+        a = front.evaluate(_beacon_belief(), _pref())
+        b = chunked.evaluate(_beacon_belief(), _pref())
+        np.testing.assert_array_equal(np.asarray(a.best_policy), b.best_policy)
+        assert float(a.best_g) == float(b.best_g)
+        assert int(a.best_index) == int(b.best_index)
+        assert a.certificate == b.certificate
+
+    def test_the_front_loaded_result_is_a_search_result_plus_the_score_vector(self):
+        shared = ("best_policy", "best_g", "best_index", "certificate")
+        assert tuple(field.name for field in fields(SearchResult)) == shared
+        assert issubclass(EnumeratedSearchResult, SearchResult)
+        front_loaded_fields = tuple(
+            field.name for field in fields(EnumeratedSearchResult)
+        )
+        assert front_loaded_fields == (*shared, "g")
+
+    def test_each_search_returns_its_own_result_type(self):
+        front, chunked = self._both()
+        assert type(front.evaluate(_beacon_belief(), _pref())) is EnumeratedSearchResult
+        assert type(chunked.evaluate(_beacon_belief(), _pref())) is SearchResult
+
+    @pytest.mark.parametrize("which", [0, 1])
+    def test_a_result_is_read_by_name_alone(self, which):
+        # A position that named one field on one search and another field on the other
+        # would make the swap silently wrong. No position names anything.
+        result = self._both()[which].evaluate(_beacon_belief(), _pref())
+        with pytest.raises(TypeError):
+            iter(result)
+        with pytest.raises(TypeError):
+            result[1]
+
+    def test_the_front_loaded_best_is_read_off_its_own_vector(self):
+        front, _ = self._both()
+        result = front.evaluate(_beacon_belief(), _pref())
+        assert float(result.best_g) == float(result.g[result.best_index])
+        assert result.certificate.complete
+
+    def test_both_are_the_one_kind(self):
+        front, chunked = self._both()
+        assert isinstance(front, ExhaustiveEfeSearch)
+        assert isinstance(chunked, ExhaustiveEfeSearch)
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "evaluate",
+            "policies_at",
+            "n_policies",
+            "horizon",
+            "cost_per_plan",
+            "warrant",
+        ],
+    )
+    def test_the_shared_surface_is_declared_on_the_kind(self, name):
+        assert hasattr(ExhaustiveEfeSearch, name)
+
+    def test_the_certificate_lives_on_the_result_alone(self):
+        # The chunked count is produced by the loop, so its certificate cannot exist
+        # before a run. One rule for both paths: the decision carries its evidence.
+        front, chunked = self._both()
+        assert not hasattr(front, "certificate")
+        assert not hasattr(chunked, "certificate")
+        assert not hasattr(chunked, "reduce")
+
+
+class TestNoFiniteScore:
+    """Once R(x) stops being a covariance every policy scores NaN, and none is best.
+
+    `R(x) = 1 - x0^2` is negative wherever `|x0| > 1`, so from a belief at 2 every
+    policy in the set scores NaN. The certificate still holds, since it certifies that
+    every policy was scored. What changes is that no policy wins.
+    """
+
+    @staticmethod
+    def _model():
+        sensor = CallableSensor(
+            observation_matrix=[[1.0]],
+            noise_fn=lambda x, p: jnp.array([[p["r"] - x[0] ** 2]]),
+            noise_params={"r": jnp.array(1.0)},
+        )
+        return LinearGaussianModel(
+            dynamics_matrix=[[1.0]],
+            observation_matrix=[[1.0]],
+            dynamics_noise=[[0.05]],
+            prior=Belief(mean=[0.0], cov=[[1.0]]),
+            control_matrix=[[1.0]],
+            observation_model=sensor,
+        )
+
+    @pytest.mark.parametrize("search_type", [EnumeratedEfeSearch, ChunkedEfeSearch])
+    def test_no_policy_is_returned_as_best(self, search_type):
+        search = search_type(self._model(), _finite_set([0.0, 0.5]), horizon=2)
+        result = search.evaluate(Belief(mean=[2.0], cov=[[0.1]]), _pref())
+        assert np.all(np.isnan(np.asarray(result.best_policy)))
+        assert np.isnan(float(result.best_g))
+        assert int(result.best_index) == -1
+        assert result.certificate.complete
+
+    def test_the_premise_every_score_is_nan(self):
+        search = EnumeratedEfeSearch(self._model(), _finite_set([0.0, 0.5]), horizon=2)
+        result = search.evaluate(Belief(mean=[2.0], cov=[[0.1]]), _pref())
+        assert np.all(np.isnan(np.asarray(result.g)))
+
+    @pytest.mark.parametrize("search_type", [EnumeratedEfeSearch, ChunkedEfeSearch])
+    @pytest.mark.parametrize("index", [-1, 4])
+    def test_an_index_outside_the_enumeration_decodes_to_nothing(
+        self, search_type, index
+    ):
+        # -1 is the no-winner index. Decoded as a base-|A| numeral it would wrap to a
+        # real policy, so the decoder refuses it, and anything past the end.
+        search = search_type(self._model(), _finite_set([0.0, 0.5]), horizon=2)
+        with pytest.raises(ValueError, match=r"outside 0\.\.3"):
+            search.policies_at(jnp.asarray([0, index]))
+
+    @pytest.mark.parametrize("search_type", [EnumeratedEfeSearch, ChunkedEfeSearch])
+    def test_compiled_an_index_outside_decodes_to_a_nan_policy(self, search_type):
+        # A compiled decode cannot raise. It returns the NaN policy a result with no
+        # winner carries, never the real policy -1 would wrap to.
+        search = search_type(self._model(), _finite_set([0.0, 0.5]), horizon=2)
+        decoded = jax.jit(search.policies_at)(jnp.asarray([3, -1, 4]))
+        np.testing.assert_array_equal(decoded[0], search.policies_at(3))
+        assert np.all(np.isnan(np.asarray(decoded[1:])))
+
+    @pytest.mark.parametrize("search_type", [EnumeratedEfeSearch, ChunkedEfeSearch])
+    def test_the_decode_maps_over_indices(self, search_type):
+        search = search_type(self._model(), _finite_set([0.0, 0.5]), horizon=2)
+        np.testing.assert_array_equal(
+            jax.vmap(search.policies_at)(jnp.arange(4)),
+            search.policies_at(jnp.arange(4)),
+        )
+
+    @pytest.mark.parametrize("search_type", [EnumeratedEfeSearch, ChunkedEfeSearch])
+    def test_one_finite_score_is_still_the_best(self, search_type):
+        # From 0.5, a step of 2 lands where R is negative and a step of -0.5 does not.
+        search = search_type(self._model(), _finite_set([2.0, -0.5]), horizon=1)
+        result = search.evaluate(Belief(mean=[0.5], cov=[[0.1]]), _pref())
+        assert int(result.best_index) == 1
+        assert np.isfinite(float(result.best_g))
+        np.testing.assert_array_equal(np.asarray(result.best_policy), [[-0.5]])
+
+
 class TestAtScale:
     """The cheap fixtures above all fit, so none of them can show residency.
 
@@ -384,13 +542,13 @@ class TestAtScale:
         g, best, best_policy = _front_loaded(model, action_set, 6, belief, preference)
         assert g.shape[0] == 9**6
 
-        result = ChunkedEfeSearch(model, action_set, horizon=6, chunk=32768).reduce(
+        result = ChunkedEfeSearch(model, action_set, horizon=6, chunk=32768).evaluate(
             belief, preference
         )
 
         assert result.best_index == best
         assert float(result.best_g) == g[best]
-        assert result.visited == 9**6
+        assert result.certificate.visited == 9**6
         np.testing.assert_array_equal(np.asarray(result.best_policy), best_policy)
 
     def test_the_step_quarter_set_runs_at_a_low_horizon(self):
@@ -402,8 +560,8 @@ class TestAtScale:
         assert action_set.size == 17
         result = ChunkedEfeSearch(
             _beacon_model(), action_set, horizon=4, chunk=8192
-        ).reduce(_beacon_belief(), _pref())
-        assert result.visited == 17**4
+        ).evaluate(_beacon_belief(), _pref())
+        assert result.certificate.visited == 17**4
         assert result.certificate.complete
         assert result.certificate.action_set_version == "refine-0.25"
 
@@ -424,7 +582,8 @@ class TestCostAndWarrant:
             _model(), _finite_set([-1.0, 0.0, 1.0]), horizon=3, chunk=7
         )
         assert search.n_policies == 27
-        assert search.cost_per_cycle == 27 * 3  # |A|^H * H, RFC-001
+        assert search.cost_per_plan == 27 * 3  # |A|^H * H, RFC-001
+        assert not hasattr(search, "cost_per_cycle")
         assert search.n_blocks == 4  # ceil(27 / 7), the last one padded
         assert search.chunk == 7
 
@@ -432,4 +591,20 @@ class TestCostAndWarrant:
         # Same decision as the front-loaded path, so the same prover class. The block
         # size is a residency choice and carries no evidential weight.
         search = ChunkedEfeSearch(_model(), _finite_set([-1.0, 1.0]), horizon=2)
-        assert search.warrant is SearchWarrant.PROVED
+        assert search.warrant is Warrant.PROVED
+
+
+class TestCountIsReadExactly:
+    def test_a_count_past_float_precision_certifies(self):
+        # 3^34 is odd and above 2^53, so a float read rounds it and the certificate
+        # would refuse a complete run.
+        search = ChunkedEfeSearch(_model(), _finite_set([-1.0, 0.0, 1.0]), horizon=34)
+        visited = jnp.asarray(3**34, dtype=jnp.int64)
+        assert search._certify_count(visited).visited == 3**34
+
+    def test_an_action_set_is_refused_under_jit(self):
+        # Under a trace its actions cannot be checked for NaN, and the search would
+        # certify a set that holds one. Built outside the transform, it is checked.
+        size = jax.jit(lambda actions: FiniteActionSet(actions, version="v1").size)
+        with pytest.raises(TypeError, match="outside"):
+            size(jnp.array([[0.0], [jnp.nan]]))

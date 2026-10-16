@@ -5,8 +5,7 @@ exhaustive enumeration can both come back clean. Only one of them decided anythi
 printing both as ``PASS`` loses that from the record.
 
 Every check in a suite labels itself from this enum. It started as ``SearchWarrant``
-inside cpomdp's enumerated search, covering searches alone. That name survives there as
-an alias.
+inside cpomdp's enumerated search, covering searches alone.
 
 ``CheckReport`` is what a check emits. It pairs the warrant with an ``Outcome`` and a
 ``Tier``, which vary independently: a run can be green throughout and have decided

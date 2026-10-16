@@ -66,7 +66,7 @@ end
 # A small branching graph hardcoded to one topology based on E. coli chemotaxis (the
 # CouplingGraph difference demo): a hidden hub `CheA` feeding a fast sub-branch
 # `CheY` -> {motorA, motorB} and a slow branch `CheB`, each leaf observed.
-# The posterior over `CheA` is the marginal a `CouplingGraph.infer` collects up the
+# The posterior over `CheA` is the marginal a `CouplingGraph.infer_root` collects up the
 # same tree. Same MvNormal idiom as the chain step, so a node of degree > 2 (CheY)
 # is the only new thing under test.
 @model function cpomdp_chemotaxis_tree(
@@ -251,7 +251,8 @@ def _rxinfer_chemotaxis_tree_root(
     fast `chey` -> two motor, plus slow `cheb`; the three leaves observed) and
     returns the posterior over `chea` as `(mean, variance)`. Every scalar is lifted
     to the 1x1 / 1-vector form the `MvNormal` model expects. This re-derives, through
-    RxInfer's message passing, what `CouplingGraph.infer` collects up the same tree.
+    RxInfer's message passing, what `CouplingGraph.infer_root` collects up the same
+    tree.
 
     The first call in a process loads the Julia runtime (see ``_julia``).
     """

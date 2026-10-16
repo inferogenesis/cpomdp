@@ -107,7 +107,7 @@ def test_the_walk_stops_where_the_first_party_imports_do():
 
 
 def test_a_module_outside_the_seam_is_not_dragged_in():
-    assert "ffg.chain" not in _closure("_lab.constructors")
+    assert "ffg._chain" not in _closure("_lab.constructors")
 
 
 # --- the boundary ------------------------------------------------------------------
