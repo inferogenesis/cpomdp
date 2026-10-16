@@ -363,6 +363,13 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `sample_action` costs. `Agent`, `EFESelector`, `FfgEfeSelector` and `LQRController`
   print what they were built with, so an agent typed at a prompt shows the horizon or
   the gain it chose. The Agent page shows how to compare horizons.
+- The two grid selectors answer the same questions. `candidates` on each is the grid
+  searched, shape `(n_candidates, p)`, so an example plotting the scores reads it rather
+  than rebuilding it. `FfgEfeSelector.warrant` reads `CORROBORATED`, as
+  `EFESelector.warrant` does. Both default to 21 candidates, as `ObservationGoal` does,
+  and `FfgEfeSelector` aims at the whole joint state when `info_block` is left out, as
+  `info_node=None` does on the goal. `n_candidates` is the grid's total count
+  everywhere. `ObservationGoal` called it a resolution, which reads as per axis.
 
 ### Fixed
 
@@ -462,6 +469,18 @@ certainty equivalence is optimal, and no use of the readings beats it.
   dimension, as `EFESelector` does. A control-free backend returned the grid's first
   action, and `p = 2` constructed and then failed at the first `select`. The two
   selectors now share one check.
+- `ObservationGoal`, `EFESelector` and `FfgEfeSelector` check `action_bounds` through
+  one helper, as two finite scalars with the lower first. Each compared the pair with
+  Python's `<`, which stops at the first element that differs, so
+  `action_bounds=([-1, 5], [1, -5])` constructed with its second axis inverted and the
+  selectors then failed inside JAX's `linspace`. An infinite bound and a fractional
+  `n_candidates` are refused too, and `ObservationGoal.action_bounds` holds two floats.
+- When no candidate scores a finite `G`, `EFESelector` and `FfgEfeSelector` return NaN,
+  and `Agent.sample_action` refuses it, naming the noise. Both selectors returned the
+  first candidate, which looks decisive. With `R(x) = 1 - x0²` at `x0 = 2` every score
+  was NaN and the selector returned the lower bound. The selectors stay jit-safe. The
+  Agent's check reads the `p` action entries back to the host once per cycle, and a
+  refused action is not remembered for the next predict.
 
 ### Changed
 
@@ -539,6 +558,18 @@ certainty equivalence is optimal, and no use of the readings beats it.
   there is the same for every target. An explicit horizon too short for the target to
   move the scores is refused, naming the shortest that works. Single integrators keep
   horizon 1 (ADR-068).
+- `EFESelector` and `FfgEfeSelector` break a tie toward the candidate nearest zero. They
+  took the first candidate, the lower bound. A tie means the action reaches nothing the
+  scores read. On that double integrator, an `EFESelector` built by hand at horizon 1
+  scored every candidate 1.163426662195336 and returned `action_bounds[0]` on every
+  step. It now rests. Scores within a relative `1e-9` of the best count as tied, since
+  the graph backend leaves roundoff of about `1e-12` on such a tie. Choosing costs one
+  more pass over the `k` scores per cycle.
+- `EFESelector` and `FfgEfeSelector` compile their scoring once, on the first `select`,
+  and reuse it. Each `select` re-traced the grid under an eager `vmap`, and at horizon
+  above 1 the rollout's scan compiled again on every call, a fixed cost per step that
+  `cost_per_cycle` never counted. A test counts the traces across three beliefs and
+  finds one.
 - The batched condition number `rollout_conditioning` computed inline is now a private
   function of its own, so a rollout and a scored cell read the same number for the same
   matrix.

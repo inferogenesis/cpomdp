@@ -132,6 +132,7 @@
     "lgssm",
     "linalg",
     "linearizations",
+    "linspace",
     "logaddexp",
     "logdet",
     "logreport",

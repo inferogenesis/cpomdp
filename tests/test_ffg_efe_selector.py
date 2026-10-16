@@ -25,6 +25,7 @@ from cpomdp.selection import (
     Preference,
 )
 from cpomdp.types import Belief, LinearGaussianModel
+from warrantlib import Warrant
 
 
 def _rx_noise(x, params):
@@ -140,6 +141,34 @@ def test_selector_refuses_a_backend_it_cannot_search(control_matrix, match):
         )
 
 
+class TestSameQuestionsAsEFESelector:
+    """ADR-021 calls the two grid selectors one family, so they answer alike."""
+
+    def test_defaults_match_the_flat_selector_and_the_goal(self):
+        # 21 candidates as on ObservationGoal and EFESelector, and the whole joint
+        # state as info_node=None means on the goal.
+        selector = FfgEfeSelector(_two_node_backend(), action_bounds=(-2.0, 2.0))
+        assert selector.n_candidates == 21
+        assert repr(selector).endswith("info_block=[0, 1])")
+
+    def test_reports_a_sampled_warrant(self):
+        selector = FfgEfeSelector(_two_node_backend(), action_bounds=(-2.0, 2.0))
+        assert selector.warrant is Warrant.CORROBORATED
+
+    def test_the_grid_is_readable_as_the_actions_searched(self):
+        selector = FfgEfeSelector(
+            _two_node_backend(), action_bounds=(-1.0, 1.0), n_candidates=3
+        )
+        np.testing.assert_array_equal(selector.candidates, [[-1.0], [0.0], [1.0]])
+
+    def test_per_axis_bounds_are_refused_with_the_flat_selectors_words(self):
+        with pytest.raises(ValueError, match="two scalars"):
+            FfgEfeSelector(
+                _two_node_backend(),
+                action_bounds=([-1, 5], [1, -5]),  # ty: ignore[invalid-argument-type]
+            )
+
+
 def test_agent_on_ffg_backend_acts_via_ffg_selector():
     # B5 (issue #26): a user drives a branching FFG as an Agent. info_node aims the
     # epistemic at a chosen node; the Agent routes to the FFG EFE selector, and the
@@ -189,7 +218,7 @@ def test_agent_ffg_whole_state_when_info_target_none():
         ObservationGoal([0.5], action_bounds=(-2.0, 2.0)),  # no info_node
     )
     assert isinstance(agent.selector, FfgEfeSelector)
-    assert tuple(agent.selector._target) == (0, 1)  # whole joint state
+    assert repr(agent.selector).endswith("info_block=[0, 1])")  # whole joint state
 
 
 def test_an_info_node_outside_the_graph_is_refused_by_the_backend():
@@ -415,6 +444,25 @@ class TestStateDependentSelection:
         np.testing.assert_allclose(
             np.asarray(sel.select(belief, pref)), np.asarray(full_action), atol=1e-7
         )
+
+
+def test_the_graph_selector_traces_its_kernel_once(monkeypatch):
+    # Each select used to re-trace the predict and the step under an eager vmap.
+    import cpomdp.selection as selection
+
+    traced = []
+    original = selection._ffg_efe_step
+
+    def counted(*args, **kwargs):
+        traced.append(1)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(selection, "_ffg_efe_step", counted)
+    backend = _two_node_rx_backend()
+    selector = FfgEfeSelector(backend, action_bounds=(-2.0, 2.0))
+    for mean in ([0.0, 0.0], [0.3, -0.1], [-0.5, 0.4]):
+        selector.select(Belief(mean=mean, cov=np.eye(2)), Preference([0.5]))
+    assert len(traced) == 1
 
 
 def test_the_graph_selector_refuses_a_goal_in_place_of_a_preference():

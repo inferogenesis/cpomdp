@@ -6,6 +6,7 @@ import pytest
 from cpomdp.control import LQRController
 from cpomdp.selection import (
     ActionSelector,
+    EFESelector,
     LQRSelector,
     ObservationGoal,
     Preference,
@@ -174,3 +175,73 @@ class TestObservationGoal:
         # Unrepresentable: an observation goal carries no LQR effort weight.
         with pytest.raises(TypeError):
             ObservationGoal([0.0], action_bounds=(-1.0, 1.0), effort=[[1.0]])  # ty: ignore[unknown-argument]
+
+
+# The action grid. Three classes took (action_bounds, n_candidates) and wrote the same
+# check three times, with Python's `<` on whatever the bounds were. Two sequences
+# compare element by element and stop at the first difference, so per-axis bounds with
+# the second axis inverted passed, and JAX's linspace failed later in its own words.
+
+_MODEL_1D = LinearGaussianModel(
+    dynamics_matrix=[[1.0]],
+    observation_matrix=[[1.0]],
+    dynamics_noise=[[0.05]],
+    observation_noise=[[0.3]],
+    prior=Belief(mean=[0.0], cov=[[0.5]]),
+    control_matrix=[[1.0]],
+)
+
+
+def _goal(action_bounds, n_candidates=21):
+    return ObservationGoal(
+        [0.5], action_bounds=action_bounds, n_candidates=n_candidates
+    )
+
+
+def _efe(action_bounds, n_candidates=21):
+    return EFESelector(
+        _MODEL_1D, action_bounds=action_bounds, n_candidates=n_candidates
+    )
+
+
+@pytest.mark.parametrize("build", [_goal, _efe], ids=["ObservationGoal", "EFESelector"])
+class TestActionGrid:
+    def test_per_axis_bounds_are_refused_for_a_one_dimensional_grid(self, build):
+        with pytest.raises(ValueError, match="two scalars"):
+            build(([-1.0, 5.0], [1.0, -5.0]))
+
+    def test_a_bound_that_is_not_a_pair_is_refused(self, build):
+        with pytest.raises(ValueError, match=r"pair \(lo, hi\)"):
+            build((1.0,))
+
+    @pytest.mark.parametrize("bounds", [(-1.0, np.inf), (np.nan, 1.0)])
+    def test_a_bound_that_is_not_finite_is_refused(self, build, bounds):
+        with pytest.raises(ValueError, match="finite"):
+            build(bounds)
+
+    def test_inverted_bounds_are_refused(self, build):
+        with pytest.raises(ValueError, match="lo < hi"):
+            build((1.0, -1.0))
+
+    @pytest.mark.parametrize("n_candidates", [1, 2.5])
+    def test_a_count_that_cannot_search_is_refused(self, build, n_candidates):
+        with pytest.raises((ValueError, TypeError), match="n_candidates"):
+            build((-1.0, 1.0), n_candidates)
+
+
+def test_the_goal_stores_its_bounds_as_two_floats():
+    bounds = _goal((np.float32(-1), 2)).action_bounds
+    assert bounds == (-1.0, 2.0)
+    assert all(type(bound) is float for bound in bounds)
+
+
+def test_the_grid_selector_defaults_to_the_goals_candidate_count():
+    assert EFESelector(_MODEL_1D, action_bounds=(-1.0, 1.0)).n_candidates == 21
+
+
+def test_the_grid_is_readable_as_the_actions_searched():
+    selector = _efe((-1.0, 1.0), n_candidates=5)
+    np.testing.assert_array_equal(
+        selector.candidates, [[-1.0], [-0.5], [0.0], [0.5], [1.0]]
+    )
+    assert selector.n_candidates == selector.candidates.shape[0]

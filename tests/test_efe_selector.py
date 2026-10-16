@@ -168,3 +168,50 @@ class TestEFESelector:
         efe_action = float(sel.select(belief, _PREF)[0])
         prag = _brute_force(model, belief, _PREF, -3.0, 3.0, 4001, key="pragmatic")
         assert efe_action > prag + 0.1  # detours toward the beacon
+
+
+# Each select used to re-trace the scoring under an eager vmap, and at horizon > 1 the
+# rollout's scan recompiled every call, about 180 ms a step whatever the grid. The
+# scorer is now compiled once, on the first select, and a selector traces its kernel
+# once however many beliefs it sees.
+
+
+def _counting(monkeypatch, name):
+    """Patch ``cpomdp.selection.<name>`` to count the times it is traced."""
+    import cpomdp.selection as selection
+
+    traced = []
+    original = getattr(selection, name)
+
+    def counted(*args, **kwargs):
+        traced.append(name)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(selection, name, counted)
+    return traced
+
+
+_BELIEFS = [Belief(mean=[m], cov=[[0.5]]) for m in (0.0, 0.4, -0.7)]
+
+
+class TestCompiledOnce:
+    def test_a_rollout_horizon_traces_its_rollout_once(self, monkeypatch):
+        traced = _counting(monkeypatch, "policy_efe")
+        sel = EFESelector(_corridor_model(), action_bounds=(-3.0, 3.0), horizon=3)
+        for belief in _BELIEFS:
+            sel.select(belief, _PREF)
+        assert len(traced) == 1
+
+    def test_one_step_traces_its_kernel_once(self, monkeypatch):
+        traced = _counting(monkeypatch, "expected_free_energy")
+        sel = EFESelector(_corridor_model(), action_bounds=(-3.0, 3.0))
+        for belief in _BELIEFS:
+            sel.select(belief, _PREF)
+        assert len(traced) == 1
+
+    def test_the_compiled_choice_matches_the_eager_scores(self):
+        sel = EFESelector(_corridor_model(), action_bounds=(-3.0, 3.0), horizon=2)
+        for belief in _BELIEFS:
+            scores = np.asarray(sel._scores(belief, _PREF))
+            chosen = sel.candidates[int(np.argmin(scores))]
+            np.testing.assert_array_equal(sel.select(belief, _PREF), chosen)
