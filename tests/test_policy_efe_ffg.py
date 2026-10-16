@@ -307,8 +307,9 @@ def test_a_whole_goal_is_refused_naming_its_preference(score):
     goal = ObservationGoal([0.5], action_bounds=(-1.0, 1.0), precision=[[2.0]])
     info_block = tuple(backend.block(0))
     policy = _policy([0.4])
-    with pytest.raises(TypeError, match=r"goal\.preference"):
+    with pytest.raises(TypeError, match=r"Pass its \.preference") as refusal:
         score(backend, belief, policy, goal, info_block=info_block)
+    assert score.__name__ not in str(refusal.value)
     np.testing.assert_array_equal(
         score(backend, belief, policy, goal.preference, info_block=info_block).g,
         score(backend, belief, policy, _pref(), info_block=info_block).g,

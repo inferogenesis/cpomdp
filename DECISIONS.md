@@ -4668,9 +4668,11 @@ result was a schedule.
   `predicted_observation_cov`, the words `Belief.cov` and `epistemic_value` already
   use. `RolloutConditioning` names each condition number after the field it measures.
   S is the predicted observation covariance in every docstring.
-- The functions take one type, a `Preference`. `ObservationGoal.preference` returns the
-  goal's target and precision as one, built once. Passing a goal raises a `TypeError`
-  that names `goal.preference`. A `StateGoal` is refused as aiming at a state.
+- The functions take one type, a `Preference`, and refuse anything else by type.
+  `ObservationGoal.preference` returns the goal's target and precision as one, built
+  once. Passing a goal raises a `TypeError` that names its `.preference`. A `StateGoal`
+  is refused as aiming at a state. The refusal names no function, since the selectors
+  and searches reach it through the same kernel.
 - `lqr_schedule` and `kalman_schedule` are the dual pair. Each takes `horizon` by
   keyword and returns a schedule, `LQRSchedule` or `KalmanSchedule`, that reports its
   `horizon`. Both names were new in 0.5.0, so the rename breaks no release.
@@ -4703,15 +4705,20 @@ break lands.
 No deprecation shim was added. One for the dict keys or the letter fields would be a
 second way to read the same number.
 
+Reading the two fields by attribute and refusing on a missing one was the first form of
+the check. It scored any object with the right two fields. A goal carries a target and a
+precision too, so once the field names agree nothing tells a goal from a preference by
+its attributes. It also turned a fault inside a real `Preference` into a refusal of it.
+
 ### Consequences
 
 - `G, parts = expected_free_energy(...)` raises at the unpack. The fix is `result.g` and
   `result.pragmatic`. The changelog lists both renames under **Breaking**.
 - The per-cycle cost does not move. The record is built from scalars the scan already
-  returns. The preference is read by attribute, so a call that succeeds pays nothing for
-  the refusal.
-- A preference of another shape that has a `goal` and a `precision`, such as the mixture
-  RFC-002 defers, still scores.
+  returns. The type check runs once per trace under `jit` and `vmap`, which is how the
+  selectors and searches score.
+- A preference of another shape, such as the mixture RFC-002 defers, has to be a
+  `Preference` or widen the check.
 - `StateGoal` has no `preference` property. Its target is a state, and a `Preference`
   does not record its space, so one built from a `StateGoal` would score as a reading
   without complaint.
