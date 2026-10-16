@@ -833,7 +833,8 @@ class CouplingGraphBackend:
         It omits the structural couplings, so it is not the graph's plant. On a
         coupled graph every flat consumer refuses it: both flat backends, the flat
         selectors and searches, ``LQRController``, the schedules and the flat EFE
-        functions. The mark survives a pytree rebuild.
+        functions. The mark survives a pytree rebuild and ``dataclasses.replace``. A
+        model rebuilt field by field through the constructor is not marked.
         ``to_flat_model()`` adds the couplings as pseudo-observations, for the oracle
         cross-check.
         """

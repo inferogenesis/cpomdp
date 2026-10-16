@@ -493,13 +493,14 @@ class Agent:
         *,
         selector: ActionSelector | None = None,
     ) -> "Agent":
-        """Build an agent that filters with ``backend`` and plans under its model.
+        """Build an agent that filters with ``backend`` and plans on the same plant.
 
         For an engine other than the default per-step Kalman filter: a steady-state
         [`KalmanBackend`][cpomdp.KalmanBackend], the RxInfer oracle, or a
         [`CouplingGraphBackend`][cpomdp.CouplingGraphBackend], which has no model of
-        its own to pass. The agent's model is ``backend.model``, so the planner and
-        the filter cannot work from different models.
+        its own to pass. The agent's model is ``backend.model``. A flat backend plans
+        under it. A graph backend plans on the graph, since a coupled graph's model
+        leaves out the couplings.
 
         Args:
             backend: The inference engine, any
