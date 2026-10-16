@@ -205,8 +205,8 @@ class CouplingGraph:
     """A rooted tree of Gaussian-coupled variables.
 
     The ``N`` nodes are indexed ``0..N-1`` with dimensions ``dims``. ``couplings`` are
-    the tree edges, directed away from ``root``, and ``observations`` maps a node index
-    to the sensor on it. A node takes the sensor a flat model takes: a
+    the tree edges, directed away from ``root``, and ``observation_models`` maps a node
+    index to the sensor on it. A node takes the sensor a flat model takes: a
     [`FixedSensor`][cpomdp.FixedSensor], a state-dependent
     [`CallableSensor`][cpomdp.CallableSensor], or any other
     [`ObservationModel`][cpomdp.ObservationModel]. Construction validates the wiring
@@ -216,13 +216,14 @@ class CouplingGraph:
         root: index of the node the tree is rooted at.
         dims: ``dims[i]`` is the dimension of node ``i``; its length is the node count.
         couplings: the tree edges — one per non-root node, each that node's only parent.
-        observations: maps a node index to the ``ObservationModel`` that reads it.
+        observation_models: maps a node index to the ``ObservationModel`` that reads
+            it.
 
     Raises:
         TypeError: if ``root`` or a dimension is not an int, an edge is not a
-            ``Coupling``, or an observation is not an ``ObservationModel``.
+            ``Coupling``, or an observation model is not an ``ObservationModel``.
         ValueError: if ``dims`` is empty or non-positive; if ``root``, an edge, or an
-            observation references an out-of-range node; if an edge's
+            observation model references an out-of-range node; if an edge's
             ``coupling_matrix`` is not ``(dim[child], dim[parent])``; if a sensor's
             ``C`` is not as wide as the node it observes; or if the edges do not form a
             tree rooted at ``root`` — the root has a parent, a node has two parents or
@@ -237,12 +238,12 @@ class CouplingGraph:
         root: int,
         dims: Sequence[int],
         couplings: Sequence[Coupling],
-        observations: Mapping[int, ObservationModel],
+        observation_models: Mapping[int, ObservationModel],
     ) -> None:
         self._root = _as_int(root, "root")
         self._dims = tuple(_as_int(dim, f"dims[{i}]") for i, dim in enumerate(dims))
         self._couplings = tuple(couplings)
-        self._observations = dict(observations)
+        self._observation_models = dict(observation_models)
         self._validate()
         self._sensor_at_zero = self._linearize_sensors_at_zero()
         self._parent_edge = {edge.child: edge for edge in self._couplings}
@@ -267,9 +268,9 @@ class CouplingGraph:
         return self._couplings
 
     @property
-    def observations(self) -> Mapping[int, ObservationModel]:
+    def observation_models(self) -> Mapping[int, ObservationModel]:
         """Each observed node's sensor, keyed by node index. A read-only view."""
-        return MappingProxyType(self._observations)
+        return MappingProxyType(self._observation_models)
 
     def _validate(self) -> None:
         n = len(self.dims)
@@ -293,13 +294,14 @@ class CouplingGraph:
                     f"coupling {edge.parent}->{edge.child}: coupling_matrix shape "
                     f"{actual} != expected {expected} (dim[child], dim[parent])"
                 )
-        for idx, sensor in self.observations.items():
+        for idx, sensor in self.observation_models.items():
             if not 0 <= idx < n:
-                raise ValueError(f"observation references unknown node {idx}")
+                raise ValueError(f"an observation model references unknown node {idx}")
             if not isinstance(sensor, ObservationModel):
                 raise TypeError(
-                    f"the observation on node {idx} must be an ObservationModel such "
-                    f"as FixedSensor or CallableSensor, got {type(sensor).__name__}"
+                    f"the observation model on node {idx} must be an ObservationModel "
+                    f"such as FixedSensor or CallableSensor, got "
+                    f"{type(sensor).__name__}"
                 )
 
         # The edges must form a tree rooted at `root`: each non-root node has exactly
@@ -339,14 +341,14 @@ class CouplingGraph:
         path reuses every step, and a state-dependent sensor's ``(C, R(0))``.
         """
         at_zero = {}
-        for node, sensor in self.observations.items():
+        for node, sensor in self.observation_models.items():
             observation_matrix, observation_noise = sensor.linearize(
                 jnp.zeros(self.dims[node])
             )  # C, R
             width = observation_matrix.shape[1]
             if width != self.dims[node]:
                 raise ValueError(
-                    f"observation on node {node}: sensor C width {width} "
+                    f"the observation model on node {node}: sensor C width {width} "
                     f"!= node dimension {self.dims[node]}"
                 )
             at_zero[node] = (observation_matrix, observation_noise)
@@ -362,7 +364,7 @@ class CouplingGraph:
         """
         if state is None:
             return self._sensor_at_zero[node]
-        return self.observations[node].linearize(state)
+        return self.observation_models[node].linearize(state)
 
     def _observation_message(
         self, node: int, reading: ArrayLike, state: ArrayLike | None = None
@@ -395,12 +397,12 @@ class CouplingGraph:
                 f"{type(readings).__name__}"
             )
         for node, reading in readings.items():
-            if node not in self.observations:
+            if node not in self.observation_models:
                 raise ValueError(
                     f"node {node} has no sensor, so it cannot take a reading. The "
-                    f"observed nodes are {sorted(self.observations)}."
+                    f"observed nodes are {sorted(self.observation_models)}."
                 )
-            if not self.observations[node].is_fixed:
+            if not self.observation_models[node].is_fixed:
                 raise ValueError(
                     f"node {node} carries a state-dependent sensor, and static "
                     "inference has no predicted mean to evaluate R(x) at. Run the "

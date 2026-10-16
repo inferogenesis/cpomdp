@@ -121,7 +121,7 @@ class CouplingGraphBackend:
 
     Args:
         graph: the rooted tree — the structural couplings (the within-slice drive
-            ``child = W·parent + noise``) and the per-node observations.
+            ``child = W·parent + noise``) and the per-node sensors.
         transitions: one [`GaussianTransition`][cpomdp.GaussianTransition] (A_i, Q_i)
             per node, indexed by node, so ``transitions[i]`` is node ``i``'s own
             dynamics. Each ``Q_i`` must be positive-*definite* (the information form
@@ -178,7 +178,7 @@ class CouplingGraphBackend:
         self._flat_model = self._build_validation_model()
         self._partition_mask = self._build_partition_mask()
         self._sensor_is_fixed = all(
-            o.is_fixed for o in self.graph.observations.values()
+            o.is_fixed for o in self.graph.observation_models.values()
         )
         # node -> its partition cluster index (ADR-018 admissibility diagnostic).
         self._cluster_of = {
@@ -284,13 +284,13 @@ class CouplingGraphBackend:
         ``(node, lo, hi)``: reading rows ``lo:hi`` of the stacked observation belong to
         ``node``. Ascending node order is the stacking order a caller must pass.
         """
-        if not self.graph.observations:
+        if not self.graph.observation_models:
             raise ValueError(
                 "no node of the graph carries a sensor, so the filter has no reading "
                 "to fold in. Give at least one node a FixedSensor or CallableSensor."
             )
         layout, cursor = [], 0
-        for node in sorted(self.graph.observations):
+        for node in sorted(self.graph.observation_models):
             width = self.graph._linearized_sensor(node)[0].shape[0]
             layout.append((node, cursor, cursor + width))
             cursor += width
@@ -337,7 +337,7 @@ class CouplingGraphBackend:
         else:
             observation_noise = jnp.zeros((0, 0))
         factors = tuple(
-            self.graph.observations[node] for node, _lo, _hi in self._obs_layout
+            self.graph.observation_models[node] for node, _lo, _hi in self._obs_layout
         )
         spans = tuple(
             (self._offsets[node], self._offsets[node + 1])
@@ -441,7 +441,7 @@ class CouplingGraphBackend:
         """
         mean = jnp.asarray(mean, dtype=float)
         blocks = [
-            self.graph.observations[node].linearize(mean[self._block(node)])[1]
+            self.graph.observation_models[node].linearize(mean[self._block(node)])[1]
             for node, _lo, _hi in self._obs_layout
         ]
         if not blocks:

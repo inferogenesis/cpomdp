@@ -76,11 +76,11 @@ def build_graph() -> tuple[CouplingGraph, Belief, dict[int, np.ndarray]]:
         Coupling(parent, child, [[w]], coupling_noise=[[q]])
         for parent, child, w, q in EDGES
     )
-    observations = {
+    observation_models = {
         node: FixedSensor([[1.0]], observation_noise=[[OBS_R]]) for node in OBS_NODES
     }
     graph = CouplingGraph(
-        root=ROOT, dims=DIMS, couplings=couplings, observations=observations
+        root=ROOT, dims=DIMS, couplings=couplings, observation_models=observation_models
     )
     prior = Belief(mean=[PRIOR_MEAN], cov=[[PRIOR_VAR]])
     readings = {node: np.array([READINGS[node]]) for node in OBS_NODES}
@@ -201,7 +201,7 @@ couplings = (
     Coupling(h, b, [[1.0]], coupling_noise=[[0.03]]),
 )
 graph  = CouplingGraph(root=r, dims=dims,
-                       couplings=couplings, observations=obs)
+                       couplings=couplings, observation_models=obs)
 belief = graph.infer({a: y_a, b: y_b}, prior)"""
 
 

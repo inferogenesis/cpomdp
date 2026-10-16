@@ -61,7 +61,7 @@ def _topology(graph) -> tuple[dict[int, tuple[int, float, float]], dict[int, flo
     }
     obs_r = {
         node: float(np.asarray(o.observation_noise)[0, 0])
-        for node, o in graph.observations.items()
+        for node, o in graph.observation_models.items()
     }
     return edges, obs_r
 

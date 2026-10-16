@@ -49,7 +49,7 @@ def _hub_graph(*, fast_relevant=True, slow_relevant=False):
                 efe_relevant=slow_relevant,
             ),
         ),
-        observations={
+        observation_models={
             1: FixedSensor([[1.0]], observation_noise=[[0.1]]),
             2: FixedSensor([[1.0]], observation_noise=[[0.1]]),
         },

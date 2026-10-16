@@ -246,7 +246,7 @@ class TestProbeGraphBackend:
                     coupling_noise=[[0.5, 0.0], [0.0, 0.5]],
                 ),
             ),
-            observations={1: cue},
+            observation_models={1: cue},
         )
         transitions = (
             GaussianTransition([[1.0]], dynamics_noise=[[0.1]]),
@@ -279,7 +279,7 @@ class TestProbeGraphBackend:
             root=0,
             dims=(2,),
             couplings=(),
-            observations={
+            observation_models={
                 0: FixedSensor(
                     [[-1.0, 1.0], [-1.0, 1.0]],
                     observation_noise=[[2.0, 0.0], [0.0, 2.0]],

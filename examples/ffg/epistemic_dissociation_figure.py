@@ -157,7 +157,7 @@ def build_backend(
         root=CONTEXT,
         dims=(1, 2),
         couplings=(context_to_arm,),
-        observations={ARM_NODE: cue},
+        observation_models={ARM_NODE: cue},
     )
     transitions = (
         GaussianTransition(
