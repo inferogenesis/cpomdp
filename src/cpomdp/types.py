@@ -513,7 +513,7 @@ class _GraphInterfaceModel(LinearGaussianModel):
     """A coupled ``CouplingGraphBackend``'s model: its interface, not its plant.
 
     The sizes, prior, sensors and control the backend reads, with the couplings left
-    out (ADR-090). The type is the mark. ``dataclasses.replace`` builds through
+    out (ADR-091). The type is the mark. ``dataclasses.replace`` builds through
     ``obj.__class__`` and a pytree rebuild through ``tree_unflatten``'s ``cls``, so
     neither loses it, and a flat consumer refuses it with ``refuse_graph_interface``.
     """
