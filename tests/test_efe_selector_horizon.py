@@ -51,9 +51,7 @@ def _model():
     )
     return LinearGaussianModel(
         dynamics_matrix=[[1.0]],
-        observation_matrix=[[1.0]],
         dynamics_noise=[[0.05]],
-        observation_noise=[[0.3]],
         prior=Belief(mean=[0.0], cov=[[0.5]]),
         control_matrix=[[1.0]],
         observation_model=sensor,
@@ -65,7 +63,7 @@ def _belief():
 
 
 def _pref():
-    return Preference(goal=[0.0], precision=[[0.4]])
+    return Preference(target=[0.0], precision=[[0.4]])
 
 
 class TestHorizonConstruction:
@@ -206,9 +204,7 @@ class TestEFESelectorValidation:
         belief = Belief(mean=[0.0], cov=[[0.5]])
         model = LinearGaussianModel(
             dynamics_matrix=[[1.0]],
-            observation_matrix=[[1.0]],
             dynamics_noise=[[0.05]],
-            observation_noise=[[0.3]],
             prior=belief,
             control_matrix=[[1.0]],
             observation_model=CallableSensor([[1.0]], half_neg, {}),

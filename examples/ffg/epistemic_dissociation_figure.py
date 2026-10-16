@@ -57,15 +57,15 @@ import numpy as np
 from cpomdp import (
     Agent,
     Belief,
-    CallableGaussianObservation,
+    CallableSensor,
     Coupling,
     CouplingGraph,
     CouplingGraphBackend,
-    GaussianCoupling,
-    GaussianObservation,
+    FfgEfeSelector,
+    FixedSensor,
     GaussianTransition,
     IncompatibleLinearizationError,
-    ObservationGoal,
+    Preference,
 )
 
 # --- the T-maze, as one rooted tree -------------------------------------------
@@ -140,28 +140,24 @@ def build_backend(
     """
     observation_matrix = [[-1.0, 1.0], [-1.0, 1.0]]  # C: both channels read o = f - x
     cue = (
-        CallableGaussianObservation(observation_matrix, cue_noise, _cue_params(cue_x))
+        CallableSensor(observation_matrix, cue_noise, _cue_params(cue_x))
         if epistemic_alive
-        else GaussianObservation(
+        else FixedSensor(
             observation_matrix, observation_noise=_fixed_noise_at_prior(cue_x)
         )
     )
     context_to_arm = Coupling(
         parent=CONTEXT,
         child=ARM_NODE,
-        factor=GaussianCoupling(
-            # W: the context drives the perceived arm f only
-            coupling_matrix=[[0.0], [1.0]],
-            coupling_noise=[[COUPLE_Q_POSITION, 0.0], [0.0, COUPLE_Q_ARM]],
-        ),
-        tau=1.0,
+        # W: the context drives the perceived arm f only
+        coupling_matrix=[[0.0], [1.0]],
+        coupling_noise=[[COUPLE_Q_POSITION, 0.0], [0.0, COUPLE_Q_ARM]],
         efe_relevant=True,  # the covariance path the instrumental epistemic rides
     )
     graph = CouplingGraph(
-        root=CONTEXT,
         dims=(1, 2),
         couplings=(context_to_arm,),
-        observations={ARM_NODE: cue},
+        observation_models={ARM_NODE: cue},
     )
     transitions = (
         GaussianTransition(
@@ -193,17 +189,22 @@ def build_agent(backend: CouplingGraphBackend) -> Agent:
 
     Because the predicted commit reading is ``E[f]+ - x+`` and f tracks the context,
     "observe zero displacement" drives ``x -> E[context]`` -- resolving the context
-    changes where the agent heads. ``info_node`` aims the epistemic at the context.
+    changes where the agent heads. The epistemic term aims at the context's block.
+
+    Both agents get the same hand-built selector. The Agent builds one only where a
+    noise depends on the state, and A's fixed cue removes exactly that.
     """
-    objective = ObservationGoal(
-        target=[0.0, 0.0],  # observe zero displacement on both channels
-        action_bounds=ACTION_BOUNDS,
-        precision=[[GOAL_PRECISION, 0.0], [0.0, INFO_PRECISION]],  # weight commit only
-        n_candidates=GRID_N,
-        horizon=1,
-        info_node=CONTEXT,
+    preference = Preference(
+        [0.0, 0.0],  # observe zero displacement on both channels
+        [[GOAL_PRECISION, 0.0], [0.0, INFO_PRECISION]],  # weight commit only
     )
-    return Agent.from_backend(backend, objective)
+    selector = FfgEfeSelector(
+        backend,
+        info_block=backend.block(CONTEXT),
+        n_candidates=GRID_N,
+        action_bounds=ACTION_BOUNDS,
+    )
+    return Agent.from_backend(backend, preference, selector=selector)
 
 
 def simulate(*, epistemic_alive: bool, seed: int = 7, cue_x: float = CUE_X) -> dict:
@@ -260,13 +261,13 @@ def _boundary_scan(alive: bool, cue_x: float = CUE_X) -> dict:
     ``G = pragmatic - epistemic``), ``epistemic`` (the EFE epistemic value),
     ``pragmatic`` (the EFE pragmatic cost -- the term Result 4 reads its gradient off),
     ``r_info_mu_plus`` (``R_info(mu+(a))``), and ``mu_plus_x`` (the position component
-    of node 1's *local* predictive mean -- the vector ``observation_noise_at`` hands to
-    ``cue_noise``, which reads ``x = state[0]``).
+    of node 1's *local* predictive mean -- the vector ``model.observation_noise_at``
+    hands to ``cue_noise``, which reads ``x = state[0]``).
     """
     from cpomdp.efe import _ffg_efe_step
 
     backend = build_backend(epistemic_alive=alive, cue_x=cue_x)
-    observation_matrix, _ = backend.observation_model
+    observation_matrix = backend.model.observation_matrix
     arm_block = list(backend.block(ARM_NODE))  # node 1's joint indices: [position, arm]
     goal = jnp.array([0.0, 0.0])
     precision = jnp.array([[GOAL_PRECISION, 0.0], [0.0, INFO_PRECISION]])
@@ -275,8 +276,8 @@ def _boundary_scan(alive: bool, cue_x: float = CUE_X) -> dict:
     total, epistemic, pragmatic, r_info_mu_plus, mu_plus_x = [], [], [], [], []
     for action in grid:
         predicted = backend.predicted_belief(start_belief(), jnp.array([action]))
-        noise = backend.observation_noise_at(predicted.mean)  # R(mu+)
-        efe, parts = _ffg_efe_step(
+        noise = backend.model.observation_noise_at(predicted.mean)  # R(mu+)
+        efe = _ffg_efe_step(
             predicted.mean,
             predicted.cov,
             observation_matrix,
@@ -285,9 +286,9 @@ def _boundary_scan(alive: bool, cue_x: float = CUE_X) -> dict:
             precision,
             (CONTEXT,),
         )
-        total.append(float(efe))  # G = pragmatic - epistemic, the minimised quantity
-        epistemic.append(float(parts["epistemic"]))
-        pragmatic.append(float(parts["pragmatic"]))  # the goal-seeking cost
+        total.append(float(efe.g))  # G = pragmatic - epistemic, the minimised quantity
+        epistemic.append(float(efe.epistemic))
+        pragmatic.append(float(efe.pragmatic))  # the goal-seeking cost
         r_info_mu_plus.append(float(np.asarray(noise)[1, 1]))  # info channel [1, 1]
         local = np.asarray(predicted.mean)[arm_block]  # cue_noise reads x = local[0]
         mu_plus_x.append(float(local[0]))

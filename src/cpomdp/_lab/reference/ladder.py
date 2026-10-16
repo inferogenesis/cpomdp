@@ -96,12 +96,15 @@ def _kalman_update(
 ) -> tuple[Float64[Array, "n"], Float64[Array, "n n"]]:
     """One measurement update, ``(mean, cov)`` from the prior's and the reading.
 
-    The gain is a solve against the innovation covariance rather than an inverse.
+    The gain is a solve against the predicted observation covariance rather than an
+    inverse.
     """
-    innovation_cov = (
+    predicted_observation_cov = (
         observation_matrix @ prior_cov @ observation_matrix.T + observation_noise
     )  # S
-    gain = jnp.linalg.solve(innovation_cov, observation_matrix @ prior_cov).T  # K
+    gain = jnp.linalg.solve(
+        predicted_observation_cov, observation_matrix @ prior_cov
+    ).T  # K
     mean = prior_mean + gain @ (observation - observation_matrix @ prior_mean)
     cov = (jnp.eye(prior_mean.shape[0]) - gain @ observation_matrix) @ prior_cov
     return mean, cov

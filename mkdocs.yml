@@ -84,7 +84,7 @@ nav:
       - Agent: api/agent.md
       - Model & belief: api/model.md
       - Observation models: api/observation.md
-      - Process noise: api/dynamics.md
+      - Dynamics noise: api/dynamics.md
       - Model structure: api/structure.md
       - Backends: api/backends.md
       - Factor graph models: api/ffg.md

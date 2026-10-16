@@ -30,7 +30,7 @@ from cpomdp.efe import policy_efe_ffg
 from cpomdp.types import Belief
 
 if TYPE_CHECKING:
-    from cpomdp.backends.base import EfeBackend
+    from cpomdp.backends.base import GraphBackend
     from cpomdp.selection import Preference
 
 __all__ = ["CrossoverStatistic", "crossover_horizon", "crossover_statistic"]
@@ -56,7 +56,7 @@ class CrossoverStatistic:
 
 
 def crossover_statistic(
-    backend: "EfeBackend",
+    backend: "GraphBackend",
     belief: Belief,
     walk: Float64[Array, "H p"],
     reach: Float64[Array, "H p"],
@@ -84,22 +84,20 @@ def crossover_statistic(
             f"{walk.shape[0]} and {reach.shape[0]}"
         )
 
-    _, walk_parts = policy_efe_ffg(
-        backend, belief, walk, preference, info_block=info_block
-    )
-    _, reach_parts = policy_efe_ffg(
+    walk_efe = policy_efe_ffg(backend, belief, walk, preference, info_block=info_block)
+    reach_efe = policy_efe_ffg(
         backend, belief, reach, preference, info_block=info_block
     )
 
-    delta_epsilon = walk_parts["epistemic"] - reach_parts["epistemic"]
-    delta_c = walk_parts["pragmatic"] - reach_parts["pragmatic"]
+    delta_epsilon = walk_efe.epistemic - reach_efe.epistemic
+    delta_c = walk_efe.pragmatic - reach_efe.pragmatic
     delta_g = delta_c - delta_epsilon
 
     return CrossoverStatistic(int(walk.shape[0]), delta_epsilon, delta_c, delta_g)
 
 
 def crossover_horizon(
-    backend: "EfeBackend",
+    backend: "GraphBackend",
     belief: Belief,
     walk_of: Callable[[int], Float64[Array, "H p"]],
     reach_of: Callable[[int], Float64[Array, "H p"]],

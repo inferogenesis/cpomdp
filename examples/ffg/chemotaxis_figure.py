@@ -54,14 +54,14 @@ def _topology(graph) -> tuple[dict[int, tuple[int, float, float]], dict[int, flo
     edges = {
         c.child: (
             c.parent,
-            float(np.asarray(c.factor.coupling_matrix)[0, 0]),
-            float(np.asarray(c.factor.coupling_noise)[0, 0]),
+            float(np.asarray(c.coupling_matrix)[0, 0]),
+            float(np.asarray(c.coupling_noise)[0, 0]),
         )
         for c in graph.couplings
     }
     obs_r = {
         node: float(np.asarray(o.observation_noise)[0, 0])
-        for node, o in graph.observations.items()
+        for node, o in graph.observation_models.items()
     }
     return edges, obs_r
 
@@ -112,7 +112,7 @@ def _posteriors() -> tuple[Belief, Belief, float]:
     graph = _graph()
     edges, obs_r = _topology(graph)
     readings = {node: np.array([READINGS[node]]) for node in obs_r}
-    native = graph.infer(Belief(mean=[PRIOR_MEAN], cov=[[PRIOR_VAR]]), readings)
+    native = graph.infer_root(readings, Belief(mean=[PRIOR_MEAN], cov=[[PRIOR_VAR]]))
     flat = _infer_flattened(edges, obs_r)
     gap = max(
         float(np.max(np.abs(np.asarray(native.mean) - np.asarray(flat.mean)))),

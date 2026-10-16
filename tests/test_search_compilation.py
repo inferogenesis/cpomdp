@@ -26,13 +26,9 @@ from cpomdp.enumeration import (
     FiniteActionSet,
     RecedingHorizonSelector,
 )
-from cpomdp.ffg.factors.linear_gaussian import (
-    GaussianCoupling,
-    GaussianObservation,
-    GaussianTransition,
-)
+from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
 from cpomdp.ffg.graph import Coupling, CouplingGraph
-from cpomdp.observation import CallableSensor
+from cpomdp.observation import CallableSensor, FixedSensor
 from cpomdp.selection import Preference
 from cpomdp.types import Belief, LinearGaussianModel
 
@@ -57,12 +53,9 @@ def _model():
 def _backend():
     """Two scalar nodes, the second observed and driven by the first."""
     graph = CouplingGraph(
-        root=0,
         dims=(1, 1),
-        couplings=(
-            Coupling(0, 1, GaussianCoupling([[0.8]], coupling_noise=[[0.05]]), 1.0),
-        ),
-        observations={1: GaussianObservation([[1.0]], observation_noise=[[0.1]])},
+        couplings=(Coupling(0, 1, [[0.8]], coupling_noise=[[0.05]]),),
+        observation_models={1: FixedSensor([[1.0]], observation_noise=[[0.1]])},
     )
     transitions = (
         GaussianTransition([[0.7]], dynamics_noise=[[0.1]]),
@@ -79,11 +72,11 @@ def _actions():
 
 FIRST = (
     Belief(mean=[0.3, -0.2], cov=[[0.7, 0.1], [0.1, 0.4]]),
-    Preference(goal=[1.0], precision=[[2.0]]),
+    Preference(target=[1.0], precision=[[2.0]]),
 )
 SECOND = (
     Belief(mean=[-0.5, 0.4], cov=[[0.5, 0.0], [0.0, 0.6]]),
-    Preference(goal=[-0.5], precision=[[3.0]]),
+    Preference(target=[-0.5], precision=[[3.0]]),
 )
 
 # Each case: a search, and the per-step kernel its rollout traces through.

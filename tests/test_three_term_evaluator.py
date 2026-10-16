@@ -200,9 +200,7 @@ def test_a_model_with_a_control_matrix_needs_an_action():
 def _state_dependent_model() -> LinearGaussianModel:
     return LinearGaussianModel(
         dynamics_matrix=[[1.0, DT], [0.0, 1.0]],
-        observation_matrix=[[1.0, 0.0]],
         dynamics_noise=[[1e-4, 0.0], [0.0, 1e-4]],
-        observation_noise=[[1e-2]],
         prior=Belief(mean=[0.0, 0.0], cov=[[1.0, 0.0], [0.0, 1.0]]),
         control_matrix=[[0.0], [DT]],
         observation_model=CallableSensor(

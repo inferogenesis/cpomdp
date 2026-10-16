@@ -36,7 +36,6 @@ from cpomdp.observation import CallableSensor
 from cpomdp.selection import (
     ActionSelector,
     EFESelector,
-    ObservationGoal,
     Preference,
 )
 from cpomdp.types import Belief, LinearGaussianModel
@@ -64,7 +63,7 @@ def _search(horizon=2):
 
 
 def _pref():
-    return Preference(goal=[1.0], precision=[[2.0]])
+    return Preference(target=[1.0], precision=[[2.0]])
 
 
 def _b0():
@@ -179,8 +178,9 @@ class TestDrivesAgent:
     def test_receding_selector_runs_in_the_agent_loop(self):
         model = _model()
         search = EnumeratedEfeSearch(model, _action_set(), horizon=2)
-        goal = ObservationGoal(target=[1.0], action_bounds=(-1.0, 1.0))
-        agent = Agent(model, goal, selector=RecedingHorizonSelector(search))
+        agent = Agent(
+            model, Preference([1.0]), selector=RecedingHorizonSelector(search)
+        )
         agent.infer_states(jnp.array([0.1]))
         action = agent.sample_action()
         assert action.shape == (1,)
@@ -221,8 +221,7 @@ class TestDrivesEitherSearch:
             driver(selector)
 
     def test_the_chunked_driver_runs_in_the_agent_loop(self, driver):
-        goal = ObservationGoal(target=[1.0], action_bounds=(-1.0, 1.0))
-        agent = Agent(_model(), goal, selector=driver(_chunked()))
+        agent = Agent(_model(), Preference([1.0]), selector=driver(_chunked()))
         agent.infer_states(jnp.array([0.1]))
         assert agent.sample_action().shape == (1,)
         agent.infer_states(jnp.array([0.2]))
