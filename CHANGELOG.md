@@ -118,7 +118,9 @@ certainty equivalence is optimal, and no use of the readings beats it.
   the seam and the reference filter reach it without reaching the evaluator.
 - `cpomdp.control` — the finite-horizon schedule. `lqr_schedule` runs the control
   Riccati recursion backward a declared number of steps from a zero terminal cost and
-  keeps every gain, where `LQRController` iterates to a fixed point and keeps one.
+  keeps every gain, where `LQRController` iterates to a fixed point and keeps one. It
+  takes the two costs as `precision` and `effort`, the names a `StateGoal` gives them,
+  and `LQRSchedule` keeps them under those names.
   `LQRSchedule.first_gain` is the gain a receding-horizon planner at horizon `H`
   applies at every step; the steady-state gain is its limit and differs from it at every
   finite `H`, by an amount that shrinks with `H` and reads as an error when the horizons
