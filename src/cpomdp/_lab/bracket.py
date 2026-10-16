@@ -243,13 +243,13 @@ def full_information_cost(
     The floor of the control bracket. No controller that has to infer the state from
     readings can do better, since the state itself is the most it could know. With
     ``d`` the prior mean's offset from the goal, ``Σ₀`` the prior covariance and
-    ``Q_w`` the process noise::
+    ``Q_w`` the dynamics noise::
 
         J_lower = dᵀ P_H d + tr(P_H Σ₀) + Σ_{j=0}^{H−1} tr((Q + P_j) Q_w)
 
     ``P_j`` is the cost still to pay with ``j`` steps remaining, which the schedule
     stores as ``costs_to_go[H − j]``. The first two terms are the whole plan's cost
-    averaged over where the state starts. The sum is what the process noise adds at
+    averaged over where the state starts. The sum is what the dynamics noise adds at
     each step, priced at the cost of everything that remains from there.
 
     The goal has to be a state the dynamics hold at zero action, ``A · goal = goal``,
@@ -265,7 +265,7 @@ def full_information_cost(
         The expected cost in the units of the schedule's ``precision`` and ``effort``.
 
     Raises:
-        ValueError: If the model's process noise depends on the state, if ``goal`` is
+        ValueError: If the model's dynamics noise depends on the state, if ``goal`` is
             not a vector of length ``n`` the dynamics hold, or if ``prior`` is not
             over the model's state.
     """

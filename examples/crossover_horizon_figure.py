@@ -213,18 +213,20 @@ def build_model(*, frozen_noise: float | None = None) -> LinearGaussianModel:
     )
     observed = observation_matrix()  # C
     _require_full_row_rank(observed)
+    # The live sensor carries C and R(x) itself. The frozen twin states both plainly.
+    live = frozen_noise is None
     pinned = R_DULL if frozen_noise is None else frozen_noise
-    fixed_noise = np.diag([R_DULL] * CONTEXT_DIMS + [pinned] * CONTEXT_DIMS)
-    live_sensor = CallableSensor(observed, beacon_noise, sensor_params())
-    observation_model = None if frozen_noise is not None else live_sensor
+    frozen = np.diag([R_DULL] * CONTEXT_DIMS + [pinned] * CONTEXT_DIMS)
     return LinearGaussianModel(
         dynamics_matrix=dynamics_matrix.tolist(),
-        observation_matrix=observed.tolist(),
+        observation_matrix=None if live else observed.tolist(),
         dynamics_noise=dynamics_noise.tolist(),
-        observation_noise=fixed_noise.tolist(),
+        observation_noise=None if live else frozen.tolist(),
         prior=start_belief(),
         control_matrix=control_matrix.tolist(),
-        observation_model=observation_model,
+        observation_model=(
+            CallableSensor(observed, beacon_noise, sensor_params()) if live else None
+        ),
     )
 
 

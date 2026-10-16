@@ -80,7 +80,7 @@ THE DATA FLOW  (top → bottom: what goes in → what comes out)
       ▼    PREDICT    μ⁺ = A·μ + control·a     (action enters HERE only)
       │               Σ⁺ = A·Σ·Aᵀ + Q          (this step's Σ⁺ does not see the action)
       │
-      ▼    SENSE      (C, R) = linearize(μ⁺)   or fixed (model.C, model.R)
+      ▼    SENSE      (C, R) = linearize(μ⁺)   or the model's fixed (C, R)
       │               o⁺ = C·μ⁺
       │               S  = C·Σ⁺·Cᵀ + R         (predicted observation cov, ONCE)
       │
@@ -110,7 +110,7 @@ if TYPE_CHECKING:
     # from the backends package is the exception the graph rollouts raise, and
     # `backends.base` imports nothing that imports this module. selection imports this
     # module, so `_goal_and_precision` reads `Preference` at call time.
-    from cpomdp.backends.base import EfeBackend
+    from cpomdp.backends.base import GraphBackend
     from cpomdp.selection import Preference
 
 __all__ = [
@@ -228,7 +228,7 @@ def expected_free_energy(
         G = pragmatic − epistemic
 
     μ and Σ are the belief's mean and covariance, and a is the action. A, B and Q are
-    the dynamics, control and process noise matrices. C and R are the sensor's
+    the dynamics, control and dynamics-noise matrices. C and R are the sensor's
     observation matrix and noise. μ⁺ and Σ⁺ are the predicted state moments, o⁺ the
     predicted reading and S its covariance. o* is the preferred reading and Λ its
     precision.
@@ -415,7 +415,7 @@ def _rollout_body(
         # predict-only propagation: rollout fetches its OWN C (the one eval the
         # one-step wrapper never pays), reusing the (Σ⁺, S) r already returned.
         c = (
-            model.C
+            model.observation_matrix
             if model.observation_model is None
             else model.observation_model.linearize(r.predicted_mean)[0]
         )
@@ -438,7 +438,7 @@ def _rollout_body(
 
 
 def policy_efe_ffg(
-    backend: "EfeBackend",
+    backend: "GraphBackend",
     belief: Belief,
     policy: Float64[Array, "H p"],
     preference: "Preference",
@@ -461,11 +461,10 @@ def policy_efe_ffg(
     [`FfgEfeSelector`][cpomdp.FfgEfeSelector] ``vmap``s its per-candidate score.
 
     Args:
-        backend: The FFG inference backend. It supplies ``predicted_belief``,
-            ``observation_model`` (the constant sensor matrix),
-            ``observation_noise_at`` (the sensor noise at the predicted mean) and
-            ``block``.
-        belief: The starting joint belief over the ``n_total``-D joint state.
+        backend: The FFG inference backend. It supplies ``predicted_belief``
+            (μ⁺, Σ⁺), ``model.observation_matrix`` (the constant sensor C),
+            ``model.observation_noise_at`` (R at μ⁺) and ``block``.
+        belief: The starting joint belief ``(μ, Σ)`` over the backend's joint state.
         policy: The ``H`` actions to roll out, shape ``(H, p)``.
         preference: The observation-space [`Preference`][cpomdp.Preference], as for
             ``expected_free_energy``. An
@@ -491,7 +490,7 @@ def policy_efe_ffg(
 
 
 def _policy_efe_ffg(
-    backend: "EfeBackend",
+    backend: "GraphBackend",
     belief: Belief,
     policy: Float64[Array, "H p"],
     preference: "Preference",
@@ -527,7 +526,7 @@ _FfgRolloutStep = Callable[
 
 
 def policy_efe_ffg_trace(
-    backend: "EfeBackend",
+    backend: "GraphBackend",
     belief: Belief,
     policy: Float64[Array, "H p"],
     preference: "Preference",
@@ -547,7 +546,7 @@ def policy_efe_ffg_trace(
 
     Args:
         backend: The FFG inference backend, as for ``policy_efe_ffg``.
-        belief: The starting joint belief over the ``n_total``-D joint state.
+        belief: The starting joint belief over the backend's joint state.
         policy: The ``H`` actions to roll out, shape ``(H, p)``.
         preference: The observation-space [`Preference`][cpomdp.Preference], as for
             ``expected_free_energy``.
@@ -622,7 +621,7 @@ def _not_a_preference(given: object) -> str:
 
 
 def _checked_info_block(
-    backend: "EfeBackend", info_block: Sequence[int]
+    backend: "GraphBackend", info_block: Sequence[int]
 ) -> tuple[int, ...]:
     """``info_block`` as a tuple, refused unless an FFG EFE can be aimed at it.
 
@@ -646,17 +645,18 @@ def _checked_info_block(
         raise ValueError("info_block is empty; name the joint-state indices to aim at")
     if len(set(block)) != len(block):
         raise ValueError(f"info_block {block} repeats an index")
-    out_of_range = [i for i in block if not 0 <= i < backend.n_total]
+    n_states = backend.model.n_states
+    out_of_range = [i for i in block if not 0 <= i < n_states]
     if out_of_range:
         raise ValueError(
             f"info_block {block} has indices {out_of_range} outside the "
-            f"{backend.n_total}-D joint state (0..{backend.n_total - 1})"
+            f"{n_states}-D joint state (0..{n_states - 1})"
         )
     return block
 
 
 def _ffg_rollout_body(
-    backend: "EfeBackend",
+    backend: "GraphBackend",
     goal: Float64[Array, "m"],
     precision: Float64[Array, "m m"],
     info_block: Sequence[int],
@@ -672,11 +672,12 @@ def _ffg_rollout_body(
     re-read per step (it may be state-dependent). The carried mean is ``μ⁺`` — zero
     expected innovation, so the observation moves only the covariance.
     """
-    observation_matrix, _ = backend.observation_model  # C (constant, front-loaded)
+    model = backend.model
+    observation_matrix = model.observation_matrix  # C (constant, front-loaded)
 
     def step(belief, action):
         predicted = backend.predicted_belief(belief, action)  # μ⁺, Σ⁺
-        observation_noise = backend.observation_noise_at(predicted.mean)  # R(μ⁺)
+        observation_noise = model.observation_noise_at(predicted.mean)  # R(μ⁺)
         scored = _ffg_efe_step(
             predicted.mean,
             predicted.cov,
@@ -855,14 +856,16 @@ def _efe_step(
     # posterior this step hands the next one, depend on where the action put the mean.
     # Over a horizon the covariance does move with the policy; only the one-step
     # predicted covariance is blind to it.
-    mu_pred = model.A @ mu + control_matrix @ action
-    process_q = (
-        model.Q
+    mu_pred = model.dynamics_matrix @ mu + control_matrix @ action
+    dynamics_noise = (
+        model.dynamics_noise
         if model.dynamics_noise_model is None
         else model.dynamics_noise_model.noise_at(mu_pred)
     )
 
-    sigma_pred = model.A @ sigma @ model.A.T + process_q  # Σ⁺ = AΣAᵀ + process_q
+    sigma_pred = (
+        model.dynamics_matrix @ sigma @ model.dynamics_matrix.T + dynamics_noise
+    )  # Σ⁺ = AΣAᵀ + dynamics_noise
 
     # --- sense: predicted-observation moments (o⁺, S) + conditional noise R at μ⁺ ---
     # The sensor owns its moment-matching (D1): the kernel never reconstructs o⁺/S.
@@ -872,7 +875,10 @@ def _efe_step(
     if model.observation_model is None:
         # FAST PATH — a bare matvec/matmul, byte-identical to Phase 1A. Kept inline
         # (no method dispatch) so the fixed-sensor hot path stays lean.
-        observation_matrix, observation_noise = model.C, model.R
+        observation_matrix, observation_noise = (
+            model.observation_matrix,
+            model.observation_noise,
+        )
         o_pred = observation_matrix @ mu_pred
         pred_obs_cov = (
             observation_matrix @ sigma_pred @ observation_matrix.T + observation_noise
