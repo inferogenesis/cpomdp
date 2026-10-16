@@ -173,8 +173,7 @@ class LinearGaussianModel:
     letters, to avoid the letter collision with discrete active inference
     (pymdp), where the same letters mean different things. The "also known as"
     column lists the terms other backgrounds use, so readers can still find the
-    right field. (Letters survive as ``.A``/``.B``/``.C``/``.Q``/``.R`` aliases
-    for backend use.)
+    right field. Each field has that one name.
 
     | role name | letter | meaning | shape | also known as |
     | --- | --- | --- | --- | --- |
@@ -427,32 +426,6 @@ class LinearGaussianModel:
     def n_controls(self) -> int:
         """Dimension of an action (p); 0 if the model has no control."""
         return 0 if self.control_matrix is None else self.control_matrix.shape[1]
-
-    # --- control-theory letter aliases (for backend/maths internals) ---
-    @property
-    def A(self) -> Float64[Array, "n n"]:
-        """A: the state-transition matrix (alias of ``dynamics_matrix``)."""
-        return self.dynamics_matrix
-
-    @property
-    def B(self) -> Float64[Array, "n p"] | None:
-        """B: the control matrix (alias of ``control_matrix``); ``None`` if unset."""
-        return self.control_matrix
-
-    @property
-    def C(self) -> Float64[Array, "m n"]:
-        """C: the observation matrix (alias of ``observation_matrix``)."""
-        return self.observation_matrix
-
-    @property
-    def Q(self) -> Float64[Array, "n n"]:
-        """Q: the dynamics-noise covariance (alias of ``dynamics_noise``)."""
-        return self.dynamics_noise
-
-    @property
-    def R(self) -> Float64[Array, "m m"]:
-        """R: the observation-noise covariance (alias of ``observation_noise``)."""
-        return self.observation_noise
 
     def tree_flatten(self) -> tuple[tuple[_ModelLeaf, ...], ModelStructure | None]:
         """Leaves for JAX: every matrix plus the ``prior`` belief; ``structure`` is aux.

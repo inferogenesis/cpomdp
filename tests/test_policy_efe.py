@@ -8,8 +8,8 @@ between steps:
   `y − Cμ⁺` has zero expectation (no real future observation);
 - the covariance contracts by the Kalman update `Σ_post = Σ⁺ − Σ⁺Cᵀ S⁻¹ C Σ⁺`,
   computed inline from the `(Σ⁺, S)` `_efe_step` already returns plus the `C` the
-  rollout fetches itself (`model.C` fixed, else `linearize(μ⁺)[0]`), then
-  symmetrized as a PSD guard.
+  rollout fetches itself (`model.observation_matrix` fixed, else
+  `linearize(μ⁺)[0]`), then symmetrized as a PSD guard.
 
 The signature is deliberately `horizon`-free: `H` is `policy.shape[0]` (which
 `lax.scan` uses as its static trip count), so a separate kwarg would be a

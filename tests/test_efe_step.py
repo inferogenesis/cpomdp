@@ -146,16 +146,19 @@ def _frozen_efe(model, belief, action, preference):
     action = jnp.asarray(action, dtype=float)
     mu, sigma = belief.mean, belief.cov
 
-    mu_pred = model.A @ mu + control @ action
+    mu_pred = model.dynamics_matrix @ mu + control @ action
     process_q = (
-        model.Q
+        model.dynamics_noise
         if model.dynamics_noise_model is None
         else model.dynamics_noise_model.noise_at(mu_pred)
     )
-    sigma_pred = model.A @ sigma @ model.A.T + process_q
+    sigma_pred = model.dynamics_matrix @ sigma @ model.dynamics_matrix.T + process_q
 
     if model.observation_model is None:
-        observation_matrix, observation_noise = model.C, model.R
+        observation_matrix, observation_noise = (
+            model.observation_matrix,
+            model.observation_noise,
+        )
         o_pred = observation_matrix @ mu_pred
         pred_obs_cov = (
             observation_matrix @ sigma_pred @ observation_matrix.T + observation_noise

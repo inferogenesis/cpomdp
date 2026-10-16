@@ -558,8 +558,11 @@ certainty equivalence is optimal, and no use of the readings beats it.
   constants (`SENSOR` is `OBSERVATION_MATRIX`, `PROCESS_NOISE` is `DYNAMICS_NOISE`).
   `LinearGaussianModel.observation_model` and `InferenceBackend.observation_model()` now
   share a name on two classes: the field holds the declaration, the method returns the
-  `(C, R)` it resolves to. The `.A`/`.B`/`.C`/`.Q`/`.R` aliases are unchanged, and no
-  numerical behaviour moved.
+  `(C, R)` it resolves to. No numerical behaviour moved.
+- **Breaking:** `LinearGaussianModel` drops its `.A`, `.B`, `.C`, `.Q` and `.R`
+  properties. Each field has its role name only. In pymdp `A` is the likelihood and `C`
+  the preferences, so `model.A` handed a pymdp user the dynamics matrix with no error,
+  and every field carried two public names.
 - **Breaking:** the dynamics-noise classes take the observation side's names.
   `DynamicsNoise` is `DynamicsNoiseModel`, the protocol the `dynamics_noise_model` field
   holds, as `observation_model` holds an `ObservationModel`. `CallableProcessNoise` is
