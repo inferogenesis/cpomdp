@@ -86,9 +86,7 @@ def scalar_chain(
     """The scalar chain the worked example uses: A = B = C = Q = 1, R(x) = 1 + x²."""
     model = LinearGaussianModel(
         dynamics_matrix=[[dynamics_matrix]],
-        observation_matrix=[[1.0]],
         dynamics_noise=[[process]],
-        observation_noise=[[1.0]],
         prior=Belief([mean], [[prior_var]]),
         control_matrix=[[control_matrix]],
         observation_model=CallableSensor([[1.0]], range_noise, RANGE_NOISE_PARAMS),
@@ -105,7 +103,7 @@ def noise_at(model, mean):
 
 def predict_mean(model, belief, action):
     """μ⁻ = A μ + B u."""
-    return np.asarray(model.A, dtype=float) @ np.asarray(
+    return np.asarray(model.dynamics_matrix, dtype=float) @ np.asarray(
         belief.mean, dtype=float
     ) + np.asarray(model.control_matrix, dtype=float) @ np.atleast_1d(action)
 
@@ -123,14 +121,20 @@ class TestWorkedExample:
     def test_one_step_numbers(self, action, noise, gain, info):
         model, belief = scalar_chain()
         mu_pred = predict_mean(model, belief, action)
-        cov_pred = predicted_cov(belief.cov, model.A, model.Q)
+        cov_pred = predicted_cov(
+            belief.cov, model.dynamics_matrix, model.dynamics_noise
+        )
 
         # The predicted variance is 2 under either action — only the mean moved.
         assert cov_pred == pytest.approx(2.0)
         assert noise_at(model, mu_pred) == pytest.approx(noise)
 
         k, _ = _gain_and_posterior_cov(
-            model.A, model.C, model.Q, jnp.atleast_2d(noise), belief.cov
+            model.dynamics_matrix,
+            model.observation_matrix,
+            model.dynamics_noise,
+            jnp.atleast_2d(noise),
+            belief.cov,
         )
         assert float(k[0, 0]) == pytest.approx(gain)
 
@@ -226,11 +230,13 @@ class TestDualEffect:
 
     def test_posterior_covariance_depends_on_the_action(self):
         model, belief = scalar_chain()
-        cov_pred = predicted_cov(belief.cov, model.A, model.Q)
+        cov_pred = predicted_cov(
+            belief.cov, model.dynamics_matrix, model.dynamics_noise
+        )
         posts = {}
         for u in (0.0, 2.0):
             r = noise_at(model, predict_mean(model, belief, u))
-            posts[u] = posterior_cov(cov_pred, model.C, r)
+            posts[u] = posterior_cov(cov_pred, model.observation_matrix, r)
         assert not np.allclose(posts[0.0], posts[2.0])
 
     def test_gain_depends_on_the_action(self):
@@ -238,7 +244,13 @@ class TestDualEffect:
         gains = {}
         for u in (0.0, 2.0):
             r = noise_at(model, predict_mean(model, belief, u))
-            k, _ = _gain_and_posterior_cov(model.A, model.C, model.Q, r, belief.cov)
+            k, _ = _gain_and_posterior_cov(
+                model.dynamics_matrix,
+                model.observation_matrix,
+                model.dynamics_noise,
+                r,
+                belief.cov,
+            )
             gains[u] = float(k[0, 0])
         assert gains[0.0] != pytest.approx(gains[2.0])
 
@@ -250,12 +262,18 @@ class TestDualEffect:
         another forces a different one.
         """
         model, belief = scalar_chain()
-        cov_pred = predicted_cov(belief.cov, model.A, model.Q)
+        cov_pred = predicted_cov(
+            belief.cov, model.dynamics_matrix, model.dynamics_noise
+        )
         pinned = []
         for u in (0.0, 2.0):
             r = noise_at(model, predict_mean(model, belief, u))
             pinned.append(
-                pin_noise(cov_pred, model.C, posterior_cov(cov_pred, model.C, r))
+                pin_noise(
+                    cov_pred,
+                    model.observation_matrix,
+                    posterior_cov(cov_pred, model.observation_matrix, r),
+                )
             )
         assert pinned[0] == pytest.approx(np.array([[1.0]]))
         assert pinned[1] == pytest.approx(np.array([[5.0]]))
@@ -292,11 +310,15 @@ class TestScalarObservations:
 
     def test_two_reachable_variances_separate_the_information(self):
         model, belief = scalar_chain()
-        cov_pred = predicted_cov(belief.cov, model.A, model.Q)
+        cov_pred = predicted_cov(
+            belief.cov, model.dynamics_matrix, model.dynamics_noise
+        )
         low = noise_at(model, predict_mean(model, belief, 0.0))
         high = noise_at(model, predict_mean(model, belief, 2.0))
         assert low < high
-        assert epistemic(cov_pred, model.C, low) > epistemic(cov_pred, model.C, high)
+        assert epistemic(cov_pred, model.observation_matrix, low) > epistemic(
+            cov_pred, model.observation_matrix, high
+        )
 
 
 class TestZeroInnovation:
@@ -309,14 +331,16 @@ class TestZeroInnovation:
 
         open_loop, mean = [], np.asarray(belief.mean, dtype=float)
         for u in actions:  # observations marginalised: the mean never gets corrected
-            mean = np.asarray(model.A, dtype=float) @ mean + np.asarray(
+            mean = np.asarray(model.dynamics_matrix, dtype=float) @ mean + np.asarray(
                 model.control_matrix, dtype=float
             ) @ np.atleast_1d(u)
             open_loop.append(mean.copy())
 
         current = belief
         for u, planned in zip(actions, open_loop, strict=True):
-            reading = np.asarray(model.C, dtype=float) @ planned  # o = C μ⁻
+            reading = (
+                np.asarray(model.observation_matrix, dtype=float) @ planned
+            )  # o = C μ⁻
             current = backend.infer_states(
                 jnp.asarray(reading), current, jnp.array([u])
             )
@@ -336,19 +360,30 @@ class TestPlanningReductionEquivalence:
             control_matrix=[[1.0]],
         )
         belief = Belief([0.0], [[1.0]])
-        cov_pred = predicted_cov(belief.cov, model.A, model.Q)
-        posts = [posterior_cov(cov_pred, model.C, model.R) for _ in (0.0, 2.0)]
+        cov_pred = predicted_cov(
+            belief.cov, model.dynamics_matrix, model.dynamics_noise
+        )
+        posts = [
+            posterior_cov(cov_pred, model.observation_matrix, model.observation_noise)
+            for _ in (0.0, 2.0)
+        ]
         assert posts[0] == pytest.approx(posts[1])
         # policy-independent covariances -> the pinned schedule is one constant
-        pinned = {float(pin_noise(cov_pred, model.C, p)[0, 0]) for p in posts}
+        pinned = {
+            float(pin_noise(cov_pred, model.observation_matrix, p)[0, 0]) for p in posts
+        }
         assert len(pinned) == 1
 
     def test_reachable_state_dependence_destroys_it(self):
         model, belief = scalar_chain()
-        cov_pred = predicted_cov(belief.cov, model.A, model.Q)
+        cov_pred = predicted_cov(
+            belief.cov, model.dynamics_matrix, model.dynamics_noise
+        )
         posts = [
             posterior_cov(
-                cov_pred, model.C, noise_at(model, predict_mean(model, belief, u))
+                cov_pred,
+                model.observation_matrix,
+                noise_at(model, predict_mean(model, belief, u)),
             )
             for u in (0.0, 2.0)
         ]
@@ -361,15 +396,17 @@ class TestPlanningReductionEquivalence:
         the noise is pinned to one value and a fixed schedule reproduces the agent.
         """
         model, belief = scalar_chain(control_matrix=0.0)
-        cov_pred = predicted_cov(belief.cov, model.A, model.Q)
+        cov_pred = predicted_cov(
+            belief.cov, model.dynamics_matrix, model.dynamics_noise
+        )
         pinned = {
             float(
                 pin_noise(
                     cov_pred,
-                    model.C,
+                    model.observation_matrix,
                     posterior_cov(
                         cov_pred,
-                        model.C,
+                        model.observation_matrix,
                         noise_at(model, predict_mean(model, belief, u)),
                     ),
                 )[0, 0]

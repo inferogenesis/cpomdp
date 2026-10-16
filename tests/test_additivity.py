@@ -157,7 +157,6 @@ def test_the_free_energy_refuses_a_state_dependent_sensor():
     # would price every reading against it.
     sensed = LinearGaussianModel(
         dynamics_matrix=[[1.0, DT], [0.0, 1.0]],
-        observation_matrix=[[1.0, 0.0]],
         dynamics_noise=[[1e-4, 0.0], [0.0, 1e-4]],
         prior=BELIEF,
         control_matrix=[[0.0], [DT]],

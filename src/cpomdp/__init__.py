@@ -16,19 +16,18 @@ implement. The optional RxInfer oracle lives behind the ``rxinfer`` extra —
 import it explicitly from ``cpomdp.backends.rxinfer`` so the core stays
 Julia-free.
 
-For a *branching* model, declare a ``CouplingGraph`` whose nodes carry
-observation factors (``GaussianObservation``,
-``CallableGaussianObservation``) and whose ``Coupling`` edges carry a
-``GaussianCoupling``, then run it through a ``CouplingGraphBackend``
-with a per-node ``GaussianTransition``. A state-dependent ``R(x)`` on a
-coupled node cannot be flattened to a fixed linear-Gaussian model; asking it to
-raises ``IncompatibleLinearizationError`` (ADR-019, ADR-020). The
+For a *branching* model, declare a ``CouplingGraph`` whose nodes carry the
+same sensors a flat model takes (``FixedSensor``, ``CallableSensor``) and whose
+``Coupling`` edges each hold a coupling matrix and its noise, then run it through a
+``CouplingGraphBackend`` with a per-node ``GaussianTransition``. A state-dependent
+``R(x)`` on a coupled node cannot be flattened to a fixed linear-Gaussian model.
+Asking it to raises ``IncompatibleLinearizationError`` (ADR-019, ADR-020). The
 ``Agent`` dispatches an ``FfgEfeSelector`` — the FFG peer of
 ``EFESelector`` — for such a backend; pass ``selector=`` to override it.
 
 Whether a state-dependent sensor earns its keep is a question about the states an
 action can actually reach: ``probe_model`` samples that reachable set and
-reports back a ``SensorReport``.
+reports back a ``ProbeReport``.
 """
 
 import jax as _jax
@@ -41,15 +40,10 @@ from cpomdp.backends.coupling import (
 )
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.control import LQRController
-from cpomdp.diagnostics import SensorReport, probe_model
-from cpomdp.dynamics import CallableProcessNoise, DynamicsNoise
+from cpomdp.diagnostics import ProbeReport, probe_model
+from cpomdp.dynamics import CallableDynamicsNoise, DynamicsNoiseModel
 from cpomdp.efe import expected_free_energy
-from cpomdp.ffg.factors.linear_gaussian import (
-    CallableGaussianObservation,
-    GaussianCoupling,
-    GaussianObservation,
-    GaussianTransition,
-)
+from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
 from cpomdp.ffg.graph import Coupling, CouplingGraph
 from cpomdp.observation import CallableSensor, FixedSensor, ObservationModel
 from cpomdp.selection import (
@@ -75,18 +69,15 @@ __all__ = [
     "ActionSelector",
     "Agent",
     "Belief",
-    "CallableGaussianObservation",
-    "CallableProcessNoise",
+    "CallableDynamicsNoise",
     "CallableSensor",
     "Coupling",
     "CouplingGraph",
     "CouplingGraphBackend",
-    "DynamicsNoise",
+    "DynamicsNoiseModel",
     "EFESelector",
     "FfgEfeSelector",
     "FixedSensor",
-    "GaussianCoupling",
-    "GaussianObservation",
     "GaussianTransition",
     "InadmissiblePartitionError",
     "IncompatibleLinearizationError",
@@ -99,7 +90,7 @@ __all__ = [
     "ObservationGoal",
     "ObservationModel",
     "Preference",
-    "SensorReport",
+    "ProbeReport",
     "StateGoal",
     "Warrant",
     "expected_free_energy",

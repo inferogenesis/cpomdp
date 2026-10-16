@@ -15,14 +15,9 @@ from _support import unit_prior
 from cpomdp.agent import Agent
 from cpomdp.backends.coupling import CouplingGraphBackend
 from cpomdp.efe import _ffg_efe_step
-from cpomdp.ffg.factors.linear_gaussian import (
-    CallableGaussianObservation,
-    GaussianCoupling,
-    GaussianObservation,
-    GaussianTransition,
-)
+from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
 from cpomdp.ffg.graph import Coupling, CouplingGraph
-from cpomdp.observation import CallableSensor
+from cpomdp.observation import CallableSensor, FixedSensor
 from cpomdp.selection import (
     EFESelector,
     FfgEfeSelector,
@@ -59,13 +54,10 @@ def test_ffg_selector_reduces_to_efe_selector_single_node():
     control = np.array([[1.0], [0.0]])  # B — drives observed state[0], so G is non-flat
 
     graph = CouplingGraph(
-        root=0,
         dims=(2,),
         couplings=(),
-        observations={
-            0: GaussianObservation(
-                observation_matrix, observation_noise=observation_noise
-            )
+        observation_models={
+            0: FixedSensor(observation_matrix, observation_noise=observation_noise)
         },
     )
     backend = CouplingGraphBackend(
@@ -102,12 +94,9 @@ def test_ffg_selector_reduces_to_efe_selector_single_node():
 def _two_node_backend():
     # CheA(0) -> CheY(1); observe CheY; the action drives CheA (the root).
     graph = CouplingGraph(
-        root=0,
         dims=(1, 1),
-        couplings=(
-            Coupling(0, 1, GaussianCoupling([[0.8]], coupling_noise=[[0.05]]), 1.0),
-        ),
-        observations={1: GaussianObservation([[1.0]], observation_noise=[[0.1]])},
+        couplings=(Coupling(0, 1, [[0.8]], coupling_noise=[[0.05]]),),
+        observation_models={1: FixedSensor([[1.0]], observation_noise=[[0.1]])},
     )
     transitions = (
         GaussianTransition([[0.7]], dynamics_noise=[[0.1]]),
@@ -224,13 +213,10 @@ def test_ffg_agent_matches_kalman_efe_agent_end_to_end():
         control_matrix=control,
     )
     graph = CouplingGraph(
-        root=0,
         dims=(2,),
         couplings=(),
-        observations={
-            0: GaussianObservation(
-                observation_matrix, observation_noise=observation_noise
-            )
+        observation_models={
+            0: FixedSensor(observation_matrix, observation_noise=observation_noise)
         },
     )
     backend = CouplingGraphBackend(
@@ -295,10 +281,9 @@ def _single_node_rx_backend(params):
     C = np.array([[1.0, 0.0]])
     B = np.array([[1.0], [0.0]])
     graph = CouplingGraph(
-        root=0,
         dims=(2,),
         couplings=(),
-        observations={0: CallableGaussianObservation(C, _rx_noise, params)},
+        observation_models={0: CallableSensor(C, _rx_noise, params)},
     )
     backend = CouplingGraphBackend(
         graph,
@@ -325,10 +310,9 @@ class TestStateDependentSelection:
         assert float(jnp.max(epi) - jnp.min(epi)) > 1e-6  # varies with action
 
         graph_fx = CouplingGraph(
-            root=0,
             dims=(2,),
             couplings=(),
-            observations={0: GaussianObservation(C, observation_noise=params["R0"])},
+            observation_models={0: FixedSensor(C, observation_noise=params["R0"])},
         )
         fx = CouplingGraphBackend(
             graph_fx,
@@ -347,9 +331,7 @@ class TestStateDependentSelection:
         rx, A, Q, C, B = _single_node_rx_backend(params)
         model = LinearGaussianModel(
             dynamics_matrix=A,
-            observation_matrix=C,
             dynamics_noise=Q,
-            observation_noise=params["R0"],  # placeholder; overridden by observation
             prior=Belief(mean=np.zeros(2), cov=np.eye(2)),
             control_matrix=B,
             observation_model=CallableSensor(C, _rx_noise, params),
@@ -377,11 +359,10 @@ class TestStateDependentSelection:
         # the pragmatic risk and the epistemic there share one covariance.)
         params = {"R_goal": 5.0, "R0": 0.15, "gain": 8.0}  # noisy goal, sharp info
         graph = CouplingGraph(
-            root=0,
             dims=(1,),
             couplings=(),
-            observations={
-                0: CallableGaussianObservation([[1.0], [1.0]], _decoupled_noise, params)
+            observation_models={
+                0: CallableSensor([[1.0], [1.0]], _decoupled_noise, params)
             },  # both channels read s
         )
         rx = CouplingGraphBackend(

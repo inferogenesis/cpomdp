@@ -81,7 +81,7 @@ def test_uncertain_food_backend_agreement():
 
 
 def test_coupling_graph_two_routes_agree():
-    """`CouplingGraph.infer` on a branching tree matches the hand-flattened Kalman.
+    """`CouplingGraph.infer_root` on a branching tree matches the hand-flattened Kalman.
 
     The demo prints the verdict, and until it was wired up here nothing consumed it: a
     disagreement printed `FAIL` and exited zero.
