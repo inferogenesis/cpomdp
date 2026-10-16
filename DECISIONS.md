@@ -4757,13 +4757,19 @@ subclass. It owns the validation, the scorer each constructor builds, `policies_
 `n_policies`, `horizon` and `warrant`, and declares `evaluate` and `cost_per_plan`. Both
 drivers take any `ExhaustiveEfeSearch` and refuse anything else with a `TypeError`. The
 check is nominal, so the `PROVED` a driver reports still comes from a search that
-declared itself exhaustive.
+declared itself exhaustive. The base is public as a type and not as an extension point:
+a subclass records its enumeration through the private `_enumerate`, so subclassing
+outside cpomdp is unsupported until a user needs it (ADR-069).
 
 **Both searches trace.** `evaluate` composes with `jit`, `vmap` and `lax.scan` on either
 search. The chunked certificate rests on a count the loop produces, which a trace cannot
 read on the host. Inside a transformation the certificate states the expected count and
 a `jax.debug.callback` checks the loop's count in the run, so a miscount fails the run.
-The count is read as an exact integer.
+The count is read as an exact integer. A driver keeps a certificate only from a run that
+read a real count, so a trace leaves none. A `FiniteActionSet` is refused under a trace,
+where its actions cannot be checked for NaN. The result dataclasses register with JAX
+through `register_dataclass` and field metadata, which needs JAX 0.4.36, so that is the
+floor.
 
 ### Consequences
 

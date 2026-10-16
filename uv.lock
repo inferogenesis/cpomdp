@@ -398,7 +398,7 @@ docs = [
 
 [package.metadata]
 requires-dist = [
-    { name = "jax", specifier = ">=0.4" },
+    { name = "jax", specifier = ">=0.4.36" },
     { name = "jaxtyping", specifier = ">=0.3.7" },
     { name = "juliacall", marker = "extra == 'rxinfer'", specifier = ">=0.9.20" },
     { name = "matplotlib", marker = "extra == 'examples'", specifier = ">=3.5" },

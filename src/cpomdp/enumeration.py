@@ -124,11 +124,13 @@ class FiniteActionSet:
                 f"{self.actions.shape[0]}"
             )
         values = concrete(self.actions)
-        finite = (
-            np.ones(len(self.actions), dtype=bool)
-            if values is None
-            else np.all(np.isfinite(values), axis=1)
-        )
+        if values is None:
+            raise TypeError(
+                "a FiniteActionSet is built outside jit, vmap and grad. Under a trace "
+                "its actions cannot be checked for NaN. Build it once and close over "
+                "it."
+            )
+        finite = np.all(np.isfinite(values), axis=1)
         if not finite.all():
             rows = ", ".join(str(row) for row in np.flatnonzero(~finite))
             raise ValueError(
@@ -420,8 +422,9 @@ class ExhaustiveEfeSearch(ABC):
     this class and [`SearchResult`][cpomdp.enumeration.SearchResult] declare runs on
     either.
 
-    A subclass records its set and horizon with ``_enumerate`` and implements
-    ``evaluate`` and ``cost_per_plan``.
+    It is public as a type, for annotations and ``isinstance``. Subclassing it outside
+    cpomdp is not supported: a subclass records its set and horizon through the private
+    ``_enumerate``, and the ``PROVED`` it inherits holds only for a search that does.
     """
 
     _action_set: FiniteActionSet
@@ -964,7 +967,10 @@ class _SearchDriver(ABC):
     def _plan(self, belief: Belief, preference: "Preference") -> Float64[Array, "H p"]:
         """Run the search on ``belief`` and keep the certificate it earned."""
         result = self._search.evaluate(belief, preference)
-        self._certificate = result.certificate
+        # A trace scores nothing, so only a run that read a real count keeps its
+        # certificate.
+        if concrete(result.best_index) is not None:
+            self._certificate = result.certificate
         return result.best_policy
 
     @property

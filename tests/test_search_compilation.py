@@ -236,6 +236,17 @@ class TestCompiledLoop:
         assert certificate is not None
         assert certificate.complete
 
+    def test_a_traced_plan_leaves_no_certificate_on_the_driver(self):
+        # A trace scores nothing, so the driver holds no certificate until a run does.
+        selector = RecedingHorizonSelector(SEARCHES["chunked flat"][0]())
+        first_belief, preference = FIRST
+
+        def plan(mean):
+            return selector.select(Belief(mean=mean, cov=first_belief.cov), preference)
+
+        jax.eval_shape(plan, first_belief.mean)
+        assert selector.certificate is None
+
     def test_a_chunked_miscount_fails_eagerly_and_compiled(self, monkeypatch):
         # A masking bug that drops one lane. Eagerly the count is checked on the host.
         # Compiled, it is checked when the program runs, and the run fails.

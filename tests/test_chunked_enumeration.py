@@ -604,6 +604,9 @@ class TestCountIsReadExactly:
         visited = jnp.asarray(3**34, dtype=jnp.int64)
         assert search._certify_count(visited).visited == 3**34
 
-    def test_an_action_set_builds_under_jit(self):
+    def test_an_action_set_is_refused_under_jit(self):
+        # Under a trace its actions cannot be checked for NaN, and the search would
+        # certify a set that holds one. Built outside the transform, it is checked.
         size = jax.jit(lambda actions: FiniteActionSet(actions, version="v1").size)
-        assert size(jnp.array([[0.0], [1.0]])) == 2
+        with pytest.raises(TypeError, match="outside"):
+            size(jnp.array([[0.0], [jnp.nan]]))

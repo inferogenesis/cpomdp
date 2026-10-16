@@ -552,6 +552,9 @@ certainty equivalence is optimal, and no use of the readings beats it.
   receding-horizon driver is a different quantity and is unmeasured. The declaration now
   travels with the number in the `PROVED` details, in `warrant_numbers.md`, in the ledger
   and in the README, and a test asserts it so the qualifier cannot be dropped silently.
+- cpomdp requires `jax>=0.4.36`, up from `>=0.4`. The search results register with JAX
+  through field metadata, which older releases cannot read, so `import cpomdp.enumeration`
+  failed on them.
 - cpomdp requires `warrantlib>=0.3,<0.4`, up from `>=0.1`. The tree builds the
   completeness certificates 0.3 introduced, and against 0.2 the modules that build them
   failed to import. The cap is there because warrantlib's minor versions break before
