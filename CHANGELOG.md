@@ -451,6 +451,18 @@ certainty equivalence is optimal, and no use of the readings beats it.
 - `InferenceBackend` said nothing about state-dependent noise. It now states the rule
   those refusals follow: a backend honours the model's `observation_model` and
   `dynamics_noise_model`, or refuses the model.
+- Every cpomdp wheel shipped `cpomdp/juliapkg.json`, where juliapkg finds it from any
+  Python in the environment. The next `import juliacall` by anything there, cpomdp
+  imported or not, added RxInfer to that environment's Julia project and precompiled it.
+  The wheel ships no such file now. The first `RxInferBackend` declares RxInfer to
+  juliapkg where the environment does not already, then starts Julia (ADR-085).
+- RxInfer is declared as the range `5.4`, where it was pinned to exactly `5.4.0`.
+  `cpomdp[rxinfer]` takes RxInfer's releases within 5.x and can share an environment
+  that needs one of them. CI pins 5.4.0.
+- The README said only that the RxInfer backend bootstraps itself on first use. It now
+  says that first build needs network access, may download Julia, and installs and
+  precompiles RxInfer into a Julia project it names, and how to provision one ahead of
+  time.
 - `probe_model` added the plain `dynamics_noise` to every predicted covariance, whatever
   `Q(x)` the model carried. The EFE kernel adds `Q` at the predicted mean, so a `Q(x)`
   model under a fixed sensor reported a constant epistemic value the kernel never
@@ -731,6 +743,9 @@ certainty equivalence is optimal, and no use of the readings beats it.
   completeness certificates 0.3 introduced, and against 0.2 the modules that build them
   failed to import. The cap is there because warrantlib's minor versions break before
   1.0, as cpomdp's do. Breaking for anyone pinning warrantlib below 0.3 (ADR-070).
+- `cpomdp.__version__` reads the installed package metadata, so `pyproject.toml` is the
+  one place the version is set. `CITATION.cff` restates it for GitHub and Zenodo, and a
+  test fails when the two disagree.
 - **Breaking:** the model's fields are `dynamics_matrix`, `control_matrix`,
   `observation_model` and `dynamics_noise_model` (were `dynamics`, `control`,
   `observation`, `process_noise`). One rule now covers every field: `_matrix` is a linear
