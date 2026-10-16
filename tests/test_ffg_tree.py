@@ -167,7 +167,7 @@ def _tree_marginal_oracle(root, dims, edges, obs_specs, m0, P0, readings):
 
 
 def _check_infer(root, dims, edges, obs_specs, m0, P0, readings, atol=1e-8):
-    """Build the graph, run ``infer``, and check its marginal against the oracle."""
+    """Build the graph, run ``infer_root`` and check its marginal against the oracle."""
     couplings = tuple(
         Coupling(parent, child, w, coupling_noise=q) for parent, child, w, q in edges
     )
