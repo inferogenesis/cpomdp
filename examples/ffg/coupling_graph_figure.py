@@ -38,8 +38,9 @@ import gallery
 import numpy as np
 
 from cpomdp.backends.kalman import KalmanBackend
-from cpomdp.ffg.factors.linear_gaussian import GaussianCoupling, GaussianObservation
+from cpomdp.ffg.factors.linear_gaussian import GaussianCoupling
 from cpomdp.ffg.graph import Coupling, CouplingGraph
+from cpomdp.observation import FixedSensor
 from cpomdp.types import Belief, LinearGaussianModel
 
 # --- the tree --------------------------------------------------------------------
@@ -77,8 +78,7 @@ def build_graph() -> tuple[CouplingGraph, Belief, dict[int, np.ndarray]]:
         for parent, child, w, q in EDGES
     )
     observations = {
-        node: GaussianObservation([[1.0]], observation_noise=[[OBS_R]])
-        for node in OBS_NODES
+        node: FixedSensor([[1.0]], observation_noise=[[OBS_R]]) for node in OBS_NODES
     }
     graph = CouplingGraph(
         root=ROOT, dims=DIMS, couplings=couplings, observations=observations

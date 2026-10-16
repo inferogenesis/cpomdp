@@ -40,10 +40,7 @@ from cpomdp.efe import (
     policy_efe_ffg_trace,
 )
 from cpomdp.enumeration import EnumeratedEfeSearch
-from cpomdp.ffg.factors.linear_gaussian import (
-    CallableGaussianObservation,
-    GaussianTransition,
-)
+from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
 from cpomdp.ffg.graph import CouplingGraph
 from cpomdp.observation import CallableSensor
 from cpomdp.types import Belief, LinearGaussianModel
@@ -132,7 +129,7 @@ def _flat_pair():
     b = np.zeros((4, 2))
     b[0, 0] = 1.0
     b[1, 1] = 1.0
-    sensor = CallableGaussianObservation(_ARENA_C, _cue_noise, _CUE_PARAMS)
+    sensor = CallableSensor(_ARENA_C, _cue_noise, _CUE_PARAMS)
     graph = CouplingGraph(root=0, dims=(4,), couplings=(), observations={0: sensor})
     backend = CouplingGraphBackend(
         graph,

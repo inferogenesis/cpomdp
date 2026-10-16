@@ -4781,3 +4781,66 @@ through 0.5.x would keep two names alive, which is the defect being removed.
 - `EfeBackend.n_total` and `observation_noise_at(mean)` belong to the graph backend's
   surface and are left to that change. The graph backend's private joint sensor names its
   arguments `x` and `sigma`, and the positional protocol accepts it as it is.
+
+## ADR-073 — a graph node takes the flat model's sensor, and the message passing is private
+
+**Date:** 2026-10-15
+**Status:** Accepted
+**Supersedes:** ADR-019's `CallableGaussianObservation`, "the FFG twin of the flat
+`CallableSensor`", and ADR-021's export of `GaussianObservation` and
+`CallableGaussianObservation`.
+**Extends:** ADR-069, whose rule makes the factor message methods private.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+A graph node and a flat model described one sensor with two classes. `FixedSensor` and
+`GaussianObservation` took the same arguments and held the same fields, and so did
+`CallableSensor` and `CallableGaussianObservation`. Neither pair worked in the other's
+place. `LinearGaussianModel` refused a graph class for lacking `gaussianize`. A
+`FixedSensor` on a graph node constructed, and the first filter step raised because it
+had no `message`. Moving a model onto a graph meant renaming every sensor, and a wrong
+pick failed late. The flat seam was the open `ObservationModel` protocol. The graph seam
+was a closed union of two classes.
+
+The review parked the unification for v0.6 as additive work, with a `TypeError` naming
+the twin before the tag. v0.5.0 already breaks the graph constructors. Unifying now
+costs graph users one rename, and later it would cost a deprecation cycle.
+
+### Decision
+
+A `CouplingGraph` node takes any `ObservationModel`, the protocol `LinearGaussianModel`
+takes. `GaussianObservation`, `CallableGaussianObservation` and their union
+`ObservationFactor` are removed. Anything else in `observations` is refused with a
+`TypeError` naming `FixedSensor` and `CallableSensor`.
+
+The graph reads a sensor only through `linearize`, as the flat model does. At
+construction it linearizes each sensor at its node's zero state, checks the width of
+`C`, and keeps the pair. For a fixed sensor that pair is its own `(C, R)`, which the
+fixed filter path reuses every step. For a state-dependent sensor it is `R(0)`, which
+only sizes the backend's validation model. Each step a state-dependent sensor is
+linearized at its node's block of `μ⁺`, the point ADR-019 fixed. One private function of
+`(C, R, y)` builds the message `Λ = CᵀR⁻¹C`, `h = CᵀR⁻¹y` for every caller.
+
+The message passing is private: `GaussianTransition._predict`,
+`GaussianCoupling._message_to_parent` and `_message_to_child`,
+`CouplingGraph._infer_all`, and the `CanonicalGaussian` payload in `cpomdp.ffg._message`.
+A user builds the graph and runs it through `CouplingGraphBackend` or
+`CouplingGraph.infer`. Neither needs them. They are typed on a payload no page
+documents, and they are the hot path the energy work is most likely to change (RFC-001).
+
+### Consequences
+
+- One sensor object serves a flat model and a graph node. A test filters one
+  `FixedSensor`, one `CallableSensor` and one protocol-only sensor through both and gets
+  the same belief.
+- The fixed filter path computes the same message from the same arrays as before. Its
+  numbers are unchanged and its per-step work does not grow.
+- `ChainBackend` checks a state-dependent `R(μ⁻)` for positive-definiteness each step,
+  as building a `GaussianObservation` did.
+- `CouplingGraph.infer` refuses a reading on a node with a state-dependent sensor and
+  names the node. It used to raise from inside the factor.
+- A custom factor needs a published factor protocol and a page for the payload. Neither
+  exists. As ADR-069 has it, the first user who writes one is who would promote them.
+- ADR-019 and ADR-021 keep their wording. Their `CallableGaussianObservation` is this
+  ADR's `CallableSensor` on a graph node.

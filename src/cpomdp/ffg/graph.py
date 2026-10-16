@@ -16,13 +16,13 @@ from dataclasses import dataclass
 from types import MappingProxyType
 
 import jax.numpy as jnp
+from jax import Array
+from jaxtyping import Float64
 from numpy.typing import ArrayLike
 
-from cpomdp.ffg._message import CanonicalGaussian
-from cpomdp.ffg.factors.linear_gaussian import (
-    GaussianCoupling,
-    ObservationFactor,
-)
+from cpomdp.ffg._message import CanonicalGaussian, likelihood_message
+from cpomdp.ffg.factors.linear_gaussian import GaussianCoupling
+from cpomdp.observation import ObservationModel
 from cpomdp.types import Belief
 
 __all__ = ["Coupling", "CouplingGraph"]
@@ -60,18 +60,20 @@ class CouplingGraph:
 
     The ``N`` nodes are indexed ``0..N-1`` with dimensions ``dims``. ``couplings`` are
     the tree edges, directed away from ``root``, and ``observations`` maps a node index
-    to the observation factor attached to it (fixed
-    [`GaussianObservation`][cpomdp.GaussianObservation] or state-dependent
-    [`CallableGaussianObservation`][cpomdp.CallableGaussianObservation]). Construction
-    validates the wiring and raises if it is malformed.
+    to the sensor on it. A node takes the sensor a flat model takes: a
+    [`FixedSensor`][cpomdp.FixedSensor], a state-dependent
+    [`CallableSensor`][cpomdp.CallableSensor], or any other
+    [`ObservationModel`][cpomdp.ObservationModel]. Construction validates the wiring
+    and raises if it is malformed.
 
     Args:
         root: index of the node the tree is rooted at.
         dims: ``dims[i]`` is the dimension of node ``i``; its length is the node count.
         couplings: the tree edges — one per non-root node, each that node's only parent.
-        observations: maps a node index to its ``ObservationFactor`` (fixed or R(x)).
+        observations: maps a node index to the ``ObservationModel`` that reads it.
 
     Raises:
+        TypeError: if an observation is not an ``ObservationModel``.
         ValueError: if ``dims`` is empty or non-positive; if ``root``, an edge, or an
             observation references an out-of-range node; if an edge's factor ``W`` is
             not ``(dim[child], dim[parent])``; if a sensor's ``C`` is not as wide as the
@@ -88,13 +90,19 @@ class CouplingGraph:
         root: int,
         dims: Sequence[int],
         couplings: Sequence[Coupling],
-        observations: Mapping[int, ObservationFactor],
+        observations: Mapping[int, ObservationModel],
     ) -> None:
         self._root = int(root)
         self._dims = tuple(int(d) for d in dims)
         self._couplings = tuple(couplings)
         self._observations = dict(observations)
         self._validate()
+        self._sensor_at_zero = self._linearize_sensors_at_zero()
+        self._parent_edge = {edge.child: edge for edge in self._couplings}
+        # Deepest first, so a child folds into its parent before the parent moves up.
+        self._collect_order = tuple(
+            sorted(self._parent_edge, key=self._depth, reverse=True)
+        )
 
     @property
     def root(self) -> int:
@@ -112,7 +120,7 @@ class CouplingGraph:
         return self._couplings
 
     @property
-    def observations(self) -> Mapping[int, ObservationFactor]:
+    def observations(self) -> Mapping[int, ObservationModel]:
         """Each observed node's sensor, keyed by node index. A read-only view."""
         return MappingProxyType(self._observations)
 
@@ -134,14 +142,13 @@ class CouplingGraph:
                     f"coupling {edge.parent}->{edge.child}: factor W shape {actual} "
                     f"!= expected {expected} (dim[child], dim[parent])"
                 )
-        for idx, factor in self.observations.items():
+        for idx, sensor in self.observations.items():
             if not 0 <= idx < n:
                 raise ValueError(f"observation references unknown node {idx}")
-            width = factor.observation_matrix.shape[1]
-            if width != self.dims[idx]:
-                raise ValueError(
-                    f"observation on node {idx}: sensor C width {width} "
-                    f"!= node dimension {self.dims[idx]}"
+            if not isinstance(sensor, ObservationModel):
+                raise TypeError(
+                    f"the observation on node {idx} must be an ObservationModel such "
+                    f"as FixedSensor or CallableSensor, got {type(sensor).__name__}"
                 )
 
         # The edges must form a tree rooted at `root`: each non-root node has exactly
@@ -163,6 +170,61 @@ class CouplingGraph:
                 seen.add(node)
                 node = parent_of[node]
 
+    def _depth(self, node: int) -> int:
+        """The number of edges from ``node`` up to the root."""
+        hops = 0
+        while node != self.root:
+            node = self._parent_edge[node].parent
+            hops += 1
+        return hops
+
+    def _linearize_sensors_at_zero(
+        self,
+    ) -> dict[int, tuple[Float64[Array, "m n"], Float64[Array, "m m"]]]:
+        """Each sensor's ``(C, R)`` at its node's zero state, width-checked once here.
+
+        ``C`` is read through ``linearize``, the one method the protocol and the flat
+        model share. The pair is a fixed sensor's own ``(C, R)``, which the fixed filter
+        path reuses every step, and a state-dependent sensor's ``(C, R(0))``.
+        """
+        at_zero = {}
+        for node, sensor in self.observations.items():
+            observation_matrix, observation_noise = sensor.linearize(
+                jnp.zeros(self.dims[node])
+            )  # C, R
+            width = observation_matrix.shape[1]
+            if width != self.dims[node]:
+                raise ValueError(
+                    f"observation on node {node}: sensor C width {width} "
+                    f"!= node dimension {self.dims[node]}"
+                )
+            at_zero[node] = (observation_matrix, observation_noise)
+        return at_zero
+
+    def _linearized_sensor(
+        self, node: int, state: ArrayLike | None = None
+    ) -> tuple[Float64[Array, "m n"], Float64[Array, "m m"]]:
+        """Node ``node``'s sensor ``(C, R)`` at ``state``, or at zero when ``None``.
+
+        ``None`` reads the pair front-loaded at construction. It is exact for a fixed
+        sensor and the representative ``R(0)`` for a state-dependent one.
+        """
+        if state is None:
+            return self._sensor_at_zero[node]
+        return self.observations[node].linearize(state)
+
+    def _observation_message(
+        self, node: int, reading: ArrayLike, state: ArrayLike | None = None
+    ) -> CanonicalGaussian:
+        """A reading's message into the node it observes, ``R`` taken at ``state``.
+
+        A fixed sensor's message ignores ``state``, so the fixed paths pass ``None``
+        and read the front-loaded ``(C, R)``. A state-dependent sensor needs the
+        predicted mean of its node.
+        """
+        observation_matrix, observation_noise = self._linearized_sensor(node, state)
+        return likelihood_message(observation_matrix, observation_noise, reading)
+
     def infer(self, prior: Belief, readings: Mapping[int, ArrayLike]) -> Belief:
         """Compute the marginal belief at the root from a prior and per-node readings.
 
@@ -174,26 +236,23 @@ class CouplingGraph:
 
         Args:
             prior: the belief on the root node, taken as its prior.
-            readings: maps a node index to that node's observation; each such node must
-                carry a fixed [`GaussianObservation`][cpomdp.GaussianObservation]
-                (static inference has no predicted mean to linearize a state-dependent
-                ``R(x)`` at).
+            readings: maps a node index to that node's observation. Each such node must
+                carry a fixed sensor, since static inference has no predicted mean to
+                evaluate a state-dependent ``R(x)`` at.
 
         Returns:
             The marginal belief at the root.
+
+        Raises:
+            ValueError: if a reading's node carries a state-dependent sensor.
         """
-
-        def combine(acc, key, msg):
-            """Add ``msg`` to ``acc[key]``, or start the slot with it if absent."""
-            return acc[key] + msg if key in acc else msg
-
-        def depth(node: int) -> int:
-            """The number of edges from ``node`` up to the root."""
-            hops = 0
-            while node != self.root:
-                node = parent_edge[node].parent
-                hops += 1
-            return hops
+        for node in readings:
+            if not self.observations[node].is_fixed:
+                raise ValueError(
+                    f"node {node} carries a state-dependent sensor, and static "
+                    "inference has no predicted mean to evaluate R(x) at. Run the "
+                    "graph through a CouplingGraphBackend."
+                )
 
         # Lift the moment-form prior into a canonical message on the root.
         prior_precision = jnp.linalg.inv(prior.cov)  # Λ₀ = Σ⁻¹
@@ -204,22 +263,19 @@ class CouplingGraph:
         # Seed each observed node with its reading's message, then fold in the prior at
         # the root (which may already hold the root's own observation).
         acc = {
-            node: self.observations[node]._message(reading)
+            node: self._observation_message(node, reading)
             for node, reading in readings.items()
         }
-        acc[self.root] = combine(acc, self.root, prior_msg)
+        acc[self.root] = _combine(acc, self.root, prior_msg)
 
-        # Pass messages up to the root, deepest nodes first so every child folds into a
-        # node before that node is itself sent up to its parent.
-        parent_edge = {edge.child: edge for edge in self.couplings}
-        order = sorted(parent_edge, key=depth, reverse=True)
-        for node in order:
+        # Pass messages up to the root, deepest nodes first.
+        for node in self._collect_order:
             if node not in acc:  # an unobserved leaf has nothing to send up
                 continue
-            edge = parent_edge[node]
+            edge = self._parent_edge[node]
             # Summarise everything known at `node` onto its parent, eliminating `node`.
             up = edge.factor._message_to_parent(acc[node])
-            acc[edge.parent] = combine(acc, edge.parent, up)
+            acc[edge.parent] = _combine(acc, edge.parent, up)
 
         # Read the accumulated root message back into moment form.
         mean, cov = acc[self.root].to_moment()  # Σ = Λ⁻¹, μ = Λ⁻¹h
@@ -246,39 +302,30 @@ class CouplingGraph:
             A ``CanonicalGaussian`` marginal per node index; call ``.to_moment()`` on
             any one for its ``(mean, cov)``.
         """
-
-        def combine(acc, key, msg):
-            """Add ``msg`` to ``acc[key]``, or start the slot with it if absent."""
-            return acc[key] + msg if key in acc else msg
-
-        def depth(node: int) -> int:
-            """The number of edges from ``node`` up to the root."""
-            hops = 0
-            while node != self.root:
-                node = parent_edge[node].parent
-                hops += 1
-            return hops
-
-        parent_edge = {edge.child: edge for edge in self.couplings}
-        order = sorted(parent_edge, key=depth, reverse=True)  # deepest-first
-
         # Collect: fold each subtree up into its parent (as ``infer``), but cache every
         # edge's upward message for the distribute pass. ``below[node]`` ends holding
         # the node's own seed plus everything its children sent up.
         below = dict(seeds)
         up_msg = {}
-        for node in order:
-            edge = parent_edge[node]
+        for node in self._collect_order:
+            edge = self._parent_edge[node]
             up = edge.factor._message_to_parent(below[node])
             up_msg[node] = up
-            below[edge.parent] = combine(below, edge.parent, up)
+            below[edge.parent] = _combine(below, edge.parent, up)
 
         # Distribute: push each parent's finished marginal back down, shallowest-first
         # so a parent is done before its children. Divide out the child's own upward
         # message first (``- up_msg[node]``) so its evidence does not double-count.
         marginals = {self.root: below[self.root]}
-        for node in reversed(order):
-            edge = parent_edge[node]
+        for node in reversed(self._collect_order):
+            edge = self._parent_edge[node]
             down = edge.factor._message_to_child(marginals[edge.parent] - up_msg[node])
-            marginals[node] = combine(below, node, down)
+            marginals[node] = _combine(below, node, down)
         return marginals
+
+
+def _combine(
+    acc: Mapping[int, CanonicalGaussian], key: int, msg: CanonicalGaussian
+) -> CanonicalGaussian:
+    """Add ``msg`` to ``acc[key]``, or start the slot with it if absent."""
+    return acc[key] + msg if key in acc else msg

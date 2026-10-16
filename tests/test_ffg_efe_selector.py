@@ -15,14 +15,9 @@ from _support import unit_prior
 from cpomdp.agent import Agent
 from cpomdp.backends.coupling import CouplingGraphBackend
 from cpomdp.efe import _ffg_efe_step
-from cpomdp.ffg.factors.linear_gaussian import (
-    CallableGaussianObservation,
-    GaussianCoupling,
-    GaussianObservation,
-    GaussianTransition,
-)
+from cpomdp.ffg.factors.linear_gaussian import GaussianCoupling, GaussianTransition
 from cpomdp.ffg.graph import Coupling, CouplingGraph
-from cpomdp.observation import CallableSensor
+from cpomdp.observation import CallableSensor, FixedSensor
 from cpomdp.selection import (
     EFESelector,
     FfgEfeSelector,
@@ -63,9 +58,7 @@ def test_ffg_selector_reduces_to_efe_selector_single_node():
         dims=(2,),
         couplings=(),
         observations={
-            0: GaussianObservation(
-                observation_matrix, observation_noise=observation_noise
-            )
+            0: FixedSensor(observation_matrix, observation_noise=observation_noise)
         },
     )
     backend = CouplingGraphBackend(
@@ -107,7 +100,7 @@ def _two_node_backend():
         couplings=(
             Coupling(0, 1, GaussianCoupling([[0.8]], coupling_noise=[[0.05]]), 1.0),
         ),
-        observations={1: GaussianObservation([[1.0]], observation_noise=[[0.1]])},
+        observations={1: FixedSensor([[1.0]], observation_noise=[[0.1]])},
     )
     transitions = (
         GaussianTransition([[0.7]], dynamics_noise=[[0.1]]),
@@ -218,9 +211,7 @@ def test_ffg_agent_matches_kalman_efe_agent_end_to_end():
         dims=(2,),
         couplings=(),
         observations={
-            0: GaussianObservation(
-                observation_matrix, observation_noise=observation_noise
-            )
+            0: FixedSensor(observation_matrix, observation_noise=observation_noise)
         },
     )
     backend = CouplingGraphBackend(
@@ -288,7 +279,7 @@ def _single_node_rx_backend(params):
         root=0,
         dims=(2,),
         couplings=(),
-        observations={0: CallableGaussianObservation(C, _rx_noise, params)},
+        observations={0: CallableSensor(C, _rx_noise, params)},
     )
     backend = CouplingGraphBackend(
         graph,
@@ -318,7 +309,7 @@ class TestStateDependentSelection:
             root=0,
             dims=(2,),
             couplings=(),
-            observations={0: GaussianObservation(C, observation_noise=params["R0"])},
+            observations={0: FixedSensor(C, observation_noise=params["R0"])},
         )
         fx = CouplingGraphBackend(
             graph_fx,
@@ -369,7 +360,7 @@ class TestStateDependentSelection:
             dims=(1,),
             couplings=(),
             observations={
-                0: CallableGaussianObservation([[1.0], [1.0]], _decoupled_noise, params)
+                0: CallableSensor([[1.0], [1.0]], _decoupled_noise, params)
             },  # both channels read s
         )
         rx = CouplingGraphBackend(

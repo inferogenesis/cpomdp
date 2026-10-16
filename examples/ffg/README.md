@@ -38,10 +38,10 @@ Two agents run the same maze, the same goal, and the same `FfgEfeSelector`. One 
 — the cue sensor:
 
 ```python
-cue = (CallableGaussianObservation(observation_matrix, cue_noise, params)  # B: R(x), alive
+cue = (CallableSensor(observation_matrix, cue_noise, params)  # B: R(x), alive
        if epistemic_alive
-       else GaussianObservation(observation_matrix,
-                                observation_noise=fixed_noise))     # A: fixed, dead
+       else FixedSensor(observation_matrix,
+                        observation_noise=fixed_noise))     # A: fixed, dead
 ```
 
 B's `R(x)` is sharp only at the cue, so `R(μ⁺)` moves with the action (the dual effect,

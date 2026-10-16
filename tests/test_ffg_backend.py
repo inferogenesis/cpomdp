@@ -29,14 +29,9 @@ from cpomdp.backends.coupling import (
 )
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.backends.rxinfer import RxInferBackend
-from cpomdp.ffg.factors.linear_gaussian import (
-    CallableGaussianObservation,
-    GaussianCoupling,
-    GaussianObservation,
-    GaussianTransition,
-)
+from cpomdp.ffg.factors.linear_gaussian import GaussianCoupling, GaussianTransition
 from cpomdp.ffg.graph import Coupling, CouplingGraph
-from cpomdp.observation import CallableSensor
+from cpomdp.observation import CallableSensor, FixedSensor
 from cpomdp.types import Belief, LinearGaussianModel
 
 
@@ -194,8 +189,7 @@ def _build(
         for parent, child, w, q in edges
     )
     observations = {
-        n: GaussianObservation(c, observation_noise=r)
-        for n, (c, r) in obs_specs.items()
+        n: FixedSensor(c, observation_noise=r) for n, (c, r) in obs_specs.items()
     }
     graph = CouplingGraph(
         root=0, dims=dims, couplings=couplings, observations=observations
@@ -571,9 +565,7 @@ class TestProtocolAndReadout:
             root=0,
             dims=(2,),
             couplings=(),
-            observations={
-                0: GaussianObservation([[1.0, 0.0]], observation_noise=[[0.1]])
-            },
+            observations={0: FixedSensor([[1.0, 0.0]], observation_noise=[[0.1]])},
         )
         transition = GaussianTransition(np.eye(2), dynamics_noise=np.eye(2) * 0.1)
         return CouplingGraphBackend(
@@ -844,8 +836,7 @@ def _build_rx(dims, edges, rx_obs, dyn, *, control_matrix=None, partition=None):
         for parent, child, w, q in edges
     )
     observations = {
-        node: CallableGaussianObservation(c, fn, prm)
-        for node, (c, fn, prm) in rx_obs.items()
+        node: CallableSensor(c, fn, prm) for node, (c, fn, prm) in rx_obs.items()
     }
     graph = CouplingGraph(
         root=0, dims=dims, couplings=couplings, observations=observations
@@ -953,9 +944,7 @@ class TestStateDependentSensing:
             root=0,
             dims=(2,),
             couplings=(),
-            observations={
-                0: CallableGaussianObservation([[1.0, 0.0]], _rx_noise, params)
-            },
+            observations={0: CallableSensor([[1.0, 0.0]], _rx_noise, params)},
         )
         prior = Belief(mean=[1.0, 2.0], cov=np.eye(2))
         backend = CouplingGraphBackend(
@@ -1169,3 +1158,76 @@ class TestStateDependentSensing:
         prior = Belief(mean=np.zeros(5), cov=np.eye(5))
         with pytest.raises(ValueError, match="observation"):
             rx.infer_states(np.zeros(2), prior, np.array([0.0]))  # need 3 readings
+
+
+# --- one sensor family: a graph node takes the flat model's sensor (ADR-073) -------
+
+
+class _UnstoredSensor:
+    """A fixed `ObservationModel` that keeps no `observation_matrix` attribute.
+
+    The protocol promises `is_fixed`, `linearize` and `gaussianize` and nothing else, so
+    a graph that read `C` off an attribute would refuse a sensor the flat model takes.
+    """
+
+    is_fixed = True
+
+    def __init__(self, gain, noise):
+        self._gain = jnp.asarray([[gain]], dtype=float)
+        self._noise = jnp.asarray([[noise]], dtype=float)
+
+    def linearize(self, x):
+        return self._gain, self._noise
+
+    def gaussianize(self, x, sigma):
+        c, r = self.linearize(x)
+        return c @ x, c @ sigma @ c.T + r, r
+
+
+def _one_node_graph_backend(sensor):
+    """A single scalar node with a control, observed by ``sensor``."""
+    graph = CouplingGraph(root=0, dims=(1,), couplings=(), observations={0: sensor})
+    return CouplingGraphBackend(
+        graph,
+        (GaussianTransition([[0.9]], dynamics_noise=[[0.2]]),),
+        prior=Belief(mean=[0.3], cov=[[1.5]]),
+        control_matrix=[[1.0]],
+    )
+
+
+def _one_node_flat_backend(sensor):
+    """The same node as a flat model, observed by the same sensor object."""
+    gain, _noise = sensor.linearize(jnp.zeros(1))
+    return KalmanBackend(
+        LinearGaussianModel(
+            dynamics_matrix=[[0.9]],
+            observation_matrix=gain,
+            dynamics_noise=[[0.2]],
+            prior=Belief(mean=[0.3], cov=[[1.5]]),
+            control_matrix=[[1.0]],
+            observation_model=sensor,
+        )
+    )
+
+
+class TestOneSensorFamily:
+    @pytest.mark.parametrize(
+        "sensor",
+        [
+            FixedSensor([[2.0]], observation_noise=[[0.4]]),
+            CallableSensor([[2.0]], _rx_noise, {"R0": np.array([[0.4]]), "gain": 0.3}),
+            _UnstoredSensor(2.0, 0.4),
+        ],
+        ids=["fixed", "callable", "protocol-only"],
+    )
+    def test_one_sensor_object_serves_a_flat_model_and_a_graph_node(self, sensor):
+        # One node and no couplings, so the graph's R(μ⁺) and the flat R(μ⁻) agree.
+        graph, flat = _one_node_graph_backend(sensor), _one_node_flat_backend(sensor)
+        rng = np.random.default_rng(71)
+        graph_belief = flat_belief = Belief(mean=[0.3], cov=[[1.5]])
+        for _ in range(5):
+            y, a = rng.standard_normal(1), rng.standard_normal(1)
+            graph_belief = graph.infer_states(y, graph_belief, a)
+            flat_belief = flat.infer_states(y, flat_belief, a)
+            np.testing.assert_allclose(graph_belief.mean, flat_belief.mean, atol=1e-10)
+            np.testing.assert_allclose(graph_belief.cov, flat_belief.cov, atol=1e-10)

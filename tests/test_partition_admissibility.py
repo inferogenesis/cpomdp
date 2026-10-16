@@ -21,12 +21,9 @@ from cpomdp.backends.base import InadmissiblePartitionError
 from cpomdp.backends.coupling import CouplingGraphBackend
 from cpomdp.efe import policy_efe_ffg, policy_efe_ffg_trace
 from cpomdp.enumeration import ChunkedEfeSearch, EnumeratedEfeSearch, FiniteActionSet
-from cpomdp.ffg.factors.linear_gaussian import (
-    GaussianCoupling,
-    GaussianObservation,
-    GaussianTransition,
-)
+from cpomdp.ffg.factors.linear_gaussian import GaussianCoupling, GaussianTransition
 from cpomdp.ffg.graph import Coupling, CouplingGraph
+from cpomdp.observation import FixedSensor
 from cpomdp.selection import FfgEfeSelector, ObservationGoal, Preference
 from cpomdp.types import Belief
 
@@ -53,8 +50,8 @@ def _hub_graph(*, fast_relevant=True, slow_relevant=False):
             ),
         ),
         observations={
-            1: GaussianObservation([[1.0]], observation_noise=[[0.1]]),
-            2: GaussianObservation([[1.0]], observation_noise=[[0.1]]),
+            1: FixedSensor([[1.0]], observation_noise=[[0.1]]),
+            2: FixedSensor([[1.0]], observation_noise=[[0.1]]),
         },
     )
 
