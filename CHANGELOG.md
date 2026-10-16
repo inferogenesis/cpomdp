@@ -489,6 +489,16 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `Agent(model, StateGoal(target), selector=EFESelector(...))` pursued `C · x = target`
   and settled away from the target whenever `C` is not the identity. A custom selector
   is not checked (ADR-080).
+- **Breaking:** an `ObservationGoal` goes to EFE wherever a noise depends on the state,
+  on a flat model and a graph alike. The dispatch read the sensor and the backend's
+  type. A model whose only state dependence was `Q(x)` was refused as a fixed sensor and
+  told to pass a `StateGoal`. `Q(x)` moves the information term through the predicted
+  covariance, and such a model now gets an `EFESelector`. A `CouplingGraphBackend` with
+  fixed sensors got an `FfgEfeSelector` whose information term was the same for every
+  action. A flat model with the same sensors was refused. Both are refused now, and the
+  message names the selector to pass with a `Preference` for EFE with a flat information
+  term. `examples/ffg/epistemic_dissociation_figure.py` hands both of its agents one
+  `FfgEfeSelector` that way (ADR-081).
 - **Breaking:** on the LQR path `Agent` refuses a `StateGoal` target the dynamics do not
   hold at zero action, where `A · target ≠ target`. LQR regulates the offset from the
   target and charges for effort, so it settled short. With `A = 0.9` and a target of 1

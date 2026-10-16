@@ -5229,3 +5229,52 @@ whether a selector comes with it, so the pairing is a type check at construction
   the curious agent's grid. `examples/surge_margin.py` builds its twin that way.
 - The override form is assembled from the parts a `jax.lax.scan` loop uses: a backend, a
   selector and a `Preference`.
+
+## ADR-081 — an `ObservationGoal` is curious wherever a noise depends on the state
+
+**Date:** 2026-10-15
+**Status:** Accepted
+**Supersedes:** ADR-007's rule that the sensor type decides which regime is legal, for an
+`ObservationGoal`. The `StateGoal` side stands.
+**Extends:** ADR-006, which named the process noise as the second route to epistemic value.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+ADR-007 let the sensor decide which goal was legal. A fixed sensor took a `StateGoal`, and
+an `ObservationGoal` there was output regulation, deferred. ADR-006 had already named
+`Q(x)` as a second way for an action to reach the posterior covariance. The dispatch never
+read it. A model whose only state dependence was `Q(x)` was refused as a fixed sensor and
+pointed at the LQR path. Its information term moves with the action.
+
+The graph path read the backend's type instead. A `CouplingGraphBackend` with fixed
+sensors got an `FfgEfeSelector`. A flat model with the same sensors was refused. One goal
+on one kind of sensor was legal on one backend and refused on the other, and nothing
+recorded why. The flagship's ablation agent was its one caller.
+
+### Decision
+
+An `ObservationGoal` goes to EFE when the information term can move, which is when the
+sensor noise `R(x)` or the process noise `Q(x)` depends on the state. With both fixed it
+is refused, on a flat model and on a graph alike. The refusal names the selector to build
+by hand for EFE with a flat information term.
+
+The test is structural. It reads each noise object's `is_fixed` flag and evaluates no
+noise.
+
+The review recommended relaxing the `Q(x)` half only and keeping the graph exception,
+since three tests and the flagship relied on it. I made the rule one. Since ADR-080 the
+ablation has a hand-built form, and a rule keyed on the backend's type cannot be read off
+the model.
+
+### Consequences
+
+- A `Q(x)`-only model with an `ObservationGoal` gets an `EFESelector` at the horizon
+  ADR-068 reads off the model.
+- A graph with fixed sensors and an `ObservationGoal` is refused.
+  `examples/ffg/epistemic_dissociation_figure.py` hands both of its agents the same
+  `FfgEfeSelector`, so the ablation differs from the curious agent in the cue alone. Three
+  graph tests moved to a sensor sharpest near zero.
+- A `StateGoal` still refuses `R(x)` alone. Under `Q(x)` its target stays a state the
+  filter can read, and LQR stays blind to the information term.
+- The flags are fixed at construction, so the check adds nothing per cycle.

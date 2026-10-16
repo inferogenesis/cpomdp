@@ -9,13 +9,14 @@ The stateful façade you drive: `infer_states` to perceive, `sample_action` to a
     takes a [`Preference`][cpomdp.Preference] and `selector=` in place of the goal.
 
     A curious agent is one whose information term changes with the action. The Agent
-    builds one for an `ObservationGoal` on a sensor whose noise depends on the state. An
-    EFE selector passed explicitly makes one on a model whose dynamics noise `Q(x)` varies
-    with the state, a [`CallableDynamicsNoise`][cpomdp.CallableDynamicsNoise]. That case
-    is claimed at horizon 1 only. Green marks it.
-    Amber is EFE whose information term is the same for every action, blue is LQR, grey a
-    tracker, a red outline a refusal at construction, and a dashed red outline a
-    combination that builds and then raises or does not do what its name suggests.
+    builds one for an `ObservationGoal` wherever a noise depends on the state. That is
+    the sensor's `R(x)`, or the dynamics noise `Q(x)` of a
+    [`CallableDynamicsNoise`][cpomdp.CallableDynamicsNoise], which is claimed at horizon 1
+    only. The rule is the same on a flat model and on a graph. With both noises fixed
+    the information term is the same for every action, and the goal is refused.
+    Green marks a curious agent, blue LQR, grey a tracker, a red outline a refusal at
+    construction, and a dashed red outline a combination that builds and then raises or
+    does not do what its name suggests.
 
     ```mermaid
     flowchart LR
@@ -29,15 +30,12 @@ The stateful façade you drive: `infer_states` to perceive, `sample_action` to a
         state -- "fixed sensor,<br/>target drifts" --> r1["Refused: LQR would settle short"]:::refused
         state -- "R(x) sensor" --> r2["Refused: a state goal on varying sensing"]:::refused
         state -- "graph model" --> uncoupled["LQR that ignores the graph's couplings"]:::gap
-        obs -- "R(x) sensor" --> c1["Curious EFE: horizon read off the model"]:::curious
-        obs -- "R(x) sensor,<br/>horizon set too short" --> r3["Refused: the target does not move the scores"]:::refused
-        obs -- "fixed sensor" --> r4["Refused: output regulation, deferred"]:::refused
-        obs -- "Q(x) only" --> rq["Refused, though Q(x) alone<br/>can make an agent curious"]:::refused
+        obs -- "R(x) or Q(x)" --> c1["Curious EFE: horizon read off the model"]:::curious
+        obs -- "R(x) or Q(x),<br/>horizon set too short" --> r3["Refused: the target does not move the scores"]:::refused
+        obs -- "both noises fixed,<br/>flat model or graph" --> r4["Refused: output regulation, deferred"]:::refused
         obs -- "graph model,<br/>R(x) node sensors" --> c2["Curious EFE: graph selector, horizon 1"]:::curious
-        obs -- "graph model,<br/>fixed sensors" --> flat["EFE: information term flat"]:::flat
 
         classDef curious fill:#26a69a33,stroke:#26a69a,stroke-width:2px
-        classDef flat fill:#f9a82533,stroke:#f9a825,stroke-width:2px
         classDef lqr fill:#5c8fd633,stroke:#5c8fd6,stroke-width:2px
         classDef track fill:#90a4ae26,stroke:#90a4ae,stroke-width:2px
         classDef refused fill:#e5737314,stroke:#e57373,stroke-width:2px
@@ -49,10 +47,10 @@ The stateful façade you drive: `infer_states` to perceive, `sample_action` to a
     and the `Preference` carries the target and precision it chooses toward, in the space
     the selector reads.
 
-    | You pass | Fixed sensor | `R(x)` sensor |
+    | You pass | Both noises fixed | `R(x)` or `Q(x)` |
     | --- | --- | --- |
-    | observation `Preference` + `selector=EFESelector(…)` | EFE. Information is flat unless `Q(x)` varies, which is claimed at horizon 1 only | Curious EFE at the horizon given, which is not checked |
-    | observation `Preference` + `selector=RecedingHorizonSelector(…)` or `OpenLoopSelector(…)` | Search. Information is flat unless `Q(x)` varies, which is claimed at horizon 1 only | Curious search over varying action sequences |
+    | observation `Preference` + `selector=EFESelector(…)` or `FfgEfeSelector(…)` | EFE with a flat information term, the ablation of a curious agent | Curious EFE at the horizon given, which is not checked |
+    | observation `Preference` + `selector=RecedingHorizonSelector(…)` or `OpenLoopSelector(…)` | Search with a flat information term | Curious search over varying action sequences |
     | state `Preference` + `selector=LQRSelector(…)` | LQR with your controller | LQR with your controller, blind to the information term |
     | a `Preference` of the wrong length for a built-in selector | Refused | Refused |
     | a goal + `selector=`, or one of `Preference` and `selector=` without the other | Refused | Refused |

@@ -23,13 +23,20 @@ from cpomdp.efe import policy_efe_ffg, policy_efe_ffg_trace
 from cpomdp.enumeration import ChunkedEfeSearch, EnumeratedEfeSearch, FiniteActionSet
 from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
 from cpomdp.ffg.graph import Coupling, CouplingGraph
-from cpomdp.observation import FixedSensor
+from cpomdp.observation import CallableSensor, FixedSensor
 from cpomdp.selection import FfgEfeSelector, ObservationGoal, Preference
 from cpomdp.types import Belief
 
 
-def _hub_graph(*, fast_relevant=True, slow_relevant=False):
+def _sharp_near_zero(x, params):
+    """R(x) sharpest at zero, so the action moves the information term."""
+    return params["r0"] * (1.0 + jnp.dot(x, x)) * jnp.eye(1)
+
+
+def _hub_graph(*, fast_relevant=True, slow_relevant=False, fast_sensor=None):
     # hub 0 -> fast 1 (gradient path) and slow 2 (methylation-like); observe 1 and 2.
+    if fast_sensor is None:
+        fast_sensor = FixedSensor([[1.0]], observation_noise=[[0.1]])
     return CouplingGraph(
         dims=(1, 1, 1),
         couplings=(
@@ -49,7 +56,7 @@ def _hub_graph(*, fast_relevant=True, slow_relevant=False):
             ),
         ),
         observation_models={
-            1: FixedSensor([[1.0]], observation_noise=[[0.1]]),
+            1: fast_sensor,
             2: FixedSensor([[1.0]], observation_noise=[[0.1]]),
         },
     )
@@ -122,7 +129,9 @@ def test_pure_filtering_partition_is_not_guarded():
 
 def test_agent_rejects_inadmissible_partition():
     # The Agent builds the FFG selector, so the guard reaches the user-facing path too.
-    backend = _backend(_hub_graph(), partition=[[0, 2], [1]])
+    # It builds one only where the action moves the information term.
+    sensor = CallableSensor([[1.0]], _sharp_near_zero, {"r0": jnp.array(0.1)})
+    backend = _backend(_hub_graph(fast_sensor=sensor), partition=[[0, 2], [1]])
     with pytest.raises(InadmissiblePartitionError):
         Agent.from_backend(
             backend, ObservationGoal([0.5, 0.5], action_bounds=(-2.0, 2.0))

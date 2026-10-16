@@ -7,6 +7,8 @@ from cpomdp._lab.harness import ScoredAgent
 from cpomdp.agent import Agent
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.control import LQRController
+from cpomdp.dynamics import CallableDynamicsNoise
+from cpomdp.efe import expected_free_energy
 from cpomdp.ffg._chain import ChainBackend
 from cpomdp.observation import CallableSensor
 from cpomdp.selection import (
@@ -305,6 +307,11 @@ _OBS_PREFERENCE = Preference(
 _BOUNDS = (-3.0, 3.0)
 
 
+def _still_near_beacon(x, params):
+    """Q(x): the state diffuses least at the beacon, position 1.5."""
+    return jnp.array([[0.01 + 0.1 * (x[0] - 1.5) ** 2]])
+
+
 class _Hold:
     """A custom selector the Agent cannot inspect: it always rests."""
 
@@ -414,11 +421,34 @@ class TestRegimeDispatch:
         with pytest.raises(ValueError, match="control"):
             Agent(_corridor_model(fixed=False, control_matrix=False), _OBS_GOAL)
 
-    def test_observation_goal_on_fixed_sensor_raises(self):
-        # Output regulation (obs goal on a fixed sensor) is deferred; raise rather
-        # than hand back a myopic H=1 selector when LQR is available.
-        with pytest.raises(ValueError, match=r"regulation|selector|StateGoal"):
+    def test_observation_goal_with_both_noises_fixed_raises(self):
+        # With both noises fixed the information term is the same for every action, so
+        # EFE is output regulation (deferred). Raise rather than hand back a selector
+        # that only chases the reading when LQR is available.
+        with pytest.raises(ValueError, match="both noises are fixed"):
             Agent(_corridor_model(fixed=True), _OBS_GOAL)
+
+    def test_observation_goal_on_q_of_x_alone_is_curious(self):
+        # A fixed sensor with Q(x): the action moves the predicted covariance, so the
+        # information term moves with it, and the Agent builds an EFE selector.
+        model = LinearGaussianModel(
+            dynamics_matrix=[[1.0]],
+            observation_matrix=[[1.0]],
+            dynamics_noise_model=CallableDynamicsNoise(_still_near_beacon, None),
+            observation_noise=[[0.3]],
+            prior=Belief(mean=[0.0], cov=[[0.5]]),
+            control_matrix=[[1.0]],
+        )
+        agent = Agent(model, _OBS_GOAL)
+        assert isinstance(agent.selector, EFESelector)
+
+        def epistemic(action):
+            result = expected_free_energy(
+                model, model.prior, jnp.array([action]), _OBS_PREFERENCE
+            )
+            return float(result.epistemic)
+
+        assert epistemic(1.5) != pytest.approx(epistemic(-1.5))
 
     def test_observation_goal_wrong_obs_dim_raises(self):
         # A 2-D obs goal on a model that observes m=1 must fail at construction, not

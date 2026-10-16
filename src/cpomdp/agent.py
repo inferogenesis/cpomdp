@@ -109,6 +109,16 @@ def _lqr_path(
     return Preference(target, objective.precision), LQRSelector(controller)
 
 
+def _information_can_move(model: LinearGaussianModel) -> bool:
+    """Whether a noise depends on the state, so the action can change what is learned.
+
+    With both noises fixed the posterior covariance is the same whatever the agent
+    does, and the information term of the expected free energy is flat (ADR-003).
+    """
+    noises = (model.observation_model, model.dynamics_noise_model)
+    return any(noise is not None and not noise.is_fixed for noise in noises)
+
+
 def _efe_path(
     backend: InferenceBackend, objective: ObservationGoal
 ) -> tuple[Preference, EFESelector | FfgEfeSelector]:
@@ -119,12 +129,14 @@ def _efe_path(
             "an ObservationGoal needs a model with a control matrix to act."
         )
     is_graph = isinstance(backend, GraphBackend)
-    sensor_is_fixed = state_dependent(model.observation_model) is None
-    if sensor_is_fixed and not is_graph:
+    if not _information_can_move(model):
+        own = "FfgEfeSelector" if is_graph else "EFESelector"
         raise ValueError(
-            "an ObservationGoal on a fixed sensor is output regulation (deferred). "
-            "Pass a StateGoal for the LQR path, or a Preference with "
-            "selector=EFESelector(...) to choose by EFE anyway."
+            "an ObservationGoal needs a noise that depends on the state, and both "
+            "noises are fixed here. The information term is then the same for every "
+            "action, and choosing by EFE is output regulation (deferred). Pass a "
+            f"StateGoal for the LQR path, or a Preference with selector={own}(...) "
+            "to choose by EFE anyway."
         )
     if objective.info_node is not None and not is_graph:
         raise ValueError(
@@ -307,11 +319,12 @@ class Agent:
         A goal carries its own search and the Agent builds the selector from it. A
         ``StateGoal`` steers in state space via LQR (it needs a fixed sensor). An
         ``ObservationGoal`` seeks a preferred observation via EFE, over the goal's
-        horizon or, left unset, the shortest at which the target moves the scores (it
-        needs a control matrix and a state-dependent sensor). To choose with a selector
-        of your own, pass a [`Preference`][cpomdp.Preference] and ``selector=``. The
-        selector then carries the search. Omit the objective for a perceive-only
-        tracker.
+        horizon or, left unset, the shortest at which the target moves the scores. It
+        needs a control matrix, and a sensor noise ``R(x)`` or process noise ``Q(x)``
+        that depends on the state, on a flat model and a graph alike. To choose with a
+        selector of your own, pass a [`Preference`][cpomdp.Preference] and
+        ``selector=``. The selector then carries the search. Omit the objective for a
+        perceive-only tracker.
 
         The agent filters with a per-step [`KalmanBackend`][cpomdp.KalmanBackend]
         built from ``model``. For any other engine, use ``from_backend``.
@@ -333,14 +346,14 @@ class Agent:
                 ``LQRSelector``.
 
         Raises:
-            ValueError: If the objective and model are incompatible — a
-                ``StateGoal`` on a state-dependent sensor, an ``ObservationGoal``
-                on a control-free model, or an ``ObservationGoal`` on a fixed
-                sensor (output regulation, deferred); or if a target has the wrong
-                length for the space it is read in; or if the LQR path is given a
-                target the dynamics do not hold at zero action. Also raised when an
-                ``ObservationGoal``'s horizon is too short for its target to move the
-                scores, and when ``selector=`` comes with a control-free model.
+            ValueError: If the objective and model are incompatible. That covers a
+                ``StateGoal`` on a state-dependent sensor, an ``ObservationGoal`` on a
+                control-free model, and an ``ObservationGoal`` on a model whose noises
+                are both fixed (output regulation, deferred). Also raised for a target
+                of the wrong length for the space it is read in, a target the
+                dynamics do not hold at zero action on the LQR path, an
+                ``ObservationGoal`` horizon too short for its target to move the
+                scores, and ``selector=`` with a control-free model.
             TypeError: If ``objective`` is not a ``StateGoal``, ``ObservationGoal``
                 or ``Preference``, if a goal comes with ``selector=``, or if a
                 ``Preference`` or ``selector=`` comes without the other.
