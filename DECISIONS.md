@@ -5557,3 +5557,29 @@ at construction.
   stays as shipped.
 - The `LQRController` docstring and the backends page say the Agent filters per step.
   ADR-002 and ADR-003 keep their wording.
+
+## ADR-087 — the EFE records are read by name, as the search results are
+
+**Date:** 2026-10-16
+**Status:** Accepted
+**Supersedes:** ADR-078's choice of a `NamedTuple` for `EfeResult`, with `g` first so
+`result[0]` reads G.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+`EfeResult` and `PolicyEfeTrace` were `NamedTuple`s. A position named G on one function
+could name another field on the next, which is why ADR-084 made the search results read
+by name. NumPy also read a batched record as one array, so `np.argmin(batch)` ranked the
+three fields stacked together and returned an index past the candidates.
+
+### Decision
+
+Both are frozen dataclasses registered as JAX pytrees. Fields are read by name. Neither
+indexes nor unpacks. Both refuse NumPy's array conversion with a message naming
+`jnp.argmin(batch.g)`.
+
+### Consequences
+
+- `jit`, `vmap`, `grad` and `lax.scan` carry both records whole, as before.
+- `G, parts = ...` and `result[0]` fail at the call that wrote them, not later.
