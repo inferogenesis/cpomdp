@@ -412,8 +412,8 @@ class TestEnumeratedSearchAtMultiDimAction:
             backend, action_set, info_block=tuple(backend.block(CONTEXT)), horizon=3
         )
         result = search.evaluate(belief, pref)
-        assert search.certificate.complete
-        assert search.certificate.expected == action_set.size**3  # 125
+        assert result.certificate.complete
+        assert result.certificate.expected == action_set.size**3  # 125
         assert result.g.shape == (125,)
         assert result.best_policy.shape == (3, 2)  # H, p
         assert np.all(np.isfinite(np.asarray(result.g)))

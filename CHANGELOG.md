@@ -279,6 +279,14 @@ certainty equivalence is optimal, and no use of the readings beats it.
   policies. Each row is a `PROVED` report carrying its completeness certificates and a
   `Provenance` whose ordering git can check. The step-`0.5` cell was a re-measurement: the
   write-up published it before any commit built the set, and the numbers hold.
+- `cpomdp.enumeration.ChunkedEfeSearch` — the exhaustive search run in blocks, at a
+  footprint the block sets rather than `|A|^H`. It enumerates the same set as
+  `EnumeratedEfeSearch`, earns the same `PROVED` certificate and takes the same
+  arguments plus `chunk`. `evaluate` returns a `ChunkedSearchResult` with the argmin,
+  its `G`, its index and the certificate. The front-loaded result has those fields under
+  the same names and adds only the score vector. The two paths agree under `==`, ties
+  included (ADR-036). Both drivers take it, and the refinement cells of the fourth
+  falsifier ran on it.
 - `Provenance` (warrantlib 0.2.0) — which ref registered a claim and which one measured
   it, plus one line saying what a reviewer will find at the first. A `PROVED` report
   requires one, on the same terms as it requires evidence, and carries them as a tuple
@@ -920,6 +928,11 @@ certainty equivalence is optimal, and no use of the readings beats it.
   the cost of one agent step, and only selectors report it. Read as per step, the
   search's figure overstated the open-loop driver by a factor of H, and the README did
   exactly that.
+- **Breaking:** the certificate travels with the decision. `EnumeratedEfeSearch` loses
+  its `certificate` property, and `evaluate` returns the certificate on the result,
+  which gains `best_g`, `best_index` and `certificate` after `g`. Unpacking the result
+  into two names no longer works. A driver's `certificate` is the last plan's, `None`
+  before its first, because the chunked search earns one per run.
 - `PROVED` without evidence does not construct, enforced in `CheckReport`. Two kinds
   qualify, one per decisive prover: a completeness certificate for an exhaustive
   enumeration, a `SymbolicReduction` for a theorem or a symbolic identity (Provers 1 and

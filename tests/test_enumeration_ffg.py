@@ -126,7 +126,7 @@ class TestOverBackendSharedAccounting:
             backend, _action_set(), info_block=range(2), horizon=2
         )
         assert ffg.warrant is Warrant.PROVED
-        assert ffg.certificate.complete
+        assert ffg.evaluate(_single_belief(), _pref()).certificate.complete
         assert ffg.n_policies == 9  # 3^2
         assert ffg.cost_per_plan == 18  # |A|^H * H = 9 * 2
 
@@ -152,4 +152,4 @@ class TestOverBackendOnCoupledTree:
         result = ffg.evaluate(belief, pref)
         assert result.best_policy.shape == (2, 1)
         assert result.g.shape == (9,)
-        assert ffg.certificate.complete
+        assert result.certificate.complete
