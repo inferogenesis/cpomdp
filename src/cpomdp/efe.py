@@ -507,10 +507,12 @@ def policy_efe_ffg(
         horizon.
 
     Raises:
-        TypeError: If ``info_node`` is not a node index or a sequence of them.
+        TypeError: If ``info_node`` is not a node index, or a list, tuple,
+            range or 1-D array of them.
         InadmissiblePartitionError: If the backend's carry partition severs an
             EFE-load-bearing edge.
-        ValueError: If ``info_node`` is not a node of the graph.
+        ValueError: If ``info_node`` is empty, repeats a node or names one outside
+            the graph.
         TypeError: If ``preference`` is not a [`Preference`][cpomdp.Preference].
     """
     return _policy_efe_ffg(
@@ -588,10 +590,12 @@ def policy_efe_ffg_trace(
         emits, of arrays stacked along a leading H axis.
 
     Raises:
-        TypeError: If ``info_node`` is not a node index or a sequence of them.
+        TypeError: If ``info_node`` is not a node index, or a list, tuple,
+            range or 1-D array of them.
         InadmissiblePartitionError: If the backend's carry partition severs an
             EFE-load-bearing edge.
-        ValueError: If ``info_node`` is not a node of the graph.
+        ValueError: If ``info_node`` is empty, repeats a node or names one outside
+            the graph.
         TypeError: If ``preference`` is not a [`Preference`][cpomdp.Preference].
     """
     goal, precision = _goal_and_precision(preference)
@@ -667,11 +671,12 @@ def _info_nodes(
 ) -> tuple[int, ...]:
     """``info_node`` as a tuple of node indices: one node, or each of several.
 
-    A list, a tuple or a 1-D integer array names several nodes.
+    A list, a tuple, a range or a 1-D integer array names several nodes. Other
+    sequences are refused, since ``bytes`` iterate as ints the caller never wrote.
     """
     if isinstance(info_node, np.ndarray | jax.Array) and info_node.ndim == 1:
         return tuple(_info_node_index(node) for node in np.asarray(info_node))
-    if isinstance(info_node, Sequence) and not isinstance(info_node, str):
+    if isinstance(info_node, list | tuple | range):
         return tuple(_info_node_index(node) for node in info_node)
     return (_info_node_index(info_node),)
 
@@ -686,6 +691,7 @@ def _info_block_of(
     carry partition must keep every EFE-load-bearing edge whole (ADR-018), or the
     epistemic about the targeted latent degrades while the drift may still look right.
     """
+    nodes = None if info_node is None else _info_nodes(info_node)
     severed = backend.severed_efe_edges()
     if severed:
         edges = ", ".join(f"{e.parent}->{e.child}" for e in severed)
@@ -695,9 +701,8 @@ def _info_block_of(
             "still pass. Keep the edge's endpoints in one cluster, or unflag it if "
             "a severed-mass check shows the cut is safe."
         )
-    if info_node is None:
+    if nodes is None:
         return tuple(range(backend.model.n_states))
-    nodes = _info_nodes(info_node)
     if not nodes:
         raise ValueError("info_node names no node. Pass None for the whole state.")
     if len(set(nodes)) != len(nodes):

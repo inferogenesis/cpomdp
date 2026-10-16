@@ -518,12 +518,10 @@ class TestRegimeDispatch:
             agent.sample_action(), controller.action(model.prior.mean, GOAL)
         )
 
-    def test_qs_aliases_belief(self):
-        # pymdp muscle-memory: agent.qs is a read-only alias of agent.belief.
+    def test_the_posterior_has_one_name(self):
+        # pymdp calls it qs. A second name for one belief is a second thing to learn.
         agent = Agent(_corridor_model(fixed=False), _OBS_GOAL)
-        assert agent.qs is agent.belief
-        agent.infer_states([0.5])
-        assert agent.qs is agent.belief  # follows the reassignment
+        assert not hasattr(agent, "qs")
 
     def test_unknown_objective_type_raises(self):
         # The objective must be a StateGoal or ObservationGoal — nothing else.

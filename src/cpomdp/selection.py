@@ -445,13 +445,14 @@ class FFGEFESelector:
                 [`ObservationGoal`][cpomdp.ObservationGoal].
 
         Raises:
-            TypeError: If ``info_node`` is not a node index or a sequence of them.
+            TypeError: If ``info_node`` is not a node index, or a list, tuple,
+                range or 1-D array of them.
             InadmissiblePartitionError: If the backend's carry partition severs an
                 EFE-load-bearing edge.
             ValueError: If the backend has no control matrix or more than one action
                 dimension, if ``action_bounds`` is not two finite scalars in order,
-                if ``n_candidates`` is below 2, or if ``info_node`` is not a node of
-                the graph.
+                if ``n_candidates`` is below 2, or if ``info_node`` is empty, repeats a
+                node or names one outside the graph.
             TypeError: If ``n_candidates`` is not an integer.
         """
         _require_scalar_control(
