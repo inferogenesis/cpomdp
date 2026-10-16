@@ -12,6 +12,8 @@ RxInfer to juliapkg, so nothing in the wheel declares it to anyone who never ask
 this backend (ADR-071).
 """
 
+import importlib.util
+import sys
 from functools import lru_cache
 from types import ModuleType
 from typing import Any
@@ -121,6 +123,13 @@ def _declare_rxinfer(juliapkg: ModuleType) -> None:
     juliapkg.resolve()
 
 
+def _juliacall_installed() -> bool:
+    """Whether juliacall can be imported, found without importing it."""
+    if "juliacall" in sys.modules:
+        return sys.modules["juliacall"] is not None
+    return importlib.util.find_spec("juliacall") is not None
+
+
 @lru_cache(maxsize=1)
 def _julia() -> _JuliaModule:
     """Declare RxInfer, load Julia with it and define the model, once per process.
@@ -132,6 +141,10 @@ def _julia() -> _JuliaModule:
     """
     try:
         import juliapkg  # ty:ignore[unresolved-import]
+
+        # Checked before declaring, which resolves and can download Julia and RxInfer.
+        if not _juliacall_installed():
+            raise ImportError("juliacall is not installed")
     except ImportError as exc:
         raise ImportError(
             "the RxInfer backend needs the optional Julia bridge, which isn't "

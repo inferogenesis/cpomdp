@@ -99,3 +99,14 @@ def test_without_the_extra_the_error_names_it(monkeypatch):
     monkeypatch.setitem(sys.modules, "juliapkg", None)
     with pytest.raises(ImportError, match="rxinfer"):
         rxinfer._julia()
+
+
+def test_without_juliacall_nothing_is_declared(monkeypatch):
+    # Declaring resolves the environment, which can download Julia and RxInfer, so a
+    # missing bridge is caught first.
+    calls: list = []
+    monkeypatch.setitem(sys.modules, "juliapkg", _JuliaPkg({}, calls))
+    monkeypatch.setitem(sys.modules, "juliacall", None)
+    with pytest.raises(ImportError, match="rxinfer"):
+        rxinfer._julia()
+    assert calls == []

@@ -42,4 +42,4 @@ closures.
 | `RxInferBackend.infer_states` | Does not. It calls Julia |
 | `probe_model` | Does not. It runs in NumPy on the host |
 
-[`tests/test_transform_table.py`](https://github.com/inferogenesis/cpomdp/blob/main/tests/test_transform_table.py) runs every row.
+[`tests/test_transform_table.py`](https://github.com/inferogenesis/cpomdp/blob/main/tests/test_transform_table.py) checks every row under `jit`, `vmap` and `grad`, except `RxInferBackend`'s, which needs Julia. The `lax.scan` loop is on the Agent page.

@@ -91,7 +91,7 @@ def _panel(ax, prag, epi, g, title, note):
 
 def main():
     """Render the two-panel internal-noise figure to docs/assets/."""
-    prag_f, epi_f, g_f = _sweep(_model())  # fixed Q (process_noise=None)
+    prag_f, epi_f, g_f = _sweep(_model())  # fixed Q (dynamics_noise_model=None)
     q_well = CallableProcessNoise(
         _bump_q,
         {

@@ -1058,7 +1058,7 @@ in the warrant vocabulary.
       way it comes out.
 - [ ] **Cut v0.5.1 at this merge whatever the outcome.** Release notes record the gate
       result as a number against the factor, `PASS` or `FAIL`. Changelog, `DECISIONS.md`
-      entry, `CITATION.cff` and `__init__.__version__` on the release commit, matching
+      entry, `CITATION.cff` and the version in `pyproject.toml` on the release commit, matching
       v0.4.4's discipline. The release commit is only the release.
 
 **Merge gate — hard, existential.** See "GATE-D4" below. **ADR on landing** of PR-8c.

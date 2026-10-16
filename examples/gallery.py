@@ -451,7 +451,7 @@ def precision_field(
     Args:
         xlim: the arena's x extent, as `(low, high)`.
         ylim: its y extent.
-        model: the model whose `observation` is the `CallableSensor` to sample.
+        model: the model whose `observation_model` is the `CallableSensor` to sample.
         channel: which row of `R(x)` to read the sharpness off.
         res: how many samples per axis.
 
