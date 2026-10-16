@@ -141,6 +141,18 @@ class TestTheResultRecord:
         with pytest.raises(TypeError):
             _g, _pragmatic, _epistemic = result  # ty: ignore[not-iterable]
 
+    def test_numpy_refuses_to_read_the_record_as_an_array(self):
+        # np.argmin on the record would rank three stacked fields or a 0-d object, so
+        # either way it returned an index that is not a candidate's.
+        model, belief, pref = _model(), _belief(), _obs_preference()
+        actions = jnp.array([[-1.0], [0.0], [0.5]])
+        batch = jax.vmap(lambda a: expected_free_energy(model, belief, a, pref))(
+            actions
+        )
+        with pytest.raises(TypeError, match=r"batch\.g"):
+            np.argmin(batch)
+        assert int(jnp.argmin(batch.g)) in range(3)
+
     def test_a_jitted_call_returns_the_whole_record(self):
         model, belief, pref = _model(), _belief(), _obs_preference()
         jitted = jax.jit(lambda a: expected_free_energy(model, belief, a, pref))
