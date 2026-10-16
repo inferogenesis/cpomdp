@@ -580,12 +580,12 @@ certainty equivalence is optimal, and no use of the readings beats it.
   raised. A copy made with `dataclasses.replace`, `jax.tree.map` or through a `jit`
   boundary is refused too. `Agent.from_backend(graph, StateGoal(...))` ran LQR that
   way and is refused as well. `backend.to_flat_model()` keeps the couplings, and a graph
-  with none is its own plant (ADR-090).
+  with none is its own plant (ADR-091).
 - **Breaking:** a public class spells an acronym in capitals, as `EFESelector` and
   `LQRController` already did. `FfgEfeSelector` is `FFGEFESelector`, and
   `EnumeratedEfeSearch` and `ChunkedEfeSearch` are `EnumeratedEFESearch` and
   `ChunkedEFESearch`. The classes new in this release take the same casing:
-  `EFEResult`, `PolicyEFETrace` and `ExhaustiveEFESearch` (ADR-087).
+  `EFEResult`, `PolicyEFETrace` and `ExhaustiveEFESearch` (ADR-088).
 - **Breaking:** `Agent` takes a model or a backend, never both. `Agent(model, objective)`
   filters with the default per-step `KalmanBackend`, and
   `Agent.from_backend(backend, objective)` takes any other engine, a
@@ -835,7 +835,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
   raise. They then took `info_block`, the joint-state indices, while the goal took a node,
   with a different default on each. A caller converted with `backend.block(node)` and
   passed the backend twice, and on scalar nodes `info_block=(0,)` read as node 0 until a
-  node grew (ADR-089).
+  node grew (ADR-090).
   `ObservationGoal.info_target` becomes `info_node`. `StateGoal.target` and
   `ObservationGoal.target` keep the name, which now has one meaning.
 - **Breaking:** `expected_free_energy`, `policy_efe` and `policy_efe_ffg` return an
@@ -970,7 +970,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `Belief` with a time axis that broke `Belief`'s invariant, and always paid the dense
   solve, even on the partition chosen for its cheap pass. A per-run profile is a
   `lax.scan` over `infer_states` and `severed_mass`, and the diagnostic's solve is a
-  separate call (ADR-088).
+  separate call (ADR-089).
 - **Breaking:** `CouplingGraphBackend.readout` and its `readout_node` argument are
   removed. `readout(belief)` was `marginal(readout_node, belief)`, and the argument did
   nothing else. Read any node, the root included, with `marginal(node, belief)`.

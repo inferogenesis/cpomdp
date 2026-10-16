@@ -404,7 +404,7 @@ class CouplingGraphBackend:
                 if noise_blocks
                 else jnp.zeros((0, 0))
             )
-        # With couplings the model is the interface, not the plant (ADR-090).
+        # With couplings the model is the interface, not the plant (ADR-091).
         model_type = (
             _GraphInterfaceModel if self._graph.couplings else LinearGaussianModel
         )
