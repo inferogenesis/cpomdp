@@ -53,9 +53,14 @@ class TestBeliefs:
         # A degenerate (zero-variance) but valid covariance must still construct.
         Belief(mean=[0.0, 0.0], cov=[[1.0, 0.0], [0.0, 0.0]])
 
-    def test_ndim_reports_state_dimension(self):
-        assert Belief(mean=[0.0], cov=[[1.0]]).ndim == 1
-        assert Belief(mean=[0.0, 0.0], cov=[[1.0, 0.0], [0.0, 1.0]]).ndim == 2
+    def test_n_states_reports_the_state_dimension_as_the_model_does(self):
+        assert Belief(mean=[0.0], cov=[[1.0]]).n_states == 1
+        assert Belief(mean=[0.0, 0.0], cov=[[1.0, 0.0], [0.0, 1.0]]).n_states == 2
+
+    def test_ndim_is_not_a_belief_attribute(self):
+        # In NumPy and JAX ndim is an array's rank. A belief over two states is not a
+        # rank-2 object, so the name would answer a different question.
+        assert not hasattr(Belief(mean=[0.0, 0.0], cov=np.eye(2)), "ndim")
 
 
 # A valid 2-state / 1-observation model, reused as the baseline. Each rejection

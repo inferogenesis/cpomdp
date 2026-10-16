@@ -584,6 +584,10 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `observation_noise_spread` and `observation_noise_loewner_ordered`.
   `report.noise_spread` read as covering both noises and covered only `R`. The summary
   says "R varies" and "Q varies" where it said "non-constant".
+- **Breaking:** `Belief.ndim` is `Belief.n_states` and `FiniteActionSet.action_dim` is
+  `FiniteActionSet.n_controls`, the names `LinearGaussianModel` gives the same two
+  dimensions. In NumPy and JAX `ndim` is an array's rank. A belief over two states read
+  `prior.ndim == 2` beside `prior.mean.ndim == 1`.
 - **Breaking:** the epistemic term's aim is named `info_node` and `info_block`, not
   `target`. `target` carried two unrelated types on exported API: a desired value
   (`Float64[Array, "n"]`) on `StateGoal` and `ObservationGoal`, and the joint-state

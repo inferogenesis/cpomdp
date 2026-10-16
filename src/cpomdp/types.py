@@ -65,8 +65,8 @@ class Belief:
             )
 
     @property
-    def ndim(self) -> int:
-        """Dimensionality of the state — the length of the mean vector."""
+    def n_states(self) -> int:
+        """Dimension of the state (n), the length of the mean vector."""
         return self.mean.shape[0]
 
     def tree_flatten(
@@ -407,9 +407,10 @@ class LinearGaussianModel:
             )
 
         # prior is over the same n-D state. _validate_noise_sources checked its kind.
-        if self.prior.ndim != n:
+        if self.prior.n_states != n:
             raise ValueError(
-                f"prior must be over the {n}-D state, got a {self.prior.ndim}-D belief"
+                f"prior must be over the {n}-D state, "
+                f"got a {self.prior.n_states}-D belief"
             )
 
     @property
