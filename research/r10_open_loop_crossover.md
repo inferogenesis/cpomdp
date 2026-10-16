@@ -89,7 +89,7 @@ but the covariance contracts and carries forward, so a sharper belief lowers the
 ambiguity of every future reading. That covariance channel is what pays off over the
 horizon.
 
-### 2.2 The exhaustive search (`EnumeratedEfeSearch.over_backend`)
+### 2.2 The exhaustive search (`EnumeratedEFESearch.over_backend`)
 
 For a finite action set `A` and horizon H, this scores every `A^H` sequence and returns
 the argmin. Because the quantified set is finite and fully enumerated, "the best plan at
@@ -423,7 +423,7 @@ number-register (`warrant_numbers.md`) gains a crossover section: `ΔG(7) = −0
 The harness is `examples/ffg/crossover.py` (gated by `tests/test_example_checks.py`): the
 selection-free flip, the mechanism split disclosed as post-selection, the epistemic
 counterfactual, the NumPy oracle, the finiteness guard, and the registered conditioning, all
-asserted. The scorer seam (`EnumeratedEfeSearch.over_backend`, ADR-034), the crossover
+asserted. The scorer seam (`EnumeratedEFESearch.over_backend`, ADR-034), the crossover
 statistic (`cpomdp.crossover`, ADR-033), and the constant-null motivation
 (`crossover_sweep.py`) are the infrastructure it rides.
 
@@ -435,6 +435,6 @@ statistic (`cpomdp.crossover`, ADR-033), and the constant-null motivation
 - Per-step decomposition (`predicted_mean`, `predicted_observation_cov` give the
   mean/ambiguity split):
   `src/cpomdp/efe.py::policy_efe_ffg_trace`.
-- Exhaustive FFG search: `src/cpomdp/enumeration.py::EnumeratedEfeSearch.over_backend`.
+- Exhaustive FFG search: `src/cpomdp/enumeration.py::EnumeratedEFESearch.over_backend`.
 - Crossover statistic: `src/cpomdp/crossover.py`.
 - The whole result, reproducible and gated: `examples/ffg/crossover.py` (`--check`).

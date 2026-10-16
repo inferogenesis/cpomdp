@@ -103,7 +103,7 @@ records the derivation and whether it is a proved bound or a stated error bar.
 **The error that recurs.** An action *sweep* over a continuous range is a finite grid
 over an infinite domain, so it samples. A *policy enumeration* over a declared finite set
 enumerates.
-v0.4.4 already encodes this: `EFESelector` prints `CORROBORATED`, `EnumeratedEfeSearch`
+v0.4.4 already encodes this: `EFESelector` prints `CORROBORATED`, `EnumeratedEFESearch`
 prints `PROVED`. PR-1 extended the vocabulary to checks, added the missing third level,
 and shipped it as `warrantlib` (ADR-035, ADR-039). cpomdp's top level re-exports
 `Warrant` alone (ADR-069). Import the rest from `warrantlib`. Do not restate it.
@@ -287,7 +287,7 @@ on the audit half.
 - [x] Promote `SearchWarrant` to a shared `Warrant` enum (now in `warrantlib`) and add
       **`CERTIFIED`** for Prover 3 · validated. `SearchWarrant` stayed as an alias
       until v0.5.0 removed it (ADR-083), so `EFESelector.warrant` and
-      `EnumeratedEfeSearch.warrant` kept their labels. Without `CERTIFIED`, every reference-filter number either borrows
+      `EnumeratedEFESearch.warrant` kept their labels. Without `CERTIFIED`, every reference-filter number either borrows
       `PROVED`, which overclaims, or reads `CORROBORATED`, which throws away the bound
       GATE-D4 exists to buy.
 - [x] Carry `(warrant, outcome, tier)` on **checks**, not only on selectors.
@@ -342,7 +342,7 @@ Ahead of PR-2, and dated, because PR-2's registration pre-commits against adopti
 chunked enumerator in response to a `VOID` outcome. Taking it before any cell is declared
 is a different act, and the record has to be able to show it.
 
-- [x] `ChunkedEfeSearch` beside `EnumeratedEfeSearch`. Blocks decode their own indices as
+- [x] `ChunkedEFESearch` beside `EnumeratedEFESearch`. Blocks decode their own indices as
       base-`|A|` numerals in `itertools.product` order and reduce to running scalars, so
       neither the policy set nor the score vector is ever resident. `evaluate` keeps its
       contract, including the full `G` vector G-D reads.
@@ -373,11 +373,11 @@ Gate-independent. Paper 3's G9 inherits the qualifier this produces.
 
 - [x] **Declare the action mode on the registered result.** `RecedingHorizonSelector` and
       `OpenLoopSelector` genuinely differ, and v0.4.4 requires a measurement to say which
-      it used. The M7b sweep drove `EnumeratedEfeSearch` directly, which is open-loop.
+      it used. The M7b sweep drove `EnumeratedEFESearch` directly, which is open-loop.
       Confirm that in code, then carry the declaration into the paper. The ledger requires
       R10 reported under its seam, never silently read as closed-loop.
       Confirmed in code: `examples/ffg/crossover.py` calls
-      `EnumeratedEfeSearch.over_backend(...).evaluate(...)` and instantiates neither
+      `EnumeratedEFESearch.over_backend(...).evaluate(...)` and instantiates neither
       selector. The declaration now travels with the number, in both `PROVED` falsifier
       details (rows 1 and 2; row 5 states its own registered bar instead) and at the head
       of `warrant_numbers.md`'s crossover section, which had not
@@ -1316,13 +1316,13 @@ result PR-2 hardens.
 The deferred register, one issue per boundary. Each ships as registered rather than as
 silence, per standing rule 5.
 
-- [ ] **#52** closed-loop `FfgEfeSelector` above H = 1. Unsupported, not untested.
+- [ ] **#52** closed-loop `FFGEFESelector` above H = 1. Unsupported, not untested.
       ADR-034 notes the FFG-backed drivers would now make it nearly free. It stays
       deferred, because nothing scoped needs it.
 - [ ] **#53** pruning the `|A|^H` enumerated search without losing the completeness
       certificate. Defer rather than half-build. A design that does not start at the
       certificate is not a design.
-- [ ] **#54** `GradientEfeSelector`, the continuous-action corroboration track. Detail
+- [ ] **#54** `GradientEFESelector`, the continuous-action corroboration track. Detail
       below.
 - [ ] **#55** notation unification. Detail below.
 - [ ] **#56** the Q(x) surface above H = 1. Works, undocumented, unclaimed. PR-7 must not
@@ -1354,7 +1354,7 @@ Variant 3 is the trap. A naive `μ⁺` → `μ⁻` sweep corrupts ADR-019's mean
 ### Continuous-action corroboration track (#54)
 
 A continuous-state agent should also exercise genuinely continuous action spaces, not
-only declared finite repertoires. `GradientEfeSelector` is that selector: gradient ascent
+only declared finite repertoires. `GradientEFESelector` is that selector: gradient ascent
 on the differentiable `policy_efe` over a continuous action box.
 
 **Warrant: Prover 3 · sample / `CORROBORATED` only.** Gradient ascent finds a *local* optimum of a
@@ -1364,7 +1364,7 @@ can never *decide* a universal over the action space. Every result it produces c
 
 **Home: the self-acting regimes, not the p\* scoring harness.** PR-3's harness runs in
 exogenous action mode and severs the control loop, so action *selection* is not part of
-the decomposition. Continuous action *values* already are. `GradientEfeSelector` belongs
+the decomposition. Continuous action *values* already are. `GradientEFESelector` belongs
 to the self-acting brackets: a corroborating companion to the crossover and, principally,
 to PR-5's control bracket, where a self-acting agent under R(x) steers toward low-noise
 regions and changes its own gap.
@@ -1374,7 +1374,7 @@ on the finite enumeration. A gradient-selected policy may corroborate alongside 
 must never enter the decisive cells, or the enumeration's certificate is contaminated
 back to a sample.
 
-- [ ] `GradientEfeSelector` over a continuous action box (`p >= 1`), returning the
+- [ ] `GradientEFESelector` over a continuous action box (`p >= 1`), returning the
       optimised sequence and its `G`. Labelled `CORROBORATED`.
 - [ ] The warrant label travels with every continuous-action result, printed and asserted,
       so a corroboration is never read as a certification.
@@ -1384,5 +1384,5 @@ back to a sample.
 **Not this track — register, do not build.** *Certified* continuous-action coverage,
 deciding "no action in the compact box flips", is Prover 3 · validated. It needs a certified
 branch-and-bound with Lipschitz or interval bounds on `policy_efe` over the box. That is a
-distinct, larger, later workstream. `GradientEfeSelector` does not deliver it and nothing
+distinct, larger, later workstream. `GradientEFESelector` does not deliver it and nothing
 here should imply it does.
