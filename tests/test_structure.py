@@ -321,6 +321,32 @@ class TestValidateSparsity:
         with pytest.raises(ValueError, match="dynamics_noise"):
             s.validate(bad)
 
+    def test_off_block_noise_from_a_fixed_dynamics_noise_model_fails(self):
+        # A fixed object's Q is the model's dynamics_noise, so there is a single matrix
+        # to check, and an off-block coupling in it is refused as the plain field is.
+        coupled_noise = jnp.array(
+            [
+                [0.1, 0.0, 0.05, 0.0],
+                [0.0, 0.1, 0.0, 0.0],
+                [0.05, 0.0, 0.1, 0.0],
+                [0.0, 0.0, 0.0, 0.1],
+            ]
+        )
+
+        class _FixedDynamicsNoise:
+            is_fixed = True
+
+            def noise_at(self, state):
+                return coupled_noise
+
+        coupled = _block_model(
+            dynamics_noise=None, dynamics_noise_model=_FixedDynamicsNoise()
+        )
+        structure = coupled.structure
+        assert structure is not None
+        with pytest.raises(ValueError, match="dynamics_noise"):
+            structure.validate(coupled)
+
     def test_nan_cross_block_is_not_certified_independent(self):
         # A NaN in an off-block must not silently pass: NaN > atol is False, so the
         # old magnitude check certified a NaN-coupled model conditionally independent.

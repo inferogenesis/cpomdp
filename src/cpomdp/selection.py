@@ -11,7 +11,7 @@ from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
 from cpomdp._validation import validate_covariance
-from cpomdp.backends.base import EfeBackend
+from cpomdp.backends.base import GraphBackend
 from cpomdp.control import LQRController
 from cpomdp.efe import (
     _checked_info_block,
@@ -91,7 +91,7 @@ class ActionSelector(Protocol):
     """Chooses an action from a belief and a preference.
 
     The abstraction wall for action selection: [`LQRSelector`][cpomdp.LQRSelector] is
-    the fixed-noise case (a fixed sensor and fixed process noise, where EFE collapses
+    the fixed-noise case (a fixed sensor and fixed dynamics noise, where EFE collapses
     to LQR, ADR-003);
     [`EFESelector`][cpomdp.EFESelector] is the state-dependent one.
     [`Agent`][cpomdp.Agent] depends only on this, never on a concrete selector.
@@ -108,7 +108,7 @@ class LQRSelector:
 
     A thin wrapper: it owns no control logic, it just forwards to the
     front-loaded controller, unpacking the belief's mean and the preference's
-    goal. EFE collapses to LQR under a fixed sensor and fixed process noise
+    goal. EFE collapses to LQR under a fixed sensor and fixed dynamics noise
     (ADR-003), so for that regime this *is* the action selector.
     """
 
@@ -271,13 +271,21 @@ class FfgEfeSelector:
 
     def __init__(
         self,
-        backend: EfeBackend,
+        backend: GraphBackend,
         *,
         info_block: Sequence[int],
         n_candidates: int,
         action_bounds: tuple[float, float],
     ) -> None:
         """Front-load the candidate grid, after checking the backend and the target.
+
+        Args:
+            backend: the graph backend to plan over, a
+                [`CouplingGraphBackend`][cpomdp.CouplingGraphBackend].
+            info_block: the joint-state indices whose information gain is the
+                epistemic value. ``backend.block(node)`` gives a node's indices.
+            n_candidates: how many evenly spaced actions the grid holds, at least 2.
+            action_bounds: the grid's ends ``(lo, hi)``, with ``lo < hi``.
 
         Raises:
             InadmissiblePartitionError: If the backend's carry partition severs an
@@ -306,11 +314,12 @@ class FfgEfeSelector:
         target = _checked_info_block(backend, info_block)
         # Front-load (ADR-002): the candidate grid, the info block, the constant C.
         # R is *not* front-loaded — it may be state-dependent, so it is read per
-        # candidate at μ⁺ via ``observation_noise_at`` (issue #27); a fixed sensor
-        # returns the same constant each time.
+        # candidate at μ⁺ via ``model.observation_noise_at`` (issue #27). A fixed
+        # sensor returns the same constant each time.
         self._backend = backend
         self._target = target
-        self._observation_matrix, _ = backend.observation_model  # C (constant)
+        self._model = backend.model
+        self._observation_matrix = backend.model.observation_matrix  # C (constant)
         self._candidates = jnp.linspace(lo, hi, n_candidates)[:, None]
 
     @staticmethod
@@ -329,7 +338,7 @@ class FfgEfeSelector:
 
         def g_of(action: Float64[Array, "p"]) -> Float64[Array, ""]:
             predicted = self._backend.predicted_belief(belief, action)  # μ⁺, Σ⁺
-            observation_noise = self._backend.observation_noise_at(
+            observation_noise = self._model.observation_noise_at(
                 predicted.mean
             )  # R(μ⁺)
             return _ffg_efe_step(

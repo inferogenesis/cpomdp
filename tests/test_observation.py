@@ -1,5 +1,7 @@
 """FixedSensor: the constant-(C, R) observation model."""
 
+import inspect
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -151,3 +153,40 @@ class TestCallableSensor:
             CallableSensor(
                 observation_matrix=[[1.0]], noise_fn=bad_noise, noise_params={}
             )
+
+
+# --- one name for the state, and the protocol takes it by position ------------------
+
+
+@pytest.mark.parametrize(
+    ("method", "arguments"),
+    [
+        (ObservationModel.linearize, ("state",)),
+        (ObservationModel.gaussianize, ("mean", "cov")),
+    ],
+)
+def test_the_protocol_takes_its_arguments_by_position(method, arguments):
+    # An implementer may name them anything, so no caller passes them by name.
+    _, *parameters = inspect.signature(method).parameters.values()
+    assert tuple(parameter.name for parameter in parameters) == arguments
+    assert all(
+        parameter.kind is inspect.Parameter.POSITIONAL_ONLY for parameter in parameters
+    )
+
+
+@pytest.mark.parametrize(
+    "sensor",
+    [FixedSensor([[1.0]], observation_noise=[[0.5]]), _callable_sensor()],
+    ids=["fixed", "callable"],
+)
+def test_the_sensors_name_the_state_as_the_protocol_does(sensor):
+    for method, arguments in (
+        (sensor.linearize, ("state",)),
+        (sensor.gaussianize, ("mean", "cov")),
+    ):
+        parameters = inspect.signature(method).parameters.values()
+        assert tuple(parameter.name for parameter in parameters) == arguments
+        assert all(
+            parameter.kind is inspect.Parameter.POSITIONAL_ONLY
+            for parameter in parameters
+        )

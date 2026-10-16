@@ -4636,6 +4636,420 @@ versions break before 1.0, as cpomdp's do.
 - A warrantlib 0.4 reaches cpomdp users only through a cpomdp release that lifts the
   cap.
 
+## ADR-071 — a model field beside its noise object holds that object's value
+
+**Date:** 2026-10-16
+**Status:** Accepted
+**Supersedes:** ADR-064's decision that a value passed beside a state-dependent sensor
+is kept and not warned on, and the same sentence in ADR-065 for `Q`.
+**Extends:** ADR-064 and ADR-065 to `observation_matrix`, and ADR-066 to the spec's
+`observation_matrix`.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+A model with a state-dependent sensor took any positive-definite `observation_noise`
+beside it and read none of it. With `observation_noise=[[123.0]]` beside a
+`CallableSensor`, `model.observation_noise` returned 123. The Kalman filter and the EFE
+kernel gave what the derived model gives. Setting the field to tune the sensor changed
+nothing and said nothing. `dataclasses.replace(model, prior=...)` passed the old field
+back, so the model kept `R` at the old prior mean. `dynamics_noise` beside a `Q(x)` did
+the same. A third-party backend reading either field computed against a constant no
+filter in the library uses.
+
+ADR-064 kept the passed value for one consumer. `WrongFixedRBackend` scales a nominal
+`R` on purpose, and a nominal taken at another operating point is legitimate there.
+That consumer can take its constant as an argument of its own.
+
+`observation_matrix` had the converse problem. The model required it beside a sensor
+that already carries `C`, and refused the pair unless they were the same array. Every
+`R(x)` model typed `C` twice.
+
+### Decision
+
+One rule covers `observation_matrix`, `observation_noise` and `dynamics_noise`. Beside
+its object each field is the object's value at `prior.mean`: the sensor's `C`, the
+sensor's `R` there, and the dynamics noise model's `Q` there. Omitted, the field is read
+once at construction. Passed, it must equal that value exactly, or the model raises a
+`ValueError` saying to omit it. With no object the field is required, as before.
+
+Fixed and state-dependent objects follow the same rule. A fixed object returns the same
+value at every state, so the guard that already refused a fixed sensor disagreeing with
+the field is now one case of it.
+
+A passed value is compared rather than refused outright. `dataclasses.replace` passes
+every field back to the constructor, and refusing any value would break it. Replacing
+the prior or the sensor now raises where it used to keep a stale value. Passing the
+fields the object supplies as `None` reads them again. Under a trace the values cannot
+be compared. The check is skipped, as every construction check is, and the field holds
+the object's value.
+
+`WrongFixedRBackend` takes the constant it scales as `observation_noise=`, defaulting
+to the model's field. `ModelSpec` accepts `observation_matrix=None` beside a sensor, as
+ADR-066 made it accept the noises.
+
+I kept the field names. `nominal_observation_noise` would mislabel the fixed case,
+where the field is the true `R`. I added no public predicate either. The test every
+consumer with a fixed path makes is now the private `state_dependent`. It replaced
+eight copies of `x is None or x.is_fixed` across five modules. `ModelStructure.validate`
+skipped the `Q` check whenever a `dynamics_noise_model` was present. It now skips only
+a state-dependent one, since a fixed object's `Q` is the field.
+
+### Consequences
+
+- The field means one value whichever object is carried. A consumer that needs `R(x)`
+  or `Q(x)` reads the object. One that needs a constant refuses the model, as
+  `require_fixed_noise` already does.
+- Construction compares at most three arrays. Nothing in the loop changes, and the
+  fixed-sensor filter reads the fields as before.
+- `CouplingGraphBackend` built its flat model with a representative `R(0)` beside its
+  joint sensor. With a prior away from the origin that model stopped constructing, so
+  the backend now leaves the field to the sensor.
+- `ModelSpec` refuses a perturbation of any field its object supplies, with one message.
+  The scaled cell could never build, fixed object or not.
+- Five examples passed a value nothing read, or restated one that happened to agree,
+  and so did the test fixtures. They now leave it out.
+- The comparison is exact. A value recomputed by hand that differs in the last bit is
+  refused, and omitting it is the fix.
+
+## ADR-072 — the two noises are named alike, and each name means one thing
+
+**Date:** 2026-10-16
+**Status:** Accepted
+**Supersedes:** ADR-006's note "On changing the matrices names", that the letters survive
+as aliases. ADR-065's report fields `process_non_constant` and `process_noise_spread`,
+which never shipped.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+The two noises used different schemes. The sensor protocol was `ObservationModel`,
+held in the field `observation_model`, and `CallableSensor` took `noise_fn` and
+`noise_params`. The dynamics protocol was `DynamicsNoise`, the CamelCase of the matrix
+field `dynamics_noise`, held in `dynamics_noise_model`. Its callable was
+`CallableProcessNoise(q_fn, q_params)`. A user who had written `R(x)` could not write
+`Q(x)` by analogy, and "process" and "dynamics" named one channel. A noise object passed
+for a matrix field failed inside `float()`.
+
+The same argument had four names. The flat sensors called the state `x`, the graph
+factors `state`, the graph backend `mean`. `linearize(state=...)` worked on one family
+and failed on the other.
+
+`SensorReport` reported on `Q` too. Its `R` fields were unprefixed, so
+`report.noise_spread` read as covering both noises and covered only `R`. Its `Q` fields
+sat under the retired "process" root. `Belief.ndim` was the state count, where NumPy's
+`ndim` is an array's rank, and `FiniteActionSet.action_dim` named the dimension the
+model calls `n_controls`. Every model field had a second public name, a letter, and in
+pymdp `A` is the likelihood and `C` the preferences.
+
+### Decision
+
+Each object has one name for each thing, and the two noises use the same scheme.
+
+- `DynamicsNoise` is `DynamicsNoiseModel`. `CallableProcessNoise` is
+  `CallableDynamicsNoise`, and takes `noise_fn` and `noise_params` as `CallableSensor`
+  does. The grouped-prefix rule would give `dynamics_noise_fn`. I took the sensor's names
+  instead, because the class name already scopes the group and the two callables then
+  read the same.
+- No fixed dynamics-noise class ships. A constant `Q` goes in `dynamics_noise`, and the
+  protocol exists for `Q(x)`. `is_fixed` stays, since the filter's fixed path reads it.
+- A noise object passed for a matrix field raises a `TypeError` naming the slot it
+  belongs in.
+- The protocols take their arguments by position: `linearize(state, /)`,
+  `gaussianize(mean, cov, /)` and `noise_at(state, /)`. An implementation may then name
+  them as it likes, and the built-in ones use those names. `gaussianize` takes a belief,
+  so its arguments are the belief's field names. I did not add `noise_at` to the sensor
+  protocol. Every sensor written outside the library would then fail the runtime check.
+- `SensorReport` is `ProbeReport`, named for `probe_model`, which returns it. Each field
+  is prefixed with the object it describes: `observation_matrix_`, `observation_noise_`,
+  `dynamics_noise_` or `epistemic_`. "Varies" replaces "non-constant".
+- `Belief.ndim` is `n_states`, and `action_dim` is `n_controls` on `FiniteActionSet` and
+  the harness's action sequence.
+- The `.A`, `.B`, `.C`, `.Q` and `.R` properties go.
+
+None keeps a deprecated alias. v0.5.0 already breaks every model call site (ADR-067
+counts the breaks), so these ride the migration v0.4 users face anyway. An alias kept
+through 0.5.x would keep two names alive, which is the defect being removed.
+
+### Consequences
+
+- Each old name a release shipped is a break, listed in the changelog with its
+  replacement. The report's `Q` fields never shipped and are renamed in place.
+- Nothing per cycle changes. `CallableDynamicsNoise.noise_at` reads its argument as a
+  float array, as the sensors already did, and that is free on an array already of that
+  type.
+- `EfeBackend.n_total` and `observation_noise_at(mean)` belong to the graph backend's
+  surface and are left to that change. The graph backend's private joint sensor names its
+  arguments `x` and `sigma`, and the positional protocol accepts it as it is.
+
+## ADR-073 — a graph node takes the flat model's sensor, and the message passing is private
+
+**Date:** 2026-10-15
+**Status:** Accepted
+**Supersedes:** ADR-019's `CallableGaussianObservation`, "the FFG twin of the flat
+`CallableSensor`", and ADR-021's export of `GaussianObservation` and
+`CallableGaussianObservation`.
+**Extends:** ADR-069, whose rule makes the factor message methods private.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+A graph node and a flat model described one sensor with two classes. `FixedSensor` and
+`GaussianObservation` took the same arguments and held the same fields, and so did
+`CallableSensor` and `CallableGaussianObservation`. Neither pair worked in the other's
+place. `LinearGaussianModel` refused a graph class for lacking `gaussianize`. A
+`FixedSensor` on a graph node constructed, and the first filter step raised because it
+had no `message`. Moving a model onto a graph meant renaming every sensor, and a wrong
+pick failed late. The flat seam was the open `ObservationModel` protocol. The graph seam
+was a closed union of two classes.
+
+The review parked the unification for v0.6 as additive work, with a `TypeError` naming
+the twin before the tag. v0.5.0 already breaks the graph constructors. Unifying now
+costs graph users one rename, and later it would cost a deprecation cycle.
+
+### Decision
+
+A `CouplingGraph` node takes any `ObservationModel`, the protocol `LinearGaussianModel`
+takes. `GaussianObservation`, `CallableGaussianObservation` and their union
+`ObservationFactor` are removed. Anything else in `observations` is refused with a
+`TypeError` naming `FixedSensor` and `CallableSensor`.
+
+The graph reads a sensor only through `linearize`, as the flat model does. At
+construction it linearizes each sensor at its node's zero state, checks the width of
+`C`, and keeps the pair. For a fixed sensor that pair is its own `(C, R)`, which the
+fixed filter path reuses every step. For a state-dependent sensor it is `R(0)`, which
+only sizes the backend's validation model. Each step a state-dependent sensor is
+linearized at its node's block of `μ⁺`, the point ADR-019 fixed. One private function of
+`(C, R, y)` builds the message `Λ = CᵀR⁻¹C`, `h = CᵀR⁻¹y` for every caller.
+
+The message passing is private: `GaussianTransition._predict`,
+`GaussianCoupling._message_to_parent` and `_message_to_child`,
+`CouplingGraph._infer_all`, and the `CanonicalGaussian` payload in `cpomdp.ffg._message`.
+A user builds the graph and runs it through `CouplingGraphBackend` or
+`CouplingGraph.infer`. Neither needs them. They are typed on a payload no page
+documents, and they are the hot path the energy work is most likely to change (RFC-001).
+
+### Consequences
+
+- One sensor object serves a flat model and a graph node. A test filters one
+  `FixedSensor`, one `CallableSensor` and one protocol-only sensor through both and gets
+  the same belief.
+- The fixed filter path computes the same message from the same arrays as before. Its
+  numbers are unchanged and its per-step work does not grow.
+- `ChainBackend` checks a state-dependent `R(μ⁻)` for positive-definiteness each step,
+  as building a `GaussianObservation` did.
+- `CouplingGraph.infer` refuses a reading on a node with a state-dependent sensor and
+  names the node. It used to raise from inside the factor.
+- A custom factor needs a published factor protocol and a page for the payload. Neither
+  exists. As ADR-069 has it, the first user who writes one is who would promote them.
+- ADR-019 and ADR-021 keep their wording. Their `CallableGaussianObservation` is this
+  ADR's `CallableSensor` on a graph node.
+
+## ADR-074 — an edge carries no timescale
+
+**Date:** 2026-10-15
+**Status:** Accepted
+**Supersedes:** ADR-015's decision to ship τ stored on edges. The rest of ADR-015
+stands, the deferral of `levels()` included.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+`Coupling` required a `tau`, and nothing read it. ADR-015 kept τ on edges so that a later
+`levels()` could project the tree into fast and slow strata. It deferred the projection
+because its semantics were undecided, so the field stayed metadata. Callers had to make
+up a value. The shipped examples pass 1.0 and 0.0, a zero timescale. The chemotaxis model
+passes the child's τ, the number its `GaussianTransition.from_ou` already took.
+
+### Decision
+
+`Coupling` drops `tau`. In the driven-relaxation model (ADR-017) a coupling acts within a
+slice, so the only timescale the filter has is each node's transition. `from_ou` turns τ
+into the `A` and `Q` the filter reads. A `levels()` that needs τ can read it where the
+dynamics live, or add an optional field once its semantics are settled. A defaulted field
+added then breaks no caller. A required field removed after uptake breaks every
+`Coupling` call.
+
+`Coupling` checks its fields at construction. A node index that is not an int, a factor
+that is not a `GaussianCoupling` and an `efe_relevant` that is not a bool raise
+`TypeError`. A NumPy integer index is stored as an `int`.
+
+### Consequences
+
+- Every `Coupling` call loses its fourth argument. The review recommended keeping the
+  field with a default of `None`. That leaves an argument nothing reads on a public
+  constructor, which is what made it a question at every call site.
+- `GaussianTransition` stores `A` and `Q`, not τ. Recovering τ from a transition needs
+  `dt`, which nothing stores either. `levels()` settles where τ and `dt` live when it
+  lands.
+- The coupling-graph figure's code panel drops `tau=0.0`.
+
+## ADR-075 — an edge is one class
+
+**Date:** 2026-10-16
+**Status:** Accepted
+**Supersedes:** ADR-021's export of `GaussianCoupling`. ADR-074's field check that a
+factor is a `GaussianCoupling`, since the factor is no longer a separate object.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+An edge took two public classes. `Coupling` held the endpoints and wrapped a
+`GaussianCoupling`, which held `W` and `Q`. Both docstrings called themselves a graph
+edge and gave the same equation. Once its message methods went private (ADR-073),
+`GaussianCoupling` had no public behaviour and one consumer, `Coupling.factor`. A user
+wrote `Coupling(0, 1, GaussianCoupling([[0.9]], coupling_noise=[[0.05]]))` and had to
+learn which class went inside which.
+
+### Decision
+
+`Coupling` is the edge factor. It takes `coupling_matrix` (W) and a keyword-only
+`coupling_noise` (Q) itself, validates them as `GaussianCoupling` did, and carries the
+message algebra as private methods. `GaussianCoupling` is removed. No tier-2 factor
+exists, so folding the class in closes no live seam. A second factor kind would bring
+its own protocol, which ADR-073 leaves to the first user who writes one.
+
+`efe_relevant` is keyword-only. Dropping `tau` (ADR-074) moved it into the fourth
+positional slot, where a stale v0.4.4 call put its τ. Keyword-only, that call fails on
+arity.
+
+`Coupling` checks its fields at construction. A node index that is not an int and an
+`efe_relevant` that is not a bool raise `TypeError`. A NumPy integer index is stored as
+an `int`, and a NumPy bool as a `bool`.
+
+### Consequences
+
+- Every `Coupling` call changes again. The `GaussianCoupling` wrapper goes and its two
+  arguments move up. ADR-074's removal of `tau` lands in the same release, so a v0.4.4
+  caller migrates once.
+- A `Coupling` is not a pytree. Nothing traces through an edge. The graph's couplings
+  are constants of any traced function, and the readings are what a test differentiates.
+
+## ADR-076 — the graph backend reads like the flat model
+
+**Date:** 2026-10-15
+**Status:** Accepted
+**Extends:** ADR-069, which left the graph-backend protocol without a promise under the
+name `EfeBackend`. ADR-064, whose rule for an omitted observation noise the graph backend's
+model now follows.
+**Supersedes:** ADR-016's names `partition_error` and `rollout` for the two surfaces of
+the severed-mass diagnostic, and `rollout`'s stacked `Belief`. The two surfaces stand.
+ADR-013's validation strategy, for where the flagship's check of `KalmanBackend` against
+`ChainBackend` runs. ADR-069's listing of `cpomdp.ffg.chain` among the implementation
+modules that stay importable: the module is now private. The protocol name `EfeBackend`
+in ADR-032 and ADR-069, now `GraphBackend`. ADR-064's reader-table row for
+`CouplingGraphBackend`, whose `(C, R)` tuple and representative R(0) are gone.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+`CouplingGraphBackend` described one joint state twice. `n_total` was `model.n_states`,
+`dims` was `graph.dims` and `n_observations` was `model.n_observations`. Its
+`observation_model` returned `(C, R)` with R linearized at zero, beside a
+`model.observation_model` that is a sensor object, and every reader in the tree threw the
+R away. Under a state-dependent sensor the tuple handed out `R(0)` as the noise the EFE
+reads. `readout(belief)` was `marginal(readout_node, belief)`. Two protocols described
+the backend: `EfeBackend`, named for one consumer although `KalmanBackend` scores EFE too,
+and `ProbeBackend`, which restated part of it for `probe_model`. `rollout` filtered a
+sequence under a name the EFE code uses for a policy rollout, took its arguments in an
+order `infer_states` does not, and returned a `Belief` whose mean had a time axis. The
+severed mass had a second name, `partition_error`. A reading had to be stacked by hand in
+an order that lived in a private layout.
+
+### Decision
+
+Every quantity has one home, and it is the home it has on a flat backend.
+
+- The joint width is `model.n_states` and the stacked sensor C is
+  `model.observation_matrix`, on this backend as on `KalmanBackend`. R at a mean is
+  `observation_noise_at`. I added no `observation_matrix` property, which the review
+  proposed, because it would be a second way to read what `model` already gives. The
+  node dimensions are `graph.dims`.
+- Under a state-dependent sensor the model's nominal `observation_noise` is R at the prior
+  mean, the rule every flat model follows, where it was R at zero.
+- One protocol, `GraphBackend`, describes a backend over a graph of nodes, and
+  `probe_model` reads it too. It declares `predicted_belief`, `observation_noise_at`,
+  `block` and `severed_efe_edges` beside `InferenceBackend`'s two members. It carries no
+  promise, as ADR-069 left `EfeBackend`.
+- `marginal(node, belief)` is the one way to read a node. `block` and `marginal` refuse a
+  node outside the graph.
+- A user writes readings keyed by node, the form `CouplingGraph.infer` takes, and
+  `stack_observations` builds the vector `infer_states` takes. The stacked vector stays
+  the backend's input. The `InferenceBackend` protocol, an `ObservationGoal`'s target,
+  C and R all live in that space, so a mapping on `infer_states` would break the
+  protocol for every generic caller and leave the goal in a second format.
+- `severed_mass` and `filter_sequence` replace `partition_error` and `rollout`.
+  `filter_sequence` takes `infer_states`' argument order, returns plain arrays and checks
+  the prior and the first step before it scans.
+- `ChainBackend` goes to `cpomdp.ffg._chain`. It returns `KalmanBackend`'s numbers at two
+  extra inversions per step, and no user needs it to filter. Its tests are what it is
+  for, so the flagship's agreement check moves beside them, on the flagship's model and
+  inputs.
+- The graph path keeps its positive-definite Q. Its transition factor builds the joint
+  over the current and next state in information form, and that joint contains Q's
+  inverse. The refusal now says the matrix is inverted, where it blamed a sensor.
+
+### Consequences
+
+- The backend's surface is `model`, `graph`, `transitions`, `infer_states`,
+  `predicted_belief`, `observation_noise_at`, `stack_observations`, `marginal`, `block`,
+  `severed_efe_edges`, `severed_mass`, `filter_sequence`, `to_flat_model` and
+  `flat_observation`. `graph` and `transitions` are read-only, as `model` was.
+- A fixed graph returns a front-loaded R from `observation_noise_at` and no longer builds
+  it per candidate. A state-dependent graph reads R through the joint sensor its model
+  carries, so the two accessors cannot drift.
+- `CouplingGraph` still stores its observations in the order given.
+  `stack_observations` makes that order harmless. Sorting them would make iteration
+  match the stacking order, and it belongs with the graph.
+- Accepting a semi-definite Q on the graph path needs a moment-form predict in the
+  transition factor: add Q to the propagated covariance, then invert once. That is fewer
+  inversions per step than the information-form joint. It changes the factor, which
+  this decision does not touch.
+
+## ADR-077 — R at a mean is read off the model, and the partition cuts every surface
+
+**Date:** 2026-10-16
+**Status:** Accepted
+**Supersedes:** ADR-076's "R at a mean is `observation_noise_at`" on the backend, its
+listing of `observation_noise_at` among `GraphBackend`'s members, and its single refusal
+reason for a matrix that is not definite. ADR-032's `backend.observation_noise_at(μ⁺)`
+as the place R(μ⁺) is read.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+ADR-076 left `observation_noise_at` on the graph backend while every other quantity moved
+onto `backend.model`. A flat backend has no such accessor, so code reading R at a mean
+needed one call for a graph and another for a flat model. The prior was also cut by the
+partition in `infer_states` and not in the other surfaces, so `filter_sequence` and
+`infer_states` disagreed on a correlated prior.
+
+### Decision
+
+`observation_noise_at(mean)` is a method of `LinearGaussianModel`. A model with no sensor
+or a fixed one returns `observation_noise`, and a state-dependent sensor is linearized at
+the state. The graph backend's model reads R through the joint sensor it carries, and a
+fixed graph returns the R built at construction, so no candidate rebuilds it.
+`GraphBackend` declares `predicted_belief`, `block` and `severed_efe_edges` beside
+`InferenceBackend`'s two members.
+
+Every graph-backend surface cuts the prior by its partition, as `infer_states` does, so
+`filter_sequence` is `infer_states` run over a sequence. The full-joint partition is
+unchanged. A mixed partition, such as `[[0, 1, 3, 4], [2]]`, given a correlated prior
+returns a different posterior than before, because the dense path now inverts the cut
+prior.
+
+Each refusal of a matrix that is not definite gives its caller's reason. The factor's
+says the information form inverts it. The one shared reason blamed a sensor for every
+matrix.
+
+### Consequences
+
+- Code reading R at a mean reads it off `backend.model`, on a flat backend and a graph
+  one alike.
+- A caller relying on a mixed partition's old posterior over a correlated prior sees a
+  different number. The old one filtered a prior the partition said to ignore.
+
 ## ADR-078 — the EFE functions answer in one record and take one preference
 
 **Date:** 2026-10-15

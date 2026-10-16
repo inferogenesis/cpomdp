@@ -16,7 +16,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from cpomdp.dynamics import CallableProcessNoise
+from cpomdp.dynamics import CallableDynamicsNoise
 from cpomdp.efe import (
     EfeResult,
     PolicyEfeTrace,
@@ -33,9 +33,9 @@ def _model(observation_model=None):
     # 2-state, 1-observation, 1-action, controllable.
     return LinearGaussianModel(
         dynamics_matrix=[[1.0, 0.1], [0.0, 1.0]],
-        observation_matrix=[[1.0, 0.0]],
+        observation_matrix=[[1.0, 0.0]] if observation_model is None else None,
         dynamics_noise=[[0.1, 0.0], [0.0, 0.1]],
-        observation_noise=[[0.5]],
+        observation_noise=[[0.5]] if observation_model is None else None,
         prior=Belief(mean=[0.0, 0.0], cov=[[1.0, 0.0], [0.0, 1.0]]),
         control_matrix=[[0.0], [1.0]],
         observation_model=observation_model,
@@ -323,9 +323,7 @@ class TestPrecisionControlsBalance:
         model = LinearGaussianModel(
             dynamics_matrix=[[1.0]],
             control_matrix=[[1.0]],
-            observation_matrix=[[1.0]],
             dynamics_noise=[[0.05]],
-            observation_noise=[[0.3]],
             prior=Belief(mean=[0.0], cov=[[0.5]]),
             observation_model=CallableSensor([[1.0]], beacon_noise, {}),
         )
@@ -391,9 +389,7 @@ def _ramp_model():
     )
     return LinearGaussianModel(
         dynamics_matrix=[[1.0]],
-        observation_matrix=[[1.0]],
         dynamics_noise=[[0.1]],
-        observation_noise=[[0.5]],
         prior=Belief(mean=[0.0], cov=[[0.4]]),
         control_matrix=[[1.0]],
         observation_model=sensor,
@@ -494,17 +490,17 @@ def _q_well(x, params):
 
 
 def _internal_q_model():
-    pn = CallableProcessNoise(
-        q_fn=_q_well, q_params={"base": jnp.array(0.05), "slope": jnp.array(0.4)}
+    dynamics_noise_model = CallableDynamicsNoise(
+        noise_fn=_q_well,
+        noise_params={"base": jnp.array(0.05), "slope": jnp.array(0.4)},
     )
     return LinearGaussianModel(
         dynamics_matrix=[[1.0]],
         observation_matrix=[[1.0]],
-        dynamics_noise=[[0.1]],
         observation_noise=[[0.3]],  # R is FIXED (observation=None)
         prior=Belief(mean=[0.0], cov=[[0.2]]),
         control_matrix=[[1.0]],
-        dynamics_noise_model=pn,
+        dynamics_noise_model=dynamics_noise_model,
     )
 
 
@@ -579,15 +575,14 @@ class TestInternalProcessNoise:
         action = jnp.array([0.6])
 
         def efe_of_params(params):
-            pn = CallableProcessNoise(_q_well, params)
+            dynamics_noise_model = CallableDynamicsNoise(_q_well, params)
             model = LinearGaussianModel(
                 dynamics_matrix=[[1.0]],
                 observation_matrix=[[1.0]],
-                dynamics_noise=[[0.1]],
                 observation_noise=[[0.3]],
                 prior=Belief(mean=[0.0], cov=[[0.2]]),
                 control_matrix=[[1.0]],
-                dynamics_noise_model=pn,
+                dynamics_noise_model=dynamics_noise_model,
             )
             return expected_free_energy(
                 model, _INTERNAL_BELIEF, action, _INTERNAL_PREF
@@ -608,17 +603,16 @@ def _q_ramp(x, params):
 
 
 def _flip_model():
-    pn = CallableProcessNoise(
+    dynamics_noise_model = CallableDynamicsNoise(
         _q_ramp, {"base": jnp.array(1.2), "slope": jnp.array(-0.5)}
     )
     return LinearGaussianModel(
         dynamics_matrix=[[1.0]],
         observation_matrix=[[1.0]],
-        dynamics_noise=[[0.1]],
         observation_noise=[[0.2]],
         prior=Belief(mean=[0.0], cov=[[0.1]]),
         control_matrix=[[1.0]],
-        dynamics_noise_model=pn,
+        dynamics_noise_model=dynamics_noise_model,
     )
 
 
