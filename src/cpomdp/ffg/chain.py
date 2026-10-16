@@ -7,9 +7,6 @@ reproduces the existing Kalman path. Gaussian belief propagation on a linear cha
 behind the same seam, and the gate (``tests/test_ffg_chain.py``) holds it to
 numerical identity against that path.
 
-Private (ADR-069). It returns ``KalmanBackend``'s numbers at two extra inversions per
-step, so no caller needs it to filter. It exists to be held to that gate.
-
 One step decomposes into the owned algebra exactly as the factor docstrings promise::
 
     prior (moment) ──┐

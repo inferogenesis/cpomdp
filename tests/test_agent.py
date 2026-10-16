@@ -7,7 +7,7 @@ from cpomdp._lab.harness import ScoredAgent
 from cpomdp.agent import Agent
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.control import LQRController
-from cpomdp.ffg._chain import ChainBackend
+from cpomdp.ffg.chain import ChainBackend
 from cpomdp.observation import CallableSensor
 from cpomdp.selection import (
     EFESelector,

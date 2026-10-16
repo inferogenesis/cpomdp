@@ -137,10 +137,7 @@ class LinearGaussianKernel:
                 f"{self.dynamics_matrix.shape}"
             )
         validate_covariance(
-            self.dynamics_noise,
-            "dynamics_noise",
-            require_definite=True,
-            reason="the density is evaluated through its Cholesky factor",
+            self.dynamics_noise, "dynamics_noise", require_definite=True
         )
         n = self.dynamics_matrix.shape[0]
         if self.dynamics_noise.shape != (n, n):

@@ -79,13 +79,14 @@ location is roughly 7x tighter than the beeliners' (final covariance trace ≈0.
 and 0.18). It is an explore/exploit trade — time and distance traded for confidence —
 not a regime that wins on every axis.
 
-`tests/test_ffg_chain.py` checks the filter. It runs this model through the native
-`KalmanBackend` and the v0.4 FFG chain filter on one scripted input sequence and holds
-them to `atol=1e-7`.
+The simulation is checked, not just rendered: every agent's filter is run through
+**both inference backends**, and `--scan` checks the native `KalmanBackend` and the
+v0.4 FFG `ChainBackend` agree to `atol=1e-7`.
 
 ![Four bacilli learning where the food is, under different goal precisions Λ](../docs/assets/bacillus_uncertain_food.gif)
 
-`bacillus_uncertain_food.py --scan` prints the regime metrics without rendering.
+`bacillus_uncertain_food.py --scan` prints the regime metrics and the
+Kalman-vs-ChainBackend agreement check without rendering.
 
 ---
 

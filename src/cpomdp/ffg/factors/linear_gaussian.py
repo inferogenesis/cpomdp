@@ -30,7 +30,7 @@ from jax import Array
 from jaxtyping import Float64, PyTree
 from numpy.typing import ArrayLike
 
-from cpomdp._validation import INFORMATION_FORM_INVERTS, validate_covariance
+from cpomdp._validation import validate_covariance
 from cpomdp.ffg.message import CanonicalGaussian
 
 __all__ = [
@@ -81,10 +81,7 @@ class GaussianObservation:
             )
         # R is inverted in the message, so it must be positive-definite.
         validate_covariance(
-            observation_noise,
-            "observation_noise",
-            require_definite=True,
-            reason=INFORMATION_FORM_INVERTS,
+            observation_noise, "observation_noise", require_definite=True
         )
         m = observation_matrix.shape[0]
         if observation_noise.shape != (m, m):
@@ -217,12 +214,7 @@ class CallableGaussianObservation:
                 f"matching the {m}-row observation_matrix, got shape {r0.shape}"
             )
         # R(x) is inverted in the message, so it must be positive-definite.
-        validate_covariance(
-            r0,
-            "noise_fn(x, params)",
-            require_definite=True,
-            reason=INFORMATION_FORM_INVERTS,
-        )
+        validate_covariance(r0, "noise_fn(x, params)", require_definite=True)
 
     def message(
         self, observation: ArrayLike, state: ArrayLike | None = None
@@ -356,12 +348,7 @@ class GaussianTransition:
                 f"{dynamics_matrix.shape}"
             )
         # Q is inverted in the joint, so it must be positive-definite.
-        validate_covariance(
-            dynamics_noise,
-            "dynamics_noise",
-            require_definite=True,
-            reason=INFORMATION_FORM_INVERTS,
-        )
+        validate_covariance(dynamics_noise, "dynamics_noise", require_definite=True)
         n = dynamics_matrix.shape[0]
         if dynamics_noise.shape != (n, n):
             raise ValueError(
@@ -519,12 +506,7 @@ class GaussianCoupling:
                 f"coupling_matrix must be 2-D (c, p), got shape {coupling_matrix.shape}"
             )
         # Q is inverted in the message, so it must be positive-definite.
-        validate_covariance(
-            coupling_noise,
-            "coupling_noise",
-            require_definite=True,
-            reason=INFORMATION_FORM_INVERTS,
-        )
+        validate_covariance(coupling_noise, "coupling_noise", require_definite=True)
         c = coupling_matrix.shape[0]
         if coupling_noise.shape != (c, c):
             raise ValueError(

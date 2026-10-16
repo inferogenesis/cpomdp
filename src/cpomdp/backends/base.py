@@ -10,7 +10,7 @@ from cpomdp.ffg.graph import Coupling
 from cpomdp.types import Belief, LinearGaussianModel
 
 __all__ = [
-    "GraphBackend",
+    "EfeBackend",
     "InadmissiblePartitionError",
     "InferenceBackend",
 ]
@@ -27,8 +27,8 @@ class InadmissiblePartitionError(ValueError):
     behavioural drift can still look right while the *accumulated* information about the
     latent — what the instrumental epistemic rides on — degrades, up to collapse for an
     integration-limited latent. Whether the degradation is mild or total is
-    model-specific (measure it with ``CouplingGraphBackend.severed_mass``), so the
-    guard refuses conservatively rather than sever and hope. Keep the flagged edge's
+    model-specific (measure it with the severed-mass diagnostic ``partition_error``), so
+    the guard refuses conservatively rather than sever and hope. Keep the flagged edge's
     endpoints in one cluster, or, if a check shows the cut is safe, drop its
     ``efe_relevant`` flag.
     """
@@ -77,21 +77,24 @@ class InferenceBackend(Protocol):
 
 
 @runtime_checkable
-class GraphBackend(InferenceBackend, Protocol):
-    """An ``InferenceBackend`` over a graph of nodes, whose joint state stacks them.
+class EfeBackend(InferenceBackend, Protocol):
+    """An ``InferenceBackend`` that also supports *factored* EFE action selection.
 
-    Beyond ``infer_states`` a graph backend exposes the joint predicted before an
-    observation (``predicted_belief`` → μ⁺, Σ⁺), the joint-state block a node occupies
-    (``block``) and the EFE-load-bearing edges its carry partition cuts
-    (``severed_efe_edges``). The sensor C is ``model.observation_matrix``, R at a
-    predicted mean is ``model.observation_noise_at`` and the joint width is
-    ``model.n_states``, as on every backend.
-
-    The graph EFE paths, ``probe_model`` and the Agent's dispatch read a backend
-    through this protocol, never the concrete class (Dependency Inversion).
-    ``CouplingGraphBackend`` satisfies it. Like this module, the protocol carries no
-    promise (ADR-069).
+    A node-structured backend: beyond ``infer_states`` it exposes the pre-observation
+    predicted joint (``predicted_belief`` → Σ⁺), the real observation model
+    (``observation_model`` → C, R), and the per-node ``block`` the epistemic term can
+    target (issue #26). ``FfgEfeSelector`` and the Agent's EFE dispatch depend on *this*
+    abstraction, never the concrete backend class — so action selection stays above the
+    backend layer (Dependency Inversion).
     """
+
+    dims: tuple[int, ...]
+    n_total: int
+
+    @property
+    def observation_model(self) -> tuple[Float64[Array, "m n"], Float64[Array, "m m"]]:
+        """The real sensor ``(C, R)`` embedded in the joint state (the EFE reads it)."""
+        ...
 
     def predicted_belief(
         self, prior: Belief, action: ArrayLike | None = None
@@ -101,6 +104,10 @@ class GraphBackend(InferenceBackend, Protocol):
 
     def block(self, node: int) -> range:
         """The joint-state indices node ``node`` occupies (``info_node`` → block)."""
+        ...
+
+    def observation_noise_at(self, mean: ArrayLike) -> Float64[Array, "m m"]:
+        """The stacked observation noise R at a predicted mean (fixed → constant)."""
         ...
 
     def severed_efe_edges(self) -> tuple[Coupling, ...]:
