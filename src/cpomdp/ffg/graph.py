@@ -23,24 +23,30 @@ from jax import Array
 from jaxtyping import Float64
 from numpy.typing import ArrayLike
 
+from cpomdp._validation import validate_covariance
 from cpomdp.ffg._message import CanonicalGaussian, likelihood_message
-from cpomdp.ffg.factors.linear_gaussian import GaussianCoupling
 from cpomdp.observation import ObservationModel
 from cpomdp.types import Belief
 
 __all__ = ["Coupling", "CouplingGraph"]
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class Coupling:
     """A directed edge from a parent node to a child node: ``child = W·parent + noise``.
 
     ``parent`` and ``child`` are node indices, oriented so the parent is the endpoint
-    nearer the tree's root. ``factor`` is the
-    [`GaussianCoupling`][cpomdp.GaussianCoupling] holding this edge's ``W`` (shape
-    ``(dim[child], dim[parent])``) and its noise covariance. A node's timescale is
-    its [`GaussianTransition`][cpomdp.GaussianTransition], so an edge carries none
-    (ADR-072).
+    nearer the tree's root. The edge is the linear-Gaussian factor
+    ``N(child; W·parent, Q)``:
+
+    - ``coupling_matrix`` — W, shape ``(dim[child], dim[parent])``. It maps the parent's
+      state onto the child's and need not be square.
+    - ``coupling_noise`` — Q, shape ``(dim[child], dim[child])``, positive-definite
+      (it is inverted).
+
+    Where a [`GaussianTransition`][cpomdp.GaussianTransition] steps one node in time,
+    an edge couples two nodes within a slice. The maths is the same. A node's timescale
+    is its transition, so an edge carries none (ADR-072).
 
     ``efe_relevant`` is a modeller's *declaration* that this edge carries information
     the instrumental epistemic depends on — a physics call, not a structural one (in
@@ -51,27 +57,148 @@ class Coupling:
     partition (ADR-018). Default ``False``; it does not affect the factor or the filter.
 
     Raises:
-        TypeError: if ``parent`` or ``child`` is not an int, ``factor`` is not a
-            ``GaussianCoupling``, or ``efe_relevant`` is not a bool.
+        TypeError: if ``parent`` or ``child`` is not an int, or ``efe_relevant`` is not
+            a bool.
+        ValueError: if ``coupling_matrix`` is not 2-D, or ``coupling_noise`` is not a
+            positive-definite matrix as tall as ``coupling_matrix``.
     """
 
     parent: int
     child: int
-    factor: GaussianCoupling
-    efe_relevant: bool = False
+    coupling_matrix: Float64[Array, "c p"]  # W: child-rows × parent-cols
+    coupling_noise: Float64[Array, "c c"]  # Q: child × child, positive-definite
+    efe_relevant: bool
 
-    def __post_init__(self) -> None:
-        """Coerce the node indices to ``int`` and check every field's type."""
-        object.__setattr__(self, "parent", _as_int(self.parent, "parent"))
-        object.__setattr__(self, "child", _as_int(self.child, "child"))
-        if not isinstance(self.factor, GaussianCoupling):
-            raise TypeError(
-                f"factor must be a GaussianCoupling, got {type(self.factor).__name__}"
+    def __init__(
+        self,
+        parent: int,
+        child: int,
+        coupling_matrix: ArrayLike,
+        *,
+        coupling_noise: ArrayLike,
+        efe_relevant: bool = False,
+    ) -> None:
+        object.__setattr__(self, "parent", _as_int(parent, "parent"))
+        object.__setattr__(self, "child", _as_int(child, "child"))
+        object.__setattr__(
+            self, "coupling_matrix", jnp.asarray(coupling_matrix, dtype=float)
+        )
+        object.__setattr__(
+            self, "coupling_noise", jnp.asarray(coupling_noise, dtype=float)
+        )
+        object.__setattr__(self, "efe_relevant", _as_bool(efe_relevant))
+        self._validate()
+
+    def _validate(self) -> None:
+        coupling_matrix = self.coupling_matrix  # W
+        coupling_noise = self.coupling_noise  # Q
+        if coupling_matrix.ndim != 2:
+            raise ValueError(
+                f"coupling_matrix must be 2-D (c, p), got shape {coupling_matrix.shape}"
             )
-        if not isinstance(self.efe_relevant, bool):
-            raise TypeError(
-                f"efe_relevant must be a bool, got {type(self.efe_relevant).__name__}"
+        # Q is inverted in the message, so it must be positive-definite.
+        validate_covariance(coupling_noise, "coupling_noise", require_definite=True)
+        child_dim = coupling_matrix.shape[0]
+        if coupling_noise.shape != (child_dim, child_dim):
+            raise ValueError(
+                f"coupling_noise must be {child_dim}x{child_dim} to match the "
+                f"{child_dim}-row coupling_matrix, got shape {coupling_noise.shape}"
             )
+
+    def _message_to_parent(self, child_message: CanonicalGaussian) -> CanonicalGaussian:
+        """Summarise what a child's belief says about the parent: eliminate the child.
+
+        The coupling is the joint Gaussian over ``z = [parent, child]``::
+
+            Λ_J = [[ WᵀQ⁻¹W, −WᵀQ⁻¹ ],     h_J = 0   (a pure coupling has no bias)
+                   [ −Q⁻¹W,    Q⁻¹   ]]
+
+        The upward message:
+
+        1. Folds ``child_message`` into the *child* block — its precision into the
+           bottom-right ``c×c`` of ``Λ_J``, its potential into the trailing ``c`` of
+           ``h_J`` (a block add during construction, *not* ``__add__``).
+        2. Marginalizes the child out, leaving the message on the p-D parent.
+
+        This is the mirror of ``GaussianTransition._predict`` (which folds into the
+        parent block and eliminates the parent, emitting downward onto the child);
+        here we fold into the child block and eliminate the child, emitting upward.
+
+        Args:
+            child_message: the incoming belief on the c-D child, as a
+                ``CanonicalGaussian``.
+
+        Returns:
+            A ``CanonicalGaussian`` over the p-D parent.
+        """
+        coupling_matrix = self.coupling_matrix  # W
+        coupling_noise = self.coupling_noise  # Q
+        c, p = coupling_matrix.shape  # W is (child, parent)
+        noise_precision = jnp.linalg.inv(coupling_noise)  # Q⁻¹
+        noise_weighted_coupling = noise_precision @ coupling_matrix  # Q⁻¹W
+
+        # The incoming message is on the CHILD, so it folds into the child block —
+        # the mirror of predict, where the message folds into the parent (state) block.
+        parent_block = coupling_matrix.T @ noise_weighted_coupling  # WᵀQ⁻¹W
+        child_block = noise_precision + child_message.precision  # Q⁻¹ + message
+
+        precision = jnp.block(
+            [
+                [parent_block, -noise_weighted_coupling.T],
+                [-noise_weighted_coupling, child_block],
+            ]
+        )
+        # No bias and no parent message → the parent potential is zero; the child
+        # slot carries the incoming message's potential.
+        potential = jnp.concatenate([jnp.zeros(p), child_message.potential])
+
+        joint = CanonicalGaussian._unchecked(precision, potential)
+        return joint.marginalize(over=range(p, p + c))  # eliminate child, keep parent
+
+    def _message_to_child(self, parent_message: CanonicalGaussian) -> CanonicalGaussian:
+        """Push a parent's belief down the edge onto the child: eliminate the parent.
+
+        The distribute-pass mirror of ``_message_to_parent``. Over the same joint on
+        ``z = [parent, child]``, but here the *parent* is known, so its message folds
+        into the *parent* block of ``Λ_J`` and the parent is marginalized out, leaving
+        the message on the c-D child.
+
+        Structurally this is ``GaussianTransition._predict`` (fold the incoming belief
+        into the source block, eliminate the source, emit onto the target) with a
+        non-square ``W`` and no control shift — a pure coupling carries no bias. So on
+        its own the downward message is a full child belief, landing in moment form on
+        ``mean = W·μ_parent`` and ``cov = W·Σ_parent·Wᵀ + Q``.
+
+        Args:
+            parent_message: the incoming belief on the p-D parent, as a
+                ``CanonicalGaussian``.
+
+        Returns:
+            A ``CanonicalGaussian`` over the c-D child.
+        """
+        coupling_matrix = self.coupling_matrix  # W
+        coupling_noise = self.coupling_noise  # Q
+        c, p = coupling_matrix.shape  # W is (child, parent)
+
+        noise_precision = jnp.linalg.inv(coupling_noise)  # Q⁻¹
+        noise_weighted_coupling = noise_precision @ coupling_matrix  # Q⁻¹W
+
+        parent_block = (
+            coupling_matrix.T @ noise_weighted_coupling + parent_message.precision
+        )  # WᵀQ⁻¹W + message
+        child_block = noise_precision
+
+        precision = jnp.block(
+            [
+                [parent_block, -noise_weighted_coupling.T],
+                [-noise_weighted_coupling, child_block],
+            ]
+        )
+
+        potential = jnp.concatenate([parent_message.potential, jnp.zeros(c)])
+
+        joint = CanonicalGaussian._unchecked(precision, potential)
+        return joint.marginalize(over=range(p))
 
 
 class CouplingGraph:
@@ -95,11 +222,11 @@ class CouplingGraph:
         TypeError: if ``root`` or a dimension is not an int, an edge is not a
             ``Coupling``, or an observation is not an ``ObservationModel``.
         ValueError: if ``dims`` is empty or non-positive; if ``root``, an edge, or an
-            observation references an out-of-range node; if an edge's factor ``W`` is
-            not ``(dim[child], dim[parent])``; if a sensor's ``C`` is not as wide as the
-            node it observes; or if the edges do not form a tree rooted at ``root`` —
-            the root has a parent, a node has two parents or none, or the edges contain
-            a cycle.
+            observation references an out-of-range node; if an edge's
+            ``coupling_matrix`` is not ``(dim[child], dim[parent])``; if a sensor's
+            ``C`` is not as wide as the node it observes; or if the edges do not form a
+            tree rooted at ``root`` — the root has a parent, a node has two parents or
+            none, or the edges contain a cycle.
 
     The four fields are read-only once built. Construction is where the wiring is
     checked, so a graph that needs other wiring is a new graph.
@@ -160,11 +287,11 @@ class CouplingGraph:
                 if not 0 <= idx < n:
                     raise ValueError(f"coupling references unknown node {idx}")
             expected = (self.dims[edge.child], self.dims[edge.parent])
-            actual = tuple(edge.factor.coupling_matrix.shape)
+            actual = tuple(edge.coupling_matrix.shape)
             if actual != expected:
                 raise ValueError(
-                    f"coupling {edge.parent}->{edge.child}: factor W shape {actual} "
-                    f"!= expected {expected} (dim[child], dim[parent])"
+                    f"coupling {edge.parent}->{edge.child}: coupling_matrix shape "
+                    f"{actual} != expected {expected} (dim[child], dim[parent])"
                 )
         for idx, sensor in self.observations.items():
             if not 0 <= idx < n:
@@ -338,7 +465,7 @@ class CouplingGraph:
                 continue
             edge = self._parent_edge[node]
             # Summarise everything known at `node` onto its parent, eliminating `node`.
-            up = edge.factor._message_to_parent(acc[node])
+            up = edge._message_to_parent(acc[node])
             acc[edge.parent] = _combine(acc, edge.parent, up)
 
         # Read the accumulated root message back into moment form.
@@ -360,7 +487,7 @@ class CouplingGraph:
         Args:
             seeds: a canonical message per node — the node's local information. Unlike
                 ``infer``'s raw ``readings``, these are ready-made ``CanonicalGaussian``
-                messages, not observations still needing a factor.
+                messages, not readings still needing a sensor.
 
         Returns:
             A ``CanonicalGaussian`` marginal per node index; call ``.to_moment()`` on
@@ -373,7 +500,7 @@ class CouplingGraph:
         up_msg = {}
         for node in self._collect_order:
             edge = self._parent_edge[node]
-            up = edge.factor._message_to_parent(below[node])
+            up = edge._message_to_parent(below[node])
             up_msg[node] = up
             below[edge.parent] = _combine(below, edge.parent, up)
 
@@ -383,7 +510,7 @@ class CouplingGraph:
         marginals = {self.root: below[self.root]}
         for node in reversed(self._collect_order):
             edge = self._parent_edge[node]
-            down = edge.factor._message_to_child(marginals[edge.parent] - up_msg[node])
+            down = edge._message_to_child(marginals[edge.parent] - up_msg[node])
             marginals[node] = _combine(below, node, down)
         return marginals
 
@@ -393,6 +520,13 @@ def _combine(
 ) -> CanonicalGaussian:
     """Add ``msg`` to ``acc[key]``, or start the slot with it if absent."""
     return acc[key] + msg if key in acc else msg
+
+
+def _as_bool(value: object) -> bool:
+    """``efe_relevant`` as a ``bool``. A NumPy bool is stored as one."""
+    if not isinstance(value, bool | np.bool_):
+        raise TypeError(f"efe_relevant must be a bool, got {type(value).__name__}")
+    return bool(value)
 
 
 def _as_int(value: object, name: str) -> int:

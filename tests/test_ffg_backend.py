@@ -32,7 +32,7 @@ from cpomdp.backends.coupling import (
 )
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.backends.rxinfer import RxInferBackend
-from cpomdp.ffg.factors.linear_gaussian import GaussianCoupling, GaussianTransition
+from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
 from cpomdp.ffg.graph import Coupling, CouplingGraph
 from cpomdp.observation import CallableSensor, FixedSensor
 from cpomdp.types import Belief, LinearGaussianModel
@@ -81,7 +81,7 @@ def _driven_relaxation_oracle(
     ``Lam_struct`` is the data-independent structural-coupling precision: each edge
     ``(p, c, W, Qs)`` contributes ``W^T Qs^-1 W`` to the parent block, ``Qs^-1`` to the
     child block, and ``-W^T Qs^-1`` / ``-Qs^-1 W`` to the cross blocks — the same
-    ``[[W^T Q^-1 W, -W^T Q^-1], [-Q^-1 W, Q^-1]]`` a ``GaussianCoupling`` carries.
+    ``[[W^T Q^-1 W, -W^T Q^-1], [-Q^-1 W, Q^-1]]`` a ``Coupling`` carries.
 
     Returns ``(states, offs)`` where ``states[t] = (mu, Sig)`` is the full joint at step
     ``t`` and ``offs`` locates each node's block.
@@ -188,8 +188,7 @@ def _build(
 ):
     """Build a ``CouplingGraphBackend`` (graph + per-node transitions) for a spec."""
     couplings = tuple(
-        Coupling(parent, child, GaussianCoupling(w, coupling_noise=q))
-        for parent, child, w, q in edges
+        Coupling(parent, child, w, coupling_noise=q) for parent, child, w, q in edges
     )
     observations = {
         n: FixedSensor(c, observation_noise=r) for n, (c, r) in obs_specs.items()
@@ -602,9 +601,7 @@ class TestProtocolAndReadout:
         graph = CouplingGraph(
             root=0,
             dims=(1, 1),
-            couplings=(
-                Coupling(0, 1, GaussianCoupling([[1.0]], coupling_noise=[[0.5]])),
-            ),
+            couplings=(Coupling(0, 1, [[1.0]], coupling_noise=[[0.5]]),),
             observations={},
         )
         transition = GaussianTransition([[0.9]], dynamics_noise=[[0.1]])
@@ -869,8 +866,7 @@ def _rx_relaxation_oracle(
 def _build_rx(dims, edges, rx_obs, dyn, *, control_matrix=None, partition=None):
     """Build a ``CouplingGraphBackend`` with state-dependent (callable) observations."""
     couplings = tuple(
-        Coupling(parent, child, GaussianCoupling(w, coupling_noise=q))
-        for parent, child, w, q in edges
+        Coupling(parent, child, w, coupling_noise=q) for parent, child, w, q in edges
     )
     observations = {
         node: CallableSensor(c, fn, prm) for node, (c, fn, prm) in rx_obs.items()

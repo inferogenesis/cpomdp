@@ -15,7 +15,7 @@ from _support import unit_prior
 from cpomdp.agent import Agent
 from cpomdp.backends.coupling import CouplingGraphBackend
 from cpomdp.efe import _ffg_efe_step
-from cpomdp.ffg.factors.linear_gaussian import GaussianCoupling, GaussianTransition
+from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
 from cpomdp.ffg.graph import Coupling, CouplingGraph
 from cpomdp.observation import CallableSensor, FixedSensor
 from cpomdp.selection import (
@@ -97,7 +97,7 @@ def _two_node_backend():
     graph = CouplingGraph(
         root=0,
         dims=(1, 1),
-        couplings=(Coupling(0, 1, GaussianCoupling([[0.8]], coupling_noise=[[0.05]])),),
+        couplings=(Coupling(0, 1, [[0.8]], coupling_noise=[[0.05]]),),
         observations={1: FixedSensor([[1.0]], observation_noise=[[0.1]])},
     )
     transitions = (

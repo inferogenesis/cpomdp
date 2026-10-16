@@ -487,9 +487,10 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `cpomdp.backends.base` and `cpomdp.backends.rxinfer`. The first is the shape check the
   built-in backends share and the second is the RxInfer test oracle, and a cpomdp user
   calls neither (ADR-069). `import cpomdp` no longer leaves `cpomdp.jax` behind.
-- **Breaking:** the graph model's message passing is private. `GaussianTransition.predict`,
-  `GaussianCoupling.message_to_parent` and `message_to_child` and `CouplingGraph.infer_all`
-  take a leading underscore, and `cpomdp.ffg.message` is `cpomdp.ffg._message`. v0.4.4
+- **Breaking:** the graph model's message passing is private. `GaussianTransition.predict`
+  and `CouplingGraph.infer_all` take a leading underscore. `GaussianCoupling`'s
+  `message_to_parent` and `message_to_child` are private methods of `Coupling`, and
+  `cpomdp.ffg.message` is `cpomdp.ffg._message`. v0.4.4
   published them on the top-level construction classes, typed on a `CanonicalGaussian`
   no page documents. They are the hot path the energy work will change. A user builds
   the graph and runs it through `CouplingGraphBackend` or `CouplingGraph.infer`, and
@@ -606,19 +607,24 @@ certainty equivalence is optimal, and no use of the readings beats it.
   noise is content-checked. `from_ou`'s `tau` and `dt` are both positive scalars in the
   same time unit and `A = exp(-dt/tau)` is finite either way round. 45 call sites moved
   to keywords.
-- **Breaking:** `GaussianCoupling` takes `coupling_noise` by keyword, and its matrix is
-  `coupling_matrix`, as argument and field, where it was `coupling`. A scalar edge's gain
-  and noise are both (1, 1), and only the noise is content-checked, so
-  `GaussianCoupling([[0.05]], [[0.9]])` built an edge with the two swapped. The new name
-  follows the `_matrix` suffix every other linear map carries. 33 call sites moved to
-  keywords.
+- **Breaking:** an edge is one class. `GaussianCoupling` is removed, and `Coupling`
+  holds the edge's matrix and noise itself:
+  `Coupling(parent, child, coupling_matrix, coupling_noise=...)`. v0.4.4 wrapped the two
+  in a `GaussianCoupling` passed as `Coupling`'s `factor`, so one concept took two
+  classes and a user had to learn which went inside which. The matrix was `coupling`
+  there. It is `coupling_matrix` now, after the `_matrix` suffix every other linear map
+  carries. `coupling_noise` is keyword-only. A scalar edge's gain and noise are both
+  (1, 1), and only the noise is content-checked, so `GaussianCoupling([[0.05]], [[0.9]])`
+  built an edge with the two swapped (ADR-072).
 - **Breaking:** `Coupling` takes no `tau`. The edge's time-constant was required and read
   by nothing. In the chemotaxis example it restated the timescale the child's
   `GaussianTransition.from_ou` already took, and other callers made one up. A node's
-  timescale is its transition. `Coupling` now checks its fields at construction: a node
-  index that is not an int, a factor that is not a `GaussianCoupling` and a non-bool
-  `efe_relevant` raise `TypeError`. A bare matrix as the factor used to construct and
-  fail later on a missing attribute (ADR-072).
+  timescale is its transition. `efe_relevant` is keyword-only, so a stale positional
+  `tau` fails on arity. It used to land in `efe_relevant` and blame a flag the caller
+  never set. `Coupling` checks its fields at construction. A node index that is not an
+  int and an `efe_relevant` that is not a bool raise `TypeError`, and a NumPy bool is
+  stored as a `bool`. A `coupling_matrix` that is not 2-D and a `coupling_noise` that is
+  not positive-definite raise `ValueError` (ADR-072).
 - **Breaking:** `CouplingGraphBackend` takes a required keyword `prior`, the belief over
   the joint state before any reading. Its `model.prior` was an N(0, I) placeholder, so
   an `Agent` built on the backend planned and filtered from a belief the caller never

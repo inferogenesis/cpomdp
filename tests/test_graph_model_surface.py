@@ -18,8 +18,8 @@ from cpomdp.ffg.factors import linear_gaussian
     ("owner", "member"),
     [
         (cpomdp.GaussianTransition, "predict"),
-        (cpomdp.GaussianCoupling, "message_to_parent"),
-        (cpomdp.GaussianCoupling, "message_to_child"),
+        (cpomdp.Coupling, "message_to_parent"),
+        (cpomdp.Coupling, "message_to_child"),
         (cpomdp.CouplingGraph, "infer_all"),
     ],
 )
@@ -39,3 +39,10 @@ def test_the_graph_has_no_sensor_classes_of_its_own(name):
     assert name not in cpomdp.__all__
     assert not hasattr(cpomdp, name)
     assert not hasattr(linear_gaussian, name)
+
+
+def test_an_edge_is_one_class():
+    # The edge holds its matrix and noise itself, so no factor class wraps them.
+    assert "GaussianCoupling" not in cpomdp.__all__
+    assert not hasattr(cpomdp, "GaussianCoupling")
+    assert not hasattr(linear_gaussian, "GaussianCoupling")

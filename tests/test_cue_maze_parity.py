@@ -84,10 +84,8 @@ def test_the_coupling_and_its_noise_agree(pair):
     (mine,), (theirs,) = maze.graph.couplings, registered.graph.couplings
     assert (mine.parent, mine.child) == (theirs.parent, theirs.child)
     assert mine.efe_relevant == theirs.efe_relevant
-    np.testing.assert_allclose(
-        mine.factor.coupling_matrix, theirs.factor.coupling_matrix
-    )
-    np.testing.assert_allclose(mine.factor.coupling_noise, theirs.factor.coupling_noise)
+    np.testing.assert_allclose(mine.coupling_matrix, theirs.coupling_matrix)
+    np.testing.assert_allclose(mine.coupling_noise, theirs.coupling_noise)
 
 
 def test_the_whole_rx_surface_agrees(pair):
