@@ -56,6 +56,15 @@ certainty equivalence is optimal, and no use of the readings beats it.
 - `LQRController` and `InadmissiblePartitionError` are exported at the top level, and
   each has an API page. `LQRSelector` cannot be built without the first, and the graph
   EFE selector raises the second (ADR-069).
+- `CouplingGraphBackend.stack_observations` takes one step's readings keyed by node, the
+  form `CouplingGraph.infer` takes, and returns the vector `infer_states` takes. It
+  refuses a missing node, a node with no sensor and a reading of the wrong width. The
+  vector's ascending node order lived in a private layout, so readings of one width
+  stacked in a dict's insertion order filtered each node against another's reading.
+- `LinearGaussianModel.observation_noise_at(state)` reads R at a state on any model. A
+  model with no sensor or a fixed one returns `observation_noise`. A state-dependent
+  sensor is linearized at `state`. The graph EFE paths and `probe_model` read R through
+  it (ADR-076).
 - `cpomdp._lab.harness` — a world and an agent held apart, so what an agent's model gets
   wrong about the process is a measurable quantity rather than zero by construction.
   `World` runs the process and hands out observations, exposing no accessor that returns
@@ -116,15 +125,22 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `BELOW`, `ABOVE` or `NOT_RESOLVED`, the measured tie that is neither confirmation nor
   refutation. The module imports nothing first-party, asserted in the boundary test, so
   the seam and the reference filter reach it without reaching the evaluator.
-- `cpomdp.control` — the finite-horizon schedule. `finite_horizon_lqr` runs the control
+- `cpomdp.control` — the finite-horizon schedule. `lqr_schedule` runs the control
   Riccati recursion backward a declared number of steps from a zero terminal cost and
-  keeps every gain, where `LQRController` iterates to a fixed point and keeps one.
-  `FiniteHorizonLQR.first_gain` is the gain a receding-horizon planner at horizon `H`
+  keeps every gain, where `LQRController` iterates to a fixed point and keeps one. It
+  takes the two costs as `precision` and `effort`, the names a `StateGoal` gives them,
+  and `LQRSchedule` keeps them under those names.
+  `LQRSchedule.first_gain` is the gain a receding-horizon planner at horizon `H`
   applies at every step; the steady-state gain is its limit and differs from it at every
   finite `H`, by an amount that shrinks with `H` and reads as an error when the horizons
   are not matched. `kalman_schedule` writes the exact filter's gains and covariances
-  down before a reading exists, since under fixed noise they never see one. The Control
-  page of the API reference opens the schedule in plain terms.
+  down before a reading exists, since under fixed noise they never see one. The two are
+  the dual pair and are called alike: `lqr_schedule(model, horizon=...)` and
+  `kalman_schedule(model, horizon=...)`, each returning a schedule that reports its
+  `horizon`. They are read alike too. `gains[k]`, `costs_to_go[k]` and `covariances[k]`
+  all belong to step `k` of the plan, so `costs_to_go[0]` prices the whole plan and
+  `covariances[0]` is the prior's. The Control page of the API reference opens the
+  schedule in plain terms.
 - `cpomdp._lab.bracket` — the control bracket, private until its leg under
   state-dependent noise lands. `full_information_cost` is `J_lower`, the plan priced
   with the state observed. `CertaintyEquivalentController` acts on the estimate as if it
@@ -347,6 +363,13 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `sample_action` costs. `Agent`, `EFESelector`, `FfgEfeSelector` and `LQRController`
   print what they were built with, so an agent typed at a prompt shows the horizon or
   the gain it chose. The Agent page shows how to compare horizons.
+- The two grid selectors answer the same questions. `candidates` on each is the grid
+  searched, shape `(n_candidates, p)`, so an example plotting the scores reads it rather
+  than rebuilding it. `FfgEfeSelector.warrant` reads `CORROBORATED`, as
+  `EFESelector.warrant` does. Both default to 21 candidates, as `ObservationGoal` does,
+  and `FfgEfeSelector` aims at the whole joint state when `info_block` is left out, as
+  `info_node=None` does on the goal. `n_candidates` is the grid's total count
+  everywhere. `ObservationGoal` called it a resolution, which reads as per axis.
 
 ### Fixed
 
@@ -398,13 +421,42 @@ certainty equivalence is optimal, and no use of the readings beats it.
   model under a fixed sensor reported a constant epistemic value the kernel never
   computes. The probe now takes `Q` at each predicted mean as the kernel does. Where a
   sampled `Q` is not a covariance it raises, instead of dropping that sample from
-  `epistemic_range`. `SensorReport` gains `process_non_constant` and
-  `process_noise_spread`, and `flattens` needs both noises constant. Under `Q(x)` the
+  `epistemic_range`. The report gains `dynamics_noise_varies` and
+  `dynamics_noise_spread`, and `flattens` needs both noises constant. Under `Q(x)` the
   action reaches the recursion with `R` fixed.
 - `CouplingGraph` checks each sensor's width against the node it observes. A one-column
   `C` on a two-dimensional node used to construct, and `CouplingGraphBackend` broadcast
   it across the node's block, so the sensor read the sum of the node's components and
   the filter returned a plausible posterior from the wrong model.
+- `CouplingGraphBackend.block` and `marginal` refuse a node outside the graph and name
+  the valid range. `block(-1)` returned an empty range, so an epistemic term aimed at it
+  scored zero. `marginal(-1, belief)` failed inside a reduction, and `block(5)` on five
+  nodes raised a bare `IndexError`.
+- `CouplingGraphBackend` cuts a prior by its partition before it filters from it, on
+  every surface. Under an all-singleton partition `infer_states` kept only each node's
+  own block of a correlated prior. `filter_sequence`, `severed_mass` and
+  `predicted_belief` used all of it. So the run profile measured a filter `infer_states`
+  never ran, and the EFE predicted from correlation the filter dropped. The full-joint
+  partition is unchanged. A mixed partition such as `[[0, 1, 3, 4], [2]]` over a
+  correlated prior also returns a different posterior now, since the dense path inverts
+  the cut prior (ADR-077).
+- Every refusal of a covariance that is not positive-definite gave one reason, "a
+  noiseless or degenerate sensor sends the information gain to infinity". A
+  semi-definite `dynamics_noise` on a `GaussianTransition` or `coupling_noise` on a
+  `Coupling` was blamed on a sensor the caller never passed. Each refusal now
+  gives its own caller's reason. An FFG factor's says its information form inverts the
+  matrix. A sensor's R keeps the information-gain reason, and the harness says it draws
+  the reading through a Cholesky factor. The graph path still needs a definite Q where
+  the flat model accepts a semi-definite one, because its transition factor inverts Q,
+  and `CouplingGraphBackend` says so.
+- Malformed graph inputs raise an error that names the argument. A reading on a node
+  with no sensor raised a bare `KeyError: 1` from `CouplingGraph.infer`, now
+  `infer_root`, and a prior over the wrong dimension raised
+  `cannot add messages of shape (2, 2) and (1, 1)`.
+  `GaussianTransition.from_ou(0.0, ...)` raised `ZeroDivisionError`, and a negative
+  `tau` or `dt` blamed `dynamics_noise`, an argument the caller never passed. A
+  dimension of 1.5 was truncated to 1. A `CouplingGraphBackend` over a graph with
+  no sensor failed in a zero-size reduction and now refuses, saying it has none.
 - The graph EFE rollouts and searches skipped the checks `FfgEfeSelector` makes on its
   target. `policy_efe_ffg`, `policy_efe_ffg_trace`, the crossover statistic and both
   searches' `over_backend` scored on a carry partition that severs an EFE-load-bearing
@@ -420,6 +472,20 @@ certainty equivalence is optimal, and no use of the readings beats it.
   dimension, as `EFESelector` does. A control-free backend returned the grid's first
   action, and `p = 2` constructed and then failed at the first `select`. The two
   selectors now share one check.
+- `ObservationGoal`, `EFESelector` and `FfgEfeSelector` check `action_bounds` through
+  one helper, as two finite scalars with the lower first. Each compared the pair with
+  Python's `<`, which stops at the first element that differs, so
+  `action_bounds=([-1, 5], [1, -5])` constructed with its second axis inverted and the
+  selectors then failed inside JAX's `linspace`. An infinite bound and a fractional
+  `n_candidates` are refused too, and `ObservationGoal.action_bounds` holds two floats.
+  `ObservationGoal` and `EFESelector` check `horizon` through one helper as well. A
+  fractional horizon passed both and failed later inside `range` or `jnp.repeat`.
+- When no candidate scores a finite `G`, `EFESelector` and `FfgEfeSelector` return NaN,
+  and `Agent.sample_action` refuses it, naming the noise. Both selectors returned the
+  first candidate, which looks decisive. With `R(x) = 1 - x0²` at `x0 = 2` every score
+  was NaN and the selector returned the lower bound. The selectors stay jit-safe. The
+  Agent's check reads the `p` action entries back to the host once per cycle, and a
+  refused action is not remembered for the next predict.
 
 ### Changed
 
@@ -432,12 +498,33 @@ certainty equivalence is optimal, and no use of the readings beats it.
   be 1.005. `ScoredAgent` takes the same two forms, `ScoredAgent(model)` and
   `ScoredAgent.from_backend(backend)`. It refused a backend built from another model,
   and now cannot be given one.
-- **Breaking:** `Agent` refuses a built-in `selector=` that reads its target in the other
-  space from the objective. The EFE selectors and the search drivers score a predicted
-  observation, so `Agent(model, StateGoal(target), selector=EFESelector(...))` pursued
-  `C · x = target` and settled away from the target whenever `C` is not the identity.
-  `LQRSelector` with an `ObservationGoal` failed the same way in reverse. A custom
-  selector is not checked.
+- **Breaking:** `selector=` takes a `Preference`, and a goal configures only the selector
+  the `Agent` builds. `Agent(model, goal)` searches as the goal says, and
+  `Agent(model, preference, selector=...)` searches as the selector says. A goal beside
+  `selector=` is refused, and so is either half of the second form without the other.
+  The goal and the selector both described the search, and the selector won in silence:
+  a goal that declared the action box (-0.1, 0.1) returned the action 1.5. A selector
+  with no goal was dropped, and the agent tracked. A `StateGoal` beside a selector paid a
+  Riccati solve for a controller the Agent then discarded, which raised on a plant with
+  no stabilising gain. A built-in selector reads the `Preference` in its own space, an
+  observation for the EFE selectors and the search drivers and a state for
+  `LQRSelector`, and a target of the wrong length is refused. The old pairing of a goal
+  with a selector reading the other space cannot be written:
+  `Agent(model, StateGoal(target), selector=EFESelector(...))` pursued `C · x = target`
+  and settled away from the target whenever `C` is not the identity. A built-in
+  selector scoring a different model is refused. One built from an equal copy, such as
+  a model rebuilt from the same config, is taken. A custom selector is not checked
+  (ADR-080).
+- **Breaking:** an `ObservationGoal` goes to EFE wherever a noise depends on the state,
+  on a flat model and a graph alike. The dispatch read the sensor and the backend's
+  type. A model whose only state dependence was `Q(x)` was refused as a fixed sensor and
+  told to pass a `StateGoal`. `Q(x)` moves the information term through the predicted
+  covariance, and such a model now gets an `EFESelector`. A `CouplingGraphBackend` with
+  fixed sensors got an `FfgEfeSelector` whose information term was the same for every
+  action. A flat model with the same sensors was refused. Both are refused now, and the
+  message names the selector to pass with a `Preference` for EFE with a flat information
+  term. `examples/ffg/epistemic_dissociation_figure.py` hands both of its agents one
+  `FfgEfeSelector` that way (ADR-081).
 - **Breaking:** on the LQR path `Agent` refuses a `StateGoal` target the dynamics do not
   hold at zero action, where `A · target ≠ target`. LQR regulates the offset from the
   target and charges for effort, so it settled short. With `A = 0.9` and a target of 1
@@ -454,6 +541,20 @@ certainty equivalence is optimal, and no use of the readings beats it.
   at construction. Assigning `agent.belief` now requires a `Belief` over the model's
   state. A list was accepted and failed on the next step. `InferenceBackend.model` is
   declared a read-only property, which a plain attribute still satisfies.
+- **Breaking:** `CouplingGraph.root`, `dims`, `couplings` and `observation_models` are
+  read-only, and `observation_models` is a read-only mapping. Construction is the only place
+  the wiring is checked. A sensor added afterwards to node 7 of a two-node graph skipped
+  the range check and reached the backend. Build a new graph instead.
+- **Breaking:** `CouplingGraph` takes no `root`. The root is the one node no coupling
+  points to, so a stated root could only repeat the couplings or contradict them.
+  Drop the argument. `graph.root` still reads it back.
+- **Breaking:** `CouplingGraph.infer` is `infer_root(readings, prior)`. It takes the
+  readings first and the prior second, the order `infer_states(observation, prior)`
+  takes. It was the one inference call that took the belief first. A call in the old
+  order raises a `TypeError` that names `readings`, since a `Belief` is not a mapping of
+  readings. The new name says what comes back: the root's marginal, from a prior over
+  the root alone. `infer_states` returns a belief over every node, and a bare `infer`
+  beside it read as its twin.
 - **Breaking:** an `ObservationGoal`'s `horizon` defaults to `None`, and the `Agent` reads
   it off the model: the shortest horizon at which the target moves the expected free
   energy, found by differentiating the candidate grid's scores with respect to the
@@ -464,14 +565,44 @@ certainty equivalence is optimal, and no use of the readings beats it.
   there is the same for every target. An explicit horizon too short for the target to
   move the scores is refused, naming the shortest that works. Single integrators keep
   horizon 1 (ADR-068).
+- `EFESelector` and `FfgEfeSelector` break a tie toward the candidate nearest zero. They
+  took the first candidate, the lower bound. A tie means the action reaches nothing the
+  scores read. On that double integrator, an `EFESelector` built by hand at horizon 1
+  scored every candidate 1.163426662195336 and returned `action_bounds[0]` on every
+  step. It now rests. Two tied candidates equally near zero, `±h` on a grid without
+  zero, give the point between them. Scores within a relative `1e-11` of the best
+  count as tied, since the graph backend leaves roundoff of about `1e-12` on such a
+  tie. Choosing costs two more passes over the `k` scores per cycle.
+- `EFESelector` and `FfgEfeSelector` compile their scoring once, on the first `select`,
+  and reuse it. Each `select` re-traced the grid under an eager `vmap`, and at horizon
+  above 1 the rollout's scan compiled again on every call, a fixed cost per step that
+  `cost_per_cycle` never counted. A test counts the traces across three beliefs and
+  finds one.
 - The batched condition number `rollout_conditioning` computed inline is now a private
   function of its own, so a rollout and a scored cell read the same number for the same
   matrix.
+- `CouplingGraph` works out its parent map and collect order once, at construction. The
+  factored filter path rebuilt and re-sorted both on every belief-propagation pass, once
+  or twice a step, though neither depends on anything but the wiring.
 - **Breaking:** `validate_step_inputs` and `rxinfer_chemotaxis_tree_root` are private, as
   `_validate_step_inputs` and `_rxinfer_chemotaxis_tree_root`. v0.4.4 exported them from
   `cpomdp.backends.base` and `cpomdp.backends.rxinfer`. The first is the shape check the
   built-in backends share and the second is the RxInfer test oracle, and a cpomdp user
   calls neither (ADR-069). `import cpomdp` no longer leaves `cpomdp.jax` behind.
+- **Breaking:** `ChainBackend` is private, at `cpomdp.ffg._chain`. v0.4.4 published it at
+  `cpomdp.ffg.chain`. It returns `KalmanBackend`'s numbers at two extra inversions per
+  step and exists to show that the message algebra is the Kalman filter on a chain,
+  which `tests/test_ffg_chain.py` holds it to. Filter with `KalmanBackend`. The
+  flagship example's agreement check between the two moves into that test file, on the
+  same model and the same scripted inputs (ADR-076).
+- **Breaking:** the graph model's message passing is private.
+  `GaussianTransition.predict` and `CouplingGraph.infer_all` take a leading underscore.
+  `GaussianCoupling`'s `message_to_parent` and `message_to_child` are private methods of
+  `Coupling`, and `cpomdp.ffg.message` is `cpomdp.ffg._message`. v0.4.4 published them
+  on the top-level construction classes, typed on a `CanonicalGaussian` no page
+  documents. They are the hot path the energy work will change. A user builds the graph
+  and runs it through `CouplingGraphBackend` or `CouplingGraph.infer_root`, and neither
+  needs them (ADR-069, ADR-073).
 - **Breaking:** a *fixed* `observation_model` or `dynamics_noise_model` must now restate
   the model's `observation_noise` / `dynamics_noise` exactly, and a sensor's linearized
   observation matrix must equal `observation_matrix`. `LinearGaussianModel` previously
@@ -483,26 +614,45 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `LinearGaussianModel(observation_matrix=[[1., 0.]], observation_noise=[[1.]],
   observation_model=FixedSensor([[1., 0.]], observation_noise=[[0.5]]), ...)` built
   before and now raises. Pass the same value twice, or drop the redundant field.
+- **Breaking:** an `observation_noise` or `dynamics_noise` passed beside a
+  *state-dependent* object must be that object's value at `prior.mean` exactly, as
+  beside a fixed one. The field used to take any covariance there, and nothing read it.
+  With `observation_noise=[[123.0]]` beside a `CallableSensor`, `model.observation_noise`
+  returned 123. Every filter used `R(x)`. A field now holds one value whichever object
+  is carried. Omit it and the model reads it from the object.
+  `dataclasses.replace(model, prior=...)` on such a model raises instead of keeping the
+  noise of the old prior. Pass the noises an object supplies as `None` to read them
+  again. `WrongFixedRBackend` takes the constant it scales as its own
+  `observation_noise=` (ADR-071).
+- `observation_matrix` is optional beside an `observation_model`, read from the sensor's
+  `C` on the same rule. A model with `R(x)` used to need `C` typed twice, once for the
+  sensor and once for the model (ADR-071).
 - `LinearGaussianModel`'s `observation_noise` is optional when an `observation_model` is
   given. Omitted, it is the sensor's `R` at `prior.mean`, read once at construction
   (ADR-064). A state-dependent sensor used to need a positive-definite `R` beside it that
   almost nothing read, so the channel was described twice. A fixed sensor's own `R` comes
   back unchanged and meets the restatement guard above by construction. With no sensor
-  the field is still required. A value passed beside a state-dependent sensor is kept as
-  the model's nominal `R`. No warning fires when it differs from the derived one.
+  the field is still required. A value passed beside a sensor must be that `R`, as the
+  entry above on state-dependent objects says.
 - Refusing state-dependent noise is one function, `require_fixed_noise`, in the internal
   `_validation` module. The closed forms in `control` and `scoring`, the free energy,
   `RxInferBackend` and the steady-state `KalmanBackend` each held a copy of it. The
   `control` and `scoring` messages are unchanged. The free energy's refusal, new in this
   release, takes its own wording. The steady-state refusal now names the slot that
-  varies.
+  varies. The test it makes is `state_dependent` beside it. `KalmanBackend`,
+  `ChainBackend`, the `Agent` and the harness's `World` each spelled that test out
+  again, and now call it. `ModelStructure.validate` skipped its `Q` check beside any
+  `dynamics_noise_model`, and now skips it only beside a state-dependent one.
 - `LinearGaussianModel`'s `dynamics_noise` is optional when a `dynamics_noise_model` is
   given, on the rule `observation_noise` follows. Omitted, it is the process noise's `Q`
   at `prior.mean` (ADR-065). With no process-noise object the field is still required.
 - `ModelSpec` takes `observation_noise` and `dynamics_noise` as `None` beside the
   matching noise object and passes the `None` to the model, which derives the value
   (ADR-066). A perturbation naming a noise the spec leaves out is refused, as one naming
-  an absent `control_matrix` already was.
+  an absent `control_matrix` already was. `observation_matrix` may be `None` beside a
+  sensor too. A perturbation of a field the spec's object supplies is refused with one
+  message, fixed object or not, since the model refuses the scaled field either way
+  (ADR-071).
 - The `symbolic` CI job reconciles the three symbolic suites against
   `research/registered_checks.toml` instead of comparing three hand-typed strings. The
   strings said `23 registered, 23 tested here, none fired` and two more like it. They
@@ -540,10 +690,40 @@ certainty equivalence is optimal, and no use of the readings beats it.
   scheme is a question the caller has to answer each time. `GaussianTransition.dynamics`
   and the `CouplingGraphBackend(control=...)` argument move with it, as do the demo
   constants (`SENSOR` is `OBSERVATION_MATRIX`, `PROCESS_NOISE` is `DYNAMICS_NOISE`).
-  `LinearGaussianModel.observation_model` and `InferenceBackend.observation_model()` now
-  share a name on two classes: the field holds the declaration, the method returns the
-  `(C, R)` it resolves to. The `.A`/`.B`/`.C`/`.Q`/`.R` aliases are unchanged, and no
-  numerical behaviour moved.
+  `LinearGaussianModel.observation_model` holds the declaration, and no backend carries a
+  member of the same name. No numerical behaviour moved.
+- **Breaking:** `LinearGaussianModel` drops its `.A`, `.B`, `.C`, `.Q` and `.R`
+  properties. Each field has its role name only. In pymdp `A` is the likelihood and `C`
+  the preferences, so `model.A` handed a pymdp user the dynamics matrix with no error,
+  and every field carried two public names.
+- **Breaking:** the dynamics-noise classes take the observation side's names.
+  `DynamicsNoise` is `DynamicsNoiseModel`, the protocol the `dynamics_noise_model` field
+  holds, as `observation_model` holds an `ObservationModel`. `CallableProcessNoise` is
+  `CallableDynamicsNoise`, and takes `noise_fn` and `noise_params` (were `q_fn` and
+  `q_params`), as `CallableSensor` does. A user who had written `R(x)` could not write
+  `Q(x)` by analogy, and "process" and "dynamics" named one channel. A noise object
+  passed for a matrix field now raises a `TypeError` naming the slot it belongs in. It
+  used to fail inside `float()`. The API page is "Dynamics noise", and no longer says a
+  plain matrix satisfies the protocol. A constant `Q` goes in `dynamics_noise`.
+- **Breaking:** `ObservationModel.linearize(state, /)`, `ObservationModel.gaussianize(mean,
+  cov, /)` and `DynamicsNoiseModel.noise_at(state, /)` take their arguments by position,
+  so an implementation may name them as it likes. `FixedSensor`, `CallableSensor` and
+  `CallableDynamicsNoise` name them that way. The flat sensors called the state `x`, and
+  `linearize(state=...)` worked on the graph factors and failed on them.
+  `CallableDynamicsNoise.noise_at` reads a list as an array, as the sensors do.
+- **Breaking:** `SensorReport` is `ProbeReport`, named for `probe_model`, which returns
+  it. It reports on `Q` as well as the sensor. Each field now carries the name of the
+  object it describes: `rank` and `full_row_rank` are `observation_matrix_rank` and
+  `observation_matrix_full_row_rank`. `definite`, `indefinite_at`, `non_constant`,
+  `noise_spread` and `loewner_comparable` are `observation_noise_definite`,
+  `observation_noise_indefinite_at`, `observation_noise_varies`,
+  `observation_noise_spread` and `observation_noise_loewner_ordered`.
+  `report.noise_spread` read as covering both noises and covered only `R`. The summary
+  says "R varies" and "Q varies" where it said "non-constant".
+- **Breaking:** `Belief.ndim` is `Belief.n_states` and `FiniteActionSet.action_dim` is
+  `FiniteActionSet.n_controls`, the names `LinearGaussianModel` gives the same two
+  dimensions. In NumPy and JAX `ndim` is an array's rank. A belief over two states read
+  `prior.ndim == 2` beside `prior.mean.ndim == 1`.
 - **Breaking:** the epistemic term's aim is named `info_node` and `info_block`, not
   `target`. `target` carried two unrelated types on exported API: a desired value
   (`Float64[Array, "n"]`) on `StateGoal` and `ObservationGoal`, and the joint-state
@@ -556,18 +736,70 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `node` and `block` are the words the rest of the tree already uses for those two kinds.
   `ObservationGoal.info_target` becomes `info_node`. `StateGoal.target` and
   `ObservationGoal.target` keep the name, which now has one meaning.
+- **Breaking:** `expected_free_energy`, `policy_efe` and `policy_efe_ffg` return an
+  `EfeResult`, a `NamedTuple` of `g`, `pragmatic` and `epistemic`. They returned
+  `(G, {"pragmatic": ..., "epistemic": ...})`. Their trace siblings returned a
+  `NamedTuple`, so one family answered in two forms, and a misspelt key failed only when
+  it ran. `g` comes first, so `result[0]` still reads `G`. Code that unpacked
+  `G, parts = ...` reads `result.g` and `result.pragmatic` instead. A `vmap` over
+  candidate actions returns one `EfeResult` with every field batched, and the batch is
+  ranked by `batch.g`. NumPy's `argmin` on the record itself flattens all three fields
+  and returns an index past the candidates. The old pair fitted
+  `jax.value_and_grad(..., has_aux=True)` as it stood. A function differentiated that
+  way now returns `(result.g, result)`, and `jax.grad` takes one returning `result.g`.
+- **Breaking:** `PolicyEfeTrace`'s moment fields are `predicted_mean`, `predicted_cov`,
+  `posterior_cov` and `predicted_observation_cov`, renamed from `mu_pred`, `sigma_pred`,
+  `sigma_post` and `s`. `RolloutConditioning`'s fields follow them. `cond_sigma_pred` is
+  `cond_predicted_cov`, `cond_s` is `cond_predicted_observation_cov`, `cond_sigma_post`
+  is `cond_posterior_cov` and `min_eig_sigma_post` is `min_eig_posterior_cov`.
+  `trace.s` could not be read without the docstring. S also went by four names across
+  the docstrings, and is the predicted observation covariance in every public one now.
+  `g`, `pragmatic` and `epistemic` keep their names, which `EfeResult` shares.
+- `ObservationGoal.preference` is the `Preference` the expected free energy functions
+  score against, built once from the goal's target and precision. Passing the goal
+  itself to `expected_free_energy`, `policy_efe` or a sibling raised `'ObservationGoal'
+  object has no attribute 'goal'`. It now raises a `TypeError` naming the goal's
+  `.preference`. A `StateGoal` is refused as aiming at a state, and a bare goal vector
+  with how to wrap it. The functions take one type, the `Preference` pytree that passes
+  through `jit` and `vmap`, and refuse anything else, so a goal's search settings never
+  reach a score that would ignore them.
+- **Breaking:** `Preference` calls its vector `target`, as `StateGoal`, `ObservationGoal`
+  and `LQRController.action` do. `Preference(goal=...)` and `preference.goal` become
+  `Preference(target=...)` and `preference.target`. The wish a user typed as a goal's
+  `target` reached the selector under another name.
+- **Breaking:** `LQRController` takes its weights as `precision` and `effort`, the names
+  a `StateGoal` carries, where they were `goal_precision` and `effort_penalty`, and
+  `LQRController.action` takes `target` where it took `goal`. A `StateGoal` whose effort
+  had the wrong size raised "effort_penalty must be 1x1", naming a parameter the caller
+  never typed. The refusal says `effort` now, and `StateGoal` refuses at construction an
+  effort that is not square, symmetric and positive-definite. Its docstring no longer
+  calls the two weights `Q` and `R`, the letters of the model's noises.
 - **Breaking:** `ObservationGoal` takes `action_bounds` by keyword. `StateGoal` already
   takes everything after its first argument by keyword, so this was the odd one out in a
   public pair a reader meets together. The two positional slots also transposed without
   raising for a 2-D increasing target, since `(lo, hi)` then satisfies the target's shape
   check and the target satisfies `lo < hi`. 24 call sites moved to keywords.
-- **Breaking:** `FixedSensor` and `GaussianObservation` take `observation_noise` by
-  keyword. The observation pair is (m, n) against (m, m), so the two are distinguishable
-  by shape only when m != n, and a 1-D sensor is the case where they coincide. Only the
-  noise is content-checked, and a square symmetric observation matrix passes that check,
-  so a transposed pair built a sensor whose Jacobian was its noise. `CallableSensor` and
-  `CallableGaussianObservation` are left alone: their arguments are a matrix, a callable
-  and a pytree, so a swap raises rather than going quiet. 46 call sites moved to keywords.
+- **Breaking:** `FixedSensor` takes `observation_noise` by keyword. The observation pair
+  is (m, n) against (m, m), so the two are distinguishable by shape only when m != n, and
+  a 1-D sensor is the case where they coincide. Only the noise is content-checked, and a
+  square symmetric observation matrix passes that check, so a transposed pair built a
+  sensor whose Jacobian was its noise. `CallableSensor` is left alone: its arguments are
+  a matrix, a callable and a pytree, so a swap raises rather than going quiet. 46 call
+  sites moved to keywords.
+- **Breaking:** a graph node takes the sensor a flat model takes. `GaussianObservation` and
+  `CallableGaussianObservation` are removed. Pass a `FixedSensor` or a `CallableSensor`
+  in `CouplingGraph`'s `observation_models`, with the same arguments. The two pairs had
+  identical constructors and fields, and each failed in the other's slot.
+  `LinearGaussianModel` refused the graph classes, and a `FixedSensor` on a graph node
+  constructed and then raised at the first filter step. A node now takes any
+  `ObservationModel`, and the graph reads `C` and `R` through `linearize` as the flat
+  model does (ADR-073).
+- **Breaking:** `CouplingGraph`'s `observations` is `observation_models`, as argument
+  and attribute. It holds sensors, and the paired `CouplingGraphBackend` uses the word
+  for readings: `rollout` takes stacked observations and `n_observations` counts reading
+  rows. A graph with one two-row sensor had `len(graph.observations) == 1` and
+  `backend.n_observations == 2`. The new name matches
+  `LinearGaussianModel.observation_model`.
 - **Breaking:** `GaussianTransition` takes `dynamics_noise` by keyword, and
   `GaussianTransition.from_ou` takes `stationary_var` and `dt` by keyword. Both follow
   `LinearGaussianModel` for the same reason, and the transition factor is the worse of
@@ -576,17 +808,73 @@ certainty equivalence is optimal, and no use of the readings beats it.
   noise is content-checked. `from_ou`'s `tau` and `dt` are both positive scalars in the
   same time unit and `A = exp(-dt/tau)` is finite either way round. 45 call sites moved
   to keywords.
-- **Breaking:** `GaussianCoupling` takes `coupling_noise` by keyword, and its matrix is
-  `coupling_matrix`, as argument and field, where it was `coupling`. A scalar edge's gain
-  and noise are both (1, 1), and only the noise is content-checked, so
-  `GaussianCoupling([[0.05]], [[0.9]])` built an edge with the two swapped. The new name
-  follows the `_matrix` suffix every other linear map carries. 33 call sites moved to
-  keywords.
+- **Breaking:** an edge is one class. `GaussianCoupling` is removed, and `Coupling`
+  holds the edge's matrix and noise itself:
+  `Coupling(parent, child, coupling_matrix, coupling_noise=...)`. v0.4.4 wrapped the two
+  in a `GaussianCoupling` passed as `Coupling`'s `factor`, so one concept took two
+  classes and a user had to learn which went inside which. The matrix was `coupling`
+  there. It is `coupling_matrix` now, after the `_matrix` suffix every other linear map
+  carries. `coupling_noise` is keyword-only. A scalar edge's gain and noise are both
+  (1, 1), and only the noise is content-checked, so `GaussianCoupling([[0.05]], [[0.9]])`
+  built an edge with the two swapped (ADR-075).
+- **Breaking:** `Coupling` takes no `tau`. The edge's time-constant was required and read
+  by nothing. In the chemotaxis example it restated the timescale the child's
+  `GaussianTransition.from_ou` already took, and other callers made one up. A node's
+  timescale is its transition. `efe_relevant` is keyword-only, so a stale positional
+  `tau` fails on arity. It used to land in `efe_relevant` and blame a flag the caller
+  never set. `Coupling` checks its fields at construction. A node index that is not an
+  int and an `efe_relevant` that is not a bool raise `TypeError`, and a NumPy bool is
+  stored as a `bool`. A `coupling_matrix` that is not 2-D and a `coupling_noise` that is
+  not positive-definite raise `ValueError` (ADR-075).
+- `CouplingGraph` checks a fixed sensor's `R` when it is built: square to match `C`, and
+  positive-definite, since it is inverted every step. A sensor that implements only the
+  protocol and returned a zero or indefinite `R` gave a NaN or wrong belief.
+- `CouplingGraphBackend` refuses a state-dependent sensor whose `R` is not
+  positive-definite at the predicted mean, as `ChainBackend` does. It returned a finite
+  belief that was wrong.
 - **Breaking:** `CouplingGraphBackend` takes a required keyword `prior`, the belief over
   the joint state before any reading. Its `model.prior` was an N(0, I) placeholder, so
   an `Agent` built on the backend planned and filtered from a belief the caller never
   chose, and `to_flat_model()` carried the same placeholder. The flagship example
   overwrote `agent.belief` to work around it. Pass the starting belief at construction.
+- **Breaking:** `CouplingGraphBackend` has one name for each size it knows. `n_total` is
+  `backend.model.n_states`, `dims` is `backend.graph.dims` and `n_observations` is
+  `backend.model.n_observations`. Each was the same number under a second name, and
+  `n_total` was the only place the joint width was not called `n_states`. The `Agent`
+  leaves an `info_node` range check to `backend.block`, which names the valid nodes.
+- **Breaking:** `CouplingGraphBackend.observation_model` is removed. It returned `(C, R)`
+  with R linearized at zero, so under a state-dependent sensor it handed out `R(0)` as the
+  noise the EFE reads. On the same object `backend.model.observation_model` was a sensor.
+  Read C as `backend.model.observation_matrix`, as on every backend, and R at a mean as
+  `backend.model.observation_noise_at(mean)`. Under a state-dependent sensor
+  `backend.model.observation_noise` is now R at the prior mean, the rule every flat model
+  follows (ADR-064). It was R at zero.
+- **Breaking:** `CouplingGraphBackend.observation_noise_at(mean)` is
+  `backend.model.observation_noise_at(mean)`, an accessor every `LinearGaussianModel`
+  now has. C was read off the model and R off the backend, so code reading R at a mean
+  over a flat and a graph backend branched on which it held. A fixed graph's model
+  returns the R built at construction, so nothing is rebuilt per call (ADR-076).
+- **Breaking:** one protocol describes a graph backend, `GraphBackend` in
+  `cpomdp.backends.base`. It was `EfeBackend`, a name that suggested `KalmanBackend`
+  cannot score EFE, and `cpomdp.diagnostics.ProbeBackend` restated part of it for
+  `probe_model`. `ProbeBackend` is removed, and `probe_model` takes a
+  `CouplingGraphBackend` as before. `GraphBackend` declares no `dims`, `n_total` or
+  `observation_model`, which the entries above retire. Like `EfeBackend` before it, it
+  carries no promise (ADR-069).
+- **Breaking:** `CouplingGraphBackend.partition_error` is `severed_mass`, the name its
+  docstring and its second output already used. `rollout` is `filter_sequence`. Elsewhere
+  a rollout is the H-step policy rollout the EFE scores, and this one filters. It takes
+  `(observations, prior, actions)`, the order `infer_states` takes, where it put the
+  prior first. It returns `(means, covs, severed_mass)` as arrays. The `Belief` it
+  returned had a time axis on its mean, which broke `Belief`'s invariant, and the
+  backend's own `marginal` refused it. It now checks the prior and the width of each
+  stack before it scans.
+- **Breaking:** `CouplingGraphBackend.readout` and its `readout_node` argument are
+  removed. `readout(belief)` was `marginal(readout_node, belief)`, and the argument did
+  nothing else. Read any node, the root included, with `marginal(node, belief)`.
+- **Breaking:** `CouplingGraphBackend.graph` and `transitions` are read-only, as `model`
+  already was. The model and the factors are built from them at construction, so an
+  assignment left both describing the old graph. Build a new backend instead.
 - **Breaking:** every `LinearGaussianModel` argument after `dynamics` is keyword-only.
   The four matrices are two maps and two covariances of the same rank, and only the
   covariances are content-checked, so a transposed pair constructed in silence whenever
@@ -601,12 +889,11 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `_JointObservation` and `epistemic_value`. C is the *observation matrix* in the same
   literature that gives R its name, so the two halves of the measurement equation now
   read from one vocabulary. C is not `observation_model`: that name means the whole
-  `(C, R)` channel, both on `InferenceBackend.observation_model()` and on the model field
-  the entry above renames. The 2026-06-13 sketch wanted plain `observation` for C, which the state-
-  dependent sensor field later claimed. The `.C` alias is unchanged, and no numerical
-  behaviour moved.
+  channel, the model field the entry above renames. The 2026-06-13 sketch wanted plain
+  `observation` for C, which the state-dependent sensor field later claimed. The `.C`
+  alias is unchanged, and no numerical behaviour moved.
 - **Breaking:** `sensor_noise` is now `observation_noise`, on `LinearGaussianModel`,
-  `FixedSensor`, `CallableSensor`, the FFG observation factors and `epistemic_value`.
+  `FixedSensor`, `CallableSensor` and `epistemic_value`.
   R is the *observation noise covariance* in the state-space literature this library
   writes in, and it is the noun in "state-dependent observation noise", the phrase the
   `R(x)` work is published under. The backends already said it. `observation_noise_at`

@@ -1,6 +1,6 @@
 # Control
 
-Steady-state LQR action selection, the action-side dual of the Kalman filter. Under a fixed sensor and fixed process noise it is the action expected free energy chooses [@koudahl2021epistemics]. The `Agent` builds one when you give it a `StateGoal`. Build one yourself to hand an `LQRSelector` to `Agent(selector=...)`.
+Steady-state LQR action selection, the action-side dual of the Kalman filter. Under a fixed sensor and fixed process noise it is the action expected free energy chooses [@koudahl2021epistemics]. The `Agent` builds one when you give it a `StateGoal`. Build one yourself to hand the `Agent` an `LQRSelector` beside a state `Preference`.
 
 ::: cpomdp.LQRController
 
@@ -14,8 +14,8 @@ Steady-state LQR action selection, the action-side dual of the Kalman filter. Un
     only it.
 
     The intermediate answers were never junk. After one repetition the answer is how hard
-    to push with one step left. After five, with five steps left. `finite_horizon_lqr`
-    runs the same calculation a chosen number of times, `H`, and keeps every answer. The
+    to push with one step left. After five, with five steps left. `lqr_schedule` runs
+    the same calculation a chosen number of times, `H`, and keeps every answer. The
     result is a schedule: the right push with `H` steps left, then with `H − 1`, down to
     the last one.
 
@@ -30,9 +30,9 @@ Steady-state LQR action selection, the action-side dual of the Kalman filter. Un
     nothing is charged after the last action. The planner's pragmatic term does the same
     accounting, so the two line up without adjustment.
 
-::: cpomdp.control.finite_horizon_lqr
+::: cpomdp.control.lqr_schedule
 
-::: cpomdp.control.FiniteHorizonLQR
+::: cpomdp.control.LQRSchedule
 
 ::: cpomdp.control.kalman_schedule
 

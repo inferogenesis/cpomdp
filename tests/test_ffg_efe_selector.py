@@ -15,14 +15,9 @@ from _support import unit_prior
 from cpomdp.agent import Agent
 from cpomdp.backends.coupling import CouplingGraphBackend
 from cpomdp.efe import _ffg_efe_step
-from cpomdp.ffg.factors.linear_gaussian import (
-    CallableGaussianObservation,
-    GaussianCoupling,
-    GaussianObservation,
-    GaussianTransition,
-)
+from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
 from cpomdp.ffg.graph import Coupling, CouplingGraph
-from cpomdp.observation import CallableSensor
+from cpomdp.observation import CallableSensor, FixedSensor
 from cpomdp.selection import (
     EFESelector,
     FfgEfeSelector,
@@ -30,6 +25,7 @@ from cpomdp.selection import (
     Preference,
 )
 from cpomdp.types import Belief, LinearGaussianModel
+from warrantlib import Warrant
 
 
 def _rx_noise(x, params):
@@ -59,13 +55,10 @@ def test_ffg_selector_reduces_to_efe_selector_single_node():
     control = np.array([[1.0], [0.0]])  # B — drives observed state[0], so G is non-flat
 
     graph = CouplingGraph(
-        root=0,
         dims=(2,),
         couplings=(),
-        observations={
-            0: GaussianObservation(
-                observation_matrix, observation_noise=observation_noise
-            )
+        observation_models={
+            0: FixedSensor(observation_matrix, observation_noise=observation_noise)
         },
     )
     backend = CouplingGraphBackend(
@@ -84,13 +77,16 @@ def test_ffg_selector_reduces_to_efe_selector_single_node():
     )
 
     belief = Belief(mean=[0.3, -0.2], cov=[[0.7, 0.1], [0.1, 0.4]])
-    preference = Preference(goal=[1.0], precision=[[2.0]])
-    bounds, k = (-2.0, 2.0), 21
+    preference = Preference(target=[1.0], precision=[[2.0]])
+    action_bounds, n_candidates = (-2.0, 2.0), 21
 
     ffg = FfgEfeSelector(
-        backend, info_block=range(2), n_candidates=k, action_bounds=bounds
+        backend,
+        info_block=range(2),
+        n_candidates=n_candidates,
+        action_bounds=action_bounds,
     )
-    efe = EFESelector(model, n_candidates=k, action_bounds=bounds)
+    efe = EFESelector(model, n_candidates=n_candidates, action_bounds=action_bounds)
 
     np.testing.assert_allclose(
         np.asarray(ffg.select(belief, preference)),
@@ -99,15 +95,14 @@ def test_ffg_selector_reduces_to_efe_selector_single_node():
     )
 
 
-def _two_node_backend():
+def _two_node_backend(observation=None):
     # CheA(0) -> CheY(1); observe CheY; the action drives CheA (the root).
+    if observation is None:
+        observation = FixedSensor([[1.0]], observation_noise=[[0.1]])
     graph = CouplingGraph(
-        root=0,
         dims=(1, 1),
-        couplings=(
-            Coupling(0, 1, GaussianCoupling([[0.8]], coupling_noise=[[0.05]]), 1.0),
-        ),
-        observations={1: GaussianObservation([[1.0]], observation_noise=[[0.1]])},
+        couplings=(Coupling(0, 1, [[0.8]], coupling_noise=[[0.05]]),),
+        observation_models={1: observation},
     )
     transitions = (
         GaussianTransition([[0.7]], dynamics_noise=[[0.1]]),
@@ -116,6 +111,13 @@ def _two_node_backend():
     return CouplingGraphBackend(
         graph, transitions, prior=unit_prior(graph), control_matrix=[[1.0], [0.0]]
     )
+
+
+def _two_node_rx_backend():
+    # The same graph with CheY read by a sensor sharpest near zero, so the action moves
+    # the information term.
+    params = {"R0": np.array([[0.1]]), "gain": 2.0}
+    return _two_node_backend(CallableSensor([[1.0]], _rx_noise, params))
 
 
 @pytest.mark.parametrize(
@@ -142,11 +144,39 @@ def test_selector_refuses_a_backend_it_cannot_search(control_matrix, match):
         )
 
 
+class TestSameQuestionsAsEFESelector:
+    """ADR-021 calls the two grid selectors one family, so they answer alike."""
+
+    def test_defaults_match_the_flat_selector_and_the_goal(self):
+        # 21 candidates as on ObservationGoal and EFESelector, and the whole joint
+        # state as info_node=None means on the goal.
+        selector = FfgEfeSelector(_two_node_backend(), action_bounds=(-2.0, 2.0))
+        assert selector.n_candidates == 21
+        assert repr(selector).endswith("info_block=[0, 1])")
+
+    def test_reports_a_sampled_warrant(self):
+        selector = FfgEfeSelector(_two_node_backend(), action_bounds=(-2.0, 2.0))
+        assert selector.warrant is Warrant.CORROBORATED
+
+    def test_the_grid_is_readable_as_the_actions_searched(self):
+        selector = FfgEfeSelector(
+            _two_node_backend(), action_bounds=(-1.0, 1.0), n_candidates=3
+        )
+        np.testing.assert_array_equal(selector.candidates, [[-1.0], [0.0], [1.0]])
+
+    def test_per_axis_bounds_are_refused_with_the_flat_selectors_words(self):
+        with pytest.raises(ValueError, match="two scalars"):
+            FfgEfeSelector(
+                _two_node_backend(),
+                action_bounds=([-1, 5], [1, -5]),  # ty: ignore[invalid-argument-type]
+            )
+
+
 def test_agent_on_ffg_backend_acts_via_ffg_selector():
     # B5 (issue #26): a user drives a branching FFG as an Agent. info_node aims the
     # epistemic at a chosen node; the Agent routes to the FFG EFE selector, and the
     # perceive -> act cycle completes.
-    backend = _two_node_backend()
+    backend = _two_node_rx_backend()
     agent = Agent.from_backend(
         backend,
         ObservationGoal([0.5], action_bounds=(-2.0, 2.0), info_node=0),  # info: CheA
@@ -158,9 +188,22 @@ def test_agent_on_ffg_backend_acts_via_ffg_selector():
     assert isinstance(agent.selector, FfgEfeSelector)
 
 
+def test_an_observation_goal_on_fixed_graph_sensors_is_refused():
+    # Both noises are fixed, so the information term is flat on the graph as on a flat
+    # model, and the two refuse alike. A hand-built selector still chooses by EFE.
+    backend = _two_node_backend()
+    with pytest.raises(ValueError, match="both noises are fixed"):
+        Agent.from_backend(backend, ObservationGoal([0.5], action_bounds=(-2.0, 2.0)))
+    selector = FfgEfeSelector(
+        backend, info_block=[0], n_candidates=21, action_bounds=(-2.0, 2.0)
+    )
+    agent = Agent.from_backend(backend, Preference([0.5]), selector=selector)
+    assert agent.selector is selector
+
+
 def test_the_graph_selector_prints_its_horizon_and_target():
     agent = Agent.from_backend(
-        _two_node_backend(),
+        _two_node_rx_backend(),
         ObservationGoal([0.5], action_bounds=(-2.0, 2.0), info_node=0),
     )
     assert repr(agent.selector) == (
@@ -172,13 +215,23 @@ def test_the_graph_selector_prints_its_horizon_and_target():
 def test_agent_ffg_whole_state_when_info_target_none():
     # info_node=None on the FFG backend still routes to the FFG selector, aimed at the
     # whole state (the default epistemic).
-    backend = _two_node_backend()
+    backend = _two_node_rx_backend()
     agent = Agent.from_backend(
         backend,
         ObservationGoal([0.5], action_bounds=(-2.0, 2.0)),  # no info_node
     )
     assert isinstance(agent.selector, FfgEfeSelector)
-    assert tuple(agent.selector._target) == (0, 1)  # whole joint state
+    assert repr(agent.selector).endswith("info_block=[0, 1])")  # whole joint state
+
+
+def test_an_info_node_outside_the_graph_is_refused_by_the_backend():
+    # The Agent leaves the range check to `backend.block`, the one place that knows it,
+    # and names the argument the caller set.
+    with pytest.raises(ValueError, match=r"info_node 2: node 2 .* 0\.\.1"):
+        Agent.from_backend(
+            _two_node_rx_backend(),
+            ObservationGoal([0.5], action_bounds=(-2.0, 2.0), info_node=2),
+        )
 
 
 def test_info_target_on_flat_backend_raises():
@@ -196,9 +249,10 @@ def test_info_target_on_flat_backend_raises():
 
 
 def test_ffg_agent_matches_kalman_efe_agent_end_to_end():
-    # B6 gate (issue #26): the whole FFG EFE Agent path — single node, info_node=None,
-    # so the epistemic is whole-state — must reproduce a KalmanBackend + EFESelector
-    # Agent step for step. The non-negotiable "v0.3 behaviour is not broken" check.
+    # B6 gate (issue #26): the whole FFG EFE Agent loop — single node, whole-state
+    # info block — must reproduce a KalmanBackend + EFESelector Agent step for step.
+    # The non-negotiable "v0.3 behaviour is not broken" check. Both sensors are fixed,
+    # so each agent is handed its selector.
     dynamics = np.array([[1.0, 0.1], [0.0, 1.0]])  # A
     dynamics_noise = np.array([[0.1, 0.0], [0.0, 0.1]])  # Q
     observation_matrix = np.array([[1.0, 0.0]])  # C
@@ -214,13 +268,10 @@ def test_ffg_agent_matches_kalman_efe_agent_end_to_end():
         control_matrix=control,
     )
     graph = CouplingGraph(
-        root=0,
         dims=(2,),
         couplings=(),
-        observations={
-            0: GaussianObservation(
-                observation_matrix, observation_noise=observation_noise
-            )
+        observation_models={
+            0: FixedSensor(observation_matrix, observation_noise=observation_noise)
         },
     )
     backend = CouplingGraphBackend(
@@ -229,20 +280,29 @@ def test_ffg_agent_matches_kalman_efe_agent_end_to_end():
         prior=unit_prior(graph),
         control_matrix=control,
     )
-    bounds, k = (-2.0, 2.0), 21
+    action_bounds, n_candidates = (-2.0, 2.0), 21
 
     ffg_agent = Agent.from_backend(
-        backend, ObservationGoal([0.5], action_bounds=bounds, n_candidates=k)
+        backend,
+        Preference([0.5]),
+        selector=FfgEfeSelector(
+            backend,
+            info_block=range(2),
+            n_candidates=n_candidates,
+            action_bounds=action_bounds,
+        ),
     )
     ref_agent = Agent(
         model,
-        ObservationGoal([0.5], action_bounds=bounds, n_candidates=k),
-        selector=EFESelector(model, n_candidates=k, action_bounds=bounds),
+        Preference([0.5]),
+        selector=EFESelector(
+            model, n_candidates=n_candidates, action_bounds=action_bounds
+        ),
     )
 
-    for y in ([0.3], [-0.1], [0.2]):
-        ffg_agent.infer_states(y)
-        ref_agent.infer_states(y)
+    for observation in ([0.3], [-0.1], [0.2]):
+        ffg_agent.infer_states(observation)
+        ref_agent.infer_states(observation)
         np.testing.assert_allclose(
             np.asarray(ffg_agent.sample_action()),
             np.asarray(ref_agent.sample_action()),
@@ -260,43 +320,48 @@ def _score_components(backend, belief, preference, candidates, info_block):
     ``_ffg_efe_step``) but returns the two ``G`` components, so a test can compare the
     full-``G`` argmin against a pragmatic-only one at the *same* ``R(μ⁺)``.
     """
-    observation_matrix, _ = backend.observation_model  # C (constant)
+    observation_matrix = backend.model.observation_matrix  # C (constant)
 
     def comp(action):
         predicted = backend.predicted_belief(belief, action)  # μ⁺, Σ⁺
-        observation_noise = backend.observation_noise_at(predicted.mean)  # R(μ⁺)
-        _, parts = _ffg_efe_step(
+        observation_noise = backend.model.observation_noise_at(predicted.mean)  # R(μ⁺)
+        efe = _ffg_efe_step(
             predicted.mean,
             predicted.cov,
             observation_matrix,
             observation_noise,
-            preference.goal,
+            preference.target,
             preference.precision,
             info_block,
         )
-        return parts["pragmatic"], parts["epistemic"]
+        return efe.pragmatic, efe.epistemic
 
     return jax.vmap(comp)(candidates)
 
 
 def _single_node_rx_backend(params):
-    A = np.array([[1.0, 0.1], [0.0, 1.0]])  # drives state[0], which C observes
-    Q = np.eye(2) * 0.1
-    C = np.array([[1.0, 0.0]])
-    B = np.array([[1.0], [0.0]])
+    dynamics_matrix = np.array([[1.0, 0.1], [0.0, 1.0]])  # A
+    dynamics_noise = np.eye(2) * 0.1  # Q
+    observation_matrix = np.array([[1.0, 0.0]])  # C
+    control_matrix = np.array([[1.0], [0.0]])  # B, drives the observed state[0]
     graph = CouplingGraph(
-        root=0,
         dims=(2,),
         couplings=(),
-        observations={0: CallableGaussianObservation(C, _rx_noise, params)},
+        observation_models={0: CallableSensor(observation_matrix, _rx_noise, params)},
     )
     backend = CouplingGraphBackend(
         graph,
-        (GaussianTransition(A, dynamics_noise=Q),),
+        (GaussianTransition(dynamics_matrix, dynamics_noise=dynamics_noise),),
         prior=unit_prior(graph),
-        control_matrix=B,
+        control_matrix=control_matrix,
     )
-    return backend, A, Q, C, B
+    return (
+        backend,
+        dynamics_matrix,
+        dynamics_noise,
+        observation_matrix,
+        control_matrix,
+    )
 
 
 class TestStateDependentSelection:
@@ -307,53 +372,73 @@ class TestStateDependentSelection:
         # R(μ⁺) moves with the action, so the epistemic term varies across candidates —
         # the dual effect. A fixed sensor's epistemic is flat across actions (ADR-003).
         params = {"R0": np.array([[0.5]]), "gain": 2.0}
-        rx, A, Q, C, B = _single_node_rx_backend(params)
+        (
+            rx,
+            dynamics_matrix,
+            dynamics_noise,
+            observation_matrix,
+            control_matrix,
+        ) = _single_node_rx_backend(params)
         belief = Belief(mean=[0.5, -0.2], cov=[[0.7, 0.1], [0.1, 0.4]])
-        pref = Preference(goal=[1.0], precision=[[2.0]])
-        cands = jnp.linspace(-2.0, 2.0, 9)[:, None]
-        _, epi = _score_components(rx, belief, pref, cands, range(2))
-        assert float(jnp.max(epi) - jnp.min(epi)) > 1e-6  # varies with action
+        preference = Preference(target=[1.0], precision=[[2.0]])
+        candidates = jnp.linspace(-2.0, 2.0, 9)[:, None]
+        _, epistemic = _score_components(rx, belief, preference, candidates, range(2))
+        assert (
+            float(jnp.max(epistemic) - jnp.min(epistemic)) > 1e-6
+        )  # varies with action
 
         graph_fx = CouplingGraph(
-            root=0,
             dims=(2,),
             couplings=(),
-            observations={0: GaussianObservation(C, observation_noise=params["R0"])},
+            observation_models={
+                0: FixedSensor(observation_matrix, observation_noise=params["R0"])
+            },
         )
         fx = CouplingGraphBackend(
             graph_fx,
-            (GaussianTransition(A, dynamics_noise=Q),),
+            (GaussianTransition(dynamics_matrix, dynamics_noise=dynamics_noise),),
             prior=unit_prior(graph_fx),
-            control_matrix=B,
+            control_matrix=control_matrix,
         )
-        _, epi_fx = _score_components(fx, belief, pref, cands, range(2))
-        np.testing.assert_allclose(np.asarray(epi_fx), float(epi_fx[0]), atol=1e-9)
+        _, fixed_epistemic = _score_components(
+            fx, belief, preference, candidates, range(2)
+        )
+        np.testing.assert_allclose(
+            np.asarray(fixed_epistemic), float(fixed_epistemic[0]), atol=1e-9
+        )
 
     def test_single_node_rx_selector_matches_flat_efe_selector(self):
         # Trusted oracle: single node (no couplings, μ⁺ = μ⁻), whole-state info block.
         # The FFG R(x) selector must pick the same action as EFESelector on the
         # equivalent flat CallableSensor model, atol 1e-7 (the R(x) analogue of B4).
         params = {"R0": np.array([[0.5]]), "gain": 0.4}
-        rx, A, Q, C, B = _single_node_rx_backend(params)
+        (
+            rx,
+            dynamics_matrix,
+            dynamics_noise,
+            observation_matrix,
+            control_matrix,
+        ) = _single_node_rx_backend(params)
         model = LinearGaussianModel(
-            dynamics_matrix=A,
-            observation_matrix=C,
-            dynamics_noise=Q,
-            observation_noise=params["R0"],  # placeholder; overridden by observation
+            dynamics_matrix=dynamics_matrix,
+            dynamics_noise=dynamics_noise,
             prior=Belief(mean=np.zeros(2), cov=np.eye(2)),
-            control_matrix=B,
-            observation_model=CallableSensor(C, _rx_noise, params),
+            control_matrix=control_matrix,
+            observation_model=CallableSensor(observation_matrix, _rx_noise, params),
         )
         belief = Belief(mean=[0.3, -0.2], cov=[[0.7, 0.1], [0.1, 0.4]])
-        pref = Preference(goal=[1.0], precision=[[2.0]])
-        bounds, k = (-2.0, 2.0), 21
+        preference = Preference(target=[1.0], precision=[[2.0]])
+        action_bounds, n_candidates = (-2.0, 2.0), 21
         ffg = FfgEfeSelector(
-            rx, info_block=range(2), n_candidates=k, action_bounds=bounds
+            rx,
+            info_block=range(2),
+            n_candidates=n_candidates,
+            action_bounds=action_bounds,
         )
-        efe = EFESelector(model, n_candidates=k, action_bounds=bounds)
+        efe = EFESelector(model, n_candidates=n_candidates, action_bounds=action_bounds)
         np.testing.assert_allclose(
-            np.asarray(ffg.select(belief, pref)),
-            np.asarray(efe.select(belief, pref)),
+            np.asarray(ffg.select(belief, preference)),
+            np.asarray(efe.select(belief, preference)),
             atol=1e-7,
         )
 
@@ -367,11 +452,10 @@ class TestStateDependentSelection:
         # the pragmatic risk and the epistemic there share one covariance.)
         params = {"R_goal": 5.0, "R0": 0.15, "gain": 8.0}  # noisy goal, sharp info
         graph = CouplingGraph(
-            root=0,
             dims=(1,),
             couplings=(),
-            observations={
-                0: CallableGaussianObservation([[1.0], [1.0]], _decoupled_noise, params)
+            observation_models={
+                0: CallableSensor([[1.0], [1.0]], _decoupled_noise, params)
             },  # both channels read s
         )
         rx = CouplingGraphBackend(
@@ -382,18 +466,57 @@ class TestStateDependentSelection:
         )
         belief = Belief(mean=[0.0], cov=[[1.0]])
         # goal 3.0 on the fixed channel, ~0 weight on the info channel (decoupling).
-        pref = Preference(goal=[3.0, 0.0], precision=[[0.15, 0.0], [0.0, 1e-4]])
-        bounds, k = (-4.0, 4.0), 41
-        cands = jnp.linspace(-4.0, 4.0, k)[:, None]
-        prag, epi = _score_components(rx, belief, pref, cands, range(1))
-        full_action = cands[int(jnp.argmin(prag - epi))]
-        prag_action = cands[int(jnp.argmin(prag))]
+        preference = Preference(target=[3.0, 0.0], precision=[[0.15, 0.0], [0.0, 1e-4]])
+        action_bounds, n_candidates = (-4.0, 4.0), 41
+        candidates = jnp.linspace(-4.0, 4.0, n_candidates)[:, None]
+        pragmatic, epistemic = _score_components(
+            rx, belief, preference, candidates, range(1)
+        )
+        full_action = candidates[int(jnp.argmin(pragmatic - epistemic))]
+        pragmatic_action = candidates[int(jnp.argmin(pragmatic))]
         assert not np.isclose(
-            float(full_action[0]), float(prag_action[0])
+            float(full_action[0]), float(pragmatic_action[0])
         )  # the epistemic genuinely moved the decision, away from the pragmatic goal
-        sel = FfgEfeSelector(
-            rx, info_block=range(1), n_candidates=k, action_bounds=bounds
+        selector = FfgEfeSelector(
+            rx,
+            info_block=range(1),
+            n_candidates=n_candidates,
+            action_bounds=action_bounds,
         )
         np.testing.assert_allclose(
-            np.asarray(sel.select(belief, pref)), np.asarray(full_action), atol=1e-7
+            np.asarray(selector.select(belief, preference)),
+            np.asarray(full_action),
+            atol=1e-7,
         )
+
+
+def test_the_graph_selector_traces_its_kernel_once(monkeypatch):
+    # Each select used to re-trace the predict and the step under an eager vmap.
+    import cpomdp.selection as selection
+
+    traced = []
+    original = selection._ffg_efe_step
+
+    def counted(*args, **kwargs):
+        traced.append(1)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(selection, "_ffg_efe_step", counted)
+    backend = _two_node_rx_backend()
+    selector = FfgEfeSelector(backend, action_bounds=(-2.0, 2.0))
+    for mean in ([0.0, 0.0], [0.3, -0.1], [-0.5, 0.4]):
+        selector.select(Belief(mean=mean, cov=np.eye(2)), Preference([0.5]))
+    assert len(traced) == 1
+
+
+def test_the_graph_selector_refuses_a_goal_in_place_of_a_preference():
+    # The same check the EFE functions make, so a goal cannot reach the scorer.
+    from types import SimpleNamespace
+
+    backend = _two_node_backend()
+    selector = FfgEfeSelector(
+        backend, info_block=range(2), n_candidates=5, action_bounds=(-2.0, 2.0)
+    )
+    stand_in = SimpleNamespace(goal=jnp.array([0.5]), precision=jnp.eye(1))
+    with pytest.raises(TypeError, match="Preference"):
+        selector.select(backend.model.prior, stand_in)  # ty: ignore[invalid-argument-type]

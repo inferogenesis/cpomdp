@@ -7,8 +7,15 @@ If both pass isinstance, the wall holds and engines are interchangeable.
 
 import numpy as np
 
-from cpomdp.backends.base import InferenceBackend
+from _support import unit_prior
+from cpomdp import diagnostics
+from cpomdp.backends import base
+from cpomdp.backends.base import GraphBackend, InferenceBackend
+from cpomdp.backends.coupling import CouplingGraphBackend
 from cpomdp.backends.kalman import KalmanBackend
+from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
+from cpomdp.ffg.graph import CouplingGraph
+from cpomdp.observation import FixedSensor
 from cpomdp.types import Belief, LinearGaussianModel
 
 
@@ -45,3 +52,29 @@ def test_fake_backend_satisfies_protocol():
 
 def test_kalman_backend_satisfies_protocol():
     assert isinstance(KalmanBackend(_scalar_model()), InferenceBackend)
+
+
+def _one_node_graph_backend():
+    graph = CouplingGraph(
+        dims=(1,),
+        couplings=(),
+        observation_models={0: FixedSensor([[1.0]], observation_noise=[[0.5]])},
+    )
+    transitions = (GaussianTransition([[0.9]], dynamics_noise=[[0.1]]),)
+    return CouplingGraphBackend(graph, transitions, prior=unit_prior(graph))
+
+
+def test_a_graph_backend_satisfies_the_graph_protocol():
+    assert isinstance(_one_node_graph_backend(), GraphBackend)
+
+
+def test_a_flat_backend_is_not_a_graph_backend():
+    # It has no nodes to aim an epistemic term at, so the Agent dispatches it flat.
+    assert not isinstance(KalmanBackend(_scalar_model()), GraphBackend)
+
+
+def test_one_protocol_describes_a_graph_backend():
+    # `EfeBackend` named the protocol for one consumer, and `probe_model` restated part
+    # of it as `ProbeBackend`.
+    assert not hasattr(base, "EfeBackend")
+    assert not hasattr(diagnostics, "ProbeBackend")

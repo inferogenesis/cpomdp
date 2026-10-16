@@ -88,9 +88,7 @@ def _beacon_model():
     )
     return LinearGaussianModel(
         dynamics_matrix=[[1.0]],
-        observation_matrix=[[1.0]],
         dynamics_noise=[[0.05]],
-        observation_noise=[[0.5]],
         prior=Belief(mean=[0.0], cov=[[1.0]]),
         control_matrix=[[1.0]],
         observation_model=sensor,
@@ -106,7 +104,7 @@ def _beacon_belief():
 
 
 def _pref(goal=0.0):
-    return Preference(goal=[goal], precision=[[2.0]])
+    return Preference(target=[goal], precision=[[2.0]])
 
 
 def _finite_set(values, version="v1"):
