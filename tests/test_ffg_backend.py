@@ -1461,3 +1461,26 @@ class TestStateDependentSensing:
         prior = Belief(mean=np.zeros(5), cov=np.eye(5))
         with pytest.raises(ValueError, match="observation"):
             rx.infer_states(np.zeros(2), prior, np.array([0.0]))  # need 3 readings
+
+
+class TestPartitionNodes:
+    def test_a_fractional_node_is_refused(self):
+        # int() used to read node 2.5 as 2 and build a partition nobody declared.
+        with pytest.raises(TypeError, match=r"partition node 2\.5"):
+            _build(
+                _CHEMOTAXIS_DIMS,
+                _CHEMOTAXIS_EDGES,
+                _CHEMOTAXIS_OBS,
+                _CHEMOTAXIS_DYN,
+                partition=[[0, 1, 3, 4], [2.5]],
+            )
+
+    def test_an_integral_float_node_is_taken(self):
+        backend = _build(
+            _CHEMOTAXIS_DIMS,
+            _CHEMOTAXIS_EDGES,
+            _CHEMOTAXIS_OBS,
+            _CHEMOTAXIS_DYN,
+            partition=[[0.0, 1, 3, 4], [2.0]],
+        )
+        assert backend._partition == ((0, 1, 3, 4), (2,))

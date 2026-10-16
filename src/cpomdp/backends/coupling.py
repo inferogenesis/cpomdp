@@ -13,7 +13,9 @@ it makes the recursion exact. A chosen node's belief is then a pure slice of tha
 (``marginal``).
 """
 
+import operator
 from collections.abc import Mapping, Sequence
+from typing import SupportsIndex
 
 import jax
 import jax.numpy as jnp
@@ -236,7 +238,9 @@ class CouplingGraphBackend:
         node_count = len(self._graph.dims)
         if partition is None:
             return (tuple(range(node_count)),)
-        clusters = tuple(tuple(int(node) for node in cluster) for cluster in partition)
+        clusters = tuple(
+            tuple(_partition_node(node) for node in cluster) for cluster in partition
+        )
         seen: set[int] = set()
         for node in (n for cluster in clusters for n in cluster):
             if not 0 <= node < node_count:
@@ -506,10 +510,11 @@ class CouplingGraphBackend:
         """Advance the joint belief by one filter step over the tree.
 
         Validate the inputs, form the control shift ``b = control @ action``, then run
-        the driven-relaxation pipeline: lift the joint prior into canonical form,
-        ``predict`` through the block-diagonal per-node dynamics (the temporal edges),
-        add the structural coupling precision and the per-node observation messages (the
-        within-slice update), and ``to_moment`` the joint posterior back.
+        the driven-relaxation pipeline: cut the prior by the partition, lift it into
+        canonical form, ``predict`` through the block-diagonal per-node dynamics (the
+        temporal edges), add the structural coupling precision and the per-node
+        observation messages (the within-slice update), and ``to_moment`` the joint
+        posterior back.
 
         Args:
             observation: the observed nodes' readings, stacked in ascending node-index
@@ -727,11 +732,12 @@ class CouplingGraphBackend:
         """The within-slice joint posterior (Λ, h) without input validation.
 
         The pure numerical core, so ``filter_sequence`` can call it inside a
-        ``lax.scan`` body where the host-side ``_validate_step_inputs`` cannot run. Lift
-        the joint prior to canonical, ``predict`` through the block-diagonal per-node
-        dynamics (the temporal edges), then add the structural coupling precision and
-        the per-node observation messages (the within-slice update). ChainBackend sums
-        two terms; the tree's within-slice couplings are the third.
+        ``lax.scan`` body where the host-side ``_validate_step_inputs`` cannot run. Cut
+        the prior by the partition and lift it to canonical, ``predict`` through the
+        block-diagonal per-node dynamics (the temporal edges), then add the structural
+        coupling precision and the per-node observation messages (the within-slice
+        update). ChainBackend sums two terms; the tree's within-slice couplings are the
+        third.
         """
         if self._sensor_is_fixed:
             precision, potential = self._predicted_precision(prior, action)
@@ -974,3 +980,12 @@ class CouplingGraphBackend:
             edge.factor.coupling_matrix.shape[0] for edge in self._graph.couplings
         )
         return jnp.concatenate([observation, jnp.zeros(n_structural)])
+
+
+def _partition_node(node: object) -> int:
+    """A partition's node index as an ``int``. A bool and a fraction are refused."""
+    if isinstance(node, float | np.floating) and float(node).is_integer():
+        return int(node)
+    if isinstance(node, bool) or not isinstance(node, SupportsIndex):
+        raise TypeError(f"partition node {node!r} must be an int")
+    return operator.index(node)
