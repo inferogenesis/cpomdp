@@ -6,7 +6,12 @@ import numpy as np
 from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
-from cpomdp._validation import concrete, equilibrium_drift, state_dependent
+from cpomdp._validation import (
+    concrete,
+    equilibrium_drift,
+    refuse_graph_interface,
+    state_dependent,
+)
 from cpomdp.backends.base import GraphBackend, InferenceBackend
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.control import LQRController
@@ -411,8 +416,11 @@ class Agent:
                 scores, and ``selector=`` with a control-free model.
             TypeError: If ``objective`` is not a ``StateGoal``, ``ObservationGoal``
                 or ``Preference``, if a goal comes with ``selector=``, or if a
-                ``Preference`` or ``selector=`` comes without the other.
+                ``Preference`` or ``selector=`` comes without the other. Also raised
+                for a coupled ``CouplingGraphBackend``'s model, which leaves out the
+                couplings.
         """
+        refuse_graph_interface(model, "Agent")
         self._setup(KalmanBackend(model), objective, selector)
 
     @classmethod
@@ -472,6 +480,11 @@ class Agent:
         elif objective is None:
             return  # a perceive-only tracker: nothing to act toward
         elif isinstance(objective, StateGoal):
+            refuse_graph_interface(
+                model,
+                "a StateGoal, which regulates with LQR,",
+                remedy="Pass an ObservationGoal for the graph's EFE selector.",
+            )
             self._preference, self._selector = _lqr_path(model, objective)
         elif isinstance(objective, ObservationGoal):
             self._preference, self._selector = _efe_path(backend, objective)

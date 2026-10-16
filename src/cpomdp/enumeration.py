@@ -32,7 +32,7 @@ from jax.errors import ConcretizationTypeError, TracerArrayConversionError
 from jaxtyping import Array, Float64, Int
 from numpy.typing import ArrayLike
 
-from cpomdp._validation import concrete
+from cpomdp._validation import concrete, refuse_graph_interface
 from cpomdp.efe import _info_block_of, _policy_efe_ffg, policy_efe
 from cpomdp.types import Belief, LinearGaussianModel
 
@@ -442,6 +442,7 @@ class ExhaustiveEFESearch(ABC):
     @classmethod
     def _flat_scorer(cls, model: LinearGaussianModel) -> _FlatScorer:
         """The flat constructor's scorer, refusing a model no action can move."""
+        refuse_graph_interface(model, cls.__name__)
         if model.control_matrix is None:
             raise ValueError(
                 f"{cls.__name__} needs a model with a control matrix; an action has no "

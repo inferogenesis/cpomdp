@@ -30,7 +30,7 @@ The stateful façade you drive: `infer_states` to perceive, `sample_action` to a
         state -- "fixed sensor,<br/>target held still" --> lqr["LQR: no information term"]:::lqr
         state -- "fixed sensor,<br/>target drifts" --> r1["Refused: LQR would settle short"]:::refused
         state -- "R(x) sensor" --> r2["Refused: a state goal on varying sensing"]:::refused
-        state -- "graph model" --> uncoupled["LQR that ignores the graph's couplings"]:::gap
+        state -- "coupled graph" --> uncoupled["Refused: LQR would leave out the couplings"]:::refused
         obs -- "R(x) or Q(x)" --> c1["Curious EFE: horizon read off the model"]:::curious
         obs -- "Q(x) only,<br/>horizon past 1" --> rq2["Refused: Q(x) is claimed at horizon 1 only"]:::refused
         obs -- "R(x) or Q(x),<br/>horizon set too short" --> r3["Refused: the target does not move the scores"]:::refused

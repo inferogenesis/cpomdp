@@ -23,6 +23,7 @@ import numpy as np
 from jaxtyping import Float64
 from numpy.typing import ArrayLike
 
+from cpomdp._validation import mark_graph_interface
 from cpomdp.backends.base import _validate_step_inputs
 from cpomdp.ffg._message import CanonicalGaussian
 from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
@@ -191,6 +192,8 @@ class CouplingGraphBackend:
             o.is_fixed for o in self._graph.observation_models.values()
         )
         self._model = self._build_model()
+        if self._graph.couplings:
+            mark_graph_interface(self._model)
         self._partition_mask = self._build_partition_mask()
         # node -> its partition cluster index (ADR-018 admissibility diagnostic).
         self._cluster_of = {
@@ -802,7 +805,7 @@ class CouplingGraphBackend:
 
     @property
     def model(self) -> LinearGaussianModel:
-        """The flat ``LinearGaussianModel`` of the *real* interface (the backend model).
+        """The model of the graph's interface, which leaves out its couplings.
 
         Block-diagonal dynamics (F, Q), the real sensors and the control: the joint
         state as one linear-Gaussian model, with the sizes an [`Agent`][cpomdp.Agent]
@@ -813,8 +816,10 @@ class CouplingGraphBackend:
         front-loaded. A state-dependent graph's model reads each node's R at that
         node's block of the mean, the point the filter uses.
 
-        It omits the structural couplings, so it is not a filter for the graph.
-        ``to_flat_model()`` adds them as pseudo-observations for the oracle
+        It omits the structural couplings, so it is not the graph's plant. On a
+        coupled graph every flat consumer refuses it, ``KalmanBackend``, the flat
+        selectors and searches, ``LQRController`` and the schedules among them.
+        ``to_flat_model()`` adds the couplings as pseudo-observations, for the oracle
         cross-check.
         """
         return self._model

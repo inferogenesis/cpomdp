@@ -14,6 +14,8 @@ __all__ = [
     "UNVERSIONED",
     "concrete",
     "equilibrium_drift",
+    "mark_graph_interface",
+    "refuse_graph_interface",
     "require_fixed_noise",
     "state_dependent",
     "validate_covariance",
@@ -32,6 +34,41 @@ INFORMATION_FORM_INVERTS = "the information form inverts it"
 """Why an FFG factor's noise must be definite: its message holds the inverse."""
 
 _NOISE_SLOTS = ("observation_model", "dynamics_noise_model")
+
+_GRAPH_INTERFACE = "_leaves_out_couplings"
+
+
+def mark_graph_interface(model: object) -> None:
+    """Mark a coupled graph backend's model as its interface rather than its plant.
+
+    The mark is an attribute of this one object, not a field. A model rebuilt from its
+    leaves carries none, and nothing in the backend rebuilds it.
+    """
+    object.__setattr__(model, _GRAPH_INTERFACE, True)
+
+
+def refuse_graph_interface(
+    model: object, consumer: str, *, remedy: str | None = None
+) -> None:
+    """Refuse a coupled graph backend's model, which leaves out the couplings.
+
+    ``remedy`` replaces the default advice, for a consumer the user did not hand the
+    model to directly.
+
+    Raises:
+        TypeError: If ``model`` is a coupled ``CouplingGraphBackend``'s ``model``.
+    """
+    if getattr(model, _GRAPH_INTERFACE, False):
+        if remedy is None:
+            remedy = (
+                "Pass the backend where one is taken, or backend.to_flat_model() for a "
+                "flat model that keeps them."
+            )
+        raise TypeError(
+            f"{consumer} was given a CouplingGraphBackend's model, which leaves out "
+            "the graph's couplings, so it would compute on a plant without them. "
+            f"{remedy}"
+        )
 
 
 class _FlagsFixed(Protocol):

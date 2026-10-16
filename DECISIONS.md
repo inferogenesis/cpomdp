@@ -5642,3 +5642,36 @@ the graph. The private kernels keep the indices.
 - A multi-node target is not expressible. If one is needed, `info_nodes` is added then.
 - `backend.block` stays public. It answers which indices a node occupies, for reading a
   belief, a job `info_node` no longer needs it for.
+
+## ADR-090 — a coupled graph's model is its interface, and flat consumers refuse it
+
+**Date:** 2026-10-16
+**Status:** Accepted
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+`CouplingGraphBackend.model` is a plain `LinearGaussianModel` of the graph's interface:
+its sizes, prior, sensors and control, with the couplings left out. No fixed flat model
+reproduces the within-slice couplings in the real observation space, so this one is not
+the plant. Every model-taking API accepted it anyway and computed on the uncoupled
+plant. `Agent.from_backend(graph, StateGoal(...))` regulated it with LQR, and
+`KalmanBackend(backend.model)` filtered it, with nothing raised.
+
+### Decision
+
+A coupled graph backend marks its model. `KalmanBackend`, `Agent`, `EFESelector`, the
+flat search constructors, `LQRController`, `lqr_schedule`, `kalman_schedule` and
+`probe_model` refuse a marked model at construction and name the routes that keep the
+couplings, the backend itself or `backend.to_flat_model()`. A `StateGoal` on a coupled
+graph is refused. A graph with no couplings is its own plant and carries no mark.
+
+### Consequences
+
+- The mark is an attribute on the one model object, not a field, so the model's pytree
+  is unchanged. A model rebuilt from its leaves carries no mark, and nothing rebuilds
+  the backend's own.
+- The checks run at construction. The per-cycle EFE functions carry none, so the hot
+  path is unchanged.
+- The `InferenceBackend.model` docstring now promises the sizes, prior, sensor and
+  control a backend reads, not a model it filters exactly.

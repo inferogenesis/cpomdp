@@ -5,7 +5,11 @@ import jax.numpy as jnp
 from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
-from cpomdp._validation import require_fixed_noise, state_dependent
+from cpomdp._validation import (
+    refuse_graph_interface,
+    require_fixed_noise,
+    state_dependent,
+)
 from cpomdp.backends.base import _validate_step_inputs
 from cpomdp.types import Belief, LinearGaussianModel
 
@@ -124,6 +128,7 @@ class KalmanBackend:
         tol: float = 1e-12,
         max_iter: int = 1000,
     ) -> None:
+        refuse_graph_interface(model, "KalmanBackend")
         self._model = model
         self._steady_state = steady_state
         if steady_state:

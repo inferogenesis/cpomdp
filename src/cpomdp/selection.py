@@ -12,7 +12,7 @@ import numpy as np
 from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
-from cpomdp._validation import validate_covariance
+from cpomdp._validation import refuse_graph_interface, validate_covariance
 from cpomdp.backends.base import GraphBackend
 from cpomdp.control import LQRController, _validate_cost
 from cpomdp.efe import (
@@ -303,6 +303,7 @@ class EFESelector:
                 ``n_candidates`` is below 2, or if ``horizon`` is below 1.
             TypeError: If ``n_candidates`` or ``horizon`` is not an integer.
         """
+        refuse_graph_interface(model, "EFESelector")
         _require_scalar_control(
             model.control_matrix, "EFESelector", "EnumeratedEFESearch"
         )
