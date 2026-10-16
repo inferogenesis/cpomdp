@@ -30,7 +30,7 @@ entire existing `test_efe.py` must pass UNMODIFIED.
 import jax.numpy as jnp
 import numpy as np
 
-from cpomdp.dynamics import CallableProcessNoise
+from cpomdp.dynamics import CallableDynamicsNoise
 from cpomdp.efe import _efe_step, expected_free_energy
 from cpomdp.observation import CallableSensor
 from cpomdp.selection import Preference
@@ -42,9 +42,9 @@ def _model(observation_model=None):
     # 2-state, 1-observation, 1-action, controllable (mirrors test_efe.py).
     return LinearGaussianModel(
         dynamics_matrix=[[1.0, 0.1], [0.0, 1.0]],
-        observation_matrix=[[1.0, 0.0]],
+        observation_matrix=[[1.0, 0.0]] if observation_model is None else None,
         dynamics_noise=[[0.1, 0.0], [0.0, 0.1]],
-        observation_noise=[[0.5]],
+        observation_noise=[[0.5]] if observation_model is None else None,
         prior=Belief(mean=[0.0, 0.0], cov=[[1.0, 0.0], [0.0, 1.0]]),
         control_matrix=[[0.0], [1.0]],
         observation_model=observation_model,
@@ -77,17 +77,17 @@ def _q_well(x, params):
 
 
 def _internal_q_model():
-    pn = CallableProcessNoise(
-        q_fn=_q_well, q_params={"base": jnp.array(0.05), "slope": jnp.array(0.4)}
+    dynamics_noise_model = CallableDynamicsNoise(
+        noise_fn=_q_well,
+        noise_params={"base": jnp.array(0.05), "slope": jnp.array(0.4)},
     )
     return LinearGaussianModel(
         dynamics_matrix=[[1.0]],
         observation_matrix=[[1.0]],
-        dynamics_noise=[[0.1]],
         observation_noise=[[0.3]],
         prior=Belief(mean=[0.0], cov=[[0.2]]),
         control_matrix=[[1.0]],
-        dynamics_noise_model=pn,
+        dynamics_noise_model=dynamics_noise_model,
     )
 
 
@@ -146,16 +146,19 @@ def _frozen_efe(model, belief, action, preference):
     action = jnp.asarray(action, dtype=float)
     mu, sigma = belief.mean, belief.cov
 
-    mu_pred = model.A @ mu + control @ action
+    mu_pred = model.dynamics_matrix @ mu + control @ action
     process_q = (
-        model.Q
+        model.dynamics_noise
         if model.dynamics_noise_model is None
         else model.dynamics_noise_model.noise_at(mu_pred)
     )
-    sigma_pred = model.A @ sigma @ model.A.T + process_q
+    sigma_pred = model.dynamics_matrix @ sigma @ model.dynamics_matrix.T + process_q
 
     if model.observation_model is None:
-        observation_matrix, observation_noise = model.C, model.R
+        observation_matrix, observation_noise = (
+            model.observation_matrix,
+            model.observation_noise,
+        )
         o_pred = observation_matrix @ mu_pred
         pred_obs_cov = (
             observation_matrix @ sigma_pred @ observation_matrix.T + observation_noise

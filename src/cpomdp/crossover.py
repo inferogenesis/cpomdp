@@ -30,7 +30,7 @@ from cpomdp.efe import policy_efe_ffg
 from cpomdp.types import Belief
 
 if TYPE_CHECKING:
-    from cpomdp.backends.base import EfeBackend
+    from cpomdp.backends.base import GraphBackend
     from cpomdp.selection import Preference
 
 __all__ = ["CrossoverStatistic", "crossover_horizon", "crossover_statistic"]
@@ -56,7 +56,7 @@ class CrossoverStatistic:
 
 
 def crossover_statistic(
-    backend: "EfeBackend",
+    backend: "GraphBackend",
     belief: Belief,
     walk: Float64[Array, "H p"],
     reach: Float64[Array, "H p"],
@@ -97,7 +97,7 @@ def crossover_statistic(
 
 
 def crossover_horizon(
-    backend: "EfeBackend",
+    backend: "GraphBackend",
     belief: Belief,
     walk_of: Callable[[int], Float64[Array, "H p"]],
     reach_of: Callable[[int], Float64[Array, "H p"]],

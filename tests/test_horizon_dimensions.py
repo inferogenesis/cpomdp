@@ -40,10 +40,7 @@ from cpomdp.efe import (
     policy_efe_ffg_trace,
 )
 from cpomdp.enumeration import EnumeratedEfeSearch
-from cpomdp.ffg.factors.linear_gaussian import (
-    CallableGaussianObservation,
-    GaussianTransition,
-)
+from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
 from cpomdp.ffg.graph import CouplingGraph
 from cpomdp.observation import CallableSensor
 from cpomdp.types import Belief, LinearGaussianModel
@@ -132,8 +129,8 @@ def _flat_pair():
     b = np.zeros((4, 2))
     b[0, 0] = 1.0
     b[1, 1] = 1.0
-    sensor = CallableGaussianObservation(_ARENA_C, _cue_noise, _CUE_PARAMS)
-    graph = CouplingGraph(root=0, dims=(4,), couplings=(), observations={0: sensor})
+    sensor = CallableSensor(_ARENA_C, _cue_noise, _CUE_PARAMS)
+    graph = CouplingGraph(dims=(4,), couplings=(), observation_models={0: sensor})
     backend = CouplingGraphBackend(
         graph,
         (GaussianTransition(a, dynamics_noise=q),),
@@ -142,11 +139,7 @@ def _flat_pair():
     )
     model = LinearGaussianModel(
         dynamics_matrix=a,
-        observation_matrix=_ARENA_C,
         dynamics_noise=q,
-        observation_noise=np.eye(
-            3
-        ),  # placeholder under a callable sensor, ignored there
         prior=Belief(mean=np.zeros(4), cov=np.eye(4)),
         control_matrix=b,
         observation_model=CallableSensor(_ARENA_C, _cue_noise, _CUE_PARAMS),
@@ -192,12 +185,12 @@ class TestFfgRolloutAtMultiDimAction:
         efe = policy_efe_ffg(backend, belief, policy, pref, info_block=info_block)
 
         predicted = backend.predicted_belief(belief, policy[0])
-        observation_matrix, _ = backend.observation_model
+        observation_matrix = backend.model.observation_matrix
         efe_ref = _ffg_efe_step(
             predicted.mean,
             predicted.cov,
             observation_matrix,
-            backend.observation_noise_at(predicted.mean),
+            backend.model.observation_noise_at(predicted.mean),
             pref.goal,
             pref.precision,
             info_block,
@@ -448,7 +441,7 @@ def _priced_joint_width(action_set, horizon: int, n_dims: int, context_dim: int)
         action_set, horizon, n_dims, context_dim=context_dim
     )
     per_policy = peak_gib * 1024**3 / policies
-    joint_squared = ((per_policy / 8) - horizon * action_set.action_dim) / 4
+    joint_squared = ((per_policy / 8) - horizon * action_set.n_controls) / 4
     return round(joint_squared**0.5)
 
 
@@ -470,7 +463,7 @@ class TestEnumerationCostPricesTheRealJoint:
         action_set = cue_maze.axis_action_set(n_dims)
         backend = cue_maze.build_maze(n_dims, context_dim=context_dim)
         priced = _priced_joint_width(action_set, 2, n_dims, context_dim)
-        assert priced == backend.n_total
+        assert priced == backend.model.n_states
 
     def test_a_wider_context_is_charged_for(self):
         # The regression itself: a hardcoded `1 + 2·n_dims` returns the same estimate at

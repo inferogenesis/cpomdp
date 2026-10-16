@@ -8,7 +8,7 @@ from cpomdp._lab.degraded import (
 )
 from cpomdp.backends.base import InferenceBackend
 from cpomdp.backends.kalman import KalmanBackend
-from cpomdp.dynamics import CallableProcessNoise
+from cpomdp.dynamics import CallableDynamicsNoise
 from cpomdp.observation import CallableSensor
 from cpomdp.types import Belief, LinearGaussianModel
 
@@ -21,7 +21,7 @@ CONTROL = np.array([[0.0], [DT]])
 SENSOR = np.array([[1.0, 0.0]])
 
 
-def _model(*, observation_noise=None, observation_model=None) -> LinearGaussianModel:
+def _model(*, observation_noise=None) -> LinearGaussianModel:
     return LinearGaussianModel(
         dynamics_matrix=DYNAMICS,
         observation_matrix=SENSOR,
@@ -29,7 +29,6 @@ def _model(*, observation_noise=None, observation_model=None) -> LinearGaussianM
         observation_noise=[[1e-2]] if observation_noise is None else observation_noise,
         prior=Belief(mean=[0.0, 0.0], cov=[[1.0, 0.0], [0.0, 1.0]]),
         control_matrix=CONTROL,
-        observation_model=observation_model,
     )
 
 
@@ -42,7 +41,13 @@ def _process_noise_at(x, params):
 
 
 def _sensed_model() -> LinearGaussianModel:
-    return _model(observation_model=CallableSensor(SENSOR, _noise_at, ()))
+    return LinearGaussianModel(
+        dynamics_matrix=DYNAMICS,
+        dynamics_noise=[[1e-3, 0.0], [0.0, 1e-3]],
+        prior=Belief(mean=[0.0, 0.0], cov=[[1.0, 0.0], [0.0, 1.0]]),
+        control_matrix=CONTROL,
+        observation_model=CallableSensor(SENSOR, _noise_at, ()),
+    )
 
 
 def _run(backend, steps: int = 6) -> Belief:
@@ -117,7 +122,6 @@ def test_an_omitted_noise_falls_back_to_the_sensors_r_at_the_prior_mean():
     prior = Belief(mean=[1.0, 0.0], cov=[[1.0, 0.0], [0.0, 1.0]])
     sensed = LinearGaussianModel(
         dynamics_matrix=DYNAMICS,
-        observation_matrix=SENSOR,
         dynamics_noise=[[1e-3, 0.0], [0.0, 1e-3]],
         prior=prior,
         control_matrix=CONTROL,
@@ -137,6 +141,26 @@ def test_an_omitted_noise_falls_back_to_the_sensors_r_at_the_prior_mean():
     assert np.allclose(np.asarray(degraded.cov), np.asarray(oracle.cov), atol=0)
 
 
+def test_a_noise_from_another_operating_point_is_the_backends_own_argument():
+    # The model's field is R at the prior mean and means nothing else. A constant taken
+    # anywhere else belongs to the filter that reads it.
+    nominal = _noise_at(jnp.array([1.0, 0.0]), ())
+    degraded = _run(
+        WrongFixedRBackend(_sensed_model(), observation_noise=nominal, magnitude=0.0)
+    )
+    oracle = _run(KalmanBackend(_model(observation_noise=nominal)))
+    assert np.allclose(np.asarray(degraded.mean), np.asarray(oracle.mean), atol=0)
+    assert np.allclose(np.asarray(degraded.cov), np.asarray(oracle.cov), atol=0)
+
+
+def test_the_backends_own_noise_is_scaled_by_the_magnitude():
+    degraded = _run(
+        WrongFixedRBackend(_model(), observation_noise=[[2e-2]], magnitude=0.5)
+    )
+    oracle = _run(KalmanBackend(_model(observation_noise=[[3e-2]])))
+    assert np.allclose(np.asarray(degraded.cov), np.asarray(oracle.cov), atol=0)
+
+
 def test_a_state_dependent_sensor_makes_a_zero_magnitude_a_real_degradation():
     sensed = _sensed_model()
     exact = _run(KalmanBackend(sensed))
@@ -153,30 +177,28 @@ def test_the_scored_model_keeps_its_state_dependent_sensor():
 def test_state_dependent_process_noise_reaches_the_substituted_filter():
     # R is what WrongFixedR replaces. Q(x) is not, so dropping it would be a second,
     # unnamed degradation, and the filter would move for a reason nothing declares.
-    process = CallableProcessNoise(_process_noise_at, ())
+    dynamics_noise_model = CallableDynamicsNoise(_process_noise_at, ())
     model = LinearGaussianModel(
         dynamics_matrix=DYNAMICS,
         observation_matrix=SENSOR,
-        dynamics_noise=[[1e-3, 0.0], [0.0, 1e-3]],
         observation_noise=[[1e-2]],
         prior=Belief(mean=[0.0, 0.0], cov=[[1.0, 0.0], [0.0, 1.0]]),
         control_matrix=CONTROL,
-        dynamics_noise_model=process,
+        dynamics_noise_model=dynamics_noise_model,
     )
-    fixed_process = _model()
+    fixed_dynamics_noise = _model()
     assert not np.allclose(
         np.asarray(_run(KalmanBackend(model)).cov),
-        np.asarray(_run(KalmanBackend(fixed_process)).cov),
+        np.asarray(_run(KalmanBackend(fixed_dynamics_noise)).cov),
     )  # Q(x) moves this model, so the check below can see it go missing
 
     scaled = LinearGaussianModel(
         dynamics_matrix=DYNAMICS,
         observation_matrix=SENSOR,
-        dynamics_noise=[[1e-3, 0.0], [0.0, 1e-3]],
         observation_noise=[[1.5e-2]],
         prior=Belief(mean=[0.0, 0.0], cov=[[1.0, 0.0], [0.0, 1.0]]),
         control_matrix=CONTROL,
-        dynamics_noise_model=process,
+        dynamics_noise_model=dynamics_noise_model,
     )
     degraded = _run(WrongFixedRBackend(model, magnitude=0.5))
     assert np.allclose(

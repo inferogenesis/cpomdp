@@ -544,14 +544,14 @@ def check_two_route_agreement(
     agrees = gap < tolerance
     print(headline)
     print(
-        f"  CouplingGraph.infer    : {mean_symbol}={float(native.mean[0]):.6f}  "
+        f"  CouplingGraph.infer_root: {mean_symbol}={float(native.mean[0]):.6f}  "
         f"var={float(native.cov[0, 0]):.6f}"
     )
     print(
-        f"  flattened KalmanBackend: {mean_symbol}={float(flattened.mean[0]):.6f}  "
+        f"  flattened KalmanBackend : {mean_symbol}={float(flattened.mean[0]):.6f}  "
         f"var={float(flattened.cov[0, 0]):.6f}"
     )
-    print(f"  max |difference|       : {gap:.2e}  ->  {'PASS' if agrees else 'FAIL'}")
+    print(f"  max |difference|        : {gap:.2e}  ->  {'PASS' if agrees else 'FAIL'}")
     if not agrees:
         raise AssertionError(
             f"{headline} routes differ by {gap:.2e}, tolerance {tolerance:.0e}"
