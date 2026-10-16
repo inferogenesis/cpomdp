@@ -2,9 +2,10 @@
 
 import math
 import operator
+from collections.abc import Sequence
 from dataclasses import dataclass
 from functools import cached_property
-from typing import Protocol, runtime_checkable
+from typing import Protocol, SupportsIndex, runtime_checkable
 
 import jax
 import jax.numpy as jnp
@@ -18,6 +19,7 @@ from cpomdp.control import LQRController, _validate_cost
 from cpomdp.efe import (
     _ffg_efe_step,
     _info_block_of,
+    _info_nodes,
     _target_and_precision,
     expected_free_energy,
     policy_efe,
@@ -89,6 +91,17 @@ def _checked_horizon(horizon: int) -> int:
     if steps < 1:
         raise ValueError(f"horizon must be at least 1, got {steps}")
     return steps
+
+
+def _stored_info_node(
+    info_node: SupportsIndex | Sequence[SupportsIndex] | None,
+) -> int | tuple[int, ...] | None:
+    """``info_node`` as an ``ObservationGoal`` keeps it: an int, a tuple, or None."""
+    if info_node is None:
+        return None
+    nodes = _info_nodes(info_node)
+    single = not isinstance(info_node, Sequence) or isinstance(info_node, str)
+    return nodes[0] if single else nodes
 
 
 def _candidate_grid(
@@ -406,8 +419,8 @@ class FFGEFESelector:
     ``_efe_step`` on a flat model it ``vmap``s ``_ffg_efe_step`` over the candidate
     action grid, reading ``μ⁺``/``Σ⁺``
     from the backend's ``predicted_belief`` (structural couplings folded in) and aiming
-    the epistemic term at ``info_block`` — a joint-state block (a node's block via
-    ``backend.block`` for ``info_node``, or the whole state). One-step
+    the epistemic term at ``info_node``, one node or several, or the whole joint state
+    when it is ``None``. One-step
     (``horizon = 1``); the H-step FFG rollout is a later seam. Conforms to
     [`ActionSelector`][cpomdp.ActionSelector].
     """
@@ -418,7 +431,7 @@ class FFGEFESelector:
         *,
         action_bounds: tuple[float, float],
         n_candidates: int = _DEFAULT_N_CANDIDATES,
-        info_node: int | None = None,
+        info_node: SupportsIndex | Sequence[SupportsIndex] | None = None,
     ) -> None:
         """Front-load the candidate grid, after checking the backend and the target.
 
@@ -455,7 +468,7 @@ class FFGEFESelector:
         # candidate at μ⁺ via ``model.observation_noise_at`` (issue #27). A fixed
         # sensor returns the same constant each time.
         self._backend = backend
-        self._info_node = info_node
+        self._info_node = _stored_info_node(info_node)
         self._info_block = info_block
         self._observation_matrix = backend.model.observation_matrix  # C (constant)
         self._candidates = candidates
@@ -623,9 +636,9 @@ class ObservationGoal:
     the Agent reads off the model (ADR-068). On a double integrator observed in
     position that is 2. ``agent.selector.horizon`` reads it back.
 
-    ``info_node`` optionally aims the epistemic term at a single latent *node* (info
-    gain about that node's marginal, the factored-EFE regime on a branching backend,
-    issue #26). ``None`` means whole-state info gain. The Agent dispatches an
+    ``info_node`` optionally aims the epistemic term at a latent *node*, or at several
+    as their joint marginal (the factored-EFE regime on a branching backend, issue
+    #26). ``None`` means whole-state info gain. The Agent dispatches an
     ObservationGoal to an EFESelector, or to an FFGEFESelector on a branching backend.
     Not a pytree. The Agent reads it once at construction and keeps its
     ``preference``, which it hands to the EFE functions.
@@ -636,7 +649,7 @@ class ObservationGoal:
     action_bounds: tuple[float, float]
     n_candidates: int
     horizon: int | None
-    info_node: int | None
+    info_node: int | tuple[int, ...] | None
 
     def __init__(
         self,
@@ -646,7 +659,7 @@ class ObservationGoal:
         precision: ArrayLike | None = None,
         n_candidates: int = _DEFAULT_N_CANDIDATES,
         horizon: int | None = None,
-        info_node: int | None = None,
+        info_node: SupportsIndex | Sequence[SupportsIndex] | None = None,
     ) -> None:
         target = jnp.asarray(target, dtype=float)
         object.__setattr__(self, "target", target)
@@ -661,9 +674,7 @@ class ObservationGoal:
         object.__setattr__(
             self, "horizon", None if horizon is None else _checked_horizon(horizon)
         )
-        object.__setattr__(
-            self, "info_node", None if info_node is None else int(info_node)
-        )
+        object.__setattr__(self, "info_node", _stored_info_node(info_node))
         self._validate()
 
     def _validate(self) -> None:
@@ -678,9 +689,16 @@ class ObservationGoal:
                 f"precision must be {m}x{m} to match the {m}-D observation goal, "
                 f"got shape {self.precision.shape}"
             )
-        if self.info_node is not None and self.info_node < 0:
+        nodes = (
+            ()
+            if self.info_node is None
+            else (self.info_node,)
+            if isinstance(self.info_node, int)
+            else self.info_node
+        )
+        if any(node < 0 for node in nodes):
             raise ValueError(
-                f"info_node must be a non-negative node index or None, "
+                f"info_node must be non-negative node indices or None, "
                 f"got {self.info_node}"
             )
 

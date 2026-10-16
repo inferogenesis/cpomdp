@@ -51,7 +51,7 @@ CONTEXT (dim 1), node 1 = ARM_NODE (dim 2 = `[position, arm]`).
 | control | `B=[[0],[1],[0]]` — the 1-D action drives *position* (joint index 1), additively: `x_{k+1}=x_k+u_k` |
 | sensor | `C=[[-1,1],[-1,1]]` on node 1 — two channels, both read displacement `o = f − x` |
 | noise `R(x)` | `diag(r_goal, r_info(x))`, `r_goal = 200` (fixed), `r_info(x) = 0.02 + (200−0.02)·(1 − e^{−(x−x₀)²/(2·1.2²)})` — sharp (0.02) at the cue, dull (200) far |
-| goal | observe `g = [0, 0]` displacement, precision `Λ = diag(0.6, 1e-4)`, `info_target = CONTEXT` |
+| goal | observe `g = [0, 0]` displacement, precision `Λ = diag(0.6, 1e-4)`, `info_node = CONTEXT` |
 | prior belief | `mean = [−3, 0, −3]`, `cov = diag(5, 0.05, 5)` |
 | geometry | start `x = 0`; cue at `CUE_DETOUR_X = +1.0`; prior arm `−3`; true reward `+3` |
 
@@ -121,7 +121,7 @@ Asserted in `tests/test_crossover.py` (`ANCHOR_TOL = 1e-4`).
 
 ### 3.2 The decisive measurement: the exhaustive argmin flips at H = 7 (selection-free)
 
-`EnumeratedEfeSearch.over_backend(backend, {−2,−1,0,1,2}, info_block=CONTEXT, horizon=H)`,
+`EnumeratedEFESearch.over_backend(backend, {−2,−1,0,1,2}, info_node=CONTEXT, horizon=H)`,
 every `A^H` policy enumerated at each horizon. Feasibility is the enumeration cost
 `|A|^H · H`, printed so it is not an undeclared budget (chapter 6):
 

@@ -727,7 +727,12 @@ class CouplingGraphBackend:
         exactly zero and the exact endpoint stays byte-identical.
         """
         factored = self._factor(cov)
-        return factored, jnp.linalg.norm(cov - factored)
+        squared = jnp.sum((cov - factored) ** 2)
+        # sqrt has no gradient at 0, and the full joint severs exactly 0. The inner
+        # where keeps the untaken branch finite, so its gradient is 0, not NaN.
+        nonzero = squared > 0.0
+        severed = jnp.where(nonzero, jnp.sqrt(jnp.where(nonzero, squared, 1.0)), 0.0)
+        return factored, severed
 
     def _control_shift(self, action: jax.Array | None) -> jax.Array:
         """The control shift ``b = B·action`` (zero when the model has no control)."""
@@ -817,8 +822,9 @@ class CouplingGraphBackend:
         node's block of the mean, the point the filter uses.
 
         It omits the structural couplings, so it is not the graph's plant. On a
-        coupled graph every flat consumer refuses it, ``KalmanBackend``, the flat
-        selectors and searches, ``LQRController`` and the schedules among them.
+        coupled graph every flat consumer refuses it: both flat backends, the flat
+        selectors and searches, ``LQRController``, the schedules and the flat EFE
+        functions. The mark survives a pytree rebuild.
         ``to_flat_model()`` adds the couplings as pseudo-observations, for the oracle
         cross-check.
         """

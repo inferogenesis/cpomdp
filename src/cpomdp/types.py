@@ -11,6 +11,8 @@ from numpy.typing import ArrayLike
 from cpomdp._validation import (
     NOISELESS_SENSOR,
     concrete,
+    is_graph_interface,
+    mark_graph_interface,
     state_dependent,
     validate_covariance,
     validate_finite,
@@ -456,7 +458,9 @@ class LinearGaussianModel:
             return self.observation_noise
         return sensor.linearize(state)[1]
 
-    def tree_flatten(self) -> tuple[tuple[_ModelLeaf, ...], ModelStructure | None]:
+    def tree_flatten(
+        self,
+    ) -> tuple[tuple[_ModelLeaf, ...], tuple[ModelStructure | None, bool]]:
         """Leaves for JAX: every matrix plus the ``prior`` belief; ``structure`` is aux.
 
         ``control_matrix``, ``observation_model`` and ``dynamics_noise_model`` are
@@ -466,7 +470,8 @@ class LinearGaussianModel:
         a pytree and recurses into its own leaves. ``structure`` (declarative metadata,
         no array leaves) rides in the static aux_data, so two models differing only in
         ``structure`` are different pytrees and a jit keyed on the model re-specialises
-        when it changes.
+        when it changes. The mark a coupled graph backend puts on its model rides there
+        too, so a rebuilt model is still refused where a plant is taken (ADR-090).
         """
         children = (
             self.dynamics_matrix,
@@ -478,17 +483,18 @@ class LinearGaussianModel:
             self.observation_model,
             self.dynamics_noise_model,
         )
-        return children, self.structure
+        return children, (self.structure, is_graph_interface(self))
 
     @classmethod
     def tree_unflatten(
         cls,
-        aux_data: ModelStructure | None,
+        aux_data: tuple[ModelStructure | None, bool],
         children: tuple[_ModelLeaf, ...],
     ) -> "LinearGaussianModel":
         """Rebuild from leaves without validating — the leaves may be tracers.
 
-        ``aux_data`` is the static ``structure`` (or ``None``), restored as-is.
+        ``aux_data`` is the static ``structure`` (or ``None``) and the graph-interface
+        mark, both restored as-is.
         """
         obj = object.__new__(cls)
         fields = (
@@ -503,5 +509,8 @@ class LinearGaussianModel:
         )
         for name, value in zip(fields, children, strict=True):
             object.__setattr__(obj, name, value)
-        object.__setattr__(obj, "structure", aux_data)
+        structure, graph_interface = aux_data
+        object.__setattr__(obj, "structure", structure)
+        if graph_interface:
+            mark_graph_interface(obj)
         return obj

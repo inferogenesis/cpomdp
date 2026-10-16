@@ -5609,7 +5609,11 @@ its cheap node-by-node pass, paid the dense cost for a profile it might not want
 ### Consequences
 
 - One filter per backend. The profile's dense solve is a separate call, so its cost is
-  attributable and a run that does not profile does not pay it.
+  attributable and a run that does not profile does not pay it. A run that profiles on
+  a partition other than all singletons solves the same posterior twice per step, once
+  in `infer_states` and once in `severed_mass`. `filter_sequence` solved it once.
+- The severed mass has a zero gradient on the full joint, which severs nothing. A plain
+  norm of the zero difference gave NaN.
 - ADR-016's argument against storing per-step state on the backend still holds. The
   profile lives in the scan's output, never on `self`.
 
@@ -5631,17 +5635,19 @@ units coincide, so `info_block=(0,)` read as node 0 and broke once a node grew.
 
 ### Decision
 
-Every graph entry point takes `info_node: int | None = None`, as the goal does. `None`
-is the whole joint state. Each resolves the node to its indices once, at construction or
+Every graph entry point takes `info_node: int | Sequence[int] | None = None`, as the
+goal does. `None` is the whole joint state, a node is its block, and several nodes are
+their joint marginal, as NumPy's `axis` takes one axis or several. Each resolves the node to its indices once, at construction or
 trace time, through one check that also refuses a severing partition and a node outside
 the graph. The private kernels keep the indices.
 
 ### Consequences
 
 - The per-cycle path is unchanged. The indices are resolved before the scan.
-- A multi-node target is not expressible. If one is needed, `info_nodes` is added then.
-- `backend.block` stays public. It answers which indices a node occupies, for reading a
-  belief, a job `info_node` no longer needs it for.
+- A multi-node target stays expressible through the one parameter. An empty or
+  repeated node list is refused.
+- `backend.block` stays public. `info_node` no longer needs it, and it stays for reading
+  a node's slice of a belief.
 
 ## ADR-090 — a coupled graph's model is its interface, and flat consumers refuse it
 
@@ -5660,18 +5666,19 @@ plant. `Agent.from_backend(graph, StateGoal(...))` regulated it with LQR, and
 
 ### Decision
 
-A coupled graph backend marks its model. `KalmanBackend`, `Agent`, `EFESelector`, the
-flat search constructors, `LQRController`, `lqr_schedule`, `kalman_schedule` and
-`probe_model` refuse a marked model at construction and name the routes that keep the
-couplings, the backend itself or `backend.to_flat_model()`. A `StateGoal` on a coupled
+A coupled graph backend marks its model. Both flat backends, `Agent`, `EFESelector`,
+the flat search constructors, `LQRController`, `lqr_schedule`, `kalman_schedule`,
+`probe_model` and the flat EFE functions refuse a marked model and name the routes that
+keep the couplings, the backend itself or `backend.to_flat_model()`. A `StateGoal` on a coupled
 graph is refused. A graph with no couplings is its own plant and carries no mark.
 
 ### Consequences
 
-- The mark is an attribute on the one model object, not a field, so the model's pytree
-  is unchanged. A model rebuilt from its leaves carries no mark, and nothing rebuilds
-  the backend's own.
-- The checks run at construction. The per-cycle EFE functions carry none, so the hot
-  path is unchanged.
+- The mark is an attribute, not a field, so it adds no leaf. It rides in the model's
+  static aux data, so a copy rebuilt through `jax.tree.map`, `device_put` or a `jit`
+  boundary keeps it, and the jit cache keys on it.
+- The constructors check once. The EFE functions check one attribute per eager call
+  and once per trace under `jit`, which leaves the fixed-noise hot path a matrix
+  product.
 - The `InferenceBackend.model` docstring now promises the sizes, prior, sensor and
   control a backend reads, not a model it filters exactly.

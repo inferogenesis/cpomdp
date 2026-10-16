@@ -19,7 +19,7 @@ from _support import unit_prior
 from cpomdp.agent import Agent
 from cpomdp.backends.base import InadmissiblePartitionError
 from cpomdp.backends.coupling import CouplingGraphBackend
-from cpomdp.efe import policy_efe_ffg, policy_efe_ffg_trace
+from cpomdp.efe import _policy_efe_ffg, policy_efe_ffg, policy_efe_ffg_trace
 from cpomdp.enumeration import ChunkedEFESearch, EnumeratedEFESearch, FiniteActionSet
 from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
 from cpomdp.ffg.graph import Coupling, CouplingGraph
@@ -172,6 +172,50 @@ def test_rollouts_reject_partition_severing_efe_edge():
     for rollout in (policy_efe_ffg, policy_efe_ffg_trace):
         with pytest.raises(InadmissiblePartitionError, match="sever"):
             rollout(backend, belief, policy, preference)
+
+
+def test_info_node_takes_several_nodes_as_their_joint_marginal():
+    # Nodes 0 and 2 are scored as one target, as their indices were before.
+    backend = _backend(_hub_graph())
+    belief, policy = unit_prior(_hub_graph()), jnp.array([[0.3], [-0.2]])
+    preference = Preference(jnp.zeros(2))
+    by_nodes = policy_efe_ffg(backend, belief, policy, preference, info_node=[0, 2])
+    by_indices = _policy_efe_ffg(
+        backend,
+        belief,
+        policy,
+        preference,
+        (*backend.block(0), *backend.block(2)),
+    )
+    np.testing.assert_array_equal(by_nodes.epistemic, by_indices.epistemic)
+
+
+@pytest.mark.parametrize(
+    ("info_node", "match"), [([], "names no node"), ([0, 0], "repeats")]
+)
+def test_info_node_refuses_an_empty_or_repeated_list(info_node, match):
+    backend = _backend(_hub_graph())
+    with pytest.raises(ValueError, match=match):
+        _selector(backend, info_node)
+
+
+def test_info_node_takes_a_numpy_integer():
+    # np.argmax and np.arange hand back NumPy integers, not ints.
+    backend = _backend(_hub_graph())
+    belief, policy = unit_prior(_hub_graph()), jnp.array([[0.3], [-0.2]])
+    preference = Preference(jnp.zeros(2))
+    np.testing.assert_array_equal(
+        policy_efe_ffg(backend, belief, policy, preference, info_node=np.int64(2)).g,
+        policy_efe_ffg(backend, belief, policy, preference, info_node=2).g,
+    )
+    goal = ObservationGoal([0.0, 0.0], action_bounds=(-1.0, 1.0), info_node=np.int64(2))
+    assert goal.info_node == 2
+
+
+def test_info_node_refuses_a_bool():
+    # True is an int to Python and would aim at node 1 without a word.
+    with pytest.raises(TypeError, match="info_node"):
+        ObservationGoal([0.0, 0.0], action_bounds=(-1.0, 1.0), info_node=True)
 
 
 @pytest.mark.parametrize("info_node", [99, -1, 3])

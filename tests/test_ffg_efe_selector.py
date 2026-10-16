@@ -209,7 +209,7 @@ def test_the_graph_selector_prints_its_horizon_and_target():
     )
 
 
-def test_agent_ffg_whole_state_when_info_target_none():
+def test_agent_ffg_whole_state_when_info_node_is_none():
     # info_node=None on the FFG backend still routes to the FFG selector, aimed at the
     # whole state (the default epistemic).
     backend = _two_node_rx_backend()
@@ -231,7 +231,7 @@ def test_an_info_node_outside_the_graph_is_refused_by_the_backend():
         )
 
 
-def test_info_target_on_flat_backend_raises():
+def test_info_node_on_a_flat_backend_raises():
     # info_node aims at an FFG node; it is meaningless without a branching backend.
     model = LinearGaussianModel(
         dynamics_matrix=[[1.0]],

@@ -1,10 +1,9 @@
 """The H-step EFE rollout over a branching FFG backend, and its two oracle reductions.
 
 ``policy_efe_ffg`` is the FFG counterpart of ``policy_efe``: it drives ``_ffg_efe_step``
-over the backend's predicted joint each step, aiming the epistemic at a node's block
-(``info_block``) rather than the whole observation. ``policy_efe_ffg_trace`` keeps
-the whole
-per-step record instead of summing it, so the crossover statistic and the rollout
+over the backend's predicted joint each step, aiming the epistemic at a node
+(``info_node``) rather than the whole observation. ``policy_efe_ffg_trace`` keeps the
+whole per-step record instead of summing it, so the crossover statistic and the rollout
 diagnostics can read the per-step pragmatic/epistemic split and the covariance path.
 
 Two oracles pin it, mirroring the flat rollout's:
