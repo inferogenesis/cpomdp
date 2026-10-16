@@ -21,7 +21,6 @@ Imported from ``cpomdp.enumeration``. None of it is re-exported at the top level
 """
 
 from abc import ABC, abstractmethod
-from collections.abc import Sequence
 from dataclasses import dataclass, field
 from functools import partial
 from typing import TYPE_CHECKING, Any, NamedTuple, Protocol
@@ -34,7 +33,7 @@ from jaxtyping import Array, Float64, Int
 from numpy.typing import ArrayLike
 
 from cpomdp._validation import concrete
-from cpomdp.efe import _checked_info_block, _policy_efe_ffg, policy_efe
+from cpomdp.efe import _info_block_of, _policy_efe_ffg, policy_efe
 from cpomdp.types import Belief, LinearGaussianModel
 
 # `CompletenessCertificate` is an evidence kind of the warrant vocabulary, so it is
@@ -452,15 +451,15 @@ class ExhaustiveEFESearch(ABC):
 
     @classmethod
     def _graph_scorer(
-        cls, backend: "GraphBackend", info_block: Sequence[int]
+        cls, backend: "GraphBackend", info_node: int | None
     ) -> _FFGScorer:
-        """``over_backend``'s scorer, its block checked here rather than per policy."""
+        """``over_backend``'s scorer, its target resolved once, not per policy."""
         if backend.model.control_matrix is None:
             raise ValueError(
                 f"{cls.__name__}.over_backend needs a backend with a control matrix; "
                 "an action has no effect without one."
             )
-        return _FFGScorer(backend, _checked_info_block(backend, info_block))
+        return _FFGScorer(backend, _info_block_of(backend, info_node))
 
     @abstractmethod
     def evaluate(self, belief: Belief, preference: "Preference") -> SearchResult:
@@ -574,7 +573,7 @@ class EnumeratedEFESearch(ExhaustiveEFESearch):
         backend: "GraphBackend",
         action_set: FiniteActionSet,
         *,
-        info_block: Sequence[int],
+        info_node: int | None = None,
         horizon: int,
         max_policies: int | None = _DEFAULT_MAX_POLICIES,
     ) -> "EnumeratedEFESearch":
@@ -582,21 +581,20 @@ class EnumeratedEFESearch(ExhaustiveEFESearch):
 
         The FFG counterpart of the flat constructor: it enumerates the same ``A^H`` set
         with the same completeness certificate, but scores each policy on a coupling
-        graph with the epistemic aimed at ``info_block`` — a node's block (via
-        ``backend.block``) or the whole state. This runs the coupled-tree model the flat
+        graph with the epistemic aimed at ``info_node``'s state, or the whole joint
+        state when it is ``None``. This runs the coupled-tree model the flat
         constructor cannot express. The policy budget is the flat constructor's.
 
         Raises:
             InadmissiblePartitionError: If the backend's carry partition severs an
                 EFE-load-bearing edge.
             PolicyBudgetError: If ``|A|^H`` exceeds ``max_policies``.
-            ValueError: If the backend has no control matrix, if ``info_block`` is
-                empty, repeats an index or names one outside the joint state, if the
-                action set's dimension or the horizon does not fit, or if
-                ``max_policies`` is below 1.
+            ValueError: If the backend has no control matrix, if ``info_node`` is
+                not a node of the graph, if the action set's dimension or the horizon
+                does not fit, or if ``max_policies`` is below 1.
         """
         search = cls.__new__(cls)
-        scorer = cls._graph_scorer(backend, info_block)
+        scorer = cls._graph_scorer(backend, info_node)
         search._setup(scorer, action_set, horizon, max_policies)
         return search
 
@@ -765,7 +763,7 @@ class ChunkedEFESearch(ExhaustiveEFESearch):
         backend: "GraphBackend",
         action_set: FiniteActionSet,
         *,
-        info_block: Sequence[int],
+        info_node: int | None = None,
         horizon: int,
         chunk: int = _DEFAULT_CHUNK,
     ) -> "ChunkedEFESearch":
@@ -774,15 +772,12 @@ class ChunkedEFESearch(ExhaustiveEFESearch):
         Raises:
             InadmissiblePartitionError: If the backend's carry partition severs an
                 EFE-load-bearing edge.
-            ValueError: If the backend has no control matrix, if ``info_block`` is
-                empty, repeats an index or names one outside the joint state, if the
-                action set's dimension or the horizon does not fit, or if ``chunk`` is
-                below 1.
+            ValueError: If the backend has no control matrix, if ``info_node`` is
+                not a node of the graph, if the action set's dimension or the horizon
+                does not fit, or if ``chunk`` is below 1.
         """
         search = cls.__new__(cls)
-        search._setup(
-            cls._graph_scorer(backend, info_block), action_set, horizon, chunk
-        )
+        search._setup(cls._graph_scorer(backend, info_node), action_set, horizon, chunk)
         return search
 
     def _setup(

@@ -5612,3 +5612,33 @@ its cheap node-by-node pass, paid the dense cost for a profile it might not want
   attributable and a run that does not profile does not pay it.
 - ADR-016's argument against storing per-step state on the backend still holds. The
   profile lives in the scan's output, never on `self`.
+
+## ADR-089 — the epistemic target is a node on every graph entry point
+
+**Date:** 2026-10-16
+**Status:** Accepted
+**Supersedes:** ADR-032's `info_block` of joint-state indices on `policy_efe_ffg`, and
+the same argument on the graph selector, the searches and the crossover functions.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+`ObservationGoal` aimed the information term with `info_node`, a graph node, defaulting
+to the whole state. The seven graph entry points below it took `info_block`, the
+joint-state indices, required on some and defaulted on others. A caller converted with
+`backend.block(node)` and passed the backend a second time. On scalar nodes the two
+units coincide, so `info_block=(0,)` read as node 0 and broke once a node grew.
+
+### Decision
+
+Every graph entry point takes `info_node: int | None = None`, as the goal does. `None`
+is the whole joint state. Each resolves the node to its indices once, at construction or
+trace time, through one check that also refuses a severing partition and a node outside
+the graph. The private kernels keep the indices.
+
+### Consequences
+
+- The per-cycle path is unchanged. The indices are resolved before the scan.
+- A multi-node target is not expressible. If one is needed, `info_nodes` is added then.
+- `backend.block` stays public. It answers which indices a node occupies, for reading a
+  belief, a job `info_node` no longer needs it for.

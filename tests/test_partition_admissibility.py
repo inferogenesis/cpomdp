@@ -77,9 +77,9 @@ def _backend(graph, partition=None):
     )
 
 
-def _selector(backend, info_block=(0, 1, 2)):
+def _selector(backend, info_node=None):
     return FFGEFESelector(
-        backend, info_block=info_block, n_candidates=11, action_bounds=(-2.0, 2.0)
+        backend, info_node=info_node, n_candidates=11, action_bounds=(-2.0, 2.0)
     )
 
 
@@ -162,7 +162,7 @@ def test_searches_reject_partition_severing_efe_edge():
     backend = _backend(_hub_graph(), partition=_SEVERING)
     for search in (EnumeratedEFESearch, ChunkedEFESearch):
         with pytest.raises(InadmissiblePartitionError, match="sever"):
-            search.over_backend(backend, _actions(), info_block=range(3), horizon=2)
+            search.over_backend(backend, _actions(), horizon=2)
 
 
 def test_rollouts_reject_partition_severing_efe_edge():
@@ -171,18 +171,17 @@ def test_rollouts_reject_partition_severing_efe_edge():
     preference = Preference(jnp.zeros(2))
     for rollout in (policy_efe_ffg, policy_efe_ffg_trace):
         with pytest.raises(InadmissiblePartitionError, match="sever"):
-            rollout(backend, belief, policy, preference, info_block=range(3))
+            rollout(backend, belief, policy, preference)
 
 
-@pytest.mark.parametrize(
-    ("info_block", "match"),
-    [([], "empty"), ([0, 0], "repeats"), ([99], "outside"), ([-1], "outside")],
-)
-def test_info_block_must_name_distinct_joint_indices(info_block, match):
+@pytest.mark.parametrize("info_node", [99, -1, 3])
+def test_info_node_must_name_a_node_of_the_graph(info_node):
+    # JAX clamps an out-of-range gather, so a stray target would score another node.
     backend = _backend(_hub_graph())
+    match = f"info_node {info_node}"
     with pytest.raises(ValueError, match=match):
         EnumeratedEFESearch.over_backend(
-            backend, _actions(), info_block=info_block, horizon=2
+            backend, _actions(), info_node=info_node, horizon=2
         )
     with pytest.raises(ValueError, match=match):
         policy_efe_ffg(
@@ -190,7 +189,7 @@ def test_info_block_must_name_distinct_joint_indices(info_block, match):
             unit_prior(_hub_graph()),
             jnp.zeros((2, 1)),
             Preference(jnp.zeros(2)),
-            info_block=info_block,
+            info_node=info_node,
         )
     with pytest.raises(ValueError, match=match):
-        _selector(backend, info_block)
+        _selector(backend, info_node)

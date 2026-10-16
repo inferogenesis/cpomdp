@@ -97,13 +97,13 @@ SEARCHES = {
     ),
     "front-loaded graph": (
         lambda: EnumeratedEFESearch.over_backend(
-            _backend(), _actions(), info_block=[0], horizon=3
+            _backend(), _actions(), info_node=0, horizon=3
         ),
         "_ffg_efe_step",
     ),
     "chunked graph": (
         lambda: ChunkedEFESearch.over_backend(
-            _backend(), _actions(), info_block=[0], horizon=3, chunk=5
+            _backend(), _actions(), info_node=0, horizon=3, chunk=5
         ),
         "_ffg_efe_step",
     ),
@@ -161,11 +161,11 @@ class TestEagerIdentity:
         belief, preference = belief_and_preference
         backend = _backend()
         search = EnumeratedEFESearch.over_backend(
-            backend, _actions(), info_block=[0], horizon=3
+            backend, _actions(), info_node=0, horizon=3
         )
         eager = jax.vmap(
             lambda policy: (
-                policy_efe_ffg(backend, belief, policy, preference, info_block=[0]).g
+                policy_efe_ffg(backend, belief, policy, preference, info_node=0).g
             )
         )(search.policies)
         compiled = search.evaluate(belief, preference).g

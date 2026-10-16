@@ -446,18 +446,18 @@ def policy_efe_ffg(
     policy: Float64[Array, "H p"],
     preference: "Preference",
     *,
-    info_block: Sequence[int],
+    info_node: int | None = None,
 ) -> EFEResult:
     """Summed EFE of a horizon-H ``policy`` over a branching FFG backend.
 
     The graph counterpart of [`policy_efe`][cpomdp.efe.policy_efe]. Each step scores
-    the backend's predicted joint, with the epistemic term aimed at ``info_block``,
-    a node's block (via ``backend.block``) or the whole state. A ``lax.scan`` over
+    the backend's predicted joint, with the epistemic term aimed at ``info_node``'s
+    state or the whole joint state. A ``lax.scan`` over
     the ``policy`` rows sums each step's G while propagating the joint belief
     predict-only between steps. The mean carries as the coupling-resolved predicted
     mean. The covariance contracts by the Kalman update at the sensor noise read
     there. At ``H = 1`` it is one step of the graph score. With no couplings and a
-    whole-state ``info_block`` it reproduces ``policy_efe``.
+    whole-state target it reproduces ``policy_efe``.
 
     The ``backend`` is held as a closure constant, since it is not a JAX pytree. This
     composes under ``jit``, ``vmap`` and ``grad`` over the array arguments, the way
@@ -473,8 +473,8 @@ def policy_efe_ffg(
             ``expected_free_energy``. An
             [`ObservationGoal`][cpomdp.ObservationGoal] hands over its own as
             ``goal.preference``.
-        info_block: The joint-state indices whose info gain is the per-step epistemic
-            value.
+        info_node: The node whose state the per-step epistemic value is about.
+            ``None``, the default, aims it at the whole joint state.
 
     Returns:
         An [`EFEResult`][cpomdp.efe.EFEResult] with each field summed over the
@@ -483,12 +483,11 @@ def policy_efe_ffg(
     Raises:
         InadmissiblePartitionError: If the backend's carry partition severs an
             EFE-load-bearing edge.
-        ValueError: If ``info_block`` is empty, repeats an index, or names an index
-            outside the joint state.
+        ValueError: If ``info_node`` is not a node of the graph.
         TypeError: If ``preference`` is not a [`Preference`][cpomdp.Preference].
     """
     return _policy_efe_ffg(
-        backend, belief, policy, preference, _checked_info_block(backend, info_block)
+        backend, belief, policy, preference, _info_block_of(backend, info_node)
     )
 
 
@@ -534,16 +533,17 @@ def policy_efe_ffg_trace(
     policy: Float64[Array, "H p"],
     preference: "Preference",
     *,
-    info_block: Sequence[int],
+    info_node: int | None = None,
 ) -> PolicyEFETrace:
     """Per-step trace of the FFG rollout, the diagnostic sibling of ``policy_efe_ffg``.
 
     Runs the same scan as [`policy_efe_ffg`][cpomdp.efe.policy_efe_ffg] and keeps the
     whole per-step record instead of summing it. The arithmetic is shared, so
     ``jnp.sum`` of each returned scalar column equals the matching ``policy_efe_ffg``
-    field bit-for-bit. The ``epistemic`` column is the info gain about
-    ``info_block`` alone. The flat [`policy_efe_trace`][cpomdp.efe.policy_efe_trace]
-    carries the whole-state term there instead. The moment columns are the
+    field bit-for-bit. The ``epistemic`` column is the info gain about the
+    ``info_node`` targeted. The flat
+    [`policy_efe_trace`][cpomdp.efe.policy_efe_trace] carries the whole-state term
+    there instead. The moment columns are the
     coupling-resolved predicted moments and the contracted posterior covariance.
     Composes under ``jit``, ``vmap`` and ``grad`` with the backend held fixed.
 
@@ -553,8 +553,8 @@ def policy_efe_ffg_trace(
         policy: The ``H`` actions to roll out, shape ``(H, p)``.
         preference: The observation-space [`Preference`][cpomdp.Preference], as for
             ``expected_free_energy``.
-        info_block: The joint-state indices whose info gain is the per-step epistemic
-            value.
+        info_node: The node whose state the per-step epistemic value is about.
+            ``None``, the default, aims it at the whole joint state.
 
     Returns:
         A [`PolicyEFETrace`][cpomdp.efe.PolicyEFETrace], the type the flat rollout
@@ -563,14 +563,13 @@ def policy_efe_ffg_trace(
     Raises:
         InadmissiblePartitionError: If the backend's carry partition severs an
             EFE-load-bearing edge.
-        ValueError: If ``info_block`` is empty, repeats an index, or names an index
-            outside the joint state.
+        ValueError: If ``info_node`` is not a node of the graph.
         TypeError: If ``preference`` is not a [`Preference`][cpomdp.Preference].
     """
     goal, precision = _goal_and_precision(preference)
     policy = jnp.asarray(policy, dtype=float)
-    checked = _checked_info_block(backend, info_block)
-    body = _ffg_rollout_body(backend, goal, precision, checked)
+    info_block = _info_block_of(backend, info_node)
+    body = _ffg_rollout_body(backend, goal, precision, info_block)
 
     _, trace = lax.scan(body, belief, policy)
     return trace
@@ -623,16 +622,12 @@ def _not_a_preference(given: object) -> str:
     return f"{_SCORED_AGAINST} This is a value of type {type(given).__name__}."
 
 
-def _checked_info_block(
-    backend: "GraphBackend", info_block: Sequence[int]
-) -> tuple[int, ...]:
-    """``info_block`` as a tuple, refused unless an FFG EFE can be aimed at it.
+def _info_block_of(backend: "GraphBackend", info_node: int | None) -> tuple[int, ...]:
+    """The joint-state indices ``info_node`` names, refused unless an EFE can aim there.
 
-    The carry partition must keep every EFE-load-bearing edge whole (ADR-018), or the
+    ``None`` is the whole joint state, and a node is its block, ``backend.block``. The
+    carry partition must keep every EFE-load-bearing edge whole (ADR-018), or the
     epistemic about the targeted latent degrades while the drift may still look right.
-    The block must name distinct joint-state indices. JAX clamps an out-of-range
-    gather, so index 99 on a 3-state joint scores as index 2, and an empty or repeated
-    block gives a zero or NaN epistemic. None of them raises on its own.
     """
     severed = backend.severed_efe_edges()
     if severed:
@@ -643,19 +638,12 @@ def _checked_info_block(
             "still pass. Keep the edge's endpoints in one cluster, or unflag it if "
             "a severed-mass check shows the cut is safe."
         )
-    block = tuple(int(i) for i in info_block)
-    if not block:
-        raise ValueError("info_block is empty; name the joint-state indices to aim at")
-    if len(set(block)) != len(block):
-        raise ValueError(f"info_block {block} repeats an index")
-    n_states = backend.model.n_states
-    out_of_range = [i for i in block if not 0 <= i < n_states]
-    if out_of_range:
-        raise ValueError(
-            f"info_block {block} has indices {out_of_range} outside the "
-            f"{n_states}-D joint state (0..{n_states - 1})"
-        )
-    return block
+    if info_node is None:
+        return tuple(range(backend.model.n_states))
+    try:
+        return tuple(backend.block(info_node))
+    except ValueError as error:
+        raise ValueError(f"info_node {info_node}: {error}") from error
 
 
 def _ffg_rollout_body(
