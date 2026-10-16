@@ -8,9 +8,9 @@ selector still calls `policy_efe(...)[0]`, whose `ys` stays the three lean scala
 no H×n×n covariance is stacked under its `vmap`.
 
 Naming follows `efe.py`'s convention: `⁺` marks the one-step *prediction* (after the
-dynamics and action, before any observation), so `mu_pred`/`sigma_pred` are μ⁺/Σ⁺;
-`sigma_post` is Σ_post, the covariance after the predict-only Kalman contraction; `s`
-is the innovation covariance S.
+dynamics and action, before any observation), so `predicted_mean`/`predicted_cov` are
+μ⁺/Σ⁺. `posterior_cov` is Σ_post, the covariance after the predict-only Kalman
+contraction. `predicted_observation_cov` is S.
 
 The locks:
 
@@ -19,7 +19,8 @@ The locks:
   fixed / R(x) / Q(x) at H=1,2,3 — proof it is the same arithmetic, not a second impl.
 - `TestTraceMatchesNumpyOracle`: the per-step moments and split match an independent
   plain-NumPy rollout (`_numpy_policy_efe_trace`, no `lax.scan`, no efe import) at 1e-9,
-  with the stacked shapes pinned (the `(H, 1, 1)` `s` proving it is S, not C).
+  with the stacked shapes pinned (the `(H, 1, 1)` `predicted_observation_cov` proving
+  it is S, not C).
 - `TestTraceH1MatchesEfeStep`: at H=1 the traced predict moments equal `_efe_step`'s
   fields byte-for-byte, pinning the field→symbol mapping.
 - `TestTraceTransforms` / `TestTraceIsPytree`: jit / vmap-over-policies / grad survive,
@@ -118,8 +119,9 @@ def _numpy_policy_efe_trace(model, belief, policy, goal, precision):
     A second copy of the rollout math in plain NumPy (a different library and code
     path), extended to record every per-step quantity `policy_efe_trace` surfaces, so
     the moment/split agreement is an independent confirmation. Returns a dict of arrays
-    stacked along a leading H axis: `g, pragmatic, epistemic, mu_pred (μ⁺),
-    sigma_pred (Σ⁺), sigma_post (Σ_post), s (S)`.
+    stacked along a leading H axis and keyed by the trace's field names:
+    `g, pragmatic, epistemic, predicted_mean (μ⁺), predicted_cov (Σ⁺),
+    posterior_cov (Σ_post), predicted_observation_cov (S)`.
     """
     a_mat = np.asarray(model.dynamics_matrix)
     b_mat = np.asarray(model.control_matrix)
@@ -134,10 +136,10 @@ def _numpy_policy_efe_trace(model, belief, policy, goal, precision):
             "g",
             "pragmatic",
             "epistemic",
-            "mu_pred",
-            "sigma_pred",
-            "sigma_post",
-            "s",
+            "predicted_mean",
+            "predicted_cov",
+            "posterior_cov",
+            "predicted_observation_cov",
         )
     }
     for a in np.asarray(policy, dtype=float):
@@ -169,10 +171,10 @@ def _numpy_policy_efe_trace(model, belief, policy, goal, precision):
         cols["g"].append(pragmatic - epistemic)
         cols["pragmatic"].append(pragmatic)
         cols["epistemic"].append(epistemic)
-        cols["mu_pred"].append(mu_pred)
-        cols["sigma_pred"].append(sigma_pred)
-        cols["sigma_post"].append(sigma_post)
-        cols["s"].append(s)
+        cols["predicted_mean"].append(mu_pred)
+        cols["predicted_cov"].append(sigma_pred)
+        cols["posterior_cov"].append(sigma_post)
+        cols["predicted_observation_cov"].append(s)
         mu, sigma = mu_pred, sigma_post
     return {k: np.stack(v) for k, v in cols.items()}
 
@@ -221,18 +223,29 @@ class TestTraceMatchesNumpyOracle:
                         err_msg=f"{name} H{len(values)} {field}",
                     )
 
+    def test_fields_are_named_for_what_they_hold(self):
+        assert PolicyEfeTrace._fields == (
+            "g",
+            "pragmatic",
+            "epistemic",
+            "predicted_mean",
+            "predicted_cov",
+            "posterior_cov",
+            "predicted_observation_cov",
+        )
+
     def test_stacked_shapes(self):
-        # fixed case: n = 2, m = 1. The (H, 1, 1) `s` proves it is S, not C (1x2).
+        # fixed case: n = 2, m = 1. The (H, 1, 1) S proves it is S, not C (1x2).
         model, belief, pref = _model(), _belief(), _obs_preference()
         policy = _policy([0.4, -0.2, 0.1])  # H = 3
         trace = policy_efe_trace(model, belief, policy, pref)
         assert trace.g.shape == (3,)
         assert trace.pragmatic.shape == (3,)
         assert trace.epistemic.shape == (3,)
-        assert trace.mu_pred.shape == (3, 2)
-        assert trace.sigma_pred.shape == (3, 2, 2)
-        assert trace.sigma_post.shape == (3, 2, 2)
-        assert trace.s.shape == (3, 1, 1)
+        assert trace.predicted_mean.shape == (3, 2)
+        assert trace.predicted_cov.shape == (3, 2, 2)
+        assert trace.posterior_cov.shape == (3, 2, 2)
+        assert trace.predicted_observation_cov.shape == (3, 1, 1)
 
 
 class TestTraceH1MatchesEfeStep:
@@ -252,12 +265,16 @@ class TestTraceH1MatchesEfeStep:
                 pref.precision,
             )
             np.testing.assert_array_equal(
-                trace.mu_pred[0], step.mu_pred, err_msg=f"mu_pred {name}"
+                trace.predicted_mean[0], step.predicted_mean, err_msg=f"μ⁺ {name}"
             )
             np.testing.assert_array_equal(
-                trace.sigma_pred[0], step.sigma_pred, err_msg=f"sigma_pred {name}"
+                trace.predicted_cov[0], step.predicted_cov, err_msg=f"Σ⁺ {name}"
             )
-            np.testing.assert_array_equal(trace.s[0], step.s, err_msg=f"s {name}")
+            np.testing.assert_array_equal(
+                trace.predicted_observation_cov[0],
+                step.predicted_observation_cov,
+                err_msg=f"S {name}",
+            )
 
     def test_h1_sigma_post_is_the_kalman_contraction(self):
         # Σ_post = Σ⁺ − Σ⁺Cᵀ S⁻¹ C Σ⁺, symmetrized — from _efe_step's moments.
@@ -274,11 +291,13 @@ class TestTraceH1MatchesEfeStep:
             pref.precision,
         )
         c = np.asarray(model.observation_matrix)
-        sp = np.asarray(step.sigma_pred)
+        sp = np.asarray(step.predicted_cov)
         p_xo = sp @ c.T
-        expected = sp - p_xo @ np.linalg.solve(np.asarray(step.s), p_xo.T)
+        expected = sp - p_xo @ np.linalg.solve(
+            np.asarray(step.predicted_observation_cov), p_xo.T
+        )
         expected = 0.5 * (expected + expected.T)
-        np.testing.assert_allclose(trace.sigma_post[0], expected, atol=1e-12)
+        np.testing.assert_allclose(trace.posterior_cov[0], expected, atol=1e-12)
 
 
 class TestTraceTransforms:
@@ -305,12 +324,12 @@ class TestTraceTransforms:
         batched = jax.vmap(lambda p: policy_efe_trace(model, belief, p, pref))(policies)
         # leading batch axis on every field, ahead of the H axis
         assert batched.g.shape == (3, 2)
-        assert batched.sigma_post.shape == (3, 2, 2, 2)
+        assert batched.posterior_cov.shape == (3, 2, 2, 2)
         for i, p in enumerate(policies):
             per = policy_efe_trace(model, belief, p, pref)
             np.testing.assert_allclose(batched.g[i], per.g, atol=1e-12)
             np.testing.assert_allclose(
-                batched.sigma_post[i], per.sigma_post, atol=1e-12
+                batched.posterior_cov[i], per.posterior_cov, atol=1e-12
             )
 
     def test_grad_over_policy_runs(self):

@@ -14,11 +14,18 @@ is satisfied by all three candidate forms.
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pytest
 
 from cpomdp.dynamics import CallableDynamicsNoise
-from cpomdp.efe import EfeResult, PolicyEfeTrace, expected_free_energy, policy_efe
+from cpomdp.efe import (
+    EfeResult,
+    PolicyEfeTrace,
+    expected_free_energy,
+    policy_efe,
+    policy_efe_trace,
+)
 from cpomdp.observation import CallableSensor, FixedSensor
-from cpomdp.selection import Preference
+from cpomdp.selection import ObservationGoal, Preference, StateGoal
 from cpomdp.types import Belief, LinearGaussianModel
 
 
@@ -143,6 +150,43 @@ class TestTheResultRecord:
         )
         assert isinstance(batched, EfeResult)
         assert batched.pragmatic.shape == batched.epistemic.shape == (4,)
+
+
+class TestTheGoalAUserHolds:
+    """An ``ObservationGoal`` hands the scoring functions its preference by name."""
+
+    def test_the_goal_carries_the_preference_it_is_scored_against(self):
+        goal = ObservationGoal([1.0], action_bounds=(-1.0, 1.0), precision=[[2.0]])
+        assert isinstance(goal.preference, Preference)
+        np.testing.assert_array_equal(goal.preference.goal, goal.target)
+        np.testing.assert_array_equal(goal.preference.precision, goal.precision)
+        model, belief, action = _model(), _belief(), jnp.array([0.4])
+        np.testing.assert_array_equal(
+            expected_free_energy(model, belief, action, goal.preference).g,
+            expected_free_energy(model, belief, action, _obs_preference()).g,
+        )
+
+    @pytest.mark.parametrize(
+        ("score", "action"),
+        [
+            (expected_free_energy, jnp.array([0.4])),
+            (policy_efe, jnp.array([[0.4], [0.1]])),
+            (policy_efe_trace, jnp.array([[0.4], [0.1]])),
+        ],
+    )
+    def test_a_whole_goal_is_refused_naming_its_preference(self, score, action):
+        goal = ObservationGoal([1.0], action_bounds=(-1.0, 1.0))
+        with pytest.raises(TypeError, match=r"goal\.preference"):
+            score(_model(), _belief(), action, goal)
+
+    def test_a_state_goal_is_refused_as_the_wrong_space(self):
+        with pytest.raises(TypeError, match="state"):
+            expected_free_energy(
+                _model(),
+                _belief(),
+                jnp.array([0.4]),
+                StateGoal([1.0, 0.0]),  # ty: ignore[invalid-argument-type]
+            )
 
 
 class TestCollapseUnderFixedSensor:

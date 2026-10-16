@@ -27,7 +27,7 @@ and an OBSERVATION-space preference ``(g, Λ)`` (goal observation ``g``, precisi
 
     predict:    μ⁺ = A·μ + B·a            Σ⁺ = A·Σ·Aᵀ + Q
     sense:      (C, R) = observation.linearize(μ⁺)
-                o⁺ = C·μ⁺                  S = C·Σ⁺·Cᵀ + R          # predicted-obs cov
+                o⁺ = C·μ⁺                  S = C·Σ⁺·Cᵀ + R  # predicted observation cov
     pragmatic:  ½·(o⁺ − g)ᵀ·Λ·(o⁺ − g)  +  ½·tr(Λ·S)
     epistemic:  ½·(ln det S − ln det R)            # = I(state; obs) ≥ 0, info gain
     G = pragmatic − epistemic                      # minimise: low cost, high info
@@ -82,7 +82,7 @@ THE DATA FLOW  (top → bottom: what goes in → what comes out)
       │
       ▼    SENSE      (C, R) = linearize(μ⁺)   or the model's fixed (C, R)
       │               o⁺ = C·μ⁺
-      │               S  = C·Σ⁺·Cᵀ + R         (predicted-obs cov; computed ONCE)
+      │               S  = C·Σ⁺·Cᵀ + R         (predicted observation cov, ONCE)
       │
       ├──► PRAGMATIC  ½·(o⁺−g)ᵀ·Λ·(o⁺−g) + ½·tr(Λ·S)    (cost,  lower better)
       ├──► EPISTEMIC  ½·(ln det S − ln det R)            (value, higher better)
@@ -130,6 +130,8 @@ class EfeResult(NamedTuple):
     Every scoring function in this module returns one. ``g`` comes first, so
     ``result[0]`` is ``G``. A ``NamedTuple`` is a JAX pytree with no registration, so
     a ``vmap`` over candidate actions returns one record with every field batched.
+    [`PolicyEfeTrace`][cpomdp.efe.PolicyEfeTrace] leads with the same three fields,
+    one entry per step.
 
     Attributes:
         g: The expected free energy ``G = pragmatic − epistemic``. Lower is preferred.
@@ -145,59 +147,57 @@ class EfeResult(NamedTuple):
 class PolicyEfeTrace(NamedTuple):
     """One H-step rollout's per-step record, each field stacked along a leading H axis.
 
-    ``policy_efe`` sums each step's ``(g, pragmatic, epistemic)`` and discards the
-    moments it propagates between steps; ``policy_efe_trace`` returns this instead, so
-    the per-step quantities the ``lax.scan`` already computes can be inspected — the
-    covariance trajectory a policy carries, the per-step pragmatic/epistemic split, and
-    the matrices whose conditioning the rollout depends on.
+    The first three fields are the per-step [`EfeResult`][cpomdp.efe.EfeResult], and
+    each sums to the matching field of the rollout's result. The rest are the moments
+    the rollout carries between steps, kept for inspection: the covariance a policy
+    carries, and the matrices whose conditioning the rollout depends on.
 
-    A ``NamedTuple`` because it is a JAX pytree with no registration: ``lax.scan`` emits
-    it directly as its ``ys`` (stacking each field along the leading H axis) and it
-    survives ``jit`` / ``vmap`` / ``grad``, gaining any outer ``vmap`` axis too. That is
-    the difference from ``_EfeStep``, which is a plain dataclass precisely because it
-    never crosses a scan/transform boundary.
+    A ``NamedTuple`` is a JAX pytree with no registration. ``lax.scan`` emits it as its
+    ``ys``, and it survives ``jit``, ``vmap`` and ``grad``, gaining any outer ``vmap``
+    axis too.
 
-    Moments use this module's convention: ``⁺`` marks the one-step *prediction* (after
-    the dynamics and action, before any observation); ``Σ_post`` is the covariance after
-    the predict-only Kalman contraction.
+    *Predicted* means after the dynamics and the action and before any observation.
+    *Posterior* means after the predict-only Kalman update the rollout carries to the
+    next step.
 
     Attributes:
-        g: Per-step EFE ``G = pragmatic − epistemic`` — (H,).
-        pragmatic: Per-step pragmatic (goal) term — (H,).
-        epistemic: Per-step epistemic (state information gain) term — (H,).
-        mu_pred: Predicted mean μ⁺ = ``A·μ + control·a`` — (H, n).
-        sigma_pred: Predicted covariance Σ⁺ = ``A·Σ·Aᵀ + Q`` — (H, n, n).
-        sigma_post: Post-observation covariance Σ_post, the contraction carried to the
-            next step — (H, n, n).
-        s: Innovation covariance S = ``C·Σ⁺·Cᵀ + R`` (observation space) — (H, m, m).
+        g: Per-step EFE ``G = pragmatic − epistemic``, shape ``(H,)``.
+        pragmatic: Per-step goal term, shape ``(H,)``.
+        epistemic: Per-step information gain about the state, shape ``(H,)``.
+        predicted_mean: The predicted state mean, μ⁺ = ``A·μ + B·a``, shape ``(H, n)``.
+        predicted_cov: The predicted state covariance, Σ⁺ = ``A·Σ·Aᵀ + Q``, shape
+            ``(H, n, n)``.
+        posterior_cov: The state covariance after the predicted observation, Σ_post,
+            shape ``(H, n, n)``.
+        predicted_observation_cov: The predicted observation covariance,
+            S = ``C·Σ⁺·Cᵀ + R``, shape ``(H, m, m)``.
     """
 
     g: Float64[Array, "H"]
     pragmatic: Float64[Array, "H"]
     epistemic: Float64[Array, "H"]
-    mu_pred: Float64[Array, "H n"]  # μ⁺ (predicted mean)
-    sigma_pred: Float64[Array, "H n n"]  # Σ⁺ (predicted cov)
-    sigma_post: Float64[Array, "H n n"]  # Σ_post (Kalman-contracted, post-observation)
-    s: Float64[Array, "H m m"]  # S (innovation cov)
+    predicted_mean: Float64[Array, "H n"]  # μ⁺
+    predicted_cov: Float64[Array, "H n n"]  # Σ⁺
+    posterior_cov: Float64[Array, "H n n"]  # Σ_post
+    predicted_observation_cov: Float64[Array, "H m m"]  # S
 
 
 @dataclass(frozen=True)
 class _EfeStep:
     """One EFE step: the public split plus the moments the rollout propagates.
 
-    ``expected_free_energy`` exposes only ``g`` + ``{pragmatic, epistemic}``; the
-    H-step rollout (``policy_efe``, B2) additionally needs ``mu_pred``/``sigma_pred``/
-    ``s`` (μ⁺, Σ⁺, S) to propagate the belief — but NOT ``C`` (it fetches its own where
-    it propagates). Consumed locally; it never crosses a ``jit``/``vmap``/``scan``
-    boundary, so it needs no pytree registration.
+    ``expected_free_energy`` exposes only the first three fields. The H-step rollout
+    (``policy_efe``) also needs the predicted moments to propagate the belief, named as
+    ``PolicyEfeTrace`` names them. It fetches its own ``C``. Consumed locally, it never
+    crosses a ``jit``/``vmap``/``scan`` boundary, so it needs no pytree registration.
     """
 
     g: Float64[Array, ""]
     pragmatic: Float64[Array, ""]
     epistemic: Float64[Array, ""]
-    mu_pred: Float64[Array, "n"]
-    sigma_pred: Float64[Array, "n n"]
-    s: Float64[Array, "m m"]
+    predicted_mean: Float64[Array, "n"]  # μ⁺
+    predicted_cov: Float64[Array, "n n"]  # Σ⁺
+    predicted_observation_cov: Float64[Array, "m m"]  # S
 
 
 def expected_free_energy(
@@ -208,11 +208,19 @@ def expected_free_energy(
 ) -> EfeResult:
     """Expected Free Energy of taking ``action`` from ``belief``, and its split.
 
-    Computes ``G = pragmatic − epistemic`` for the locked linear-Gaussian
-    definition documented at the top of this module. Pure ``jnp``, so it composes
-    under ``jit``/``vmap``/``grad`` — in particular ``vmap``/``grad`` over a batch
-    of candidate ``action`` vectors (with ``model``/``belief``/``preference`` held
-    fixed), which is how ``EFESelector`` will search.
+    The locked linear-Gaussian definition (ADR-005), with the sensor read at the
+    predicted mean::
+
+        predict:    μ⁺ = A·μ + B·a              Σ⁺ = A·Σ·Aᵀ + Q
+        sense:      (C, R) at μ⁺,  o⁺ = C·μ⁺,   S = C·Σ⁺·Cᵀ + R
+        pragmatic:  ½·(o⁺ − g)ᵀ·Λ·(o⁺ − g) + ½·tr(Λ·S)
+        epistemic:  ½·(ln det S − ln det R)
+        G = pragmatic − epistemic
+
+    Pure ``jnp``, so it composes under ``jit``, ``vmap`` and ``grad``, in particular
+    over a batch of candidate ``action`` vectors with ``model``, ``belief`` and
+    ``preference`` held fixed, which is how ``EFESelector`` searches. The Expected
+    free energy page of the API reference opens the same account in plain terms.
 
     Args:
         model: The generative model. Must have a control matrix (an action has no
@@ -221,16 +229,19 @@ def expected_free_energy(
             ``(observation_matrix, observation_noise)``.
         belief: The current belief ``(μ, Σ)``.
         action: The candidate action ``a``, shape ``(p,)``.
-        preference: The goal as an OBSERVATION-space ``Preference`` — ``goal`` is a
-            preferred observation ``g`` (shape ``(m,)``) and ``precision`` is ``Λ``
-            (shape ``(m, m)``). See FRAGILE(lit) #1 in the module docstring.
+        preference: The goal as an observation-space ``Preference``. ``goal`` is a
+            preferred observation ``g``, shape ``(m,)``, and ``precision`` is ``Λ``,
+            shape ``(m, m)``. The goal is a reading, and it coincides with a state
+            only when ``C = I``. An ``ObservationGoal`` hands over its own as
+            ``goal.preference``.
 
     Returns:
-        The scalar EFE ``g`` and its two non-negative terms, ``pragmatic`` and
-        ``epistemic``. Lower ``g`` is preferred.
+        An [`EfeResult`][cpomdp.efe.EfeResult] holding the scalar EFE ``g`` and its two
+        non-negative terms, ``pragmatic`` and ``epistemic``. Lower ``g`` is preferred.
 
     Raises:
         ValueError: If the model has no control matrix.
+        TypeError: If ``preference`` is a goal rather than its ``Preference``.
     """
     if model.control_matrix is None:
         raise ValueError(
@@ -238,6 +249,7 @@ def expected_free_energy(
             "has no effect on a control-free (pure-tracking) model."
         )
     control_matrix = model.control_matrix  # narrowed to Array by the guard above
+    goal, precision = _goal_and_precision(preference, "expected_free_energy")
     action = jnp.asarray(action, dtype=float)
     step = _efe_step(
         model,
@@ -245,8 +257,8 @@ def expected_free_energy(
         belief.cov,
         control_matrix,
         action,
-        preference.goal,
-        preference.precision,
+        goal,
+        precision,
     )
     return EfeResult(g=step.g, pragmatic=step.pragmatic, epistemic=step.epistemic)
 
@@ -257,17 +269,31 @@ def policy_efe(
     policy: Float64[Array, "H p"],
     preference: "Preference",
 ) -> EfeResult:
-    """Summed EFE of a horizon-H ``policy`` from ``belief`` (the rollout seam).
+    """Summed EFE of a horizon-H ``policy`` from ``belief``.
 
-    Internal — ``EFESelector`` searches over it. A ``lax.scan`` over the ``policy``
-    rows sums each step's ``G`` while propagating the belief predict-only between
-    steps (the mean follows the prediction; the covariance contracts by the Kalman
-    update, reusing the moments ``_efe_step`` returns). ``H`` is ``policy.shape[0]``;
-    at ``H = 1`` it reduces exactly to ``expected_free_energy``. Composes under
-    ``jit`` / ``vmap`` / ``grad``.
+    ``EFESelector`` and the searches in ``cpomdp.enumeration`` score with it. A
+    ``lax.scan`` over the ``policy`` rows sums each step's ``G`` while propagating the
+    belief predict-only between steps. The mean follows the prediction, and the
+    covariance contracts by the Kalman update, reusing the moments ``_efe_step``
+    returns. ``H`` is ``policy.shape[0]``, and at ``H = 1`` it reduces exactly to
+    [`expected_free_energy`][cpomdp.expected_free_energy]. Composes under ``jit``,
+    ``vmap`` and ``grad``. The Expected free energy page of the API reference opens
+    the rollout in plain terms.
+
+    Args:
+        model: The generative model. Must have a control matrix.
+        belief: The belief the rollout starts from.
+        policy: The ``H`` actions to roll out, shape ``(H, p)``.
+        preference: The observation-space ``Preference``, as for
+            ``expected_free_energy``.
 
     Returns:
-        The EFE and its two terms, each summed over the horizon.
+        An [`EfeResult`][cpomdp.efe.EfeResult] with each field summed over the
+        horizon.
+
+    Raises:
+        ValueError: If the model has no control matrix.
+        TypeError: If ``preference`` is a goal rather than its ``Preference``.
     """
     if model.control_matrix is None:
         raise ValueError(
@@ -275,7 +301,7 @@ def policy_efe(
             "effect on a control-free (pure-tracking) model."
         )
     control_matrix = model.control_matrix
-    goal, precision = preference.goal, preference.precision
+    goal, precision = _goal_and_precision(preference, "policy_efe")
     policy = jnp.asarray(policy, dtype=float)
     body = _rollout_body(model, control_matrix, goal, precision)
 
@@ -317,8 +343,20 @@ def policy_efe_trace(
     Not on the selector hot path: stacking the H×n×n covariances is the memory cost, so
     ``EFESelector`` stays on ``policy_efe`` and this is called only for diagnostics.
 
+    Args:
+        model: The generative model. Must have a control matrix.
+        belief: The belief the rollout starts from.
+        policy: The ``H`` actions to roll out, shape ``(H, p)``.
+        preference: The observation-space ``Preference``, as for
+            ``expected_free_energy``.
+
     Returns:
-        A ``PolicyEfeTrace`` of arrays stacked along a leading H axis.
+        A [`PolicyEfeTrace`][cpomdp.efe.PolicyEfeTrace] of arrays stacked along a
+        leading H axis.
+
+    Raises:
+        ValueError: If the model has no control matrix.
+        TypeError: If ``preference`` is a goal rather than its ``Preference``.
     """
     if model.control_matrix is None:
         raise ValueError(
@@ -326,7 +364,7 @@ def policy_efe_trace(
             "effect on a control-free (pure-tracking) model."
         )
     control_matrix = model.control_matrix
-    goal, precision = preference.goal, preference.precision
+    goal, precision = _goal_and_precision(preference, "policy_efe_trace")
     policy = jnp.asarray(policy, dtype=float)
     body = _rollout_body(model, control_matrix, goal, precision)
 
@@ -358,19 +396,21 @@ def _rollout_body(
         c = (
             model.observation_matrix
             if model.observation_model is None
-            else model.observation_model.linearize(r.mu_pred)[0]
+            else model.observation_model.linearize(r.predicted_mean)[0]
         )
-        p_xo = r.sigma_pred @ c.T
-        sigma_post = r.sigma_pred - p_xo @ jnp.linalg.solve(r.s, p_xo.T)
+        p_xo = r.predicted_cov @ c.T
+        sigma_post = r.predicted_cov - p_xo @ jnp.linalg.solve(
+            r.predicted_observation_cov, p_xo.T
+        )
         sigma_post = 0.5 * (sigma_post + sigma_post.T)
-        return (r.mu_pred, sigma_post), PolicyEfeTrace(
+        return (r.predicted_mean, sigma_post), PolicyEfeTrace(
             g=r.g,
             pragmatic=r.pragmatic,
             epistemic=r.epistemic,
-            mu_pred=r.mu_pred,
-            sigma_pred=r.sigma_pred,
-            sigma_post=sigma_post,
-            s=r.s,
+            predicted_mean=r.predicted_mean,
+            predicted_cov=r.predicted_cov,
+            posterior_cov=sigma_post,
+            predicted_observation_cov=r.predicted_observation_cov,
         )
 
     return step
@@ -411,13 +451,15 @@ def policy_efe_ffg(
             value.
 
     Returns:
-        The EFE and its two terms, each summed over the horizon.
+        An [`EfeResult`][cpomdp.efe.EfeResult] with each field summed over the
+        horizon.
 
     Raises:
         InadmissiblePartitionError: If the backend's carry partition severs an
             EFE-load-bearing edge.
         ValueError: If ``info_block`` is empty, repeats an index, or names an index
             outside the joint state.
+        TypeError: If ``preference`` is a goal rather than its ``Preference``.
     """
     return _policy_efe_ffg(
         backend, belief, policy, preference, _checked_info_block(backend, info_block)
@@ -436,7 +478,7 @@ def _policy_efe_ffg(
     A search checks its target once at construction and then scores every policy in
     the set, so the per-policy call skips the host-side check.
     """
-    goal, precision = preference.goal, preference.precision
+    goal, precision = _goal_and_precision(preference, "policy_efe_ffg")
     policy = jnp.asarray(policy, dtype=float)
     body = _ffg_rollout_body(backend, goal, precision, info_block)
 
@@ -480,22 +522,59 @@ def policy_efe_ffg_trace(
     ``grad`` with the backend held fixed.
 
     Returns:
-        A ``PolicyEfeTrace`` (the same type the flat rollout emits) of arrays stacked
-        along a leading H axis.
+        A [`PolicyEfeTrace`][cpomdp.efe.PolicyEfeTrace], the type the flat rollout
+        emits, of arrays stacked along a leading H axis.
 
     Raises:
         InadmissiblePartitionError: If the backend's carry partition severs an
             EFE-load-bearing edge.
         ValueError: If ``info_block`` is empty, repeats an index, or names an index
             outside the joint state.
+        TypeError: If ``preference`` is a goal rather than its ``Preference``.
     """
-    goal, precision = preference.goal, preference.precision
+    goal, precision = _goal_and_precision(preference, "policy_efe_ffg_trace")
     policy = jnp.asarray(policy, dtype=float)
     checked = _checked_info_block(backend, info_block)
     body = _ffg_rollout_body(backend, goal, precision, checked)
 
     _, trace = lax.scan(body, belief, policy)
     return trace
+
+
+def _goal_and_precision(
+    preference: "Preference", caller: str
+) -> tuple[Float64[Array, "m"], Float64[Array, "m m"]]:
+    """The two fields a score reads off ``preference``, or a refusal naming the fix.
+
+    Read by attribute, so any preference with a ``goal`` and a ``precision`` scores,
+    and the read adds nothing to a call that succeeds. A goal object has neither. An
+    ``ObservationGoal`` carries search settings a score never reads, and a
+    ``StateGoal`` aims at a state, so each is refused with what to pass instead.
+    """
+    try:
+        return preference.goal, preference.precision
+    except AttributeError:
+        raise TypeError(_not_a_preference(preference, caller)) from None
+
+
+def _not_a_preference(given: object, caller: str) -> str:
+    """The refusal for ``given``, naming the ``Preference`` to pass in its place."""
+    # selection imports this module, so its goal types are read only on the way out.
+    from cpomdp.selection import ObservationGoal, StateGoal
+
+    if isinstance(given, ObservationGoal):
+        return (
+            f"{caller} scores against a Preference and was given an ObservationGoal. "
+            "Pass goal.preference, which carries its target and precision and leaves "
+            "its search settings behind."
+        )
+    if isinstance(given, StateGoal):
+        return (
+            f"{caller} scores a predicted observation, and a StateGoal's target is a "
+            "state. Pass an ObservationGoal's goal.preference, whose target is a "
+            "reading."
+        )
+    return f"{caller} scores against a Preference, not a {type(given).__name__}."
 
 
 def _checked_info_block(
@@ -580,10 +659,10 @@ def _ffg_rollout_body(
             g=scored.g,
             pragmatic=scored.pragmatic,
             epistemic=scored.epistemic,
-            mu_pred=predicted.mean,
-            sigma_pred=predicted.cov,
-            sigma_post=sigma_post,
-            s=s,
+            predicted_mean=predicted.mean,
+            predicted_cov=predicted.cov,
+            posterior_cov=sigma_post,
+            predicted_observation_cov=s,
         )
 
     return step
@@ -792,7 +871,7 @@ def _efe_step(
         g=g,
         pragmatic=pragmatic,
         epistemic=epistemic,
-        mu_pred=mu_pred,
-        sigma_pred=sigma_pred,
-        s=pred_obs_cov,
+        predicted_mean=mu_pred,
+        predicted_cov=sigma_pred,
+        predicted_observation_cov=pred_obs_cov,
     )

@@ -680,6 +680,21 @@ certainty equivalence is optimal, and no use of the readings beats it.
   it ran. `g` comes first, so `result[0]` still reads `G`. Code that unpacked
   `G, parts = ...` reads `result.g` and `result.pragmatic` instead. A `vmap` over
   candidate actions returns one `EfeResult` with every field batched.
+- **Breaking:** `PolicyEfeTrace`'s moment fields are `predicted_mean`, `predicted_cov`,
+  `posterior_cov` and `predicted_observation_cov`, renamed from `mu_pred`, `sigma_pred`,
+  `sigma_post` and `s`. `RolloutConditioning`'s fields follow them, so `cond_s` is
+  `cond_predicted_observation_cov` and `min_eig_sigma_post` is `min_eig_posterior_cov`,
+  with `cond_predicted_cov` and `cond_posterior_cov` beside them. `trace.s` could not be
+  read without the docstring. S also went by four names across the docstrings, and is
+  the predicted observation covariance in all of them now. `g`, `pragmatic` and
+  `epistemic` keep their names, which `EfeResult` shares.
+- `ObservationGoal.preference` is the `Preference` the expected free energy functions
+  score against, built once from the goal's target and precision. Passing the goal
+  itself to `expected_free_energy`, `policy_efe` or a sibling raised `'ObservationGoal'
+  object has no attribute 'goal'`. It now raises a `TypeError` naming
+  `goal.preference`, and a `StateGoal` is refused as aiming at a state. The functions
+  still take one type, the `Preference` pytree that passes through `jit` and `vmap`, so
+  a goal's search settings never reach a score that would ignore them.
 - **Breaking:** `ObservationGoal` takes `action_bounds` by keyword. `StateGoal` already
   takes everything after its first argument by keyword, so this was the odd one out in a
   public pair a reader meets together. The two positional slots also transposed without

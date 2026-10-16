@@ -26,7 +26,7 @@ def _gain_and_posterior_cov(
     the *uncertainty* rather than the mean::
 
         cov_pred = A · prior_cov · Aᵀ + Q       # predict: dynamics inflate it
-        S        = C · cov_pred · Cᵀ + R        # prediction-error covariance
+        S        = C · cov_pred · Cᵀ + R        # predicted observation covariance
         gain     = cov_pred · Cᵀ · S⁻¹          # how far to trust the reading
         cov_post = (I − gain · C) · cov_pred    # update: the reading shrinks it
 

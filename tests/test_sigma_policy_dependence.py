@@ -112,9 +112,13 @@ class TestFixedSensorSigmaPolicyIndependent:
         model, belief, pref = _model(), _belief(), _obs_preference()
         a = policy_efe_trace(model, belief, _POLICY_A, pref)
         b = policy_efe_trace(model, belief, _POLICY_B, pref)
-        np.testing.assert_array_equal(a.sigma_pred, b.sigma_pred, err_msg="Σ⁺")
-        np.testing.assert_array_equal(a.sigma_post, b.sigma_post, err_msg="Σ_post")
-        np.testing.assert_array_equal(a.s, b.s, err_msg="S")
+        np.testing.assert_array_equal(a.predicted_cov, b.predicted_cov, err_msg="Σ⁺")
+        np.testing.assert_array_equal(
+            a.posterior_cov, b.posterior_cov, err_msg="Σ_post"
+        )
+        np.testing.assert_array_equal(
+            a.predicted_observation_cov, b.predicted_observation_cov, err_msg="S"
+        )
 
     def test_means_genuinely_differ(self):
         # The Σ agreement above is policy-independence, not two identical policies:
@@ -122,7 +126,7 @@ class TestFixedSensorSigmaPolicyIndependent:
         model, belief, pref = _model(), _belief(), _obs_preference()
         a = policy_efe_trace(model, belief, _POLICY_A, pref)
         b = policy_efe_trace(model, belief, _POLICY_B, pref)
-        assert _max_abs_diff(a.mu_pred, b.mu_pred) > SEPARATION_MARGIN
+        assert _max_abs_diff(a.predicted_mean, b.predicted_mean) > SEPARATION_MARGIN
 
 
 class TestStateDependentNoiseSigmaSeparates:
@@ -132,7 +136,7 @@ class TestStateDependentNoiseSigmaSeparates:
         model, belief, pref = _callable_model(), _belief(), _obs_preference()
         a = policy_efe_trace(model, belief, _POLICY_A, pref)
         b = policy_efe_trace(model, belief, _POLICY_B, pref)
-        assert _max_abs_diff(a.sigma_post, b.sigma_post) > SEPARATION_MARGIN
+        assert _max_abs_diff(a.posterior_cov, b.posterior_cov) > SEPARATION_MARGIN
 
     def test_qx_sigma_pred_separates(self):
         model = _internal_q_model()
@@ -141,4 +145,4 @@ class TestStateDependentNoiseSigmaSeparates:
         a = policy_efe_trace(model, belief, _POLICY_A, pref)
         b = policy_efe_trace(model, belief, _POLICY_B, pref)
         # Q(x) makes the predicted covariance itself policy-dependent.
-        assert _max_abs_diff(a.sigma_pred, b.sigma_pred) > SEPARATION_MARGIN
+        assert _max_abs_diff(a.predicted_cov, b.predicted_cov) > SEPARATION_MARGIN

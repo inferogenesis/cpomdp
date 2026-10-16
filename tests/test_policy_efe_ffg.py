@@ -25,6 +25,7 @@ Collection-red until the two functions land: the import of ``policy_efe_ffg`` /
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pytest
 
 from _support import unit_prior
 from cpomdp.backends.coupling import CouplingGraphBackend
@@ -39,7 +40,7 @@ from cpomdp.efe import (
 from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
 from cpomdp.ffg.graph import Coupling, CouplingGraph
 from cpomdp.observation import CallableSensor, FixedSensor
-from cpomdp.selection import Preference
+from cpomdp.selection import ObservationGoal, Preference
 from cpomdp.types import Belief, LinearGaussianModel
 
 
@@ -171,8 +172,8 @@ class TestFfgH1ReducesToFfgEfeStep:
             backend, belief, policy, pref, info_block=info_block
         )
         predicted = backend.predicted_belief(belief, policy[0])
-        np.testing.assert_array_equal(trace.mu_pred[0], predicted.mean)
-        np.testing.assert_array_equal(trace.sigma_pred[0], predicted.cov)
+        np.testing.assert_array_equal(trace.predicted_mean[0], predicted.mean)
+        np.testing.assert_array_equal(trace.predicted_cov[0], predicted.cov)
 
 
 # --- oracle 2: no couplings + whole state is policy_efe ----------------------------
@@ -214,10 +215,11 @@ class TestFfgTraceShape:
         assert trace.g.shape == (3,)
         assert trace.pragmatic.shape == (3,)
         assert trace.epistemic.shape == (3,)
-        assert trace.mu_pred.shape == (3, 2)  # n = 2
-        assert trace.sigma_pred.shape == (3, 2, 2)
-        assert trace.sigma_post.shape == (3, 2, 2)
-        assert trace.s.shape == (3, 1, 1)  # m = 1 (one observed channel)
+        assert trace.predicted_mean.shape == (3, 2)  # n = 2
+        assert trace.predicted_cov.shape == (3, 2, 2)
+        assert trace.posterior_cov.shape == (3, 2, 2)
+        # m = 1 (one observed channel)
+        assert trace.predicted_observation_cov.shape == (3, 1, 1)
 
     def test_is_policy_efe_trace_pytree(self):
         backend, belief, pref = _coupled_backend(), _coupled_belief(), _pref()
@@ -229,7 +231,7 @@ class TestFfgTraceShape:
         assert isinstance(trace, PolicyEfeTrace)
         assert len(jax.tree_util.tree_leaves(trace)) == 7
 
-    def test_sigma_post_is_tighter_than_sigma_pred(self):
+    def test_posterior_cov_is_tighter_than_predicted_cov(self):
         # Observing can only shrink uncertainty: Σ_post ≼ Σ⁺ (trace of the drop ≥ 0).
         backend, belief, pref = _coupled_backend(), _coupled_belief(), _pref()
         info_block = tuple(backend.block(0))
@@ -237,7 +239,7 @@ class TestFfgTraceShape:
         trace = policy_efe_ffg_trace(
             backend, belief, policy, pref, info_block=info_block
         )
-        drop = np.asarray(trace.sigma_pred) - np.asarray(trace.sigma_post)
+        drop = np.asarray(trace.predicted_cov) - np.asarray(trace.posterior_cov)
         for step in drop:
             assert np.trace(step) >= -1e-12
 
@@ -258,7 +260,9 @@ class TestFfgTraceTransforms:
         )
         jitted = run(belief, policy)
         np.testing.assert_allclose(jitted.g, eager.g, atol=1e-12)
-        np.testing.assert_allclose(jitted.sigma_post, eager.sigma_post, atol=1e-12)
+        np.testing.assert_allclose(
+            jitted.posterior_cov, eager.posterior_cov, atol=1e-12
+        )
 
     def test_vmap_over_policies_adds_a_batch_axis(self):
         backend, belief, pref = _coupled_backend(), _coupled_belief(), _pref()
@@ -270,7 +274,7 @@ class TestFfgTraceTransforms:
             )
         )(policies)
         assert batched.g.shape == (2, 2)
-        assert batched.sigma_pred.shape == (2, 2, 2, 2)
+        assert batched.predicted_cov.shape == (2, 2, 2, 2)
 
     def test_grad_of_summed_g_is_finite(self):
         backend, belief, pref = _coupled_backend(), _coupled_belief(), _pref()
@@ -283,3 +287,18 @@ class TestFfgTraceTransforms:
         )(policy)
         assert np.all(np.isfinite(np.asarray(grad)))
         assert grad.shape == (2, 1)
+
+
+# --- the goal a user holds ---------------------------------------------------------
+@pytest.mark.parametrize("score", [policy_efe_ffg, policy_efe_ffg_trace])
+def test_a_whole_goal_is_refused_naming_its_preference(score):
+    backend, belief = _coupled_backend(), _coupled_belief()
+    goal = ObservationGoal([0.5], action_bounds=(-1.0, 1.0), precision=[[2.0]])
+    info_block = tuple(backend.block(0))
+    policy = _policy([0.4])
+    with pytest.raises(TypeError, match=r"goal\.preference"):
+        score(backend, belief, policy, goal, info_block=info_block)
+    np.testing.assert_array_equal(
+        score(backend, belief, policy, goal.preference, info_block=info_block).g,
+        score(backend, belief, policy, _pref(), info_block=info_block).g,
+    )

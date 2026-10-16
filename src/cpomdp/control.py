@@ -123,10 +123,10 @@ def _riccati_step(
         P = Aᵀ W A − (Aᵀ W B) L
 
     ``(R + Bᵀ W B)`` is solved against rather than inverted, for the same reason the
-    filter solves against its innovation covariance.
+    filter solves against its predicted observation covariance.
     """
     cross = dynamics_matrix.T @ remaining @ control_matrix  # Aᵀ W B  (n×p)
-    # curvature of the action cost, the dual of the Kalman innovation covariance (p×p)
+    # curvature of the action cost, dual of the filter's predicted observation cov (p×p)
     inner = effort_penalty + control_matrix.T @ remaining @ control_matrix
     gain = jnp.linalg.solve(inner, cross.T)  # L  (p×n)
     cost_to_go = dynamics_matrix.T @ remaining @ dynamics_matrix - cross @ gain  # P
@@ -447,7 +447,8 @@ class LQRController:
 
         (A=dynamics, B=control.) The ``(effort_penalty + Bᵀ P B)`` term is solved
         against with ``jnp.linalg.solve`` rather than inverted explicitly, for the
-        same numerical reason the filter solves against its innovation covariance.
+        same numerical reason the filter solves against its predicted observation
+        covariance.
 
         Returns:
             The steady-state gain ``L∞``, shape ``(p, n)``.

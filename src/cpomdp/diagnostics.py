@@ -125,8 +125,8 @@ def epistemic_value(
     """The per-step epistemic value ``½(ln det S − ln det R)``, in nats.
 
     The mutual information between state and observation under the predictive joint,
-    with ``S = C Σ⁻ Cᵀ + R`` the innovation covariance. Computed here on the host for
-    reporting; the objective's own copy lives in ``cpomdp.efe``.
+    with ``S = C Σ⁻ Cᵀ + R`` the predicted observation covariance. Computed here on the
+    host for reporting. The objective's own copy lives in ``cpomdp.efe``.
 
     Both log-determinants go through ``_host_logdet_pd``, so a non-positive-definite
     ``R`` or ``S`` returns NaN and an undefined value stays visibly undefined.
@@ -388,24 +388,27 @@ def probe_model(
 class RolloutConditioning:
     """Per-step conditioning of an H-step rollout, computed on the host.
 
-    Every array field is length-H, indexed by rollout step. The condition numbers and
-    the smallest eigenvalue are what a monotonically contracting ``Σ_post`` degrades
-    first; ``all_positive_definite`` folds a per-step positive-definiteness check over
-    ``Σ⁺``, ``S`` and ``Σ_post`` into one flag, so a matrix that has gone non-PD
-    anywhere in the horizon is visible without inspecting every step.
+    Every array field is length-H, indexed by rollout step, and names the trace field it
+    measures. The condition numbers and the smallest eigenvalue are what a monotonically
+    contracting ``Σ_post`` degrades first. ``all_positive_definite`` folds a per-step
+    positive-definiteness check over ``Σ⁺``, ``S`` and ``Σ_post`` into one flag, so a
+    matrix that has gone non-PD anywhere in the horizon is visible without inspecting
+    every step.
 
     Attributes:
-        cond_sigma_pred: 2-norm condition number of each predicted covariance ``Σ⁺``.
-        cond_s: condition number of each innovation covariance ``S``.
-        cond_sigma_post: condition number of each contracted covariance ``Σ_post``.
-        min_eig_sigma_post: smallest eigenvalue of each ``Σ_post``.
+        cond_predicted_cov: 2-norm condition number of each predicted state covariance
+            ``Σ⁺``.
+        cond_predicted_observation_cov: condition number of each predicted observation
+            covariance ``S``.
+        cond_posterior_cov: condition number of each posterior covariance ``Σ_post``.
+        min_eig_posterior_cov: smallest eigenvalue of each ``Σ_post``.
         all_positive_definite: whether every ``Σ⁺``, ``S`` and ``Σ_post`` is PD.
     """
 
-    cond_sigma_pred: np.ndarray
-    cond_s: np.ndarray
-    cond_sigma_post: np.ndarray
-    min_eig_sigma_post: np.ndarray
+    cond_predicted_cov: np.ndarray  # cond(Σ⁺)
+    cond_predicted_observation_cov: np.ndarray  # cond(S)
+    cond_posterior_cov: np.ndarray  # cond(Σ_post)
+    min_eig_posterior_cov: np.ndarray
     all_positive_definite: bool
 
 
@@ -435,30 +438,33 @@ def rollout_conditioning(trace: "PolicyEfeTrace") -> RolloutConditioning:
     """Per-step condition numbers and PD flags of a rollout trace, on the host.
 
     Reads the per-step matrices ``policy_efe_trace`` already returns and applies the
-    condition-number discipline to the rollout. The assertions a caller builds on top —
-    a ceiling on the condition numbers, a floor under ``min_eig_sigma_post`` — belong
-    here on the host, outside any ``jit``/``vmap``, which is the only place they can
-    raise. Pure NumPy.
+    condition-number discipline to the rollout. The assertions a caller builds on top,
+    such as a ceiling on the condition numbers or a floor under
+    ``min_eig_posterior_cov``, belong here on the host, outside any ``jit``/``vmap``,
+    which is the only place they can raise. Pure NumPy.
 
     Args:
-        trace: a ``PolicyEfeTrace`` — read for its ``sigma_pred``
-            (``Σ⁺``), ``s`` (``S``) and ``sigma_post`` (``Σ_post``) columns.
+        trace: a ``PolicyEfeTrace``, read for its ``predicted_cov`` (``Σ⁺``),
+            ``predicted_observation_cov`` (``S``) and ``posterior_cov`` (``Σ_post``)
+            columns.
 
     Returns:
         A ``RolloutConditioning``.
     """
-    sigma_pred = np.asarray(trace.sigma_pred, dtype=float)
-    s = np.asarray(trace.s, dtype=float)
-    sigma_post = np.asarray(trace.sigma_post, dtype=float)
+    predicted_cov = np.asarray(trace.predicted_cov, dtype=float)  # Σ⁺
+    predicted_observation_cov = np.asarray(trace.predicted_observation_cov, dtype=float)
+    posterior_cov = np.asarray(trace.posterior_cov, dtype=float)  # Σ_post
 
     return RolloutConditioning(
-        cond_sigma_pred=_condition_numbers(sigma_pred),
-        cond_s=_condition_numbers(s),
-        cond_sigma_post=_condition_numbers(sigma_post),
-        min_eig_sigma_post=np.array([np.linalg.eigvalsh(m).min() for m in sigma_post]),
+        cond_predicted_cov=_condition_numbers(predicted_cov),
+        cond_predicted_observation_cov=_condition_numbers(predicted_observation_cov),
+        cond_posterior_cov=_condition_numbers(posterior_cov),
+        min_eig_posterior_cov=np.array(
+            [np.linalg.eigvalsh(m).min() for m in posterior_cov]
+        ),
         all_positive_definite=all(
             is_positive_definite(m)
-            for column in (sigma_pred, s, sigma_post)
+            for column in (predicted_cov, predicted_observation_cov, posterior_cov)
             for m in column
         ),
     )
