@@ -4674,6 +4674,12 @@ result was a schedule.
 - `lqr_schedule` and `kalman_schedule` are the dual pair. Each takes `horizon` by
   keyword and returns a schedule, `LQRSchedule` or `KalmanSchedule`, that reports its
   `horizon`. Both names were new in 0.5.0, so the rename breaks no release.
+- Every stack in the pair is indexed by step of the plan. `costs_to_go[k]` is what
+  remains to pay before acting at step `k`, beside `gains[k]` and `covariances[k]`.
+  The control recursion counts steps remaining, and `finite_horizon_lqr` stored its
+  costs in that order. Its `cost_to_go[0]` was the zero terminal cost. The filter's
+  `covariances[0]` is the prior. A caller zipping the two got the wrong step with no
+  error. Both in-tree callers reversed the stack by hand.
 
 ### Alternatives
 
