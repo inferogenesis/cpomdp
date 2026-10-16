@@ -183,7 +183,6 @@ def _build(
     dyn,
     *,
     control_matrix=None,
-    readout_node=None,
     partition=None,
 ):
     """Build a ``CouplingGraphBackend`` (graph + per-node transitions) for a spec."""
@@ -197,7 +196,7 @@ def _build(
         dims=dims, couplings=couplings, observation_models=observation_models
     )
     transitions = tuple(GaussianTransition(a, dynamics_noise=q) for a, q in dyn)
-    kwargs = {"control_matrix": control_matrix, "readout_node": readout_node}
+    kwargs = {"control_matrix": control_matrix}
     if partition is not None:
         kwargs["partition"] = partition
     return CouplingGraphBackend(graph, transitions, prior=unit_prior(graph), **kwargs)
@@ -392,7 +391,7 @@ class TestCarryPartition:
                 np.asarray(belief_p.cov), np.asarray(belief_e.cov)
             )
 
-    def test_partition_error_zero_for_full_joint_positive_for_cut(self):
+    def test_severed_mass_zero_for_full_joint_positive_for_cut(self):
         # The severed-mass diagnostic (ADR-016): the full-joint carry drops no coupling
         # (0.0), a singleton carry severs every between-node block (positive mass).
         full = _build(
@@ -409,8 +408,8 @@ class TestCarryPartition:
         rng = np.random.default_rng(1)
         prior = Belief(mean=np.zeros(5), cov=np.eye(5))
         y = rng.standard_normal(3)
-        assert full.partition_error(y, prior) == pytest.approx(0.0)
-        assert cut.partition_error(y, prior) > 0.0
+        assert full.severed_mass(y, prior) == pytest.approx(0.0)
+        assert cut.severed_mass(y, prior) > 0.0
 
     def test_within_slice_marginals_exact_under_any_partition(self):
         # ADR-017: the carry factors only what crosses the *time* boundary. Within a
@@ -472,10 +471,11 @@ class TestCarryPartition:
                 np.asarray(got.cov), np.asarray(want.cov), atol=1e-7
             )
 
-    def test_rollout_profiles_severed_mass_over_a_run(self):
+    def test_filter_sequence_profiles_severed_mass_over_a_run(self):
         # The per-run severed-mass profile (ADR-016): one traced pass over a sequence
-        # returns the stacked posteriors and a length-T severed-mass profile. The
-        # full-joint run severs nothing at every step; a singleton cut severs at each.
+        # returns the stacked posterior moments and a length-T severed-mass profile.
+        # The full-joint run severs nothing at every step; a singleton cut severs at
+        # each.
         full = _build(
             _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
         )
@@ -491,26 +491,80 @@ class TestCarryPartition:
         prior = Belief(mean=np.zeros(5), cov=np.eye(5))
         obs_seq = np.stack([rng.standard_normal(3) for _ in range(4)])  # (T=4, 3)
 
-        beliefs, severed = cut.rollout(prior, obs_seq)
+        means, covs, severed = cut.filter_sequence(obs_seq, prior)
         assert np.asarray(severed).shape == (4,)
-        assert np.asarray(beliefs.mean).shape == (4, 5)
-        assert np.asarray(beliefs.cov).shape == (4, 5, 5)
+        assert np.asarray(means).shape == (4, 5)
+        assert np.asarray(covs).shape == (4, 5, 5)
         assert np.all(np.asarray(severed) > 0.0)
 
-        _beliefs_full, severed_full = full.rollout(prior, obs_seq)
+        _means, _covs, severed_full = full.filter_sequence(obs_seq, prior)
         np.testing.assert_allclose(np.asarray(severed_full), 0.0, atol=1e-12)
 
-        # The trajectory must equal iterating infer_states by hand — the rollout can't
+        # The trajectory must equal iterating infer_states by hand — the sequence can't
         # compute anything the single-step path doesn't.
         belief = prior
         for step, y in enumerate(obs_seq):
             belief = cut.infer_states(y, belief)
             np.testing.assert_allclose(
-                np.asarray(beliefs.mean[step]), np.asarray(belief.mean), atol=1e-10
+                np.asarray(means[step]), np.asarray(belief.mean), atol=1e-10
             )
             np.testing.assert_allclose(
-                np.asarray(beliefs.cov[step]), np.asarray(belief.cov), atol=1e-10
+                np.asarray(covs[step]), np.asarray(belief.cov), atol=1e-10
             )
+
+    def test_filter_sequence_returns_moments_not_a_belief(self):
+        # A Belief with a leading time axis broke Belief's invariant, and the backend's
+        # own `marginal` refused it.
+        backend = _build(
+            _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
+        )
+        prior = Belief(mean=np.zeros(5), cov=np.eye(5))
+        outputs = backend.filter_sequence(np.zeros((2, 3)), prior)
+        assert not any(isinstance(output, Belief) for output in outputs)
+
+    def test_filter_sequence_refuses_a_prior_over_the_wrong_state(self):
+        backend = _build(
+            _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
+        )
+        with pytest.raises(ValueError, match="5-D state"):
+            backend.filter_sequence(
+                np.zeros((2, 3)), Belief(mean=np.zeros(2), cov=np.eye(2))
+            )
+
+    def test_filter_sequence_refuses_an_action_of_the_wrong_width(self):
+        backend = _build(
+            _CHEMOTAXIS_DIMS,
+            _CHEMOTAXIS_EDGES,
+            _CHEMOTAXIS_OBS,
+            _CHEMOTAXIS_DYN,
+            control_matrix=np.array([[1.0], [0.0], [0.0], [0.0], [0.0]]),
+        )
+        prior = Belief(mean=np.zeros(5), cov=np.eye(5))
+        with pytest.raises(ValueError, match="action must be a 1-D vector of length 1"):
+            backend.filter_sequence(np.zeros((2, 3)), prior, np.zeros((2, 2)))
+
+    def test_filter_sequence_refuses_an_empty_run(self):
+        backend = _build(
+            _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
+        )
+        prior = Belief(mean=np.zeros(5), cov=np.eye(5))
+        with pytest.raises(ValueError, match="at least one step"):
+            backend.filter_sequence(np.zeros((0, 3)), prior)
+
+    def test_filter_sequence_takes_its_arguments_in_infer_states_order(self):
+        # Readings first, then the belief, then the actions, on both methods.
+        backend = _build(
+            _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
+        )
+        prior = Belief(mean=np.zeros(5), cov=np.eye(5))
+        means, _covs, _severed = backend.filter_sequence(
+            observations=np.ones((1, 3)), prior=prior, actions=None
+        )
+        np.testing.assert_allclose(
+            np.asarray(means[0]),
+            np.asarray(backend.infer_states(observation=np.ones(3), prior=prior).mean),
+            atol=1e-10,
+        )
 
 
 class TestPredictedBelief:
@@ -551,16 +605,14 @@ class TestProtocolAndReadout:
         )
         assert isinstance(backend, InferenceBackend)
 
-    def test_readout_defaults_to_root(self):
+    @pytest.mark.parametrize("second_way", ["readout", "readout_node"])
+    def test_marginal_is_the_one_way_to_read_a_node(self, second_way):
+        # `readout(belief)` was `marginal(readout_node, belief)` under a second name,
+        # with a constructor argument that did nothing else.
         backend = _build(
             _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
         )
-        prior = Belief(mean=np.zeros(5), cov=np.eye(5) * 2.0)
-        posterior = backend.infer_states(np.zeros(3), prior)
-        root_belief = backend.readout(posterior)
-        node0 = backend.marginal(0, posterior)
-        np.testing.assert_allclose(root_belief.mean, node0.mean)
-        np.testing.assert_allclose(root_belief.cov, node0.cov)
+        assert not hasattr(backend, second_way)
 
     def _one_node_backend(self, prior, control_matrix=None):
         graph = CouplingGraph(
@@ -704,6 +756,84 @@ class TestObservationChannel:
         assert not hasattr(backend, "observation_model")
 
 
+class TestStackObservations:
+    """Readings keyed by node, the format `CouplingGraph.infer` takes, stack here.
+
+    The stacked vector puts each observed node's reading in ascending node order, a
+    rule that lived in a private layout. Stacking `{3: motor, 2: cheB}` in its
+    insertion order gave each node the other's reading and passed every shape check.
+    """
+
+    def _chemotaxis(self):
+        return _build(
+            _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
+        )
+
+    def test_readings_stack_in_node_order_whatever_the_dict_order(self):
+        stacked = self._chemotaxis().stack_observations({4: [0.4], 2: [0.2], 3: [0.3]})
+        np.testing.assert_array_equal(np.asarray(stacked), [0.2, 0.3, 0.4])
+
+    def test_a_scalar_is_a_one_row_reading(self):
+        stacked = self._chemotaxis().stack_observations({3: 0.3, 4: 0.4, 2: 0.2})
+        np.testing.assert_array_equal(np.asarray(stacked), [0.2, 0.3, 0.4])
+
+    def test_the_stack_filters_like_the_vector_it_replaces(self):
+        backend = self._chemotaxis()
+        prior = Belief(mean=np.zeros(5), cov=np.eye(5))
+        by_node = backend.infer_states(
+            backend.stack_observations({4: 0.4, 3: 0.3, 2: 0.2}), prior
+        )
+        by_hand = backend.infer_states([0.2, 0.3, 0.4], prior)
+        np.testing.assert_array_equal(
+            np.asarray(by_node.mean), np.asarray(by_hand.mean)
+        )
+
+    def test_a_missing_observed_node_is_refused_by_name(self):
+        with pytest.raises(
+            ValueError, match=r"no reading for observed node\(s\) \[3\]"
+        ):
+            self._chemotaxis().stack_observations({2: 0.2, 4: 0.4})
+
+    def test_a_reading_on_an_unobserved_node_is_refused_by_name(self):
+        with pytest.raises(ValueError, match=r"node\(s\) \[0\] carry no sensor"):
+            self._chemotaxis().stack_observations({0: 0.0, 2: 0.2, 3: 0.3, 4: 0.4})
+
+    def test_a_reading_of_the_wrong_width_is_refused_by_name(self):
+        rng = np.random.default_rng(0)
+        backend = _build(
+            (1, 2),
+            [(0, 1, rng.standard_normal((2, 1)), _spd(rng, 2))],
+            {1: (np.eye(2), _spd(rng, 2))},
+            [([[0.5]], [[0.1]]), (np.eye(2) * 0.5, np.eye(2) * 0.1)],
+        )
+        with pytest.raises(ValueError, match=r"node 1 .* reads 2 value"):
+            backend.stack_observations({1: 0.5})
+
+
+class TestDefiniteNoise:
+    """The graph path inverts each node's Q and each edge's noise, and says so.
+
+    The flat model accepts a semi-definite Q. The graph's refusal of one blamed "a
+    noiseless or degenerate sensor", an object the caller had not passed.
+    """
+
+    def test_a_semi_definite_node_noise_names_the_inversion(self):
+        with pytest.raises(
+            ValueError,
+            match="dynamics_noise must be positive-definite because it is inverted",
+        ) as refusal:
+            GaussianTransition(np.eye(2), dynamics_noise=np.diag([1e-4, 0.0]))
+        assert "sensor" not in str(refusal.value)
+
+    def test_a_semi_definite_edge_noise_names_the_inversion(self):
+        with pytest.raises(
+            ValueError,
+            match="coupling_noise must be positive-definite because it is inverted",
+        ) as refusal:
+            Coupling(0, 1, [[1.0]], coupling_noise=[[0.0]])
+        assert "sensor" not in str(refusal.value)
+
+
 class TestNodeLookup:
     """A node outside the graph is refused by name, never read as an empty block.
 
@@ -737,7 +867,7 @@ class TestTransforms:
         prior = Belief(mean=jnp.zeros(5), cov=jnp.eye(5) * 2.0)
 
         def root_mean(y):
-            return backend.readout(backend.infer_states(y, prior)).mean
+            return backend.marginal(0, backend.infer_states(y, prior)).mean
 
         y = jnp.array([1.25, 1.15, 0.95])
         np.testing.assert_allclose(
@@ -753,9 +883,9 @@ class TestTransforms:
             np.asarray(batched), np.asarray(expected), atol=1e-10
         )
 
-    def test_jit_grad_through_rollout_scan(self):
+    def test_jit_grad_through_filter_sequence_scan(self):
         # The traced scan path: the severed-mass profile is produced *inside* the trace
-        # (no host syncs), so rollout must jit and be differentiable (ADR-012 gate).
+        # (no host syncs), so filter_sequence must jit and differentiate (ADR-012 gate).
         cut = _build(
             _CHEMOTAXIS_DIMS,
             _CHEMOTAXIS_EDGES,
@@ -767,7 +897,7 @@ class TestTransforms:
         obs_seq = jnp.array([[1.25, 1.15, 0.95], [0.1, -0.2, 0.3], [0.0, 0.0, 0.0]])
 
         def total_severed(ys):
-            _beliefs, severed = cut.rollout(prior, ys)
+            _means, _covs, severed = cut.filter_sequence(ys, prior)
             return severed.sum()
 
         np.testing.assert_allclose(
@@ -791,7 +921,7 @@ class TestTransforms:
         prior = Belief(mean=jnp.zeros(5), cov=jnp.eye(5) * 2.0)
 
         def root_mean(y):
-            return backend.readout(backend.infer_states(y, prior)).mean
+            return backend.marginal(0, backend.infer_states(y, prior)).mean
 
         y = jnp.array([1.25, 1.15, 0.95])
         np.testing.assert_allclose(

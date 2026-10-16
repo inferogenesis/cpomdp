@@ -56,6 +56,11 @@ certainty equivalence is optimal, and no use of the readings beats it.
 - `LQRController` and `InadmissiblePartitionError` are exported at the top level, and
   each has an API page. `LQRSelector` cannot be built without the first, and the graph
   EFE selector raises the second (ADR-069).
+- `CouplingGraphBackend.stack_observations` takes one step's readings keyed by node, the
+  form `CouplingGraph.infer` takes, and returns the vector `infer_states` takes. It
+  refuses a missing node, a node with no sensor and a reading of the wrong width. The
+  vector's ascending node order lived in a private layout, so readings of one width
+  stacked in a dict's insertion order filtered each node against another's reading.
 - `cpomdp._lab.harness` — a world and an agent held apart, so what an agent's model gets
   wrong about the process is a measurable quantity rather than zero by construction.
   `World` runs the process and hands out observations, exposing no accessor that returns
@@ -409,6 +414,13 @@ certainty equivalence is optimal, and no use of the readings beats it.
   the valid range. `block(-1)` returned an empty range, so an epistemic term aimed at it
   scored zero. `marginal(-1, belief)` failed inside a reduction, and `block(5)` on five
   nodes raised a bare `IndexError`.
+- A covariance refused for not being positive-definite was refused because "a noiseless
+  or degenerate sensor sends the information gain to infinity", whatever the matrix
+  was. A semi-definite `dynamics_noise` on a `GaussianTransition` or `coupling_noise` on
+  a `Coupling` was blamed on a sensor the caller never passed. The refusal now
+  says the matrix is inverted. The graph path still needs a definite Q where the flat
+  model accepts a semi-definite one, because its transition factor inverts Q, and
+  `CouplingGraphBackend` says so.
 - Malformed graph inputs raise an error that names the argument. A reading on a node
   with no sensor raised a bare `KeyError: 1` from `CouplingGraph.infer`, now
   `infer_root`, and a prior over the wrong dimension raised
@@ -721,6 +733,17 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `CouplingGraphBackend` as before. `GraphBackend` declares no `dims`, `n_total` or
   `observation_model`, which the entries above retire. Like `EfeBackend` before it, it
   carries no promise (ADR-069).
+- **Breaking:** `CouplingGraphBackend.partition_error` is `severed_mass`, the name its
+  docstring and its second output already used. `rollout` is `filter_sequence`. Elsewhere
+  a rollout is the H-step policy rollout the EFE scores, and this one filters. It takes
+  `(observations, prior, actions)`, the order `infer_states` takes, where it put the
+  prior first. It returns `(means, covs, severed_mass)` as arrays. The `Belief` it
+  returned had a time axis on its mean, which broke `Belief`'s invariant, and the
+  backend's own `marginal` refused it. It now checks the prior and the first step
+  before it scans.
+- **Breaking:** `CouplingGraphBackend.readout` and its `readout_node` argument are
+  removed. `readout(belief)` was `marginal(readout_node, belief)`, and the argument did
+  nothing else. Read any node, the root included, with `marginal(node, belief)`.
 - **Breaking:** every `LinearGaussianModel` argument after `dynamics` is keyword-only.
   The four matrices are two maps and two covariances of the same rank, and only the
   covariances are content-checked, so a transposed pair constructed in silence whenever

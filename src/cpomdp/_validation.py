@@ -114,9 +114,8 @@ def validate_covariance(
     if require_definite:
         if float(eig.min()) <= tol:
             raise ValueError(
-                f"{name} must be positive-definite, but its smallest eigenvalue is "
-                f"{float(eig.min()):.3g} (a noiseless or degenerate sensor sends the "
-                f"information gain to infinity)."
+                f"{name} must be positive-definite because it is inverted. Its "
+                f"smallest eigenvalue is {float(eig.min()):.3g}."
             )
     elif float(eig.min()) < -tol:
         raise ValueError(
