@@ -146,12 +146,13 @@ class LQRSchedule:
     when the horizons are not matched.
 
     The schedule carries the model and the two costs it was built from, so anything
-    priced against it reads the same ``Q``, ``R`` and noise the recursion did.
+    priced against it reads the same costs and noise the recursion did.
 
     Args:
         model: The model the schedule regulates.
-        goal_precision: The stage cost on the state it was built with, ``Q``.
-        effort_penalty: The stage cost on the action it was built with, ``R``.
+        goal_precision: The stage cost on the state it was built with. (LQR's ``Q``.)
+        effort_penalty: The stage cost on the action it was built with. (LQR's
+            ``R``.)
         gains: ``gains[k]`` is the gain applied at step ``k`` of the plan, with
             ``H − k`` steps remaining, shape ``(H, p, n)``. The action is
             ``−gains[k] · state``.
@@ -193,9 +194,9 @@ def lqr_schedule(
         L_j = (effort_penalty + Bᵀ W B)⁻¹ (Bᵀ W A)
         P_j = Aᵀ W A − (Aᵀ W B) L_j
 
-    starting from ``P_0 = 0``. At ``horizon = 1`` the gain is the one-step regulator
-    ``(effort_penalty + Bᵀ Q B)⁻¹ Bᵀ Q A``. The Control page of the API reference
-    opens the same account in plain terms.
+    starting from ``P_0 = 0``. At ``horizon = 1``, ``W`` is ``goal_precision`` and the
+    gain is the one-step regulator. The Control page of the API reference opens the
+    same account in plain terms.
 
     Args:
         model: The linear-Gaussian model to act in. Must carry a ``control_matrix``.
