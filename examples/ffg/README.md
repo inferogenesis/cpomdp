@@ -65,12 +65,12 @@ horizon-1 ordering (epistemic pull < pragmatic gradient) — without rendering.
 
 The factor graph earns its keep the moment the model branches: a hidden root `r` seen only
 through a hub `h` that fans out to two observed leaves, a degree no chain can hold. The
-figure puts `CouplingGraph.infer` (name the edges, call once) beside the 4×4 joint precision
+figure puts `CouplingGraph.infer_root` (name the edges, call once) beside the 4×4 joint precision
 a normal backend makes you assemble, invert, and marginalise back down to `r` — and re-derive
 whenever the wiring changes. Both land on the same belief over `r` (μ ≈ 1.234, σ² ≈ 0.137),
 to floating-point noise. Same answer; the branching just stays declared instead of flattened.
 
-![A branching tree resolved two ways: CouplingGraph.infer against the hand-flattened joint precision](../../docs/assets/coupling_graph.png)
+![A branching tree resolved two ways: CouplingGraph.infer_root against the hand-flattened joint precision](../../docs/assets/coupling_graph.png)
 
 `coupling_graph_figure.py --check` prints both routes' root posteriors and their agreement,
 no rendering.

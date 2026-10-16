@@ -154,10 +154,9 @@ def build_backend(
         efe_relevant=True,  # the covariance path the instrumental epistemic rides
     )
     graph = CouplingGraph(
-        root=CONTEXT,
         dims=(1, 2),
         couplings=(context_to_arm,),
-        observations={ARM_NODE: cue},
+        observation_models={ARM_NODE: cue},
     )
     transitions = (
         GaussianTransition(

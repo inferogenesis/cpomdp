@@ -3,7 +3,7 @@
 A linear-Gaussian tree's posterior is nothing a normal (Kalman) backend couldn't also
 reach: flatten the tree into one joint over every variable and the numbers come out
 identical. What `CouplingGraph` changes is not the answer but the work to get it. You
-name the edges of the tree and call `infer`; the by-hand route assembles the joint
+name the edges of the tree and call `infer_root`; the by-hand route assembles the joint
 precision, inverts it, and marginalises the nuisance variables back out — then redoes
 all of it whenever the wiring changes.
 
@@ -14,7 +14,7 @@ chain backend built on one) can hold. The hub is never measured; the root is inf
 only through it.
 
 The left panel is the whole declaration: the tree, and the handful of lines that build
-it and call ``infer``. The right panel is the 4x4 joint precision the by-hand route
+it and call ``infer_root``. The right panel is the 4x4 joint precision the by-hand route
 assembles instead — in information form, so the tree shows up directly as the matrix's
 sparsity (off the diagonal, only the three edges are non-zero). Both routes land on the
 same belief over ``r``, asserted before the figure is ever drawn.
@@ -76,11 +76,11 @@ def build_graph() -> tuple[CouplingGraph, Belief, dict[int, np.ndarray]]:
         Coupling(parent, child, [[w]], coupling_noise=[[q]])
         for parent, child, w, q in EDGES
     )
-    observations = {
+    observation_models = {
         node: FixedSensor([[1.0]], observation_noise=[[OBS_R]]) for node in OBS_NODES
     }
     graph = CouplingGraph(
-        root=ROOT, dims=DIMS, couplings=couplings, observations=observations
+        dims=DIMS, couplings=couplings, observation_models=observation_models
     )
     prior = Belief(mean=[PRIOR_MEAN], cov=[[PRIOR_VAR]])
     readings = {node: np.array([READINGS[node]]) for node in OBS_NODES}
@@ -170,7 +170,7 @@ def assemble_joint_precision() -> np.ndarray:
 def _posteriors() -> tuple[Belief, Belief, float]:
     """Both routes' root beliefs and the max absolute gap between them."""
     graph, prior, readings = build_graph()
-    native = graph.infer(readings, prior)
+    native = graph.infer_root(readings, prior)
     flat = infer_flattened()
     gap = max(
         float(np.max(np.abs(np.asarray(native.mean) - np.asarray(flat.mean)))),
@@ -200,9 +200,9 @@ couplings = (
     Coupling(h, a, [[1.0]], coupling_noise=[[0.03]]),
     Coupling(h, b, [[1.0]], coupling_noise=[[0.03]]),
 )
-graph  = CouplingGraph(root=r, dims=dims,
-                       couplings=couplings, observations=obs)
-belief = graph.infer({a: y_a, b: y_b}, prior)"""
+graph  = CouplingGraph(dims=dims, couplings=couplings,
+                       observation_models=obs)
+belief = graph.infer_root({a: y_a, b: y_b}, prior)"""
 
 
 def _draw_tree(ax) -> None:
@@ -326,7 +326,7 @@ def _draw_code(ax) -> None:
     ax.text(
         0.5,
         0.07,
-        "three edges, one infer call — the same code runs any tree",
+        "three edges, one infer_root call — the same code runs any tree",
         transform=ax.transAxes,
         ha="center",
         va="top",
@@ -448,7 +448,7 @@ def render(out_path: Path) -> Path:
         0.5,
         0.04,
         "the certifiable pole: a provably-optimal reference exists (the Kalman floor), "
-        "and CouplingGraph.infer attains it",
+        "and CouplingGraph.infer_root attains it",
         ha="center",
         va="bottom",
         color=INK,
@@ -458,7 +458,7 @@ def render(out_path: Path) -> Path:
     fig.text(
         0.985,
         0.012,
-        "cpomdp v0.4  ·  CouplingGraph.infer vs flattened KalmanBackend",
+        "cpomdp v0.4  ·  CouplingGraph.infer_root vs flattened KalmanBackend",
         ha="right",
         va="bottom",
         color=GRAY,

@@ -1,12 +1,12 @@
 """The branching FFG as a recursive filter: ``CouplingGraphBackend`` (issue #25).
 
-``test_ffg_tree.py`` pins the *static* within-slice collect (``CouplingGraph.infer`` —
-a root prior + readings -> the root marginal). This file pins the *temporal* recursion
-that turns that structure into an ``InferenceBackend``: each node carries its own
-dynamics (driven relaxation — ADR-017), the whole tree steps forward under an action,
-and the exact ``[[all]]`` filter is the joint-precision solve (predict through the
-block-diagonal per-node dynamics, add the structural coupling + observation precision
-blocks, solve).
+``test_ffg_tree.py`` pins the *static* within-slice collect
+(``CouplingGraph.infer_root`` — a root prior + readings -> the root marginal). This file
+pins the *temporal* recursion that turns that structure into an ``InferenceBackend``:
+each node carries its own dynamics (driven relaxation — ADR-017), the whole tree steps
+forward under an action, and the exact ``[[all]]`` filter is the joint-precision solve
+(predict through the block-diagonal per-node dynamics, add the structural coupling +
+observation precision blocks, solve).
 
 Oracle: a plain-NumPy driven-relaxation filter — per step ``predict`` (block-diagonal
 ``F = blkdiag(A_i)``, ``Q = blkdiag(Q_i)``) then a joint-precision ``update`` that folds
@@ -190,11 +190,11 @@ def _build(
     couplings = tuple(
         Coupling(parent, child, w, coupling_noise=q) for parent, child, w, q in edges
     )
-    observations = {
+    observation_models = {
         n: FixedSensor(c, observation_noise=r) for n, (c, r) in obs_specs.items()
     }
     graph = CouplingGraph(
-        root=0, dims=dims, couplings=couplings, observations=observations
+        dims=dims, couplings=couplings, observation_models=observation_models
     )
     transitions = tuple(GaussianTransition(a, dynamics_noise=q) for a, q in dyn)
     kwargs = {"control_matrix": control_matrix, "readout_node": readout_node}
@@ -564,10 +564,11 @@ class TestProtocolAndReadout:
 
     def _one_node_backend(self, prior, control_matrix=None):
         graph = CouplingGraph(
-            root=0,
             dims=(2,),
             couplings=(),
-            observations={0: FixedSensor([[1.0, 0.0]], observation_noise=[[0.1]])},
+            observation_models={
+                0: FixedSensor([[1.0, 0.0]], observation_noise=[[0.1]])
+            },
         )
         transition = GaussianTransition(np.eye(2), dynamics_noise=np.eye(2) * 0.1)
         return CouplingGraphBackend(
@@ -599,10 +600,9 @@ class TestProtocolAndReadout:
     def test_a_graph_with_no_sensor_is_refused_by_name(self):
         # It used to fail with a zero-size reduction inside the model's noise check.
         graph = CouplingGraph(
-            root=0,
             dims=(1, 1),
             couplings=(Coupling(0, 1, [[1.0]], coupling_noise=[[0.5]]),),
-            observations={},
+            observation_models={},
         )
         transition = GaussianTransition([[0.9]], dynamics_noise=[[0.1]])
         with pytest.raises(ValueError, match="no node of the graph carries a sensor"):
@@ -868,11 +868,11 @@ def _build_rx(dims, edges, rx_obs, dyn, *, control_matrix=None, partition=None):
     couplings = tuple(
         Coupling(parent, child, w, coupling_noise=q) for parent, child, w, q in edges
     )
-    observations = {
+    observation_models = {
         node: CallableSensor(c, fn, prm) for node, (c, fn, prm) in rx_obs.items()
     }
     graph = CouplingGraph(
-        root=0, dims=dims, couplings=couplings, observations=observations
+        dims=dims, couplings=couplings, observation_models=observation_models
     )
     transitions = tuple(GaussianTransition(a, dynamics_noise=q) for a, q in dyn)
     kwargs = {"control_matrix": control_matrix}
@@ -889,6 +889,24 @@ _RX_OBS = {
     4: (np.eye(1), _rx_noise, {"R0": np.array([[0.10]]), "gain": 0.4}),
 }
 _RX_CONTROL = [[1.0], [0.0], [0.0], [0.0], [0.0]]  # B: action drives CheA (root)
+
+
+def _goes_negative(state, params):
+    """R(x) = 1 - x0², a covariance only for |x0| < 1."""
+    return jnp.array([[1.0 - state[0] ** 2]])
+
+
+def test_an_r_that_is_not_a_covariance_at_the_predicted_mean_is_refused():
+    # ChainBackend refuses the same sensor. A finite but wrong belief was returned.
+    backend = _build_rx(
+        (1,),
+        (),
+        {0: (np.eye(1), _goes_negative, None)},
+        ((np.eye(1), np.eye(1) * 0.05),),
+    )
+    far = Belief(mean=[2.0], cov=[[0.1]])
+    with pytest.raises(ValueError, match="positive-definite"):
+        backend.infer_states(jnp.array([0.0]), far)
 
 
 class TestStateDependentSensing:
@@ -974,10 +992,9 @@ class TestStateDependentSensing:
         # representative R(0) beside it would be a second value for one field.
         params = {"R0": np.array([[0.5]]), "gain": 0.3}
         graph = CouplingGraph(
-            root=0,
             dims=(2,),
             couplings=(),
-            observations={0: CallableSensor([[1.0, 0.0]], _rx_noise, params)},
+            observation_models={0: CallableSensor([[1.0, 0.0]], _rx_noise, params)},
         )
         prior = Belief(mean=[1.0, 2.0], cov=np.eye(2))
         backend = CouplingGraphBackend(
@@ -1217,9 +1234,31 @@ class _UnstoredSensor:
         return c @ x, c @ sigma @ c.T + r, r
 
 
+class _BadNoiseSensor(_UnstoredSensor):
+    """A fixed protocol-only sensor whose R is whatever the test hands it."""
+
+    def __init__(self, noise):
+        self._gain = jnp.asarray([[1.0]], dtype=float)
+        self._noise = jnp.asarray(noise, dtype=float)
+
+
+@pytest.mark.parametrize(
+    "noise",
+    [[[0.0]], [[-1.0]], [[1.0, 0.0], [0.0, 1.0]]],
+    ids=["zero", "negative", "shape"],
+)
+def test_a_fixed_sensor_with_an_unusable_r_is_refused_when_the_graph_is_built(noise):
+    # A fixed sensor's R is front-loaded and inverted every step, so the graph checks it
+    # once. FixedSensor checks itself, and the protocol is open to sensors that do not.
+    with pytest.raises(ValueError, match="node 0"):
+        CouplingGraph(
+            dims=(1,), couplings=(), observation_models={0: _BadNoiseSensor(noise)}
+        )
+
+
 def _one_node_graph_backend(sensor):
     """A single scalar node with a control, observed by ``sensor``."""
-    graph = CouplingGraph(root=0, dims=(1,), couplings=(), observations={0: sensor})
+    graph = CouplingGraph(dims=(1,), couplings=(), observation_models={0: sensor})
     return CouplingGraphBackend(
         graph,
         (GaussianTransition([[0.9]], dynamics_noise=[[0.2]]),),

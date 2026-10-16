@@ -406,12 +406,13 @@ certainty equivalence is optimal, and no use of the readings beats it.
   it across the node's block, so the sensor read the sum of the node's components and
   the filter returned a plausible posterior from the wrong model.
 - Malformed graph inputs raise an error that names the argument. A reading on a node
-  with no sensor raised a bare `KeyError: 1` from `CouplingGraph.infer`, and a prior over
-  the wrong dimension raised `cannot add messages of shape (2, 2) and (1, 1)`.
-  `GaussianTransition.from_ou(0.0, ...)` raised `ZeroDivisionError`, and a negative `tau`
-  or `dt` blamed `dynamics_noise`, an argument the caller never passed. A `root` or a
-  dimension of 1.5 was truncated to 1. A `CouplingGraphBackend` over a graph with no
-  sensor failed in a zero-size reduction and now refuses at construction.
+  with no sensor raised a bare `KeyError: 1` from `CouplingGraph.infer`, now
+  `infer_root`, and a prior over the wrong dimension raised
+  `cannot add messages of shape (2, 2) and (1, 1)`.
+  `GaussianTransition.from_ou(0.0, ...)` raised `ZeroDivisionError`, and a negative
+  `tau` or `dt` blamed `dynamics_noise`, an argument the caller never passed. A
+  dimension of 1.5 was truncated to 1. A `CouplingGraphBackend` over a graph with
+  no sensor failed in a zero-size reduction and now refuses, saying it has none.
 - The graph EFE rollouts and searches skipped the checks `FfgEfeSelector` makes on its
   target. `policy_efe_ffg`, `policy_efe_ffg_trace`, the crossover statistic and both
   searches' `over_backend` scored on a carry partition that severs an EFE-load-bearing
@@ -458,14 +459,20 @@ certainty equivalence is optimal, and no use of the readings beats it.
   at construction. Assigning `agent.belief` now requires a `Belief` over the model's
   state. A list was accepted and failed on the next step. `InferenceBackend.model` is
   declared a read-only property, which a plain attribute still satisfies.
-- **Breaking:** `CouplingGraph.root`, `dims`, `couplings` and `observations` are
-  read-only, and `observations` is a read-only mapping. Construction is the only place
+- **Breaking:** `CouplingGraph.root`, `dims`, `couplings` and `observation_models` are
+  read-only, and `observation_models` is a read-only mapping. Construction is the only place
   the wiring is checked. A sensor added afterwards to node 7 of a two-node graph skipped
   the range check and reached the backend. Build a new graph instead.
-- **Breaking:** `CouplingGraph.infer` takes the readings first and the prior second,
-  `infer(readings, prior)`, the order `infer_states(observation, prior)` takes. It was
-  the one inference call that took the belief first. A call in the old order raises a
-  `TypeError` that names `readings`, since a `Belief` is not a mapping of readings.
+- **Breaking:** `CouplingGraph` takes no `root`. The root is the one node no coupling
+  points to, so a stated root could only repeat the couplings or contradict them.
+  Drop the argument. `graph.root` still reads it back.
+- **Breaking:** `CouplingGraph.infer` is `infer_root(readings, prior)`. It takes the
+  readings first and the prior second, the order `infer_states(observation, prior)`
+  takes. It was the one inference call that took the belief first. A call in the old
+  order raises a `TypeError` that names `readings`, since a `Belief` is not a mapping of
+  readings. The new name says what comes back: the root's marginal, from a prior over
+  the root alone. `infer_states` returns a belief over every node, and a bare `infer`
+  beside it read as its twin.
 - **Breaking:** an `ObservationGoal`'s `horizon` defaults to `None`, and the `Agent` reads
   it off the model: the shortest horizon at which the target moves the expected free
   energy, found by differentiating the candidate grid's scores with respect to the
@@ -487,14 +494,14 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `cpomdp.backends.base` and `cpomdp.backends.rxinfer`. The first is the shape check the
   built-in backends share and the second is the RxInfer test oracle, and a cpomdp user
   calls neither (ADR-069). `import cpomdp` no longer leaves `cpomdp.jax` behind.
-- **Breaking:** the graph model's message passing is private. `GaussianTransition.predict`
-  and `CouplingGraph.infer_all` take a leading underscore. `GaussianCoupling`'s
-  `message_to_parent` and `message_to_child` are private methods of `Coupling`, and
-  `cpomdp.ffg.message` is `cpomdp.ffg._message`. v0.4.4
-  published them on the top-level construction classes, typed on a `CanonicalGaussian`
-  no page documents. They are the hot path the energy work will change. A user builds
-  the graph and runs it through `CouplingGraphBackend` or `CouplingGraph.infer`, and
-  neither needs them (ADR-069, ADR-073).
+- **Breaking:** the graph model's message passing is private.
+  `GaussianTransition.predict` and `CouplingGraph.infer_all` take a leading underscore.
+  `GaussianCoupling`'s `message_to_parent` and `message_to_child` are private methods of
+  `Coupling`, and `cpomdp.ffg.message` is `cpomdp.ffg._message`. v0.4.4 published them
+  on the top-level construction classes, typed on a `CanonicalGaussian` no page
+  documents. They are the hot path the energy work will change. A user builds the graph
+  and runs it through `CouplingGraphBackend` or `CouplingGraph.infer_root`, and neither
+  needs them (ADR-069, ADR-073).
 - **Breaking:** a *fixed* `observation_model` or `dynamics_noise_model` must now restate
   the model's `observation_noise` / `dynamics_noise` exactly, and a sensor's linearized
   observation matrix must equal `observation_matrix`. `LinearGaussianModel` previously
@@ -643,12 +650,18 @@ certainty equivalence is optimal, and no use of the readings beats it.
   sites moved to keywords.
 - **Breaking:** a graph node takes the sensor a flat model takes. `GaussianObservation` and
   `CallableGaussianObservation` are removed. Pass a `FixedSensor` or a `CallableSensor`
-  in `CouplingGraph`'s `observations`, with the same arguments. The two pairs had
+  in `CouplingGraph`'s `observation_models`, with the same arguments. The two pairs had
   identical constructors and fields, and each failed in the other's slot.
   `LinearGaussianModel` refused the graph classes, and a `FixedSensor` on a graph node
   constructed and then raised at the first filter step. A node now takes any
   `ObservationModel`, and the graph reads `C` and `R` through `linearize` as the flat
   model does (ADR-073).
+- **Breaking:** `CouplingGraph`'s `observations` is `observation_models`, as argument
+  and attribute. It holds sensors, and the paired `CouplingGraphBackend` uses the word
+  for readings: `rollout` takes stacked observations and `n_observations` counts reading
+  rows. A graph with one two-row sensor had `len(graph.observations) == 1` and
+  `backend.n_observations == 2`. The new name matches
+  `LinearGaussianModel.observation_model`.
 - **Breaking:** `GaussianTransition` takes `dynamics_noise` by keyword, and
   `GaussianTransition.from_ou` takes `stationary_var` and `dt` by keyword. Both follow
   `LinearGaussianModel` for the same reason, and the transition factor is the worse of
@@ -675,6 +688,12 @@ certainty equivalence is optimal, and no use of the readings beats it.
   int and an `efe_relevant` that is not a bool raise `TypeError`, and a NumPy bool is
   stored as a `bool`. A `coupling_matrix` that is not 2-D and a `coupling_noise` that is
   not positive-definite raise `ValueError` (ADR-075).
+- `CouplingGraph` checks a fixed sensor's `R` when it is built: square to match `C`, and
+  positive-definite, since it is inverted every step. A sensor that implements only the
+  protocol and returned a zero or indefinite `R` gave a NaN or wrong belief.
+- `CouplingGraphBackend` refuses a state-dependent sensor whose `R` is not
+  positive-definite at the predicted mean, as `ChainBackend` does. It returned a finite
+  belief that was wrong.
 - **Breaking:** `CouplingGraphBackend` takes a required keyword `prior`, the belief over
   the joint state before any reading. Its `model.prior` was an N(0, I) placeholder, so
   an `Agent` built on the backend planned and filtered from a belief the caller never

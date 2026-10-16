@@ -158,7 +158,7 @@ def test_refuses_state_dependent_noise(slot, noise_model):
 def test_branching_tree_matches_coupling_graph():
     # The non-chain oracle box (Phase 2) closed on a real branch: the difference-demo
     # tree has a degree-3 node (chey -> two motors), which the chain model never hits.
-    # RxInfer's message passing and CouplingGraph.infer must collect the same CheA
+    # RxInfer's message passing and CouplingGraph.infer_root must collect the same CheA
     # marginal up the same tree, through entirely separate machinery.
     chea, chey, cheb, motor_a, motor_b = 0, 1, 2, 3, 4
     edges = [
@@ -169,18 +169,17 @@ def test_branching_tree_matches_coupling_graph():
     ]
     obs_r = 0.10
     graph = CouplingGraph(
-        root=chea,
         dims=(1, 1, 1, 1, 1),
         couplings=tuple(
             Coupling(p, c, [[w]], coupling_noise=[[q]]) for p, c, w, q in edges
         ),
-        observations={
+        observation_models={
             n: FixedSensor([[1.0]], observation_noise=[[obs_r]])
             for n in (cheb, motor_a, motor_b)
         },
     )
     readings: dict[int, ArrayLike] = {motor_a: [1.25], motor_b: [1.15], cheb: [0.95]}
-    native = graph.infer(readings, Belief(mean=[0.0], cov=[[4.0]]))
+    native = graph.infer_root(readings, Belief(mean=[0.0], cov=[[4.0]]))
 
     rx_mean, rx_var = _rxinfer_chemotaxis_tree_root(
         prior_mean=0.0,

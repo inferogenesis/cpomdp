@@ -2,12 +2,13 @@
 
 Nodes are integer indices ``0..N-1``, each with a dimension. A ``Coupling`` edge links
 a parent node to a child node through a linear-Gaussian factor, and the edges must form
-a tree rooted at a chosen node. ``CouplingGraph`` gathers the nodes, edges, and per-node
-sensors and checks, on construction, that the wiring is a well-formed rooted tree with
-dimension-consistent factors.
+a tree. Its root is the one node no edge points into. ``CouplingGraph`` gathers the
+nodes, edges, and per-node sensors and checks, on construction, that the wiring is a
+well-formed rooted tree with dimension-consistent factors.
 
 The graph carries no names. A node is only its index, so the same structure can stand
-for any model. Its one public inference is the static collect to the root, ``infer``.
+for any model. Its one public inference is the static collect to the root,
+``infer_root``.
 A filter over time is a ``CouplingGraphBackend``.
 """
 
@@ -15,13 +16,13 @@ import operator
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import SupportsIndex
+from typing import Any, SupportsIndex
 
 import jax.numpy as jnp
 import numpy as np
 from jax import Array
 from jaxtyping import Float64
-from numpy.typing import ArrayLike
+from numpy.typing import ArrayLike, NDArray
 
 from cpomdp._validation import validate_covariance
 from cpomdp.ffg._message import CanonicalGaussian, likelihood_message
@@ -205,28 +206,29 @@ class CouplingGraph:
     """A rooted tree of Gaussian-coupled variables.
 
     The ``N`` nodes are indexed ``0..N-1`` with dimensions ``dims``. ``couplings`` are
-    the tree edges, directed away from ``root``, and ``observations`` maps a node index
-    to the sensor on it. A node takes the sensor a flat model takes: a
+    the tree edges, each directed from parent to child, and the root is the one node no
+    edge points to. ``observation_models`` maps a node index to the sensor on it. A node
+    takes the sensor a flat model takes: a
     [`FixedSensor`][cpomdp.FixedSensor], a state-dependent
     [`CallableSensor`][cpomdp.CallableSensor], or any other
     [`ObservationModel`][cpomdp.ObservationModel]. Construction validates the wiring
     and raises if it is malformed.
 
     Args:
-        root: index of the node the tree is rooted at.
         dims: ``dims[i]`` is the dimension of node ``i``; its length is the node count.
         couplings: the tree edges — one per non-root node, each that node's only parent.
-        observations: maps a node index to the ``ObservationModel`` that reads it.
+            The node left without a parent is the root.
+        observation_models: maps a node index to the ``ObservationModel`` that reads
+            it.
 
     Raises:
-        TypeError: if ``root`` or a dimension is not an int, an edge is not a
-            ``Coupling``, or an observation is not an ``ObservationModel``.
-        ValueError: if ``dims`` is empty or non-positive; if ``root``, an edge, or an
-            observation references an out-of-range node; if an edge's
-            ``coupling_matrix`` is not ``(dim[child], dim[parent])``; if a sensor's
-            ``C`` is not as wide as the node it observes; or if the edges do not form a
-            tree rooted at ``root`` — the root has a parent, a node has two parents or
-            none, or the edges contain a cycle.
+        TypeError: if a dimension is not an int, an edge is not a ``Coupling``, or an
+            observation model is not an ``ObservationModel``.
+        ValueError: if ``dims`` is empty or non-positive; if an edge or an observation
+            model references an out-of-range node; if an edge's ``coupling_matrix`` is
+            not ``(dim[child], dim[parent])``; if a sensor's ``C`` is not as wide as the
+            node it observes; or if the edges do not form a tree — a node has two
+            parents, more than one node has none, or the edges contain a cycle.
 
     The four fields are read-only once built. Construction is where the wiring is
     checked, so a graph that needs other wiring is a new graph.
@@ -234,16 +236,15 @@ class CouplingGraph:
 
     def __init__(
         self,
-        root: int,
         dims: Sequence[int],
         couplings: Sequence[Coupling],
-        observations: Mapping[int, ObservationModel],
+        observation_models: Mapping[int, ObservationModel],
     ) -> None:
-        self._root = _as_int(root, "root")
         self._dims = tuple(_as_int(dim, f"dims[{i}]") for i, dim in enumerate(dims))
         self._couplings = tuple(couplings)
-        self._observations = dict(observations)
+        self._observation_models = dict(observation_models)
         self._validate()
+        self._root = self._find_root()
         self._sensor_at_zero = self._linearize_sensors_at_zero()
         self._parent_edge = {edge.child: edge for edge in self._couplings}
         # Deepest first, so a child folds into its parent before the parent moves up.
@@ -253,7 +254,7 @@ class CouplingGraph:
 
     @property
     def root(self) -> int:
-        """The index of the node the tree is rooted at."""
+        """The one node no coupling points to, which the tree hangs from."""
         return self._root
 
     @property
@@ -267,16 +268,14 @@ class CouplingGraph:
         return self._couplings
 
     @property
-    def observations(self) -> Mapping[int, ObservationModel]:
+    def observation_models(self) -> Mapping[int, ObservationModel]:
         """Each observed node's sensor, keyed by node index. A read-only view."""
-        return MappingProxyType(self._observations)
+        return MappingProxyType(self._observation_models)
 
     def _validate(self) -> None:
         n = len(self.dims)
         if n == 0 or any(d <= 0 for d in self.dims):
             raise ValueError(f"dims must be non-empty positive ints, got {self.dims}")
-        if not 0 <= self.root < n:
-            raise ValueError(f"root {self.root} out of range for {n} nodes")
 
         for edge in self.couplings:
             if not isinstance(edge, Coupling):
@@ -293,33 +292,45 @@ class CouplingGraph:
                     f"coupling {edge.parent}->{edge.child}: coupling_matrix shape "
                     f"{actual} != expected {expected} (dim[child], dim[parent])"
                 )
-        for idx, sensor in self.observations.items():
+        for idx, sensor in self.observation_models.items():
             if not 0 <= idx < n:
-                raise ValueError(f"observation references unknown node {idx}")
+                raise ValueError(f"an observation model references unknown node {idx}")
             if not isinstance(sensor, ObservationModel):
                 raise TypeError(
-                    f"the observation on node {idx} must be an ObservationModel such "
-                    f"as FixedSensor or CallableSensor, got {type(sensor).__name__}"
+                    f"the observation model on node {idx} must be an ObservationModel "
+                    f"such as FixedSensor or CallableSensor, got "
+                    f"{type(sensor).__name__}"
                 )
 
-        # The edges must form a tree rooted at `root`: each non-root node has exactly
-        # one parent, the root has none, and every node walks up to the root.
+    def _find_root(self) -> int:
+        """The one node no edge points to, once the edges are checked to form a tree.
+
+        A tree has one parent per node but the root, and every node walks up to it.
+        """
+        node_count = len(self.dims)
         children = [edge.child for edge in self.couplings]
-        if self.root in children:
-            raise ValueError(f"root {self.root} must not be a child of any coupling")
         if len(children) != len(set(children)):
             raise ValueError("a node has more than one parent — not a tree")
-        if set(children) != set(range(n)) - {self.root}:
-            raise ValueError("every non-root node must have exactly one parent")
+        without_parent = sorted(set(range(node_count)) - set(children))
+        if not without_parent:
+            raise ValueError(
+                "every node has a parent, so the couplings contain a cycle — not a tree"
+            )
+        if len(without_parent) > 1:
+            raise ValueError(
+                f"nodes {without_parent} have no parent, and a tree has one root"
+            )
+        (root,) = without_parent
 
         parent_of = {edge.child: edge.parent for edge in self.couplings}
-        for start in range(n):
+        for start in range(node_count):
             node, seen = start, set()
-            while node != self.root:
+            while node != root:
                 if node in seen:
                     raise ValueError("couplings contain a cycle — not a tree")
                 seen.add(node)
                 node = parent_of[node]
+        return root
 
     def _depth(self, node: int) -> int:
         """The number of edges from ``node`` up to the root."""
@@ -336,18 +347,35 @@ class CouplingGraph:
 
         ``C`` is read through ``linearize``, the one method the protocol and the flat
         model share. The pair is a fixed sensor's own ``(C, R)``, which the fixed filter
-        path reuses every step, and a state-dependent sensor's ``(C, R(0))``.
+        path reuses every step, and a state-dependent sensor's ``(C, R(0))``. A fixed
+        sensor's ``R`` is checked here too, square and positive-definite, since it is
+        inverted every step and the protocol is open to sensors that do not check
+        themselves.
         """
         at_zero = {}
-        for node, sensor in self.observations.items():
+        for node, sensor in self.observation_models.items():
             observation_matrix, observation_noise = sensor.linearize(
                 jnp.zeros(self.dims[node])
             )  # C, R
             width = observation_matrix.shape[1]
             if width != self.dims[node]:
                 raise ValueError(
-                    f"observation on node {node}: sensor C width {width} "
+                    f"the observation model on node {node}: sensor C width {width} "
                     f"!= node dimension {self.dims[node]}"
+                )
+            if sensor.is_fixed:
+                # Front-loaded and inverted every step, so checked once here.
+                rows = observation_matrix.shape[0]
+                if observation_noise.shape != (rows, rows):
+                    raise ValueError(
+                        f"the observation model on node {node}: R has shape "
+                        f"{observation_noise.shape}, and its {rows}-row C needs "
+                        f"({rows}, {rows})"
+                    )
+                validate_covariance(
+                    observation_noise,
+                    f"node {node}'s observation_noise",
+                    require_definite=True,
                 )
             at_zero[node] = (observation_matrix, observation_noise)
         return at_zero
@@ -362,7 +390,7 @@ class CouplingGraph:
         """
         if state is None:
             return self._sensor_at_zero[node]
-        return self.observations[node].linearize(state)
+        return self.observation_models[node].linearize(state)
 
     def _observation_message(
         self, node: int, reading: ArrayLike, state: ArrayLike | None = None
@@ -372,8 +400,19 @@ class CouplingGraph:
         A fixed sensor's message ignores ``state``, so the fixed paths pass ``None``
         and read the front-loaded ``(C, R)``. A state-dependent sensor needs the
         predicted mean of its node.
+
+        Raises:
+            ValueError: If ``R`` at ``state`` is not positive-definite.
         """
         observation_matrix, observation_noise = self._linearized_sensor(node, state)
+        if state is not None:
+            # R at the predicted mean is inverted in the message, so it must be
+            # positive-definite there. Skipped under a trace, like every such check.
+            validate_covariance(
+                observation_noise,
+                f"node {node}'s observation_noise at its predicted mean",
+                require_definite=True,
+            )
         return likelihood_message(observation_matrix, observation_noise, reading)
 
     def _check_prior(self, prior: Belief) -> None:
@@ -395,12 +434,12 @@ class CouplingGraph:
                 f"{type(readings).__name__}"
             )
         for node, reading in readings.items():
-            if node not in self.observations:
+            if node not in self.observation_models:
                 raise ValueError(
-                    f"node {node} has no sensor, so it cannot take a reading. The "
-                    f"observed nodes are {sorted(self.observations)}."
+                    f"node {node!r} has no sensor, so it cannot take a reading. The "
+                    f"observed nodes are {sorted(self.observation_models)}."
                 )
-            if not self.observations[node].is_fixed:
+            if not self.observation_models[node].is_fixed:
                 raise ValueError(
                     f"node {node} carries a state-dependent sensor, and static "
                     "inference has no predicted mean to evaluate R(x) at. Run the "
@@ -414,7 +453,7 @@ class CouplingGraph:
                     f"got {shape}"
                 )
 
-    def infer(self, readings: Mapping[int, ArrayLike], prior: Belief) -> Belief:
+    def infer_root(self, readings: Mapping[int, ArrayLike], prior: Belief) -> Belief:
         """Compute the marginal belief at the root from per-node readings and a prior.
 
         Each reading becomes a message about its node; those messages are passed up the
@@ -477,25 +516,25 @@ class CouplingGraph:
     ) -> dict[int, CanonicalGaussian]:
         """Every node's exact marginal by two-pass belief propagation over the tree.
 
-        Where ``infer`` collects to the root and returns only that one marginal, this
-        adds a downward *distribute* pass so **every** node's marginal comes back — the
-        cheap, structure-exploiting alternative to a dense joint solve. Each seed is a
-        node's already-formed canonical message (its local prior + evidence, combined by
-        the caller); marginalisation stays in canonical form, so no node is inverted on
-        this path.
+        Where ``infer_root`` collects to the root and returns only that one marginal,
+        this adds a downward *distribute* pass so **every** node's marginal comes back —
+        the cheap, structure-exploiting alternative to a dense joint solve. Each seed is
+        a node's already-formed canonical message (its local prior + evidence, combined
+        by the caller); marginalisation stays in canonical form, so no node is inverted
+        on this path.
 
         Args:
             seeds: a canonical message per node — the node's local information. Unlike
-                ``infer``'s raw ``readings``, these are ready-made ``CanonicalGaussian``
-                messages, not readings still needing a sensor.
+                ``infer_root``'s raw ``readings``, these are ready-made
+                ``CanonicalGaussian`` messages, not readings still needing a sensor.
 
         Returns:
             A ``CanonicalGaussian`` marginal per node index; call ``.to_moment()`` on
             any one for its ``(mean, cov)``.
         """
-        # Collect: fold each subtree up into its parent (as ``infer``), but cache every
-        # edge's upward message for the distribute pass. ``below[node]`` ends holding
-        # the node's own seed plus everything its children sent up.
+        # Collect: fold each subtree up into its parent (as ``infer_root``), but cache
+        # every edge's upward message for the distribute pass. ``below[node]`` ends
+        # holding the node's own seed plus everything its children sent up.
         below = dict(seeds)
         up_msg = {}
         for node in self._collect_order:
@@ -529,8 +568,15 @@ def _as_bool(value: object) -> bool:
     return bool(value)
 
 
+def _scalar_of(array: NDArray[Any]) -> object:
+    """A 0-d array's one element, as the NumPy scalar it holds."""
+    return array[()]
+
+
 def _as_int(value: object, name: str) -> int:
     """``value`` as an ``int``. A bool and a non-integral number are refused."""
+    if isinstance(value, np.ndarray) and value.ndim == 0:
+        value = _scalar_of(value)
     if isinstance(value, float | np.floating) and float(value).is_integer():
         return int(value)
     if isinstance(value, bool) or not isinstance(value, SupportsIndex):

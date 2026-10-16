@@ -31,7 +31,6 @@ from cpomdp.types import Belief
 def _hub_graph(*, fast_relevant=True, slow_relevant=False):
     # hub 0 -> fast 1 (gradient path) and slow 2 (methylation-like); observe 1 and 2.
     return CouplingGraph(
-        root=0,
         dims=(1, 1, 1),
         couplings=(
             Coupling(
@@ -49,7 +48,7 @@ def _hub_graph(*, fast_relevant=True, slow_relevant=False):
                 efe_relevant=slow_relevant,
             ),
         ),
-        observations={
+        observation_models={
             1: FixedSensor([[1.0]], observation_noise=[[0.1]]),
             2: FixedSensor([[1.0]], observation_noise=[[0.1]]),
         },
