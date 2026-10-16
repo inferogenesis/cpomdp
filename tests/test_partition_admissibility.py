@@ -21,40 +21,43 @@ from cpomdp.backends.base import InadmissiblePartitionError
 from cpomdp.backends.coupling import CouplingGraphBackend
 from cpomdp.efe import policy_efe_ffg, policy_efe_ffg_trace
 from cpomdp.enumeration import ChunkedEfeSearch, EnumeratedEfeSearch, FiniteActionSet
-from cpomdp.ffg.factors.linear_gaussian import (
-    GaussianCoupling,
-    GaussianObservation,
-    GaussianTransition,
-)
+from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
 from cpomdp.ffg.graph import Coupling, CouplingGraph
+from cpomdp.observation import CallableSensor, FixedSensor
 from cpomdp.selection import FfgEfeSelector, ObservationGoal, Preference
 from cpomdp.types import Belief
 
 
-def _hub_graph(*, fast_relevant=True, slow_relevant=False):
+def _sharp_near_zero(state, params):
+    """R(x) sharpest at zero, so the action moves the information term."""
+    return params["r0"] * (1.0 + jnp.dot(state, state)) * jnp.eye(1)
+
+
+def _hub_graph(*, fast_relevant=True, slow_relevant=False, fast_sensor=None):
     # hub 0 -> fast 1 (gradient path) and slow 2 (methylation-like); observe 1 and 2.
+    if fast_sensor is None:
+        fast_sensor = FixedSensor([[1.0]], observation_noise=[[0.1]])
     return CouplingGraph(
-        root=0,
         dims=(1, 1, 1),
         couplings=(
             Coupling(
                 0,
                 1,
-                GaussianCoupling([[0.8]], coupling_noise=[[0.05]]),
-                1.0,
+                [[0.8]],
+                coupling_noise=[[0.05]],
                 efe_relevant=fast_relevant,
             ),
             Coupling(
                 0,
                 2,
-                GaussianCoupling([[0.6]], coupling_noise=[[0.05]]),
-                1.0,
+                [[0.6]],
+                coupling_noise=[[0.05]],
                 efe_relevant=slow_relevant,
             ),
         ),
-        observations={
-            1: GaussianObservation([[1.0]], observation_noise=[[0.1]]),
-            2: GaussianObservation([[1.0]], observation_noise=[[0.1]]),
+        observation_models={
+            1: fast_sensor,
+            2: FixedSensor([[1.0]], observation_noise=[[0.1]]),
         },
     )
 
@@ -82,11 +85,9 @@ def _selector(backend, info_block=(0, 1, 2)):
 
 def test_coupling_carries_efe_relevant_flag():
     # The declared-relevance seam: an edge can be flagged EFE-load-bearing; default off.
-    flagged = Coupling(
-        0, 1, GaussianCoupling([[1.0]], coupling_noise=[[0.1]]), 1.0, efe_relevant=True
-    )
+    flagged = Coupling(0, 1, [[1.0]], coupling_noise=[[0.1]], efe_relevant=True)
     assert flagged.efe_relevant is True
-    plain = Coupling(0, 1, GaussianCoupling([[1.0]], coupling_noise=[[0.1]]), 1.0)
+    plain = Coupling(0, 1, [[1.0]], coupling_noise=[[0.1]])
     assert plain.efe_relevant is False
 
 
@@ -128,7 +129,9 @@ def test_pure_filtering_partition_is_not_guarded():
 
 def test_agent_rejects_inadmissible_partition():
     # The Agent builds the FFG selector, so the guard reaches the user-facing path too.
-    backend = _backend(_hub_graph(), partition=[[0, 2], [1]])
+    # It builds one only where the action moves the information term.
+    sensor = CallableSensor([[1.0]], _sharp_near_zero, {"r0": jnp.array(0.1)})
+    backend = _backend(_hub_graph(fast_sensor=sensor), partition=[[0, 2], [1]])
     with pytest.raises(InadmissiblePartitionError):
         Agent.from_backend(
             backend, ObservationGoal([0.5, 0.5], action_bounds=(-2.0, 2.0))
@@ -138,9 +141,10 @@ def test_agent_rejects_inadmissible_partition():
 def test_selector_still_selects_on_admissible_partition():
     # After admission, the selector actually works on the factored partition.
     backend = _backend(_hub_graph(), partition=[[0, 1], [2]])
-    sel = _selector(backend)
+    selector = _selector(backend)
     belief = Belief(mean=np.zeros(3), cov=np.eye(3))
-    action = sel.select(belief, Preference(goal=[0.5, 0.5], precision=np.eye(2)))
+    preference = Preference(target=[0.5, 0.5], precision=np.eye(2))
+    action = selector.select(belief, preference)
     assert np.asarray(action).shape == (1,)
 
 

@@ -52,7 +52,7 @@ def _setup():
     backend = demo.build_backend(epistemic_alive=True, cue_x=demo.CUE_DETOUR_X)
     belief = demo.start_belief()
     pref = Preference(
-        goal=[0.0, 0.0],
+        target=[0.0, 0.0],
         precision=[[demo.GOAL_PRECISION, 0.0], [0.0, demo.INFO_PRECISION]],
     )
     info_block = tuple(backend.block(demo.CONTEXT))
@@ -94,7 +94,7 @@ class TestH1CollapsesToAnchors:
         # node-restricted 1.72 — the ledger records both so they are never confused.
         backend, belief, pref, _ = _setup()
         a_sense, a_myopic = _anchor_actions()
-        whole = tuple(range(backend.n_total))
+        whole = tuple(range(backend.model.n_states))
         stat = crossover_statistic(
             backend,
             belief,
@@ -174,22 +174,22 @@ class TestReachWalkDeclaredMembers:
         a_sense, a_myopic = _anchor_actions()
         from cpomdp.efe import _ffg_efe_step
 
-        observation_matrix, _ = backend.observation_model
+        observation_matrix = backend.model.observation_matrix
         eps, gees = [], []
         for action in np.asarray(CROSSOVER_ACTION_SET.actions):
             predicted = backend.predicted_belief(belief, jnp.asarray(action))
-            noise = backend.observation_noise_at(predicted.mean)
-            g, parts = _ffg_efe_step(
+            noise = backend.model.observation_noise_at(predicted.mean)
+            efe = _ffg_efe_step(
                 predicted.mean,
                 predicted.cov,
                 observation_matrix,
                 noise,
-                pref.goal,
+                pref.target,
                 pref.precision,
                 info_block,
             )
-            eps.append(float(parts["epistemic"]))
-            gees.append(float(g))
+            eps.append(float(efe.epistemic))
+            gees.append(float(efe.g))
         members = [float(a[0]) for a in np.asarray(CROSSOVER_ACTION_SET.actions)]
         assert members[int(np.argmax(eps))] == a_sense
         assert members[int(np.argmin(gees))] == a_myopic
