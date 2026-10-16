@@ -4642,8 +4642,6 @@ versions break before 1.0, as cpomdp's do.
 **Status:** Accepted
 **Extends:** ADR-005, ADR-009 and ADR-032, whose functions keep their arithmetic and
 change what they return. ADR-069, which made `cpomdp.efe` a documented module.
-**Supersedes:** ADR-009's scope that `policy_efe` stays internal. ADR-069's public-module
-rule had already overridden it without naming it, and `policy_efe` now has an API page.
 **Phase:** v0.5.0, the public API review before release
 
 ### The question
@@ -4669,24 +4667,13 @@ result was a schedule.
 - The trace's moments are `predicted_mean`, `predicted_cov`, `posterior_cov` and
   `predicted_observation_cov`, the words `Belief.cov` and `epistemic_value` already
   use. `RolloutConditioning` names each condition number after the field it measures.
-  S is the predicted observation covariance in every public docstring.
-- The functions take one type, a `Preference`, and refuse anything else by type.
-  `ObservationGoal.preference` returns the goal's target and precision as one, built
-  once. Passing a goal raises a `TypeError` that names its `.preference`. A `StateGoal`
-  is refused as aiming at a state. The refusal names no function, since the selectors
-  and searches reach it through the same kernel.
+  S is the predicted observation covariance in every docstring.
+- The functions take one type, a `Preference`. `ObservationGoal.preference` returns the
+  goal's target and precision as one, built once. Passing a goal raises a `TypeError`
+  that names `goal.preference`. A `StateGoal` is refused as aiming at a state.
 - `lqr_schedule` and `kalman_schedule` are the dual pair. Each takes `horizon` by
   keyword and returns a schedule, `LQRSchedule` or `KalmanSchedule`, that reports its
   `horizon`. Both names were new in 0.5.0, so the rename breaks no release.
-- `lqr_schedule` takes its two costs as `precision` and `effort`, and `LQRSchedule`
-  keeps them under those names. A `StateGoal` already calls the same two matrices
-  that. `finite_horizon_lqr` called them `goal_precision` and `effort_penalty`.
-- Every stack in the pair is indexed by step of the plan. `costs_to_go[k]` is what
-  remains to pay before acting at step `k`, beside `gains[k]` and `covariances[k]`.
-  The control recursion counts steps remaining, and `finite_horizon_lqr` stored its
-  costs in that order. Its `cost_to_go[0]` was the zero terminal cost. The filter's
-  `covariances[0]` is the prior. A caller zipping the two got the wrong step with no
-  error. Both in-tree callers reversed the stack by hand.
 
 ### Alternatives
 
@@ -4707,26 +4694,58 @@ break lands.
 No deprecation shim was added. One for the dict keys or the letter fields would be a
 second way to read the same number.
 
-Reading the two fields by attribute and refusing on a missing one was the first form of
-the check. It scored any object with the right two fields. A goal carries a target and a
-precision too, so once the field names agree nothing tells a goal from a preference by
-its attributes. It also turned a fault inside a real `Preference` into a refusal of it.
-
 ### Consequences
 
 - `G, parts = expected_free_energy(...)` raises at the unpack. The fix is `result.g` and
   `result.pragmatic`. The changelog lists both renames under **Breaking**.
-- The old pair was the `(value, aux)` shape `jax.value_and_grad(..., has_aux=True)`
-  takes, and a record of three fields is not. A function differentiated that way
-  returns `(result.g, result)`. NumPy's `argmin` over a batched record flattens all
-  three fields and returns an index past the candidates without an error. The pair
-  raised. The `EfeResult` docstring says to rank and differentiate by `g`.
 - The per-cycle cost does not move. The record is built from scalars the scan already
-  returns. The type check runs once per trace under `jit` and `vmap`, which is how the
-  selectors and searches score.
-- A preference of another shape, such as the mixture RFC-002 defers, has to be a
-  `Preference` or widen the check.
+  returns. The preference is read by attribute, so a call that succeeds pays nothing for
+  the refusal.
+- A preference of another shape that has a `goal` and a `precision`, such as the mixture
+  RFC-002 defers, still scores.
 - `StateGoal` has no `preference` property. Its target is a state, and a `Preference`
   does not record its space, so one built from a `StateGoal` would score as a reading
   without complaint.
-- The Agent reads `objective.preference` as well, so one place converts a goal.
+- The Agent still builds its `Preference` from the goal's fields. Reading
+  `objective.preference` there would leave one place that converts a goal.
+
+## ADR-072 — the EFE functions check a Preference by type, and the LQR schedule takes the goal's names
+
+**Date:** 2026-10-16
+**Status:** Accepted
+**Supersedes:** ADR-071's attribute-read check of a preference, its "every docstring" for
+the name of S, and its silence on ADR-009. ADR-009's scope that `policy_efe` stays
+internal, which ADR-069's public-module rule had already overridden without naming it.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+ADR-071 read a preference's two fields by attribute and refused one that lacked them. A
+goal carries a target and a precision too, so once the field names agreed nothing told a
+goal from a preference by its attributes. The read also turned a fault inside a real
+`Preference` into a refusal of it. Separately, `lqr_schedule` took `goal_precision` and
+`effort_penalty` while `StateGoal` and `LQRController` say `precision` and `effort`, and
+it stored its costs in steps-remaining order while `kalman_schedule` stores plan order.
+
+### Decision
+
+The EFE functions refuse anything but a `Preference` by type. The refusal names no
+function, since the selectors and searches reach it through the same kernel, and the
+check runs once per trace under `jit` and `vmap`. `ObservationGoal.preference` returns
+the goal's target and precision as one, built once.
+
+`lqr_schedule` takes `precision` and `effort` and keeps them under those names.
+`costs_to_go[k]` is the cost that remains to pay before acting at step `k`, beside
+`gains[k]` and the filter's `covariances[k]`. Before, `cost_to_go[0]` was the zero
+terminal cost, and a caller zipping the two schedules got the wrong step with no error.
+
+S is the predicted observation covariance in every public docstring. Private research
+docstrings keep their own names. `EfeResult`'s docstring says to rank and differentiate
+by `g`, because NumPy's `argmin` over a batched record flattens all three fields and can
+return an index past the candidates without an error.
+
+### Consequences
+
+- An object with a target and a precision that is not a `Preference` is refused, where
+  it used to be scored.
+- Code that reversed `cost_to_go` by hand reads `costs_to_go` as it is.
