@@ -14,7 +14,7 @@ from cpomdp.enumeration import OpenLoopSelector, RecedingHorizonSelector
 from cpomdp.selection import (
     ActionSelector,
     EFESelector,
-    FfgEfeSelector,
+    FFGEFESelector,
     LQRSelector,
     ObservationGoal,
     Preference,
@@ -29,7 +29,7 @@ __all__ = ["Agent"]
 _STATE_SPACE_SELECTORS = (LQRSelector,)
 _OBSERVATION_SPACE_SELECTORS = (
     EFESelector,
-    FfgEfeSelector,
+    FFGEFESelector,
     RecedingHorizonSelector,
     OpenLoopSelector,
 )
@@ -116,7 +116,7 @@ def _selector_model(selector: ActionSelector) -> LinearGaussianModel | None:
     """The model a built-in selector scores under, or None for a custom one."""
     if isinstance(selector, EFESelector):
         return selector._model
-    if isinstance(selector, FfgEfeSelector):
+    if isinstance(selector, FFGEFESelector):
         return selector._backend.model
     if isinstance(selector, LQRSelector):
         return selector.controller.model
@@ -158,7 +158,7 @@ def _information_can_move(model: LinearGaussianModel) -> bool:
 
 def _efe_path(
     backend: InferenceBackend, objective: ObservationGoal
-) -> tuple[Preference, EFESelector | FfgEfeSelector]:
+) -> tuple[Preference, EFESelector | FFGEFESelector]:
     """The preference and the EFE selector an ``ObservationGoal`` asks for."""
     model = backend.model
     if model.control_matrix is None:
@@ -170,7 +170,7 @@ def _efe_path(
         # A StateGoal on a graph runs LQR on a model without its couplings, so a graph
         # user is pointed only at the EFE selector.
         way_out = (
-            "Pass a Preference with selector=FfgEfeSelector(...) to choose by EFE "
+            "Pass a Preference with selector=FFGEFESelector(...) to choose by EFE "
             "anyway."
             if is_graph
             else "Pass a StateGoal for the LQR path, or a Preference with "
@@ -212,12 +212,12 @@ def _efe_path(
 
 def _graph_efe_selector(
     backend: GraphBackend, objective: ObservationGoal
-) -> FfgEfeSelector:
+) -> FFGEFESelector:
     """The EFE selector for an ObservationGoal on a branching backend (issue #26).
 
     ``info_node`` names the latent *node* whose marginal info gain is the
     epistemic value. ``None`` aims at the whole joint state. Translate that node to
-    its joint-state block and hand it to the ``FfgEfeSelector``.
+    its joint-state block and hand it to the ``FFGEFESelector``.
     """
     if objective.horizon not in (None, 1):
         raise ValueError(
@@ -230,7 +230,7 @@ def _graph_efe_selector(
             info_block = backend.block(objective.info_node)
         except ValueError as error:
             raise ValueError(f"info_node {objective.info_node}: {error}") from error
-    return FfgEfeSelector(
+    return FFGEFESelector(
         backend,
         info_block=info_block,
         n_candidates=objective.n_candidates,

@@ -26,8 +26,8 @@ from cpomdp import efe
 from cpomdp.backends.coupling import CouplingGraphBackend
 from cpomdp.efe import policy_efe, policy_efe_ffg
 from cpomdp.enumeration import (
-    ChunkedEfeSearch,
-    EnumeratedEfeSearch,
+    ChunkedEFESearch,
+    EnumeratedEFESearch,
     FiniteActionSet,
     IncompleteEnumerationError,
     RecedingHorizonSelector,
@@ -88,21 +88,21 @@ SECOND = (
 # Each case: a search, and the per-step kernel its rollout traces through.
 SEARCHES = {
     "front-loaded flat": (
-        lambda: EnumeratedEfeSearch(_model(), _actions(), horizon=3),
+        lambda: EnumeratedEFESearch(_model(), _actions(), horizon=3),
         "_efe_step",
     ),
     "chunked flat": (
-        lambda: ChunkedEfeSearch(_model(), _actions(), horizon=3, chunk=5),
+        lambda: ChunkedEFESearch(_model(), _actions(), horizon=3, chunk=5),
         "_efe_step",
     ),
     "front-loaded graph": (
-        lambda: EnumeratedEfeSearch.over_backend(
+        lambda: EnumeratedEFESearch.over_backend(
             _backend(), _actions(), info_block=[0], horizon=3
         ),
         "_ffg_efe_step",
     ),
     "chunked graph": (
-        lambda: ChunkedEfeSearch.over_backend(
+        lambda: ChunkedEFESearch.over_backend(
             _backend(), _actions(), info_block=[0], horizon=3, chunk=5
         ),
         "_ffg_efe_step",
@@ -149,7 +149,7 @@ class TestEagerIdentity:
     def test_flat_scores_match_the_eager_vmap(self, belief_and_preference):
         belief, preference = belief_and_preference
         model = _model()
-        search = EnumeratedEfeSearch(model, _actions(), horizon=3)
+        search = EnumeratedEFESearch(model, _actions(), horizon=3)
         eager = jax.vmap(
             lambda policy: policy_efe(model, belief, policy, preference).g
         )(search.policies)
@@ -160,7 +160,7 @@ class TestEagerIdentity:
     def test_graph_scores_match_the_eager_vmap(self, belief_and_preference):
         belief, preference = belief_and_preference
         backend = _backend()
-        search = EnumeratedEfeSearch.over_backend(
+        search = EnumeratedEFESearch.over_backend(
             backend, _actions(), info_block=[0], horizon=3
         )
         eager = jax.vmap(
@@ -243,13 +243,13 @@ class TestCompiledLoop:
     def test_a_chunked_miscount_fails_eagerly_and_compiled(self, monkeypatch):
         # A masking bug that drops one lane. Eagerly the count is checked on the host.
         # Compiled, it is checked when the program runs, and the run fails.
-        real = ChunkedEfeSearch._scan_blocks
+        real = ChunkedEFESearch._scan_blocks
 
         def one_short(search, *args, **kwargs):
             argmin, best_policy, extra = real(search, *args, **kwargs)
             return argmin._replace(visited=argmin.visited - 1), best_policy, extra
 
-        monkeypatch.setattr(ChunkedEfeSearch, "_scan_blocks", one_short)
+        monkeypatch.setattr(ChunkedEFESearch, "_scan_blocks", one_short)
         search = SEARCHES["chunked flat"][0]()
         with pytest.raises(
             IncompleteEnumerationError, match="visited 26 of an expected"

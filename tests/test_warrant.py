@@ -21,7 +21,7 @@ import pytest
 
 from cpomdp.enumeration import (
     CompletenessCertificate,
-    EnumeratedEfeSearch,
+    EnumeratedEFESearch,
     FiniteActionSet,
     OpenLoopSelector,
     RecedingHorizonSelector,
@@ -1008,7 +1008,7 @@ class TestPublicSurface:
 
 class TestExistingLabelsUnchanged:
     def test_enumerated_search_is_still_proved(self):
-        search = EnumeratedEfeSearch(_model(), _finite_set([-1.0, 1.0]), horizon=2)
+        search = EnumeratedEFESearch(_model(), _finite_set([-1.0, 1.0]), horizon=2)
         assert search.warrant is Warrant.PROVED
 
     def test_grid_selector_is_still_corroborated(self):
@@ -1017,7 +1017,7 @@ class TestExistingLabelsUnchanged:
 
     @pytest.mark.parametrize("driver", [RecedingHorizonSelector, OpenLoopSelector])
     def test_enumerated_drivers_are_still_proved(self, driver):
-        search = EnumeratedEfeSearch(_model(), _finite_set([-1.0, 1.0]), horizon=2)
+        search = EnumeratedEFESearch(_model(), _finite_set([-1.0, 1.0]), horizon=2)
         assert driver(search).warrant is Warrant.PROVED
 
     def test_certificate_names_the_set_it_decided_over(self):
@@ -1038,7 +1038,7 @@ class TestExistingLabelsUnchanged:
 
     def test_search_still_scores(self):
         # The label is a property, so a broken search would still report PROVED.
-        search = EnumeratedEfeSearch(_model(), _finite_set([-1.0, 1.0]), horizon=2)
+        search = EnumeratedEFESearch(_model(), _finite_set([-1.0, 1.0]), horizon=2)
         result = search.evaluate(
             Belief([0.0, 0.0], [[1.0, 0.0], [0.0, 1.0]]),
             Preference(target=[0.0], precision=[[1.0]]),

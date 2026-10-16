@@ -1,6 +1,6 @@
 """The exhaustive enumerated search, scoring on an FFG backend (the scorer seam).
 
-``EnumeratedEfeSearch`` scores every ``A^H`` policy. On a flat model it scores with
+``EnumeratedEFESearch`` scores every ``A^H`` policy. On a flat model it scores with
 ``policy_efe``; ``over_backend`` scores with ``policy_efe_ffg`` on a coupling graph,
 aimed at a node's block. The enumeration, the certificate, and the cost are shared —
 only the per-policy scoring changes.
@@ -21,7 +21,7 @@ import numpy as np
 from _support import unit_prior
 from cpomdp.backends.coupling import CouplingGraphBackend
 from cpomdp.enumeration import (
-    EnumeratedEfeSearch,
+    EnumeratedEFESearch,
     FiniteActionSet,
     PolicyBudgetError,
 )
@@ -104,8 +104,8 @@ class TestOverBackendReducesToFlat:
         backend, model = _single_node_pair(state_dependent=state_dependent)
         action_set, belief, pref = _action_set(), _single_belief(), _pref()
         for h in (2, 3):
-            flat = EnumeratedEfeSearch(model, action_set, horizon=h)
-            ffg = EnumeratedEfeSearch.over_backend(
+            flat = EnumeratedEFESearch(model, action_set, horizon=h)
+            ffg = EnumeratedEFESearch.over_backend(
                 backend, action_set, info_block=range(2), horizon=h
             )
             r_flat = flat.evaluate(belief, pref)
@@ -126,7 +126,7 @@ class TestOverBackendReducesToFlat:
 class TestOverBackendSharedAccounting:
     def test_certificate_cost_and_warrant(self):
         backend, _ = _single_node_pair(state_dependent=False)
-        ffg = EnumeratedEfeSearch.over_backend(
+        ffg = EnumeratedEFESearch.over_backend(
             backend, _action_set(), info_block=range(2), horizon=2
         )
         assert ffg.warrant is Warrant.PROVED
@@ -137,7 +137,7 @@ class TestOverBackendSharedAccounting:
     def test_takes_the_same_policy_budget(self):
         backend, _ = _single_node_pair(state_dependent=False)
         with np.testing.assert_raises(PolicyBudgetError):
-            EnumeratedEfeSearch.over_backend(
+            EnumeratedEFESearch.over_backend(
                 backend, _action_set(), info_block=range(2), horizon=2, max_policies=8
             )
 
@@ -145,7 +145,7 @@ class TestOverBackendSharedAccounting:
         backend, _ = _single_node_pair(state_dependent=False)  # p = 1
         wrong = FiniteActionSet([[-1.0, 0.0], [1.0, 0.0]], version="v1")  # p = 2
         with np.testing.assert_raises(ValueError):
-            EnumeratedEfeSearch.over_backend(
+            EnumeratedEFESearch.over_backend(
                 backend, wrong, info_block=range(2), horizon=2
             )
 
@@ -157,7 +157,7 @@ class TestOverBackendOnCoupledTree:
         belief = Belief(mean=[0.2, -0.1], cov=[[0.7, 0.1], [0.1, 0.4]])
         pref = Preference(target=[0.5], precision=[[2.0]])
         info_block = tuple(backend.block(0))
-        ffg = EnumeratedEfeSearch.over_backend(
+        ffg = EnumeratedEFESearch.over_backend(
             backend, _action_set(), info_block=info_block, horizon=2
         )
         result = ffg.evaluate(belief, pref)

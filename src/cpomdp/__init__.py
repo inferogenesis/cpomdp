@@ -21,7 +21,7 @@ same sensors a flat model takes (``FixedSensor``, ``CallableSensor``) and whose
 ``CouplingGraphBackend`` with a per-node ``GaussianTransition``. A state-dependent
 ``R(x)`` on a coupled node cannot be flattened to a fixed linear-Gaussian model.
 Asking it to raises ``IncompatibleLinearizationError`` (ADR-019, ADR-020). The
-``Agent`` builds an ``FfgEfeSelector``, the FFG peer of ``EFESelector``, for an
+``Agent`` builds an ``FFGEFESelector``, the FFG peer of ``EFESelector``, for an
 ``ObservationGoal`` on such a backend. To choose with a selector of your own, pass
 a ``Preference`` and ``selector=``.
 
@@ -55,7 +55,7 @@ from cpomdp.observation import CallableSensor, FixedSensor, ObservationModel
 from cpomdp.selection import (
     ActionSelector,
     EFESelector,
-    FfgEfeSelector,
+    FFGEFESelector,
     LQRSelector,
     ObservationGoal,
     Preference,
@@ -89,7 +89,7 @@ __all__ = [
     "CouplingGraphBackend",
     "DynamicsNoiseModel",
     "EFESelector",
-    "FfgEfeSelector",
+    "FFGEFESelector",
     "FixedSensor",
     "GaussianTransition",
     "InadmissiblePartitionError",

@@ -2,7 +2,7 @@
 
 `policy_efe_trace(model, belief, policy, preference)` returns the `lax.scan` `ys`
 that `policy_efe` computes but sums-and-discards: per-step `(g, pragmatic, epistemic,
-μ⁺, Σ⁺, Σ_post, S)` as a `PolicyEfeTrace` NamedTuple of arrays stacked along a leading
+μ⁺, Σ⁺, Σ_post, S)` as a `PolicyEFETrace` NamedTuple of arrays stacked along a leading
 H axis. It is a diagnostic surface; it is NOT on the `EFESelector` hot path — the
 selector still calls `policy_efe(...)[0]`, whose `ys` stays the three lean scalars, so
 no H×n×n covariance is stacked under its `vmap`.
@@ -26,7 +26,7 @@ The locks:
 - `TestTraceTransforms` / `TestTraceIsPytree`: jit / vmap-over-policies / grad survive,
   and the NamedTuple is a pytree with seven leaves (no registration needed).
 
-Imports `policy_efe_trace`/`PolicyEfeTrace` directly, so until they land this module is
+Imports `policy_efe_trace`/`PolicyEFETrace` directly, so until they land this module is
 collection-red — the `ImportError` naming `policy_efe_trace` is the build cue.
 """
 
@@ -37,7 +37,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from cpomdp.dynamics import CallableDynamicsNoise
-from cpomdp.efe import PolicyEfeTrace, _efe_step, policy_efe, policy_efe_trace
+from cpomdp.efe import PolicyEFETrace, _efe_step, policy_efe, policy_efe_trace
 from cpomdp.observation import CallableSensor
 from cpomdp.selection import Preference
 from cpomdp.types import Belief, LinearGaussianModel
@@ -226,7 +226,7 @@ class TestTraceMatchesNumpyOracle:
                     )
 
     def test_fields_are_named_for_what_they_hold(self):
-        assert tuple(field.name for field in dataclasses.fields(PolicyEfeTrace)) == (
+        assert tuple(field.name for field in dataclasses.fields(PolicyEFETrace)) == (
             "g",
             "pragmatic",
             "epistemic",
@@ -349,5 +349,5 @@ class TestTraceIsPytree:
     def test_seven_leaves(self):
         model, belief, pref = _model(), _belief(), _obs_preference()
         trace = policy_efe_trace(model, belief, _policy([0.4, -0.2]), pref)
-        assert isinstance(trace, PolicyEfeTrace)
+        assert isinstance(trace, PolicyEFETrace)
         assert len(jax.tree_util.tree_leaves(trace)) == 7

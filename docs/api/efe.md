@@ -27,7 +27,7 @@ The scalar each candidate action is scored by, `G = pragmatic − epistemic`. Th
 
 ::: cpomdp.expected_free_energy
 
-::: cpomdp.efe.EfeResult
+::: cpomdp.efe.EFEResult
 
 ## Scoring a plan over several steps
 
@@ -51,7 +51,7 @@ The scalar each candidate action is scored by, `G = pragmatic − epistemic`. Th
 
 ::: cpomdp.efe.policy_efe_trace
 
-::: cpomdp.efe.PolicyEfeTrace
+::: cpomdp.efe.PolicyEFETrace
 
 ## On a factor graph
 

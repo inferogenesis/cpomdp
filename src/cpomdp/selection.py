@@ -29,7 +29,7 @@ from warrantlib import Warrant
 __all__ = [
     "ActionSelector",
     "EFESelector",
-    "FfgEfeSelector",
+    "FFGEFESelector",
     "LQRSelector",
     "ObservationGoal",
     "Preference",
@@ -274,7 +274,7 @@ class EFESelector:
     *sequence*. A genuinely sequential epistemic policy — move to sense, then exploit —
     needs a varying sequence the constant-action family cannot express, so at H > 1 the
     selector can still look myopic-ish on such tasks. True varying-sequence search is
-    ``EnumeratedEfeSearch`` in ``cpomdp.enumeration``, which enumerates every length-H
+    ``EnumeratedEFESearch`` in ``cpomdp.enumeration``, which enumerates every length-H
     sequence of a declared finite action set (ADR-031).
     """
 
@@ -305,7 +305,7 @@ class EFESelector:
             TypeError: If ``n_candidates`` or ``horizon`` is not an integer.
         """
         _require_scalar_control(
-            model.control_matrix, "EFESelector", "EnumeratedEfeSearch"
+            model.control_matrix, "EFESelector", "EnumeratedEFESearch"
         )
         candidates = _candidate_grid(action_bounds, n_candidates)
         horizon = _checked_horizon(horizon)
@@ -374,7 +374,7 @@ class EFESelector:
     def warrant(self) -> Warrant:
         """``CORROBORATED`` — the grid samples a continuum, it does not decide it.
 
-        The counterpart to ``EnumeratedEfeSearch.warrant`` (``PROVED``): the two search
+        The counterpart to ``EnumeratedEFESearch.warrant`` (``PROVED``): the two search
         families print in different vocabulary so a sampled result is never read as a
         decided one (ADR-031).
         """
@@ -389,7 +389,7 @@ class EFESelector:
         )
 
 
-class FfgEfeSelector:
+class FFGEFESelector:
     """EFE action selection over a branching FFG backend (issue #26).
 
     The FFG counterpart of [`EFESelector`][cpomdp.EFESelector]: instead of
@@ -433,8 +433,8 @@ class FfgEfeSelector:
         """
         _require_scalar_control(
             backend.model.control_matrix,
-            "FfgEfeSelector",
-            "EnumeratedEfeSearch.over_backend",
+            "FFGEFESelector",
+            "EnumeratedEFESearch.over_backend",
         )
         candidates = _candidate_grid(action_bounds, n_candidates)
         if info_block is None:
@@ -519,7 +519,7 @@ class FfgEfeSelector:
         """The horizon, the grid and the joint-state block the epistemic aims at."""
         lo, hi = float(self._candidates[0, 0]), float(self._candidates[-1, 0])
         return (
-            f"FfgEfeSelector(horizon={self.horizon}, n_candidates={self.n_candidates}, "
+            f"FFGEFESelector(horizon={self.horizon}, n_candidates={self.n_candidates}, "
             f"action_bounds=({lo}, {hi}), info_block={list(self._info_block)})"
         )
 
@@ -603,7 +603,7 @@ class ObservationGoal:
     ``horizon`` is how many steps each candidate is held and scored over. A candidate
     is one action repeated, so a longer horizon looks further along a constant push.
     It never scores a plan whose action changes, such as stepping to a cue and then
-    committing. That search is ``cpomdp.enumeration.EnumeratedEfeSearch``, passed to
+    committing. That search is ``cpomdp.enumeration.EnumeratedEFESearch``, passed to
     the Agent as a selector beside a [`Preference`][cpomdp.Preference]. Left as
     ``None``, the horizon is the shortest at which the target moves the scores, which
     the Agent reads off the model (ADR-068). On a double integrator observed in
@@ -612,7 +612,7 @@ class ObservationGoal:
     ``info_node`` optionally aims the epistemic term at a single latent *node* (info
     gain about that node's marginal, the factored-EFE regime on a branching backend,
     issue #26). ``None`` means whole-state info gain. The Agent dispatches an
-    ObservationGoal to an EFESelector, or to an FfgEfeSelector on a branching backend.
+    ObservationGoal to an EFESelector, or to an FFGEFESelector on a branching backend.
     Not a pytree. The Agent reads it once at construction and keeps its
     ``preference``, which it hands to the EFE functions.
     """

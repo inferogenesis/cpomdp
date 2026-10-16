@@ -89,7 +89,7 @@ THE DATA FLOW  (top → bottom: what goes in → what comes out)
       │
       ▼    G = pragmatic − epistemic
       │
-      ▼    OUT        return EfeResult(g=G, pragmatic=…, epistemic=…)
+      ▼    OUT        return EFEResult(g=G, pragmatic=…, epistemic=…)
 
 """
 
@@ -115,8 +115,8 @@ if TYPE_CHECKING:
     from cpomdp.selection import Preference
 
 __all__ = [
-    "EfeResult",
-    "PolicyEfeTrace",
+    "EFEResult",
+    "PolicyEFETrace",
     "expected_free_energy",
     "policy_efe",
     "policy_efe_ffg",
@@ -127,13 +127,13 @@ __all__ = [
 
 @jax.tree_util.register_dataclass
 @dataclass(frozen=True)
-class EfeResult:
+class EFEResult:
     """Expected free energy and the two terms it is made of.
 
     [`expected_free_energy`][cpomdp.expected_free_energy],
     [`policy_efe`][cpomdp.efe.policy_efe] and
     [`policy_efe_ffg`][cpomdp.efe.policy_efe_ffg] return one.
-    [`PolicyEfeTrace`][cpomdp.efe.PolicyEfeTrace] has the same three fields, one entry
+    [`PolicyEFETrace`][cpomdp.efe.PolicyEFETrace] has the same three fields, one entry
     per step. Fields are read by name. A record does not index or unpack, as the search
     results do not.
 
@@ -158,10 +158,10 @@ class EfeResult:
 
 @jax.tree_util.register_dataclass
 @dataclass(frozen=True)
-class PolicyEfeTrace:
+class PolicyEFETrace:
     """One H-step rollout's per-step record, each field stacked along a leading H axis.
 
-    The first three fields are the per-step [`EfeResult`][cpomdp.efe.EfeResult], and
+    The first three fields are the per-step [`EFEResult`][cpomdp.efe.EFEResult], and
     each sums to the matching field of the rollout's result. The rest are the moments
     the rollout carries between steps, kept for inspection: the covariance a policy
     carries, and the matrices whose conditioning the rollout depends on.
@@ -196,12 +196,12 @@ class PolicyEfeTrace:
 
 
 @dataclass(frozen=True)
-class _EfeStep:
+class _EFEStep:
     """One EFE step: the public split plus the moments the rollout propagates.
 
     ``expected_free_energy`` exposes only the first three fields. The H-step rollout
     (``policy_efe``) also needs the predicted moments to propagate the belief, named as
-    ``PolicyEfeTrace`` names them. It fetches its own ``C``. Consumed locally, it never
+    ``PolicyEFETrace`` names them. It fetches its own ``C``. Consumed locally, it never
     crosses a ``jit``/``vmap``/``scan`` boundary, so it needs no pytree registration.
     """
 
@@ -218,7 +218,7 @@ def expected_free_energy(
     belief: Belief,
     action: Float64[Array, "p"],
     preference: "Preference",
-) -> EfeResult:
+) -> EFEResult:
     """Expected Free Energy of taking ``action`` from ``belief``, and its split.
 
     The locked linear-Gaussian definition (ADR-005), with the sensor read at the
@@ -258,7 +258,7 @@ def expected_free_energy(
             ``goal.preference``.
 
     Returns:
-        An [`EfeResult`][cpomdp.efe.EfeResult] holding the scalar EFE G in its ``g``
+        An [`EFEResult`][cpomdp.efe.EFEResult] holding the scalar EFE G in its ``g``
         field and its two non-negative terms, ``pragmatic`` and ``epistemic``. Lower G
         is preferred.
 
@@ -283,7 +283,7 @@ def expected_free_energy(
         goal,
         precision,
     )
-    return EfeResult(g=step.g, pragmatic=step.pragmatic, epistemic=step.epistemic)
+    return EFEResult(g=step.g, pragmatic=step.pragmatic, epistemic=step.epistemic)
 
 
 def policy_efe(
@@ -291,7 +291,7 @@ def policy_efe(
     belief: Belief,
     policy: Float64[Array, "H p"],
     preference: "Preference",
-) -> EfeResult:
+) -> EFEResult:
     """Summed EFE of a horizon-H ``policy`` from ``belief``.
 
     [`EFESelector`][cpomdp.EFESelector] above horizon 1 and the flat exhaustive
@@ -312,7 +312,7 @@ def policy_efe(
             ``expected_free_energy``.
 
     Returns:
-        An [`EfeResult`][cpomdp.efe.EfeResult] with each field summed over the
+        An [`EFEResult`][cpomdp.efe.EFEResult] with each field summed over the
         horizon.
 
     Raises:
@@ -336,7 +336,7 @@ def policy_efe(
         return new_carry, (tr.g, tr.pragmatic, tr.epistemic)
 
     _, (gs, prags, epis) = lax.scan(scalars_only, (belief.mean, belief.cov), policy)
-    return EfeResult(g=jnp.sum(gs), pragmatic=jnp.sum(prags), epistemic=jnp.sum(epis))
+    return EFEResult(g=jnp.sum(gs), pragmatic=jnp.sum(prags), epistemic=jnp.sum(epis))
 
 
 # The rollout's scan carry: the propagated belief moments (mean μ, cov Σ) threaded
@@ -346,7 +346,7 @@ _RolloutCarry = tuple[Float64[Array, "n"], Float64[Array, "n n"]]
 # One rollout scan step: (carry, action) -> (next carry, that step's trace record).
 _RolloutStep = Callable[
     [_RolloutCarry, Float64[Array, "p"]],
-    tuple[_RolloutCarry, PolicyEfeTrace],
+    tuple[_RolloutCarry, PolicyEFETrace],
 ]
 
 
@@ -355,7 +355,7 @@ def policy_efe_trace(
     belief: Belief,
     policy: Float64[Array, "H p"],
     preference: "Preference",
-) -> PolicyEfeTrace:
+) -> PolicyEFETrace:
     """Per-step trace of the H-step rollout, the diagnostic sibling of ``policy_efe``.
 
     Runs the same scan as [`policy_efe`][cpomdp.efe.policy_efe] and keeps the whole
@@ -375,7 +375,7 @@ def policy_efe_trace(
             ``expected_free_energy``.
 
     Returns:
-        A [`PolicyEfeTrace`][cpomdp.efe.PolicyEfeTrace] of arrays stacked along a
+        A [`PolicyEFETrace`][cpomdp.efe.PolicyEFETrace] of arrays stacked along a
         leading H axis.
 
     Raises:
@@ -427,7 +427,7 @@ def _rollout_body(
             r.predicted_observation_cov, p_xo.T
         )
         sigma_post = 0.5 * (sigma_post + sigma_post.T)
-        return (r.predicted_mean, sigma_post), PolicyEfeTrace(
+        return (r.predicted_mean, sigma_post), PolicyEFETrace(
             g=r.g,
             pragmatic=r.pragmatic,
             epistemic=r.epistemic,
@@ -447,7 +447,7 @@ def policy_efe_ffg(
     preference: "Preference",
     *,
     info_block: Sequence[int],
-) -> EfeResult:
+) -> EFEResult:
     """Summed EFE of a horizon-H ``policy`` over a branching FFG backend.
 
     The graph counterpart of [`policy_efe`][cpomdp.efe.policy_efe]. Each step scores
@@ -461,7 +461,7 @@ def policy_efe_ffg(
 
     The ``backend`` is held as a closure constant, since it is not a JAX pytree. This
     composes under ``jit``, ``vmap`` and ``grad`` over the array arguments, the way
-    [`FfgEfeSelector`][cpomdp.FfgEfeSelector] ``vmap``s its per-candidate score.
+    [`FFGEFESelector`][cpomdp.FFGEFESelector] ``vmap``s its per-candidate score.
 
     Args:
         backend: The FFG inference backend. It supplies ``predicted_belief``
@@ -477,7 +477,7 @@ def policy_efe_ffg(
             value.
 
     Returns:
-        An [`EfeResult`][cpomdp.efe.EfeResult] with each field summed over the
+        An [`EFEResult`][cpomdp.efe.EFEResult] with each field summed over the
         horizon.
 
     Raises:
@@ -498,7 +498,7 @@ def _policy_efe_ffg(
     policy: Float64[Array, "H p"],
     preference: "Preference",
     info_block: tuple[int, ...],
-) -> EfeResult:
+) -> EFEResult:
     """``policy_efe_ffg`` on an ``info_block`` already checked, for the searches.
 
     A search checks its target once at construction and then scores every policy in
@@ -516,15 +516,15 @@ def _policy_efe_ffg(
         return new_carry, (tr.g, tr.pragmatic, tr.epistemic)
 
     _, (gs, prags, epis) = lax.scan(scalars_only, belief, policy)
-    return EfeResult(g=jnp.sum(gs), pragmatic=jnp.sum(prags), epistemic=jnp.sum(epis))
+    return EFEResult(g=jnp.sum(gs), pragmatic=jnp.sum(prags), epistemic=jnp.sum(epis))
 
 
 # One FFG rollout scan step: (joint belief, action) -> (next joint belief, trace).
 # The carry is the whole Belief (a registered pytree), unlike the flat rollout's bare
 # (mean, cov) tuple, because ``predicted_belief`` consumes and returns a Belief.
-_FfgRolloutStep = Callable[
+_FFGRolloutStep = Callable[
     [Belief, Float64[Array, "p"]],
-    tuple[Belief, PolicyEfeTrace],
+    tuple[Belief, PolicyEFETrace],
 ]
 
 
@@ -535,7 +535,7 @@ def policy_efe_ffg_trace(
     preference: "Preference",
     *,
     info_block: Sequence[int],
-) -> PolicyEfeTrace:
+) -> PolicyEFETrace:
     """Per-step trace of the FFG rollout, the diagnostic sibling of ``policy_efe_ffg``.
 
     Runs the same scan as [`policy_efe_ffg`][cpomdp.efe.policy_efe_ffg] and keeps the
@@ -557,7 +557,7 @@ def policy_efe_ffg_trace(
             value.
 
     Returns:
-        A [`PolicyEfeTrace`][cpomdp.efe.PolicyEfeTrace], the type the flat rollout
+        A [`PolicyEFETrace`][cpomdp.efe.PolicyEFETrace], the type the flat rollout
         emits, of arrays stacked along a leading H axis.
 
     Raises:
@@ -663,7 +663,7 @@ def _ffg_rollout_body(
     goal: Float64[Array, "m"],
     precision: Float64[Array, "m m"],
     info_block: Sequence[int],
-) -> _FfgRolloutStep:
+) -> _FFGRolloutStep:
     """Build the shared ``lax.scan`` step for the FFG H-step rollout.
 
     One per-step arithmetic driven by both ``policy_efe_ffg`` (which keeps only the
@@ -701,7 +701,7 @@ def _ffg_rollout_body(
         p_xo = predicted.cov @ observation_matrix.T
         sigma_post = predicted.cov - p_xo @ jnp.linalg.solve(s, p_xo.T)
         sigma_post = 0.5 * (sigma_post + sigma_post.T)
-        return Belief(mean=predicted.mean, cov=sigma_post), PolicyEfeTrace(
+        return Belief(mean=predicted.mean, cov=sigma_post), PolicyEFETrace(
             g=scored.g,
             pragmatic=scored.pragmatic,
             epistemic=scored.epistemic,
@@ -794,7 +794,7 @@ def _ffg_efe_step(
     goal: Float64[Array, "m"],
     precision: Float64[Array, "m m"],
     info_block: Sequence[int],
-) -> EfeResult:
+) -> EFEResult:
     """One EFE step over the FFG's predicted joint, with a node-targeted epistemic.
 
     The FFG counterpart of ``_efe_step`` (issue #26). It takes the predicted joint
@@ -839,7 +839,7 @@ def _ffg_efe_step(
         sigma_plus, observation_matrix, observation_noise, info_block
     )
 
-    return EfeResult(g=pragmatic - epistemic, pragmatic=pragmatic, epistemic=epistemic)
+    return EFEResult(g=pragmatic - epistemic, pragmatic=pragmatic, epistemic=epistemic)
 
 
 def _efe_step(
@@ -850,7 +850,7 @@ def _efe_step(
     action: Float64[Array, "p"],
     goal: Float64[Array, "m"],
     precision: Float64[Array, "m m"],
-) -> _EfeStep:
+) -> _EFEStep:
     # --- predict: push the belief one step through the dynamics under `action` ---
     # Mirrors the covariance predict in kalman._gain_and_posterior_cov (cov_pred);
     # NB within THIS step the action moves only the mean, so Σ⁺ here does not see it —
@@ -913,7 +913,7 @@ def _efe_step(
     # FRAGILE(lit) #5: G = pragmatic − epistemic (minimise). Pairing cross-entropy
     # with −info-gain is decomposition (b); it is self-consistent (no double-count).
     g = pragmatic - epistemic
-    return _EfeStep(
+    return _EFEStep(
         g=g,
         pragmatic=pragmatic,
         epistemic=epistemic,

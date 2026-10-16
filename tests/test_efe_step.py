@@ -3,12 +3,12 @@
 efe.py's one-step kernel is being split (Fowler "Extract Function") into a private
 `_efe_step` that the H-step rollout (`policy_efe`, B2) will `lax.scan` over. B1's whole
 job is to make that split **arithmetically inert**: the public `expected_free_energy`
-keeps returning a byte-identical `EfeResult`, and `_efe_step` additionally surfaces the
+keeps returning a byte-identical `EFEResult`, and `_efe_step` additionally surfaces the
 three intermediates the rollout consumes — `(μ⁺, Σ⁺, S)` — with **no `C`** (the rollout
 fetches its own `C` only where it propagates; see the build plan Phase 3 / B1).
 
 Target: `_efe_step(model, mu, sigma, control, action, goal, precision)` returns an
-internal `_EfeStep` (g, pragmatic, epistemic, predicted_mean, predicted_cov,
+internal `_EFEStep` (g, pragmatic, epistemic, predicted_mean, predicted_cov,
 predicted_observation_cov), the public split plus the moments B2 propagates.
 
 Two locks live here:
@@ -18,8 +18,8 @@ Two locks live here:
   `allclose` (the project's byte-identical discipline, RFC-001). Robust to
   XLA drift: both sides move together, so only a real arithmetic change trips it. Covers
   all three branches the extraction moves: fixed (`None`), `R(x)`, `Q(x)`.
-- `TestEfeStepContract` pins the signature, the `_EfeStep` fields, the byte-identical
-  `EfeResult` the wrapper exposes, and the three intermediates' values (vs independent
+- `TestEfeStepContract` pins the signature, the `_EFEStep` fields, the byte-identical
+  `EFEResult` the wrapper exposes, and the three intermediates' values (vs independent
   NumPy), including a shape check that `.predicted_observation_cov` is `S` (m×m), not
   `C` (m×n).
 

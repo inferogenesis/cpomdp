@@ -20,11 +20,11 @@ from cpomdp.agent import Agent
 from cpomdp.backends.base import InadmissiblePartitionError
 from cpomdp.backends.coupling import CouplingGraphBackend
 from cpomdp.efe import policy_efe_ffg, policy_efe_ffg_trace
-from cpomdp.enumeration import ChunkedEfeSearch, EnumeratedEfeSearch, FiniteActionSet
+from cpomdp.enumeration import ChunkedEFESearch, EnumeratedEFESearch, FiniteActionSet
 from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
 from cpomdp.ffg.graph import Coupling, CouplingGraph
 from cpomdp.observation import CallableSensor, FixedSensor
-from cpomdp.selection import FfgEfeSelector, ObservationGoal, Preference
+from cpomdp.selection import FFGEFESelector, ObservationGoal, Preference
 from cpomdp.types import Belief
 
 
@@ -78,7 +78,7 @@ def _backend(graph, partition=None):
 
 
 def _selector(backend, info_block=(0, 1, 2)):
-    return FfgEfeSelector(
+    return FFGEFESelector(
         backend, info_block=info_block, n_candidates=11, action_bounds=(-2.0, 2.0)
     )
 
@@ -160,7 +160,7 @@ def _actions():
 
 def test_searches_reject_partition_severing_efe_edge():
     backend = _backend(_hub_graph(), partition=_SEVERING)
-    for search in (EnumeratedEfeSearch, ChunkedEfeSearch):
+    for search in (EnumeratedEFESearch, ChunkedEFESearch):
         with pytest.raises(InadmissiblePartitionError, match="sever"):
             search.over_backend(backend, _actions(), info_block=range(3), horizon=2)
 
@@ -181,7 +181,7 @@ def test_rollouts_reject_partition_severing_efe_edge():
 def test_info_block_must_name_distinct_joint_indices(info_block, match):
     backend = _backend(_hub_graph())
     with pytest.raises(ValueError, match=match):
-        EnumeratedEfeSearch.over_backend(
+        EnumeratedEFESearch.over_backend(
             backend, _actions(), info_block=info_block, horizon=2
         )
     with pytest.raises(ValueError, match=match):

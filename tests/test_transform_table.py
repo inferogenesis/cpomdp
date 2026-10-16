@@ -20,7 +20,7 @@ from cpomdp import (
     CouplingGraph,
     CouplingGraphBackend,
     EFESelector,
-    FfgEfeSelector,
+    FFGEFESelector,
     FixedSensor,
     GaussianTransition,
     KalmanBackend,
@@ -34,7 +34,7 @@ from cpomdp import (
 )
 from cpomdp.efe import policy_efe
 from cpomdp.enumeration import (
-    EnumeratedEfeSearch,
+    EnumeratedEFESearch,
     FiniteActionSet,
     OpenLoopSelector,
     RecedingHorizonSelector,
@@ -161,7 +161,7 @@ def test_the_efe_functions_trace():
 def _selectors():
     model = _rx_model()
     preference = Preference([1.0])
-    search = EnumeratedEfeSearch(
+    search = EnumeratedEFESearch(
         model, FiniteActionSet([[-1.0], [0.0], [1.0]], version="v1"), horizon=2
     )
     graph = _graph_backend()
@@ -175,13 +175,13 @@ def _selectors():
             id="EFESelector",
         ),
         pytest.param(
-            FfgEfeSelector(
+            FFGEFESelector(
                 graph, info_block=range(2), n_candidates=5, action_bounds=(-1.0, 1.0)
             ),
             unit_prior(graph.graph),
             preference,
             True,
-            id="FfgEfeSelector",
+            id="FFGEFESelector",
         ),
         pytest.param(
             LQRSelector(controller),
@@ -260,7 +260,7 @@ def test_a_jitted_sample_action_raises_before_it_keeps_the_action():
 
 def test_a_jitted_open_loop_selector_leaks_its_plan():
     model = _rx_model()
-    search = EnumeratedEfeSearch(
+    search = EnumeratedEFESearch(
         model, FiniteActionSet([[-1.0], [0.0], [1.0]], version="v1"), horizon=2
     )
     selector, preference = OpenLoopSelector(search), Preference([1.0])

@@ -8,7 +8,7 @@ happens and shows why.
 Two measurements, and the distinction between them is the whole point.
 
 - **The decisive one is selection-free.** For each horizon the *exhaustive* argmin over
-  every ``A^H`` action sequence is computed by ``EnumeratedEfeSearch.over_backend``. It
+  every ``A^H`` action sequence is computed by ``EnumeratedEFESearch.over_backend``. It
   is prior-ward (a reach) through H = 6 and cue-ward (a two-phase walk) at H = 7, and
   each horizon is an exact finite enumeration, so no policy is chosen with knowledge of
   the outcome. This is what carries the result.
@@ -52,9 +52,9 @@ from cpomdp.crossover import crossover_statistic
 from cpomdp.diagnostics import is_positive_definite, rollout_conditioning
 from cpomdp.efe import policy_efe_ffg, policy_efe_ffg_trace
 from cpomdp.enumeration import (
-    ChunkedEfeSearch,
+    ChunkedEFESearch,
     CompletenessCertificate,
-    EnumeratedEfeSearch,
+    EnumeratedEFESearch,
     FiniteActionSet,
 )
 from cpomdp.selection import Preference
@@ -139,7 +139,7 @@ def _reach(horizon: int):
 def argmin_at(horizon: int, action_set=ACTION_SET):
     """The exhaustive argmin at a horizon: ``(n_policies, Gmin, argmin, cue_ward)``."""
     backend, belief, preference, info_block = _setup()
-    search = EnumeratedEfeSearch.over_backend(
+    search = EnumeratedEFESearch.over_backend(
         backend, action_set, info_block=info_block, horizon=horizon
     )
     result = search.evaluate(belief, preference)
@@ -247,7 +247,7 @@ def measure_refinement(action_set, horizon: int) -> RefinementRow:
             "null it produces is geometry and not a result (registered void guard)"
         )
     backend, belief, preference, info_block = _setup()
-    search = ChunkedEfeSearch.over_backend(
+    search = ChunkedEFESearch.over_backend(
         backend, action_set, info_block=info_block, horizon=horizon
     )
     result = search.evaluate(belief, preference)
@@ -419,7 +419,7 @@ def measure_extension(max_horizon: int = EXT_BAR) -> ExtensionMeasurement:
     backend, belief, preference, info_block = _setup()
     policy = ()
     for horizon in range(1, max_horizon + 1):
-        result = EnumeratedEfeSearch.over_backend(
+        result = EnumeratedEFESearch.over_backend(
             backend, EXT_SET, info_block=info_block, horizon=horizon
         ).evaluate(belief, preference)
         policy = np.asarray(result.best_policy).ravel()
@@ -431,7 +431,7 @@ def measure_extension(max_horizon: int = EXT_BAR) -> ExtensionMeasurement:
 def measure_flip(horizon: int) -> FlipMeasurement:
     """Enumerate at ``horizon`` and read off everything the falsifiers need."""
     backend, belief, preference, info_block = _setup()
-    result = EnumeratedEfeSearch.over_backend(
+    result = EnumeratedEFESearch.over_backend(
         backend, ACTION_SET, info_block=info_block, horizon=horizon
     ).evaluate(belief, preference)
     walk, reach = _numpy_score(_walk(horizon)), _numpy_score(_reach(horizon))
@@ -617,7 +617,7 @@ def epistemic_counterfactual(horizon=FLIP_H, actions=None):
     g_all = np.concatenate(gs)
     prag_all = np.concatenate(prags)
 
-    def cue_ward(scores):  # NaN-safe argmin, matching EnumeratedEfeSearch
+    def cue_ward(scores):  # NaN-safe argmin, matching EnumeratedEFESearch
         best = int(np.argmin(np.where(np.isnan(scores), np.inf, scores)))
         return bool(np.cumsum(combos[best]).max() >= 0.5)
 
@@ -825,7 +825,7 @@ def falsifiers(
     # length-H sequences and never re-plans, so this argmin is an open-loop one. The
     # same statistic under `RecedingHorizonSelector` is a different measurement, and a
     # row that does not name the seam reads as either (ADR-034).
-    seam = "scored open-loop (EnumeratedEfeSearch.evaluate, no re-planning)"
+    seam = "scored open-loop (EnumeratedEFESearch.evaluate, no re-planning)"
     return (
         CheckReport(
             name="1. no crossover at feasible H",

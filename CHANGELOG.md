@@ -281,9 +281,9 @@ certainty equivalence is optimal, and no use of the readings beats it.
   policies. Each row is a `PROVED` report carrying its completeness certificates and a
   `Provenance` whose ordering git can check. The step-`0.5` cell was a re-measurement: the
   write-up published it before any commit built the set, and the numbers hold.
-- `cpomdp.enumeration.ChunkedEfeSearch` — the exhaustive search run in blocks, at a
+- `cpomdp.enumeration.ChunkedEFESearch` — the exhaustive search run in blocks, at a
   footprint the block sets rather than `|A|^H`. It enumerates the same set as
-  `EnumeratedEfeSearch`, earns the same `PROVED` certificate and takes the same model,
+  `EnumeratedEFESearch`, earns the same `PROVED` certificate and takes the same model,
   set and horizon, with `chunk` in place of a policy budget. `evaluate` returns a
   `SearchResult` with the argmin, its `G`, its index and the certificate. The
   front-loaded search returns `EnumeratedSearchResult`, a `SearchResult` that adds the
@@ -291,9 +291,9 @@ certainty equivalence is optimal, and no use of the readings beats it.
   take it, and the refinement cells of the fourth falsifier ran on it. `evaluate`
   composes with `jit`, `vmap` and `lax.scan`, where a callback checks the loop's count
   when the program runs. The searches and their drivers have an API page.
-- `cpomdp.enumeration.ExhaustiveEfeSearch`, the base both exhaustive searches share
+- `cpomdp.enumeration.ExhaustiveEFESearch`, the base both exhaustive searches share
   (ADR-083). It declares `evaluate`, `policies_at`, `n_policies`, `horizon`,
-  `cost_per_plan` and `warrant`. The drivers take any `ExhaustiveEfeSearch`, so a third
+  `cost_per_plan` and `warrant`. The drivers take any `ExhaustiveEFESearch`, so a third
   search or a wrapper drives them with no edit to either.
 - `Provenance` (warrantlib 0.2.0) — which ref registered a claim and which one measured
   it, plus one line saying what a reviewer will find at the first. A `PROVED` report
@@ -376,14 +376,14 @@ certainty equivalence is optimal, and no use of the readings beats it.
 - `Agent.selector`, read-only: the selector that chooses the agent's actions. For an
   `ObservationGoal` with no horizon set, `agent.selector.horizon` reads back the horizon
   taken from the model, and `agent.selector.cost_per_cycle` gives what each
-  `sample_action` costs. `Agent`, `EFESelector`, `FfgEfeSelector` and `LQRController`
+  `sample_action` costs. `Agent`, `EFESelector`, `FFGEFESelector` and `LQRController`
   print what they were built with, so an agent typed at a prompt shows the horizon or
   the gain it chose. The Agent page shows how to compare horizons.
 - The two grid selectors answer the same questions. `candidates` on each is the grid
   searched, shape `(n_candidates, p)`, so an example plotting the scores reads it rather
-  than rebuilding it. `FfgEfeSelector.warrant` reads `CORROBORATED`, as
+  than rebuilding it. `FFGEFESelector.warrant` reads `CORROBORATED`, as
   `EFESelector.warrant` does. Both default to 21 candidates, as `ObservationGoal` does,
-  and `FfgEfeSelector` aims at the whole joint state when `info_block` is left out, as
+  and `FFGEFESelector` aims at the whole joint state when `info_block` is left out, as
   `info_node=None` does on the goal. `n_candidates` is the grid's total count
   everywhere. `ObservationGoal` called it a resolution, which reads as per axis.
 
@@ -427,12 +427,12 @@ certainty equivalence is optimal, and no use of the readings beats it.
   checks it.
 - `EFESelector` described varying-sequence search as a deferred v0.4 `GradientEFESelector`
   seam, in its rendered class docstring and in the `ValueError` a `p > 1` caller hits. That
-  search shipped in v0.4.4 as `EnumeratedEfeSearch`, whose own docstring says it supports
+  search shipped in v0.4.4 as `EnumeratedEFESearch`, whose own docstring says it supports
   `p >= 1` and varying sequences (ADR-031). No such class has ever existed under `src/`.
   The name is still a planned continuous-action selector elsewhere, so only these two
   strings were wrong, not the name itself. The error path was the worse of the two: it
   told a caller to reimplement a search the package already had. Both now name
-  `EnumeratedEfeSearch` and the `FiniteActionSet` it needs.
+  `EnumeratedEFESearch` and the `FiniteActionSet` it needs.
 - The NumPy oracle in `examples/ffg/crossover.py` discarded `slogdet`'s sign on both halves
   of its per-step epistemic. v0.4.3 fixed the shipped kernel and the changelog did not say
   whether the oracle path went with it. It did not. Both paths now reject a matrix with an
@@ -525,7 +525,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `tau` or `dt` blamed `dynamics_noise`, an argument the caller never passed. A
   dimension of 1.5 was truncated to 1. A `CouplingGraphBackend` over a graph with
   no sensor failed in a zero-size reduction and now refuses, saying it has none.
-- The graph EFE rollouts and searches skipped the checks `FfgEfeSelector` makes on its
+- The graph EFE rollouts and searches skipped the checks `FFGEFESelector` makes on its
   target. `policy_efe_ffg`, `policy_efe_ffg_trace`, the crossover statistic and both
   searches' `over_backend` scored on a carry partition that severs an EFE-load-bearing
   edge, and the searches certified the argmin `PROVED`. None of them checked
@@ -550,11 +550,11 @@ certainty equivalence is optimal, and no use of the readings beats it.
   Each search now compiles once, on its first plan, and takes the belief and the
   preference as arguments. `tests/test_search_compilation.py` counts the traces across
   two plans and holds the compiled scores equal to the eager path's under `==`.
-- `FfgEfeSelector` refuses a backend with no control matrix or with more than one action
+- `FFGEFESelector` refuses a backend with no control matrix or with more than one action
   dimension, as `EFESelector` does. A control-free backend returned the grid's first
   action, and `p = 2` constructed and then failed at the first `select`. The two
   selectors now share one check.
-- `ObservationGoal`, `EFESelector` and `FfgEfeSelector` check `action_bounds` through
+- `ObservationGoal`, `EFESelector` and `FFGEFESelector` check `action_bounds` through
   one helper, as two finite scalars with the lower first. Each compared the pair with
   Python's `<`, which stops at the first element that differs, so
   `action_bounds=([-1, 5], [1, -5])` constructed with its second axis inverted and the
@@ -562,7 +562,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `n_candidates` are refused too, and `ObservationGoal.action_bounds` holds two floats.
   `ObservationGoal` and `EFESelector` check `horizon` through one helper as well. A
   fractional horizon passed both and failed later inside `range` or `jnp.repeat`.
-- When no candidate scores a finite `G`, `EFESelector` and `FfgEfeSelector` return NaN,
+- When no candidate scores a finite `G`, `EFESelector` and `FFGEFESelector` return NaN,
   and `Agent.sample_action` refuses it, naming the noise. Both selectors returned the
   first candidate, which looks decisive. With `R(x) = 1 - x0²` at `x0 = 2` every score
   was NaN and the selector returned the lower bound. The selectors stay jit-safe. The
@@ -571,6 +571,11 @@ certainty equivalence is optimal, and no use of the readings beats it.
 
 ### Changed
 
+- **Breaking:** a public class spells an acronym in capitals, as `EFESelector` and
+  `LQRController` already did. `FfgEfeSelector` is `FFGEFESelector`, and
+  `EnumeratedEfeSearch` and `ChunkedEfeSearch` are `EnumeratedEFESearch` and
+  `ChunkedEFESearch`. The classes new in this release take the same casing:
+  `EFEResult`, `PolicyEFETrace` and `ExhaustiveEFESearch` (ADR-087).
 - **Breaking:** `Agent` takes a model or a backend, never both. `Agent(model, objective)`
   filters with the default per-step `KalmanBackend`, and
   `Agent.from_backend(backend, objective)` takes any other engine, a
@@ -602,11 +607,11 @@ certainty equivalence is optimal, and no use of the readings beats it.
   type. A model whose only state dependence was `Q(x)` was refused as a fixed sensor and
   told to pass a `StateGoal`. `Q(x)` moves the information term through the predicted
   covariance, and such a model now gets an `EFESelector`. A `CouplingGraphBackend` with
-  fixed sensors got an `FfgEfeSelector` whose information term was the same for every
+  fixed sensors got an `FFGEFESelector` whose information term was the same for every
   action. A flat model with the same sensors was refused. Both are refused now, and the
   message names the selector to pass with a `Preference` for EFE with a flat information
   term. `examples/ffg/epistemic_dissociation_figure.py` hands both of its agents one
-  `FfgEfeSelector` that way (ADR-081).
+  `FFGEFESelector` that way (ADR-081).
 - **Breaking:** on the LQR path `Agent` refuses a `StateGoal` target the dynamics do not
   hold at zero action, where `A · target ≠ target`. LQR regulates the offset from the
   target and charges for effort, so it settled short. With `A = 0.9` and a target of 1
@@ -647,7 +652,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
   there is the same for every target. An explicit horizon too short for the target to
   move the scores is refused, naming the shortest that works. Single integrators keep
   horizon 1 (ADR-068).
-- `EFESelector` and `FfgEfeSelector` break a tie toward the candidate nearest zero. They
+- `EFESelector` and `FFGEFESelector` break a tie toward the candidate nearest zero. They
   took the first candidate, the lower bound. A tie means the action reaches nothing the
   scores read. On that double integrator, an `EFESelector` built by hand at horizon 1
   scored every candidate 1.163426662195336 and returned `action_bounds[0]` on every
@@ -655,7 +660,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
   zero, give the point between them. Scores within a relative `1e-11` of the best
   count as tied, since the graph backend leaves roundoff of about `1e-12` on such a
   tie. Choosing costs two more passes over the `k` scores per cycle.
-- `EFESelector` and `FfgEfeSelector` compile their scoring once, on the first `select`,
+- `EFESelector` and `FFGEFESelector` compile their scoring once, on the first `select`,
   and reuse it. Each `select` re-traced the grid under an eager `vmap`, and at horizon
   above 1 the rollout's scan compiled again on every call, a fixed cost per step that
   `cost_per_cycle` never counted. A test counts the traces across three beliefs and
@@ -815,7 +820,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
 - **Breaking:** the epistemic term's aim is named `info_node` and `info_block`, not
   `target`. `target` carried two unrelated types on exported API: a desired value
   (`Float64[Array, "n"]`) on `StateGoal` and `ObservationGoal`, and the joint-state
-  indices the epistemic term reads (`Sequence[int]`) on `FfgEfeSelector`,
+  indices the epistemic term reads (`Sequence[int]`) on `FFGEFESelector`,
   `policy_efe_ffg` and both `over_backend` class methods. A reader who learned the first
   from the Goal classes and passed a goal vector to the FFG API got `G = nan` with no
   raise, and `_argmin` maps nan to `+inf`, so a different action was selected in silence.
@@ -825,24 +830,24 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `ObservationGoal.info_target` becomes `info_node`. `StateGoal.target` and
   `ObservationGoal.target` keep the name, which now has one meaning.
 - **Breaking:** `expected_free_energy`, `policy_efe` and `policy_efe_ffg` return an
-  `EfeResult` with fields `g`, `pragmatic` and `epistemic`. They returned
+  `EFEResult` with fields `g`, `pragmatic` and `epistemic`. They returned
   `(G, {"pragmatic": ..., "epistemic": ...})`, and their trace siblings a `NamedTuple`,
   so one family answered in two forms and a misspelt key failed only when it ran.
-  `EfeResult` and `PolicyEfeTrace` are frozen dataclasses registered with JAX, read by
+  `EFEResult` and `PolicyEFETrace` are frozen dataclasses registered with JAX, read by
   name as the search results are. Neither indexes nor unpacks, so `result[0]` and
   `G, parts = ...` both fail and read `result.g` instead. A `vmap` over candidate
-  actions returns one `EfeResult` with every field batched, ranked by `batch.g`.
+  actions returns one `EFEResult` with every field batched, ranked by `batch.g`.
   The old pair fitted
   `jax.value_and_grad(..., has_aux=True)` as it stood. A function differentiated that
   way now returns `(result.g, result)`, and `jax.grad` takes one returning `result.g`.
-- **Breaking:** `PolicyEfeTrace`'s moment fields are `predicted_mean`, `predicted_cov`,
+- **Breaking:** `PolicyEFETrace`'s moment fields are `predicted_mean`, `predicted_cov`,
   `posterior_cov` and `predicted_observation_cov`, renamed from `mu_pred`, `sigma_pred`,
   `sigma_post` and `s`. `RolloutConditioning`'s fields follow them. `cond_sigma_pred` is
   `cond_predicted_cov`, `cond_s` is `cond_predicted_observation_cov`, `cond_sigma_post`
   is `cond_posterior_cov` and `min_eig_sigma_post` is `min_eig_posterior_cov`.
   `trace.s` could not be read without the docstring. S also went by four names across
   the docstrings, and is the predicted observation covariance in every public one now.
-  `g`, `pragmatic` and `epistemic` keep their names, which `EfeResult` shares.
+  `g`, `pragmatic` and `epistemic` keep their names, which `EFEResult` shares.
 - `ObservationGoal.preference` is the `Preference` the expected free energy functions
   score against, built once from the goal's target and precision. Passing the goal
   itself to `expected_free_energy`, `policy_efe` or a sibling raised `'ObservationGoal'
@@ -1002,23 +1007,23 @@ certainty equivalence is optimal, and no use of the readings beats it.
 - **Breaking:** `SearchWarrant` is removed from `cpomdp.enumeration`. Import `Warrant`
   from `cpomdp` or `warrantlib`, the one enum it was an alias of. Its members are the
   same objects, so `EFESelector.warrant` still reads `CORROBORATED` and
-  `EnumeratedEfeSearch.warrant` still reads `PROVED`.
-- **Breaking:** `EnumeratedEfeSearch.cost_per_cycle` is `cost_per_plan`, the name the
+  `EnumeratedEFESearch.warrant` still reads `PROVED`.
+- **Breaking:** `EnumeratedEFESearch.cost_per_cycle` is `cost_per_plan`, the name the
   drivers already used for one search. `cost_per_cycle` now means one thing everywhere,
   the cost of one agent step, and only selectors report it. Read as per step, the
   search's figure overstated the open-loop driver by a factor of H, and the README did
   exactly that.
-- **Breaking:** the certificate travels with the decision. `EnumeratedEfeSearch` loses
+- **Breaking:** the certificate travels with the decision. `EnumeratedEFESearch` loses
   its `certificate` property, and `evaluate` returns the certificate on the result.
   `EnumeratedSearchResult` is a frozen dataclass read by name. It no longer unpacks or
   indexes. It subclasses `SearchResult`, the chunked search's result, and gains
   `best_g`, `best_index` and `certificate`. A driver's `certificate` is the last plan's,
   `None` before its first, because the chunked search earns one per run.
-- **Breaking:** `EnumeratedEfeSearch` and its `over_backend` refuse a set of more than
+- **Breaking:** `EnumeratedEFESearch` and its `over_backend` refuse a set of more than
   `max_policies` policies, `2^21` unless set, with a `PolicyBudgetError`. `|A|^H` is
   exact before anything is allocated, and an oversized set used to take a
   memory-capped host down without raising. The error gives the count, the step
-  evaluations of one plan and a floor on the memory, and names `ChunkedEfeSearch`,
+  evaluations of one plan and a floor on the memory, and names `ChunkedEFESearch`,
   which both drivers take. `max_policies=None` lifts the budget. The set is now decoded
   from its indices rather than built through `itertools.product` on the host (ADR-083).
 - `PROVED` without evidence does not construct, enforced in `CheckReport`. Two kinds

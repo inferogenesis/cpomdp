@@ -1,6 +1,6 @@
 """Exhaustive EFE search over a declared finite action set — the enumerated family.
 
-`EnumeratedEfeSearch` enumerates every length-H sequence of a `FiniteActionSet` (all
+`EnumeratedEFESearch` enumerates every length-H sequence of a `FiniteActionSet` (all
 `|A|^H` of them, *varying* sequences, not the constant-action policies `EFESelector`
 tiles), scores each with `policy_efe`, and returns the argmin policy and the full `G`
 vector. Because the set is finite and fully enumerated the search **decides** its
@@ -28,7 +28,7 @@ The locks:
   allocated, with the count, the cost, a footprint floor and the chunked route named.
 
 Imports the enumeration symbols directly, so until they land this module is
-collection-red — the `ImportError` naming `EnumeratedEfeSearch` is the build cue.
+collection-red — the `ImportError` naming `EnumeratedEFESearch` is the build cue.
 """
 
 import inspect
@@ -42,7 +42,7 @@ import pytest
 from cpomdp.efe import policy_efe
 from cpomdp.enumeration import (
     CompletenessCertificate,
-    EnumeratedEfeSearch,
+    EnumeratedEFESearch,
     FiniteActionSet,
     IncompleteEnumerationError,
     PolicyBudgetError,
@@ -169,7 +169,7 @@ class TestFiniteActionSet:
 class TestCompletenessCertificate:
     def test_enumeration_covers_cartesian_product(self):
         model, action_set = _model(), _finite_set([-1.0, 0.0, 1.0])
-        search = EnumeratedEfeSearch(model, action_set, horizon=2)
+        search = EnumeratedEFESearch(model, action_set, horizon=2)
         oracle_policies, _ = _oracle(model, _belief(), _pref(), action_set, 2)
         # same set of policies, and every one distinct
         got = np.asarray(search.policies)
@@ -180,7 +180,7 @@ class TestCompletenessCertificate:
         assert len({tuple(p.flatten()) for p in got}) == 9
 
     def test_certificate_is_proved_and_complete(self):
-        search = EnumeratedEfeSearch(_model(), _finite_set([-1.0, 0.0, 1.0]), horizon=3)
+        search = EnumeratedEFESearch(_model(), _finite_set([-1.0, 0.0, 1.0]), horizon=3)
         cert = search.evaluate(_belief(), _pref()).certificate
         assert cert.expected == 27  # |A|^H = 3^3
         assert cert.visited == 27
@@ -239,7 +239,7 @@ class TestCompletenessCertificate:
 class TestEnumeratedSearch:
     def test_g_vector_matches_oracle(self):
         model, action_set = _model(), _finite_set([-1.0, 0.0, 1.0])
-        search = EnumeratedEfeSearch(model, action_set, horizon=2)
+        search = EnumeratedEFESearch(model, action_set, horizon=2)
         result = search.evaluate(_belief(), _pref())
         _, g_ref = _oracle(model, _belief(), _pref(), action_set, 2)
         assert result.g.shape == (9,)
@@ -247,7 +247,7 @@ class TestEnumeratedSearch:
 
     def test_best_policy_is_the_argmin_member(self):
         model, action_set = _model(), _finite_set([-1.0, 0.0, 1.0])
-        search = EnumeratedEfeSearch(model, action_set, horizon=2)
+        search = EnumeratedEFESearch(model, action_set, horizon=2)
         result = search.evaluate(_belief(), _pref())
         policies, g_ref = _oracle(model, _belief(), _pref(), action_set, 2)
         np.testing.assert_allclose(result.best_policy, policies[int(np.argmin(g_ref))])
@@ -259,7 +259,7 @@ class TestEnumeratedSearch:
         # which no single held action can do.
         model, action_set = _beacon_model(), _finite_set([-2.0, 0.0, 2.0])
         belief = Belief(mean=[0.0], cov=[[1.0]])
-        search = EnumeratedEfeSearch(model, action_set, horizon=2)
+        search = EnumeratedEFESearch(model, action_set, horizon=2)
         result = search.evaluate(belief, _pref(0.0))
         g = np.asarray(result.g)
         policies = np.asarray(search.policies)  # (N, H, p)
@@ -283,7 +283,7 @@ class TestWarrantSeam:
         assert Warrant.CORROBORATED.value == "CORROBORATED"
 
     def test_enumerated_search_is_proved(self):
-        search = EnumeratedEfeSearch(_model(), _finite_set([-1.0, 1.0]), horizon=2)
+        search = EnumeratedEFESearch(_model(), _finite_set([-1.0, 1.0]), horizon=2)
         assert search.warrant is Warrant.PROVED
 
     def test_grid_selector_is_corroborated(self):
@@ -294,14 +294,14 @@ class TestWarrantSeam:
 # --- cost and transforms -----------------------------------------------------------
 class TestCostAndTransforms:
     def test_cost_per_plan_is_exponential(self):
-        search = EnumeratedEfeSearch(_model(), _finite_set([-1.0, 0.0, 1.0]), horizon=3)
+        search = EnumeratedEFESearch(_model(), _finite_set([-1.0, 0.0, 1.0]), horizon=3)
         assert search.n_policies == 27  # |A|^H
         assert search.cost_per_plan == 27 * 3  # |A|^H * H
         # A search runs per plan. `cost_per_cycle` is a driver's, per agent step.
         assert not hasattr(search, "cost_per_cycle")
 
     def test_jit_agrees_with_eager(self):
-        search = EnumeratedEfeSearch(_model(), _finite_set([-1.0, 0.0, 1.0]), horizon=2)
+        search = EnumeratedEFESearch(_model(), _finite_set([-1.0, 0.0, 1.0]), horizon=2)
         belief, pref = _belief(), _pref()
         eager = search.evaluate(belief, pref).g
         jitted = jax.jit(lambda b: search.evaluate(b, pref).g)(belief)
@@ -320,7 +320,7 @@ class TestCostAndTransforms:
         action_set = FiniteActionSet(
             [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]], version="2d-v1"
         )
-        search = EnumeratedEfeSearch(model, action_set, horizon=2)
+        search = EnumeratedEFESearch(model, action_set, horizon=2)
         result = search.evaluate(_belief(), _pref())
         assert search.n_policies == 9  # 3^2
         assert result.best_policy.shape == (2, 2)  # (H, p)
@@ -338,7 +338,7 @@ class TestValidation:
             control_matrix=None,
         )
         with pytest.raises(ValueError, match="control"):
-            EnumeratedEfeSearch(
+            EnumeratedEFESearch(
                 model, FiniteActionSet([[0.0], [1.0]], version="v1"), horizon=2
             )
 
@@ -346,11 +346,11 @@ class TestValidation:
         # model p = 1 but the action set is p = 2.
         bad = FiniteActionSet([[0.0, 0.0], [1.0, 1.0]], version="v1")
         with pytest.raises(ValueError, match="action"):
-            EnumeratedEfeSearch(_model(), bad, horizon=2)
+            EnumeratedEFESearch(_model(), bad, horizon=2)
 
     def test_rejects_horizon_below_one(self):
         with pytest.raises(ValueError, match="horizon"):
-            EnumeratedEfeSearch(_model(), _finite_set([-1.0, 1.0]), horizon=0)
+            EnumeratedEFESearch(_model(), _finite_set([-1.0, 1.0]), horizon=0)
 
 
 # --- the policy budget -------------------------------------------------------------
@@ -361,21 +361,21 @@ def _nine_actions():
 class TestPolicyBudget:
     def test_the_default_is_two_to_the_twenty_first(self):
         # ADR-083 declares this number. Moving it is a decision, so it moves here too.
-        default = inspect.signature(EnumeratedEfeSearch).parameters["max_policies"]
+        default = inspect.signature(EnumeratedEFESearch).parameters["max_policies"]
         assert default.default == 2**21
 
     def test_an_oversized_set_is_refused_before_anything_is_built(self):
         # 9^7 = 4,782,969 policies. Built front-loaded it costs gigabytes, so the
         # refusal has to come from the count alone, which is exact before allocation.
         with pytest.raises(PolicyBudgetError) as raised:
-            EnumeratedEfeSearch(_model(), _nine_actions(), horizon=7)
+            EnumeratedEFESearch(_model(), _nine_actions(), horizon=7)
         message = str(raised.value)
         assert "9^7 = 4,782,969 policies" in message
         assert "max_policies = 2,097,152" in message
         assert "33,480,783 step evaluations" in message  # N * H
         # 8 bytes x N x (H*p policy + 1 score + n mean + n^2 covariance), n = 2.
         assert "0.50 GiB" in message
-        assert "ChunkedEfeSearch" in message
+        assert "ChunkedEFESearch" in message
         assert "max_policies=None" in message
 
     def test_the_refusal_is_a_value_error(self):
@@ -384,14 +384,14 @@ class TestPolicyBudget:
     def test_the_budget_is_inclusive(self):
         actions = _finite_set([-1.0, 0.0, 1.0])  # 3^2 = 9 policies
         with pytest.raises(PolicyBudgetError):
-            EnumeratedEfeSearch(_model(), actions, horizon=2, max_policies=8)
+            EnumeratedEFESearch(_model(), actions, horizon=2, max_policies=8)
         assert (
-            EnumeratedEfeSearch(_model(), actions, horizon=2, max_policies=9).n_policies
+            EnumeratedEFESearch(_model(), actions, horizon=2, max_policies=9).n_policies
             == 9
         )
 
     def test_none_lifts_the_budget(self):
-        search = EnumeratedEfeSearch(
+        search = EnumeratedEFESearch(
             _model(), _finite_set([-1.0, 1.0]), horizon=2, max_policies=None
         )
         assert search.n_policies == 4
@@ -399,6 +399,6 @@ class TestPolicyBudget:
     @pytest.mark.parametrize("budget", [0, -5])
     def test_a_budget_below_one_is_rejected(self, budget):
         with pytest.raises(ValueError, match="max_policies must be >= 1"):
-            EnumeratedEfeSearch(
+            EnumeratedEFESearch(
                 _model(), _finite_set([-1.0, 1.0]), horizon=2, max_policies=budget
             )

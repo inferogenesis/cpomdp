@@ -5557,3 +5557,29 @@ at construction.
   stays as shipped.
 - The `LQRController` docstring and the backends page say the Agent filters per step.
   ADR-002 and ADR-003 keep their wording.
+
+## ADR-087 — a public name spells an acronym in capitals
+
+**Date:** 2026-10-16
+**Status:** Accepted
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+The public classes spelled EFE two ways. `EFESelector`, `LQRController` and
+`LQRSelector` put it in capitals. `EfeResult`, `PolicyEfeTrace`, `FfgEfeSelector` and the
+three `*EfeSearch` classes wrote it as a word. A user had to remember which class took
+which, and the import failed on the other spelling.
+
+### Decision
+
+A public class name spells an acronym in capitals, as PEP 8 asks. The six mixed-case
+names become `EFEResult`, `PolicyEFETrace`, `FFGEFESelector`, `ExhaustiveEFESearch`,
+`EnumeratedEFESearch` and `ChunkedEFESearch`. The private classes follow. Function and
+module names stay lower case.
+
+### Consequences
+
+- `FFGEFESelector` runs two acronyms together. It is read once at an import, and an
+  exception to the rule would be the thing to remember.
+- Earlier ADRs keep the spellings they were written in (ADR-038).

@@ -10,7 +10,7 @@ Warrant is a property of the check, not of the number. A grid sample over a cont
 | 3 · validated | validated numerics over a compact domain | `CERTIFIED` |
 | 3 · sample | sampling a continuum | `CORROBORATED` |
 
-`research/warrant_ledger.md` carries the canonical version of this table, with the evidence each warrant requires and the tier a number is known to. An action sweep over a continuous range is a finite grid over an infinite domain, so it samples. A policy enumeration over a declared finite set enumerates. `EFESelector` reports `CORROBORATED` and `EnumeratedEfeSearch` reports `PROVED` for that reason.
+`research/warrant_ledger.md` carries the canonical version of this table, with the evidence each warrant requires and the tier a number is known to. An action sweep over a continuous range is a finite grid over an infinite domain, so it samples. A policy enumeration over a declared finite set enumerates. `EFESelector` reports `CORROBORATED` and `EnumeratedEFESearch` reports `PROVED` for that reason.
 
 `CERTIFIED` sits between the two. Validated numerics prove a universal over a compact domain, and the proof carries the bound it was computed with. Borrowing `PROVED` overclaims. Borrowing `CORROBORATED` throws the bound away.
 
