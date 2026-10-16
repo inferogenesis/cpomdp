@@ -2,9 +2,9 @@
 
 Nodes are integer indices ``0..N-1``, each with a dimension. A ``Coupling`` edge links
 a parent node to a child node through a linear-Gaussian factor, and the edges must form
-a tree rooted at a chosen node. ``CouplingGraph`` gathers the nodes, edges, and per-node
-sensors and checks, on construction, that the wiring is a well-formed rooted tree with
-dimension-consistent factors.
+a tree. Its root is the one node no edge points into. ``CouplingGraph`` gathers the
+nodes, edges, and per-node sensors and checks, on construction, that the wiring is a
+well-formed rooted tree with dimension-consistent factors.
 
 The graph carries no names. A node is only its index, so the same structure can stand
 for any model. Its one public inference is the static collect to the root,
@@ -347,7 +347,10 @@ class CouplingGraph:
 
         ``C`` is read through ``linearize``, the one method the protocol and the flat
         model share. The pair is a fixed sensor's own ``(C, R)``, which the fixed filter
-        path reuses every step, and a state-dependent sensor's ``(C, R(0))``.
+        path reuses every step, and a state-dependent sensor's ``(C, R(0))``. A fixed
+        sensor's ``R`` is checked here too, square and positive-definite, since it is
+        inverted every step and the protocol is open to sensors that do not check
+        themselves.
         """
         at_zero = {}
         for node, sensor in self.observation_models.items():
@@ -359,6 +362,20 @@ class CouplingGraph:
                 raise ValueError(
                     f"the observation model on node {node}: sensor C width {width} "
                     f"!= node dimension {self.dims[node]}"
+                )
+            if sensor.is_fixed:
+                # Front-loaded and inverted every step, so checked once here.
+                rows = observation_matrix.shape[0]
+                if observation_noise.shape != (rows, rows):
+                    raise ValueError(
+                        f"the observation model on node {node}: R has shape "
+                        f"{observation_noise.shape}, and its {rows}-row C needs "
+                        f"({rows}, {rows})"
+                    )
+                validate_covariance(
+                    observation_noise,
+                    f"node {node}'s observation_noise",
+                    require_definite=True,
                 )
             at_zero[node] = (observation_matrix, observation_noise)
         return at_zero

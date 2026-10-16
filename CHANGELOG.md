@@ -703,6 +703,9 @@ certainty equivalence is optimal, and no use of the readings beats it.
   int and an `efe_relevant` that is not a bool raise `TypeError`, and a NumPy bool is
   stored as a `bool`. A `coupling_matrix` that is not 2-D and a `coupling_noise` that is
   not positive-definite raise `ValueError` (ADR-075).
+- `CouplingGraph` checks a fixed sensor's `R` when it is built: square to match `C`, and
+  positive-definite, since it is inverted every step. A sensor that implements only the
+  protocol and returned a zero or indefinite `R` gave a NaN or wrong belief.
 - `CouplingGraphBackend` refuses a state-dependent sensor whose `R` is not
   positive-definite at the predicted mean, as `ChainBackend` does. It returned a finite
   belief that was wrong.
