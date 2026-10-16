@@ -193,7 +193,7 @@ def enumeration_cost(
     Args:
         action_set: the repertoire being enumerated.
         horizon: how many steps deep.
-        n_dims: spatial dimensions. Defaults to the action set's own `action_dim`,
+        n_dims: spatial dimensions. Defaults to the action set's own `n_controls`,
             which is what `axis_action_set` builds it from, so this one cannot drift.
         context_dim: how wide the context node is, matching `build_maze`'s argument of
             the same name. The joint is `context_dim + 2·n_dims` and the estimate is
@@ -205,10 +205,10 @@ def enumeration_cost(
         The policy count, the step-evaluation count, and a peak-memory estimate in GiB.
     """
     if n_dims is None:
-        n_dims = action_set.action_dim
+        n_dims = action_set.n_controls
     policies = action_set.size**horizon
     joint = context_dim + 2 * n_dims
-    per_policy = 8 * (horizon * action_set.action_dim + 4 * joint * joint)
+    per_policy = 8 * (horizon * action_set.n_controls + 4 * joint * joint)
     return policies, policies * horizon, policies * per_policy / 1024**3
 
 

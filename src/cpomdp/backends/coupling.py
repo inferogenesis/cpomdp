@@ -322,8 +322,8 @@ class CouplingGraphBackend:
         and the prior the backend was built with.
 
         A graph with any state-dependent sensor also gets a ``_JointObservation``, so
-        the model's ``R`` follows the state rather than sitting frozen at the
-        representative value the ``observation_noise`` block carries for shape.
+        the model's ``R`` follows the state. The model reads its ``observation_noise``
+        from that sensor at the prior mean, as it does beside any sensor.
         """
         rows, noise_blocks = self._real_observation_blocks()
         observation_matrix = jnp.vstack(rows) if rows else jnp.zeros((0, self.n_total))
@@ -347,7 +347,9 @@ class CouplingGraphBackend:
             dynamics_matrix=self._transition.dynamics_matrix,
             observation_matrix=observation_matrix,
             dynamics_noise=self._transition.dynamics_noise,
-            observation_noise=observation_noise,
+            observation_noise=None
+            if observation_model is not None
+            else observation_noise,
             prior=self._prior,
             control_matrix=self._control,
             observation_model=observation_model,
@@ -881,7 +883,11 @@ class CouplingGraphBackend:
             dynamics_matrix=self._transition.dynamics_matrix,
             observation_matrix=jnp.vstack(rows),
             dynamics_noise=self._transition.dynamics_noise,
-            observation_noise=jax.scipy.linalg.block_diag(*noise_blocks),
+            observation_noise=(
+                None
+                if observation_model is not None
+                else jax.scipy.linalg.block_diag(*noise_blocks)
+            ),
             prior=self._prior,
             control_matrix=self._control,
             observation_model=observation_model,
