@@ -327,6 +327,13 @@ class TestCouplingGraphInfer:
         with pytest.raises(ValueError, match=r"node 1 has no sensor"):
             graph.infer_root({1: np.zeros(1)}, Belief(mean=np.zeros(1), cov=np.eye(1)))
 
+    def test_a_reading_keyed_by_a_string_shows_the_key_it_was_given(self):
+        graph = self._two_node_graph({})
+        with pytest.raises(ValueError, match=r"node '1' has no sensor"):
+            graph.infer_root(
+                {"1": np.zeros(1)}, Belief(mean=np.zeros(1), cov=np.eye(1))
+            )
+
     def test_prior_over_the_wrong_dimension_is_refused_by_name(self):
         # It used to raise "cannot add messages of shape (2, 2) and (1, 1)".
         graph = self._two_node_graph({})
@@ -559,7 +566,12 @@ class TestCoupling:
 
     @pytest.mark.parametrize(
         ("parent", "child", "named"),
-        [("0", 1, "parent"), (0, 1.5, "child"), (True, 1, "parent")],
+        [
+            ("0", 1, "parent"),
+            (0, 1.5, "child"),
+            (True, 1, "parent"),
+            (0, np.array(1.5), "child"),
+        ],
     )
     def test_refuses_a_node_index_that_is_not_an_int(self, parent, child, named):
         with pytest.raises(TypeError, match=named):
@@ -567,7 +579,7 @@ class TestCoupling:
 
     def test_takes_an_integral_float_index_and_a_numpy_bool(self):
         # 1.0 from a JSON config and np.True_ from a comparison are exact values.
-        edge = self._edge(0.0, 1.0, efe_relevant=np.True_)
+        edge = self._edge(0.0, np.array(1.0), efe_relevant=np.True_)
         assert (edge.parent, edge.child, edge.efe_relevant) == (0, 1, True)
         assert type(edge.efe_relevant) is bool
 

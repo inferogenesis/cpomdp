@@ -16,13 +16,13 @@ import operator
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import SupportsIndex
+from typing import Any, SupportsIndex
 
 import jax.numpy as jnp
 import numpy as np
 from jax import Array
 from jaxtyping import Float64
-from numpy.typing import ArrayLike
+from numpy.typing import ArrayLike, NDArray
 
 from cpomdp._validation import validate_covariance
 from cpomdp.ffg._message import CanonicalGaussian, likelihood_message
@@ -408,7 +408,7 @@ class CouplingGraph:
         for node, reading in readings.items():
             if node not in self.observation_models:
                 raise ValueError(
-                    f"node {node} has no sensor, so it cannot take a reading. The "
+                    f"node {node!r} has no sensor, so it cannot take a reading. The "
                     f"observed nodes are {sorted(self.observation_models)}."
                 )
             if not self.observation_models[node].is_fixed:
@@ -540,8 +540,15 @@ def _as_bool(value: object) -> bool:
     return bool(value)
 
 
+def _scalar_of(array: NDArray[Any]) -> object:
+    """A 0-d array's one element, as the NumPy scalar it holds."""
+    return array[()]
+
+
 def _as_int(value: object, name: str) -> int:
     """``value`` as an ``int``. A bool and a non-integral number are refused."""
+    if isinstance(value, np.ndarray) and value.ndim == 0:
+        value = _scalar_of(value)
     if isinstance(value, float | np.floating) and float(value).is_integer():
         return int(value)
     if isinstance(value, bool) or not isinstance(value, SupportsIndex):
