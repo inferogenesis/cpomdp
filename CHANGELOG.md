@@ -377,12 +377,16 @@ certainty equivalence is optimal, and no use of the readings beats it.
   "item E" and "standing rule 6" among them. They are gone, and
   `tests/test_docstring_labels.py` fails on one in any docstring outside `cpomdp._lab`.
   The ADR numbers stay, and the docs home links DECISIONS.md, which is append-only, so
-  an ADR a release cites reads the same there later.
+  an ADR a release cites reads the same there later. `Coupling` and `GaussianCoupling`
+  illustrated themselves with chemotaxis proteins, which ADR-015 keeps out of the core.
+  Their examples are generic now.
 - Pre-rename names survived in the model's formula, in two error messages and in the
   guide: `dynamics @ state + control @ action`, "dynamics must be a square matrix",
   "(dynamics, control) may not be stabilisable" and `dynamics=dynamics`. Each now names
-  `dynamics_matrix` and `control_matrix`. `Belief`'s docstring said its covariance is
-  checked for positive semi-definiteness elsewhere. Its constructor checks it.
+  `dynamics_matrix` and `control_matrix`. The EFE module's definition reads the sensor
+  from `observation_model`, where it said `observation`. `Belief`'s docstring said its
+  covariance is checked for positive semi-definiteness elsewhere. Its constructor
+  checks it.
 - `EFESelector` described varying-sequence search as a deferred v0.4 `GradientEFESelector`
   seam, in its rendered class docstring and in the `ValueError` a `p > 1` caller hits. That
   search shipped in v0.4.4 as `EnumeratedEfeSearch`, whose own docstring says it supports

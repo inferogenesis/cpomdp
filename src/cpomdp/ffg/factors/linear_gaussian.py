@@ -473,9 +473,9 @@ class GaussianCoupling:
 
     Where [`GaussianTransition`][cpomdp.GaussianTransition] couples a state to its
     *successor in time*, this couples two variables joined by an *edge of the factor
-    graph* (e.g. the shared
-    ``CheA`` node to a branch latent). The maths is identical — a linear-Gaussian
-    coupling — but a coupling carries no time semantics and ``W`` need not be square.
+    graph*, a shared hub node to a branch latent say. The maths is the same
+    linear-Gaussian coupling. A coupling carries no time semantics, and ``W`` need not
+    be square.
 
     - ``coupling_matrix`` — W, shape ``(c, p)``: maps the p-D parent's mean to the c-D
       child.
