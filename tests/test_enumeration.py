@@ -132,6 +132,11 @@ class TestFiniteActionSet:
         assert s.actions.shape == (3, 1)
         assert s.version == "moves-v1"
 
+    def test_the_action_dimension_is_n_controls_as_on_the_model(self):
+        action_set = FiniteActionSet([[0.0, 0.0], [1.0, 1.0]], version="v1")
+        assert action_set.n_controls == 2
+        assert not hasattr(action_set, "action_dim")
+
     def test_rejects_single_action(self):
         with pytest.raises(ValueError, match="at least 2"):
             FiniteActionSet([[0.0]], version="v1")
@@ -320,7 +325,7 @@ class TestValidation:
                 model, FiniteActionSet([[0.0], [1.0]], version="v1"), horizon=2
             )
 
-    def test_rejects_action_dim_mismatch(self):
+    def test_rejects_an_action_set_of_other_n_controls(self):
         # model p = 1 but the action set is p = 2.
         bad = FiniteActionSet([[0.0, 0.0], [1.0, 1.0]], version="v1")
         with pytest.raises(ValueError, match="action"):

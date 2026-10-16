@@ -333,8 +333,8 @@ class ExogenousActionSequence:
         return int(self.actions.shape[0])
 
     @property
-    def action_dim(self) -> int:
-        """The action dimension ``p``."""
+    def n_controls(self) -> int:
+        """The action dimension ``p``, named as the model names it."""
         return int(self.actions.shape[1])
 
 
@@ -397,9 +397,9 @@ def drive(
     Raises:
         ValueError: If the sequence's action dimension is not the world's.
     """
-    if sequence.action_dim != world.n_controls:
+    if sequence.n_controls != world.n_controls:
         raise ValueError(
-            f"the sequence drives p={sequence.action_dim} but the world takes "
+            f"the sequence drives p={sequence.n_controls} but the world takes "
             f"p={world.n_controls}; the declared actions must match the action "
             f"dimension."
         )
