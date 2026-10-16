@@ -165,7 +165,7 @@ def test_branching_tree_matches_coupling_graph():
         couplings=tuple(
             Coupling(p, c, [[w]], coupling_noise=[[q]]) for p, c, w, q in edges
         ),
-        observations={
+        observation_models={
             n: FixedSensor([[1.0]], observation_noise=[[obs_r]])
             for n in (cheb, motor_a, motor_b)
         },

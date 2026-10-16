@@ -171,11 +171,11 @@ def _check_infer(root, dims, edges, obs_specs, m0, P0, readings, atol=1e-8):
     couplings = tuple(
         Coupling(parent, child, w, coupling_noise=q) for parent, child, w, q in edges
     )
-    observations = {
+    observation_models = {
         n: FixedSensor(c, observation_noise=r) for n, (c, r) in obs_specs.items()
     }
     graph = CouplingGraph(
-        root=root, dims=dims, couplings=couplings, observations=observations
+        root=root, dims=dims, couplings=couplings, observation_models=observation_models
     )
     m0, P0 = np.asarray(m0, float), np.asarray(P0, float)
     out = graph.infer(readings, Belief(mean=m0, cov=P0))
@@ -314,12 +314,12 @@ class TestCouplingGraphInfer:
         np.testing.assert_allclose(np.asarray(out.cov), P0, atol=1e-8)
 
     @staticmethod
-    def _two_node_graph(observations):
+    def _two_node_graph(observation_models):
         return CouplingGraph(
             0,
             (1, 1),
             (Coupling(0, 1, [[1.0]], coupling_noise=[[0.5]]),),
-            observations,
+            observation_models,
         )
 
     def test_reading_on_a_node_without_a_sensor_is_refused_by_name(self):
@@ -434,7 +434,7 @@ def _check_infer_all(dims, edges, seeds, atol=1e-8):
     couplings = tuple(
         Coupling(parent, child, w, coupling_noise=q) for parent, child, w, q in edges
     )
-    graph = CouplingGraph(root=0, dims=dims, couplings=couplings, observations={})
+    graph = CouplingGraph(root=0, dims=dims, couplings=couplings, observation_models={})
     seed_msgs = {
         n: CanonicalGaussian(precision, h) for n, (precision, h) in seeds.items()
     }
@@ -595,6 +595,14 @@ class TestCouplingGraphValidation:
         assert g.root == 0
         assert g.dims == (2, 1, 1)
 
+    def test_names_its_sensors_observation_models(self):
+        # The paired backend reads `observations` as readings: rollout takes stacked
+        # observations, and n_observations counts reading rows, not sensors.
+        sensor = FixedSensor(np.eye(2), observation_noise=np.eye(2))
+        graph = CouplingGraph(0, (2,), (), observation_models={0: sensor})
+        assert graph.observation_models[0] is sensor
+        assert not hasattr(graph, "observations")
+
     def test_rejects_empty_dims(self):
         with pytest.raises(ValueError, match="positive"):
             CouplingGraph(0, (), (), {})
@@ -645,7 +653,9 @@ class TestCouplingGraphValidation:
             CouplingGraph(0, (2, 1), (self._edge(0, 1),), {})
 
     def test_rejects_observation_on_unknown_node(self):
-        with pytest.raises(ValueError, match="observation references unknown node"):
+        with pytest.raises(
+            ValueError, match="observation model references unknown node"
+        ):
             CouplingGraph(
                 0,
                 (1, 1),
@@ -683,7 +693,9 @@ class TestCouplingGraphValidation:
                 {},
             )
 
-    @pytest.mark.parametrize("field", ["root", "dims", "couplings", "observations"])
+    @pytest.mark.parametrize(
+        "field", ["root", "dims", "couplings", "observation_models"]
+    )
     def test_wiring_cannot_be_reassigned_after_validation(self, field):
         # Construction is the only place the wiring is checked, so a field written
         # afterwards would reach the backend unvalidated.
@@ -696,13 +708,13 @@ class TestCouplingGraphValidation:
         with pytest.raises(AttributeError):
             setattr(graph, field, getattr(graph, field))
 
-    def test_observations_cannot_gain_a_sensor_after_validation(self):
+    def test_observation_models_cannot_gain_a_sensor_after_validation(self):
         # A sensor added to node 7 of a two-node graph would skip the range check.
         sensor = FixedSensor(np.eye(1), observation_noise=np.eye(1))
         graph = CouplingGraph(0, (1, 1), (self._edge(0, 1),), {1: sensor})
         with pytest.raises(TypeError):
             # Writing to it is the test, so ty's refusal is expected.
-            graph.observations[7] = sensor  # ty: ignore[invalid-assignment]
+            graph.observation_models[7] = sensor  # ty: ignore[invalid-assignment]
 
     @pytest.mark.parametrize(
         "round_trip",
@@ -714,9 +726,9 @@ class TestCouplingGraphValidation:
         sensor = FixedSensor(np.eye(1), observation_noise=np.eye(1))
         graph = CouplingGraph(0, (1, 1), (self._edge(0, 1),), {1: sensor})
         copied = round_trip(graph)
-        assert sorted(copied.observations) == [1]
+        assert sorted(copied.observation_models) == [1]
         with pytest.raises(TypeError):
-            copied.observations[7] = sensor
+            copied.observation_models[7] = sensor
 
     def test_rejects_an_observation_that_is_not_a_sensor(self):
         # A bare matrix used to construct and fail at the first filter step.
@@ -829,11 +841,14 @@ class TestFlattenedKalmanParity:
 
     def _check(self, root, dims, edges, obs_specs, m0, p0, readings, atol=1e-7):
         couplings = tuple(Coupling(p, c, w, coupling_noise=q) for p, c, w, q in edges)
-        observations = {
+        observation_models = {
             n: FixedSensor(c, observation_noise=r) for n, (c, r) in obs_specs.items()
         }
         graph = CouplingGraph(
-            root=root, dims=dims, couplings=couplings, observations=observations
+            root=root,
+            dims=dims,
+            couplings=couplings,
+            observation_models=observation_models,
         )
         m0, p0 = np.asarray(m0, float), np.asarray(p0, float)
         out = graph.infer(readings, Belief(mean=m0, cov=p0))

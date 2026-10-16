@@ -57,7 +57,7 @@ def test_ffg_selector_reduces_to_efe_selector_single_node():
         root=0,
         dims=(2,),
         couplings=(),
-        observations={
+        observation_models={
             0: FixedSensor(observation_matrix, observation_noise=observation_noise)
         },
     )
@@ -98,7 +98,7 @@ def _two_node_backend():
         root=0,
         dims=(1, 1),
         couplings=(Coupling(0, 1, [[0.8]], coupling_noise=[[0.05]]),),
-        observations={1: FixedSensor([[1.0]], observation_noise=[[0.1]])},
+        observation_models={1: FixedSensor([[1.0]], observation_noise=[[0.1]])},
     )
     transitions = (
         GaussianTransition([[0.7]], dynamics_noise=[[0.1]]),
@@ -208,7 +208,7 @@ def test_ffg_agent_matches_kalman_efe_agent_end_to_end():
         root=0,
         dims=(2,),
         couplings=(),
-        observations={
+        observation_models={
             0: FixedSensor(observation_matrix, observation_noise=observation_noise)
         },
     )
@@ -277,7 +277,7 @@ def _single_node_rx_backend(params):
         root=0,
         dims=(2,),
         couplings=(),
-        observations={0: CallableSensor(C, _rx_noise, params)},
+        observation_models={0: CallableSensor(C, _rx_noise, params)},
     )
     backend = CouplingGraphBackend(
         graph,
@@ -307,7 +307,7 @@ class TestStateDependentSelection:
             root=0,
             dims=(2,),
             couplings=(),
-            observations={0: FixedSensor(C, observation_noise=params["R0"])},
+            observation_models={0: FixedSensor(C, observation_noise=params["R0"])},
         )
         fx = CouplingGraphBackend(
             graph_fx,
@@ -359,7 +359,7 @@ class TestStateDependentSelection:
             root=0,
             dims=(1,),
             couplings=(),
-            observations={
+            observation_models={
                 0: CallableSensor([[1.0], [1.0]], _decoupled_noise, params)
             },  # both channels read s
         )

@@ -458,8 +458,8 @@ certainty equivalence is optimal, and no use of the readings beats it.
   at construction. Assigning `agent.belief` now requires a `Belief` over the model's
   state. A list was accepted and failed on the next step. `InferenceBackend.model` is
   declared a read-only property, which a plain attribute still satisfies.
-- **Breaking:** `CouplingGraph.root`, `dims`, `couplings` and `observations` are
-  read-only, and `observations` is a read-only mapping. Construction is the only place
+- **Breaking:** `CouplingGraph.root`, `dims`, `couplings` and `observation_models` are
+  read-only, and `observation_models` is a read-only mapping. Construction is the only place
   the wiring is checked. A sensor added afterwards to node 7 of a two-node graph skipped
   the range check and reached the backend. Build a new graph instead.
 - **Breaking:** `CouplingGraph.infer` takes the readings first and the prior second,
@@ -593,12 +593,18 @@ certainty equivalence is optimal, and no use of the readings beats it.
   sites moved to keywords.
 - **Breaking:** a graph node takes the sensor a flat model takes. `GaussianObservation` and
   `CallableGaussianObservation` are removed. Pass a `FixedSensor` or a `CallableSensor`
-  in `CouplingGraph`'s `observations`, with the same arguments. The two pairs had
+  in `CouplingGraph`'s `observation_models`, with the same arguments. The two pairs had
   identical constructors and fields, and each failed in the other's slot.
   `LinearGaussianModel` refused the graph classes, and a `FixedSensor` on a graph node
   constructed and then raised at the first filter step. A node now takes any
   `ObservationModel`, and the graph reads `C` and `R` through `linearize` as the flat
   model does (ADR-071).
+- **Breaking:** `CouplingGraph`'s `observations` is `observation_models`, as argument
+  and attribute. It holds sensors, and the paired `CouplingGraphBackend` uses the word
+  for readings: `rollout` takes stacked observations and `n_observations` counts reading
+  rows. A graph with one two-row sensor had `len(graph.observations) == 1` and
+  `backend.n_observations == 2`. The new name matches
+  `LinearGaussianModel.observation_model`.
 - **Breaking:** `GaussianTransition` takes `dynamics_noise` by keyword, and
   `GaussianTransition.from_ou` takes `stationary_var` and `dt` by keyword. Both follow
   `LinearGaussianModel` for the same reason, and the transition factor is the worse of

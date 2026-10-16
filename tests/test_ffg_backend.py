@@ -190,11 +190,11 @@ def _build(
     couplings = tuple(
         Coupling(parent, child, w, coupling_noise=q) for parent, child, w, q in edges
     )
-    observations = {
+    observation_models = {
         n: FixedSensor(c, observation_noise=r) for n, (c, r) in obs_specs.items()
     }
     graph = CouplingGraph(
-        root=0, dims=dims, couplings=couplings, observations=observations
+        root=0, dims=dims, couplings=couplings, observation_models=observation_models
     )
     transitions = tuple(GaussianTransition(a, dynamics_noise=q) for a, q in dyn)
     kwargs = {"control_matrix": control_matrix, "readout_node": readout_node}
@@ -567,7 +567,9 @@ class TestProtocolAndReadout:
             root=0,
             dims=(2,),
             couplings=(),
-            observations={0: FixedSensor([[1.0, 0.0]], observation_noise=[[0.1]])},
+            observation_models={
+                0: FixedSensor([[1.0, 0.0]], observation_noise=[[0.1]])
+            },
         )
         transition = GaussianTransition(np.eye(2), dynamics_noise=np.eye(2) * 0.1)
         return CouplingGraphBackend(
@@ -602,7 +604,7 @@ class TestProtocolAndReadout:
             root=0,
             dims=(1, 1),
             couplings=(Coupling(0, 1, [[1.0]], coupling_noise=[[0.5]]),),
-            observations={},
+            observation_models={},
         )
         transition = GaussianTransition([[0.9]], dynamics_noise=[[0.1]])
         with pytest.raises(ValueError, match="no node of the graph carries a sensor"):
@@ -868,11 +870,11 @@ def _build_rx(dims, edges, rx_obs, dyn, *, control_matrix=None, partition=None):
     couplings = tuple(
         Coupling(parent, child, w, coupling_noise=q) for parent, child, w, q in edges
     )
-    observations = {
+    observation_models = {
         node: CallableSensor(c, fn, prm) for node, (c, fn, prm) in rx_obs.items()
     }
     graph = CouplingGraph(
-        root=0, dims=dims, couplings=couplings, observations=observations
+        root=0, dims=dims, couplings=couplings, observation_models=observation_models
     )
     transitions = tuple(GaussianTransition(a, dynamics_noise=q) for a, q in dyn)
     kwargs = {"control_matrix": control_matrix}
@@ -1200,7 +1202,9 @@ class _UnstoredSensor:
 
 def _one_node_graph_backend(sensor):
     """A single scalar node with a control, observed by ``sensor``."""
-    graph = CouplingGraph(root=0, dims=(1,), couplings=(), observations={0: sensor})
+    graph = CouplingGraph(
+        root=0, dims=(1,), couplings=(), observation_models={0: sensor}
+    )
     return CouplingGraphBackend(
         graph,
         (GaussianTransition([[0.9]], dynamics_noise=[[0.2]]),),

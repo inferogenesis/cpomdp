@@ -42,7 +42,7 @@ def chemotaxis_ffg(dt):
     """Build the chemotaxis network for a timestep ``dt`` (seconds).
 
     Returns ``(graph, transitions)``: the structural ``CouplingGraph`` (couplings +
-    observations) and the node-indexed per-node OU ``GaussianTransition``s, to hand
+    sensors) and the node-indexed per-node OU ``GaussianTransition``s, to hand
     to ``CouplingGraphBackend(graph, transitions, prior=...)``.
     """
     transitions = tuple(
@@ -62,7 +62,7 @@ def chemotaxis_ffg(dt):
         for parent, child, gain, noise in _EDGES
     )
 
-    observations = {
+    observation_models = {
         node: FixedSensor([[1.0]], observation_noise=[[_OBS_NOISE]])
         for node in _OBSERVED
     }
@@ -70,6 +70,6 @@ def chemotaxis_ffg(dt):
         root=CHEA,
         dims=(1,) * _NODES,  # every node is scalar (1-D)
         couplings=couplings,
-        observations=observations,
+        observation_models=observation_models,
     )
     return graph, transitions

@@ -68,7 +68,9 @@ def _single_node_pair(*, state_dependent):
     else:
         obs_ffg = FixedSensor(c, observation_noise=r0)
         obs_flat = None
-    graph = CouplingGraph(root=0, dims=(2,), couplings=(), observations={0: obs_ffg})
+    graph = CouplingGraph(
+        root=0, dims=(2,), couplings=(), observation_models={0: obs_ffg}
+    )
     backend = CouplingGraphBackend(
         graph,
         (GaussianTransition(a, dynamics_noise=q),),
@@ -93,7 +95,7 @@ def _coupled_backend():
         root=0,
         dims=(1, 1),
         couplings=(Coupling(0, 1, [[0.8]], coupling_noise=[[0.05]]),),
-        observations={1: FixedSensor([[1.0]], observation_noise=[[0.1]])},
+        observation_models={1: FixedSensor([[1.0]], observation_noise=[[0.1]])},
     )
     transitions = (
         GaussianTransition([[0.7]], dynamics_noise=[[0.1]]),

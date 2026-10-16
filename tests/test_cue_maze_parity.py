@@ -48,7 +48,9 @@ def test_node_shapes_and_wiring_agree(pair):
     maze, registered = pair
     assert maze.dims == registered.dims
     assert maze.graph.root == registered.graph.root
-    assert sorted(maze.graph.observations) == sorted(registered.graph.observations)
+    assert sorted(maze.graph.observation_models) == sorted(
+        registered.graph.observation_models
+    )
 
 
 def test_dynamics_and_control_agree(pair):
