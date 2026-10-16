@@ -4636,7 +4636,7 @@ versions break before 1.0, as cpomdp's do.
 - A warrantlib 0.4 reaches cpomdp users only through a cpomdp release that lifts the
   cap.
 
-## ADR-071 — a graph node takes the flat model's sensor, and the message passing is private
+## ADR-073 — a graph node takes the flat model's sensor, and the message passing is private
 
 **Date:** 2026-10-15
 **Status:** Accepted

@@ -9,7 +9,7 @@ Two factor types carry a graph's linear-Gaussian structure, and each one emits a
 - ``GaussianCoupling``, the within-slice edge ``N(child; W·parent, Q)``. It sends a
   message up to the parent or down to the child the same way.
 
-A node's observation is the flat model's sensor (ADR-071). Its message is
+A node's observation is the flat model's sensor (ADR-073). Its message is
 ``likelihood_message`` in ``cpomdp.ffg._message``, built from the sensor's ``(C, R)``.
 
 Both factors invert their noise covariance, so both require it positive-**definite**.

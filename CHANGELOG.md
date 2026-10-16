@@ -585,7 +585,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `LinearGaussianModel` refused the graph classes, and a `FixedSensor` on a graph node
   constructed and then raised at the first filter step. A node now takes any
   `ObservationModel`, and the graph reads `C` and `R` through `linearize` as the flat
-  model does (ADR-071).
+  model does (ADR-073).
 - **Breaking:** `GaussianTransition` takes `dynamics_noise` by keyword, and
   `GaussianTransition.from_ou` takes `stationary_var` and `dt` by keyword. Both follow
   `LinearGaussianModel` for the same reason, and the transition factor is the worse of
