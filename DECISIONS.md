@@ -4671,19 +4671,17 @@ an order that lived in a private layout.
 
 Every quantity has one home, and it is the home it has on a flat backend.
 
-- The joint width is `model.n_states`, the stacked sensor C is
-  `model.observation_matrix` and R at a mean is `model.observation_noise_at(mean)`, on
-  this backend as on `KalmanBackend`. A backend `observation_matrix` property would be a
-  second way to read what `model` already gives, so there is none. The same rule takes
-  `observation_noise_at` off the backend and puts it on `LinearGaussianModel`. A model
-  with no sensor or a fixed one returns `observation_noise`. A state-dependent sensor is
-  linearized at the state. The node dimensions are `graph.dims`.
+- The joint width is `model.n_states` and the stacked sensor C is
+  `model.observation_matrix`, on this backend as on `KalmanBackend`. R at a mean is
+  `observation_noise_at`. I added no `observation_matrix` property, which the review
+  proposed, because it would be a second way to read what `model` already gives. The
+  node dimensions are `graph.dims`.
 - Under a state-dependent sensor the model's nominal `observation_noise` is R at the prior
   mean, the rule every flat model follows, where it was R at zero.
 - One protocol, `GraphBackend`, describes a backend over a graph of nodes, and
-  `probe_model` reads it too. It declares `predicted_belief`, `block` and
-  `severed_efe_edges` beside `InferenceBackend`'s two members. It carries no promise, as
-  ADR-069 left `EfeBackend`.
+  `probe_model` reads it too. It declares `predicted_belief`, `observation_noise_at`,
+  `block` and `severed_efe_edges` beside `InferenceBackend`'s two members. It carries no
+  promise, as ADR-069 left `EfeBackend`.
 - `marginal(node, belief)` is the one way to read a node. `block` and `marginal` refuse a
   node outside the graph.
 - A user writes readings keyed by node, the form `CouplingGraph.infer` takes, and
@@ -4700,20 +4698,17 @@ Every quantity has one home, and it is the home it has on a flat backend.
   inputs.
 - The graph path keeps its positive-definite Q. Its transition factor builds the joint
   over the current and next state in information form, and that joint contains Q's
-  inverse. Each refusal of a matrix that is not definite gives its caller's reason, and
-  the factor's says the information form inverts it. The one shared reason blamed a
-  sensor for every matrix.
+  inverse. The refusal now says the matrix is inverted, where it blamed a sensor.
 
 ### Consequences
 
 - The backend's surface is `model`, `graph`, `transitions`, `infer_states`,
-  `predicted_belief`, `stack_observations`, `marginal`, `block`, `severed_efe_edges`,
-  `severed_mass`, `filter_sequence`, `to_flat_model` and `flat_observation`. `graph`
-  and `transitions` are read-only, as `model` was.
-- A fixed graph's `model.observation_noise_at` returns the R built at construction, so
-  no candidate rebuilds it. A state-dependent graph's model reads R through the joint
-  sensor it carries. Code that reads R at a mean reads it off `backend.model` on a flat
-  backend and on a graph one alike.
+  `predicted_belief`, `observation_noise_at`, `stack_observations`, `marginal`, `block`,
+  `severed_efe_edges`, `severed_mass`, `filter_sequence`, `to_flat_model` and
+  `flat_observation`. `graph` and `transitions` are read-only, as `model` was.
+- A fixed graph returns a front-loaded R from `observation_noise_at` and no longer builds
+  it per candidate. A state-dependent graph reads R through the joint sensor its model
+  carries, so the two accessors cannot drift.
 - `CouplingGraph` still stores its observations in the order given.
   `stack_observations` makes that order harmless. Sorting them would make iteration
   match the stacking order, and it belongs with the graph.
@@ -4721,3 +4716,47 @@ Every quantity has one home, and it is the home it has on a flat backend.
   transition factor: add Q to the propagated covariance, then invert once. That is fewer
   inversions per step than the information-form joint. It changes the factor, which
   this decision does not touch.
+
+## ADR-072 — R at a mean is read off the model, and the partition cuts every surface
+
+**Date:** 2026-10-16
+**Status:** Accepted
+**Supersedes:** ADR-071's "R at a mean is `observation_noise_at`" on the backend, its
+listing of `observation_noise_at` among `GraphBackend`'s members, and its single refusal
+reason for a matrix that is not definite. ADR-032's `backend.observation_noise_at(μ⁺)`
+as the place R(μ⁺) is read.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+ADR-071 left `observation_noise_at` on the graph backend while every other quantity moved
+onto `backend.model`. A flat backend has no such accessor, so code reading R at a mean
+needed one call for a graph and another for a flat model. The prior was also cut by the
+partition in `infer_states` and not in the other surfaces, so `filter_sequence` and
+`infer_states` disagreed on a correlated prior.
+
+### Decision
+
+`observation_noise_at(mean)` is a method of `LinearGaussianModel`. A model with no sensor
+or a fixed one returns `observation_noise`, and a state-dependent sensor is linearized at
+the state. The graph backend's model reads R through the joint sensor it carries, and a
+fixed graph returns the R built at construction, so no candidate rebuilds it.
+`GraphBackend` declares `predicted_belief`, `block` and `severed_efe_edges` beside
+`InferenceBackend`'s two members.
+
+Every graph-backend surface cuts the prior by its partition, as `infer_states` does, so
+`filter_sequence` is `infer_states` run over a sequence. The full-joint partition is
+unchanged. A mixed partition, such as `[[0, 1, 3, 4], [2]]`, given a correlated prior
+returns a different posterior than before, because the dense path now inverts the cut
+prior.
+
+Each refusal of a matrix that is not definite gives its caller's reason. The factor's
+says the information form inverts it. The one shared reason blamed a sensor for every
+matrix.
+
+### Consequences
+
+- Code reading R at a mean reads it off `backend.model`, on a flat backend and a graph
+  one alike.
+- A caller relying on a mixed partition's old posterior over a correlated prior sees a
+  different number. The old one filtered a prior the partition said to ignore.
