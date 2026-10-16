@@ -131,9 +131,9 @@ class Preference:
     goal's ``target`` and ``precision``, or takes it as the objective beside a selector
     of your own, in the space that selector reads.
 
-    Single-mode for v0.3 — one Gaussian preference. The disjunctive *mixture*
-    case (visit one of several goals) is RFC-002, deferred; this type is the seam
-    that a mixture ``Preference`` plugs into.
+    It is one Gaussian preference, single-mode since v0.3. The disjunctive *mixture*
+    case, visiting one of several goals, is RFC-002 and deferred. A mixture
+    ``Preference`` plugs in here.
 
     ``precision`` is unused by [`LQRSelector`][cpomdp.LQRSelector], whose controller
     solved for its own weights at construction. The EFE pragmatic term reads it.
@@ -182,10 +182,9 @@ class Preference:
 class ActionSelector(Protocol):
     """Chooses an action from a belief and a preference.
 
-    The abstraction wall for action selection: [`LQRSelector`][cpomdp.LQRSelector] is
-    the fixed-noise case (a fixed sensor and fixed process noise, where EFE collapses
-    to LQR, ADR-003);
-    [`EFESelector`][cpomdp.EFESelector] is the state-dependent one.
+    The abstraction wall for action selection. [`LQRSelector`][cpomdp.LQRSelector] is
+    the fixed-noise case, a fixed sensor and fixed process noise, where EFE collapses
+    to LQR (ADR-003). [`EFESelector`][cpomdp.EFESelector] is the state-dependent one.
     [`Agent`][cpomdp.Agent] depends only on this, never on a concrete selector.
     """
 
@@ -444,8 +443,8 @@ class FfgEfeSelector:
 
         For each candidate: predict the joint (``predicted_belief`` → ``μ⁺``, ``Σ⁺``),
         score with ``_ffg_efe_step``, ``argmin`` over the grid. ``R`` is re-read at
-        ``μ⁺`` per candidate — constant under a fixed sensor, action-dependent under
-        ``R(x)`` (the dual effect). This is the RFC-001 hot path; keep it lean. Ties
+        ``μ⁺`` per candidate. It is constant under a fixed sensor and moves with the
+        action under ``R(x)``, the dual effect. This is the RFC-001 hot path. Ties
         and scores that are not finite go as for
         [`EFESelector`][cpomdp.EFESelector], and the first call compiles the work.
         """
@@ -514,19 +513,19 @@ class FfgEfeSelector:
 class StateGoal:
     """A state-space objective: reach a target state (the LQR / fixed-sensor regime).
 
-    The complete spec for the state-tracking path - the target plus the LQR cost
-    weights it implies. ``precision`` is the state-cost weight and ``effort`` the
-    action-cost weight, under the names
-    [`LQRController`][cpomdp.LQRController] takes. ``effort`` is left None here
-    because the action dimension p isn't known until the Agent pairs this with a
-    model (the Agent fills the identity). The Agent dispatches a StateGoal to an
+    The complete spec for the state-tracking path, the target and the LQR cost
+    weights. ``precision`` is the state-cost weight and ``effort`` the action-cost
+    weight, under the names [`LQRController`][cpomdp.LQRController] takes. ``effort``
+    is left None here because the action dimension is unknown until the Agent pairs
+    the goal with a model. The Agent then fills the identity and builds an
     LQRSelector. Not a pytree. The Agent reads it once at construction and keeps a
     Preference for the selector.
 
     The target must hold still under the model's dynamics at zero action,
-    ``A · target = target``. LQR regulates the offset from the target and charges for
-    effort, so a target the dynamics move would take a constant push it never pays
-    in full, and the state would settle short. The Agent refuses such a target.
+    ``A · target = target`` with ``A`` the dynamics matrix. LQR regulates the offset
+    from the target and charges for effort, so a target the dynamics move would take a
+    constant push it never pays in full, and the state would settle short. The Agent
+    refuses such a target.
     """
 
     target: Float64[Array, "n"]

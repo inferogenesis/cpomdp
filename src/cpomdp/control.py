@@ -395,7 +395,7 @@ class LQRController:
     def action(self, mean: ArrayLike, target: ArrayLike) -> Float64[Array, "p"]:
         """The action that drives the estimated state toward ``target``.
 
-        One matrix-vector product, ``-L∞·(mean − target)`` — all the work was
+        One matrix-vector product, ``-L∞·(mean − target)``. All the work was
         front-loaded into ``L∞`` at construction, so there is no optimisation in
         the loop. The ``mean − target`` shift turns the regulator (which drives its
         state to zero) into a controller that drives the state to ``target``.
