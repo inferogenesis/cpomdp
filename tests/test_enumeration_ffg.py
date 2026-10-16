@@ -21,14 +21,9 @@ import numpy as np
 from _support import unit_prior
 from cpomdp.backends.coupling import CouplingGraphBackend
 from cpomdp.enumeration import EnumeratedEfeSearch, FiniteActionSet, SearchWarrant
-from cpomdp.ffg.factors.linear_gaussian import (
-    CallableGaussianObservation,
-    GaussianCoupling,
-    GaussianObservation,
-    GaussianTransition,
-)
+from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
 from cpomdp.ffg.graph import Coupling, CouplingGraph
-from cpomdp.observation import CallableSensor
+from cpomdp.observation import CallableSensor, FixedSensor
 from cpomdp.selection import Preference
 from cpomdp.types import Belief, LinearGaussianModel
 
@@ -47,12 +42,12 @@ def _single_node_pair(*, state_dependent):
     r0 = np.array([[0.5]])
     params = {"R0": r0, "gain": 0.4}
     if state_dependent:
-        obs_ffg = CallableGaussianObservation(c, _rx_noise, params)
+        obs_ffg = CallableSensor(c, _rx_noise, params)
         obs_flat = CallableSensor(c, _rx_noise, params)
     else:
-        obs_ffg = GaussianObservation(c, observation_noise=r0)
+        obs_ffg = FixedSensor(c, observation_noise=r0)
         obs_flat = None
-    graph = CouplingGraph(root=0, dims=(2,), couplings=(), observations={0: obs_ffg})
+    graph = CouplingGraph(dims=(2,), couplings=(), observation_models={0: obs_ffg})
     backend = CouplingGraphBackend(
         graph,
         (GaussianTransition(a, dynamics_noise=q),),
@@ -61,9 +56,9 @@ def _single_node_pair(*, state_dependent):
     )
     model = LinearGaussianModel(
         dynamics_matrix=a,
-        observation_matrix=c,
+        observation_matrix=None if state_dependent else c,
         dynamics_noise=q,
-        observation_noise=r0,
+        observation_noise=None if state_dependent else r0,
         prior=Belief(mean=np.zeros(2), cov=np.eye(2)),
         control_matrix=b,
         observation_model=obs_flat,
@@ -73,12 +68,9 @@ def _single_node_pair(*, state_dependent):
 
 def _coupled_backend():
     graph = CouplingGraph(
-        root=0,
         dims=(1, 1),
-        couplings=(
-            Coupling(0, 1, GaussianCoupling([[0.8]], coupling_noise=[[0.05]]), 1.0),
-        ),
-        observations={1: GaussianObservation([[1.0]], observation_noise=[[0.1]])},
+        couplings=(Coupling(0, 1, [[0.8]], coupling_noise=[[0.05]]),),
+        observation_models={1: FixedSensor([[1.0]], observation_noise=[[0.1]])},
     )
     transitions = (
         GaussianTransition([[0.7]], dynamics_noise=[[0.1]]),
@@ -137,7 +129,7 @@ class TestOverBackendSharedAccounting:
         assert ffg.n_policies == 9  # 3^2
         assert ffg.cost_per_cycle == 18  # |A|^H * H = 9 * 2
 
-    def test_rejects_wrong_action_dim(self):
+    def test_rejects_an_action_set_of_other_n_controls(self):
         backend, _ = _single_node_pair(state_dependent=False)  # p = 1
         wrong = FiniteActionSet([[-1.0, 0.0], [1.0, 0.0]], version="v1")  # p = 2
         with np.testing.assert_raises(ValueError):

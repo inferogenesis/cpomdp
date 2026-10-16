@@ -6,8 +6,8 @@ import numpy as np
 from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
-from cpomdp._validation import concrete, equilibrium_drift
-from cpomdp.backends.base import EfeBackend, InferenceBackend
+from cpomdp._validation import concrete, equilibrium_drift, state_dependent
+from cpomdp.backends.base import GraphBackend, InferenceBackend
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.control import LQRController
 from cpomdp.enumeration import OpenLoopSelector, RecedingHorizonSelector
@@ -128,7 +128,7 @@ def _lqr_path(
 ) -> tuple[Preference, LQRSelector]:
     """The preference and the LQR selector a ``StateGoal`` asks for."""
     # A state-dependent sensor would mean converting the goal through C (deferred).
-    if not (model.observation_model is None or model.observation_model.is_fixed):
+    if state_dependent(model.observation_model) is not None:
         raise ValueError(
             "a StateGoal needs a fixed sensor. A state-dependent sensor would require "
             "converting the goal through C. Pass an ObservationGoal."
@@ -153,7 +153,7 @@ def _information_can_move(model: LinearGaussianModel) -> bool:
     does, and the information term of the expected free energy is flat (ADR-003).
     """
     noises = (model.observation_model, model.dynamics_noise_model)
-    return any(noise is not None and not noise.is_fixed for noise in noises)
+    return any(state_dependent(noise) is not None for noise in noises)
 
 
 def _efe_path(
@@ -165,15 +165,21 @@ def _efe_path(
         raise ValueError(
             "an ObservationGoal needs a model with a control matrix to act."
         )
-    is_graph = isinstance(backend, EfeBackend)
+    is_graph = isinstance(backend, GraphBackend)
     if not _information_can_move(model):
-        own = "FfgEfeSelector" if is_graph else "EFESelector"
+        # A StateGoal on a graph runs LQR on a model without its couplings, so a graph
+        # user is pointed only at the EFE selector.
+        way_out = (
+            "Pass a Preference with selector=FfgEfeSelector(...) to choose by EFE "
+            "anyway."
+            if is_graph
+            else "Pass a StateGoal for the LQR path, or a Preference with "
+            "selector=EFESelector(...) to choose by EFE anyway."
+        )
         raise ValueError(
             "an ObservationGoal needs a noise that depends on the state, and both "
             "noises are fixed here. The information term is then the same for every "
-            "action, and choosing by EFE is output regulation (deferred). Pass a "
-            f"StateGoal for the LQR path, or a Preference with selector={own}(...) "
-            "to choose by EFE anyway."
+            f"action, and choosing by EFE is output regulation (deferred). {way_out}"
         )
     if objective.info_node is not None and not is_graph:
         raise ValueError(
@@ -187,8 +193,8 @@ def _efe_path(
             f"ObservationGoal target must be a 1-D vector of length {m} (the "
             f"observation dimension), got shape {target.shape}"
         )
-    preference = Preference(target, objective.precision)
-    if isinstance(backend, EfeBackend):
+    preference = objective.preference
+    if isinstance(backend, GraphBackend):
         return preference, _graph_efe_selector(backend, objective)
     selector = _reaching_efe_selector(model, objective, preference)
     sensor_is_fixed = (
@@ -205,7 +211,7 @@ def _efe_path(
 
 
 def _graph_efe_selector(
-    backend: EfeBackend, objective: ObservationGoal
+    backend: GraphBackend, objective: ObservationGoal
 ) -> FfgEfeSelector:
     """The EFE selector for an ObservationGoal on a branching backend (issue #26).
 
@@ -220,13 +226,10 @@ def _graph_efe_selector(
         )
     info_block = None  # the whole joint state
     if objective.info_node is not None:
-        n_nodes = len(backend.dims)
-        if not 0 <= objective.info_node < n_nodes:
-            raise ValueError(
-                f"info_node {objective.info_node} is not a node index "
-                f"(0..{n_nodes - 1})."
-            )
-        info_block = backend.block(objective.info_node)
+        try:
+            info_block = backend.block(objective.info_node)
+        except ValueError as error:
+            raise ValueError(f"info_node {objective.info_node}: {error}") from error
     return FfgEfeSelector(
         backend,
         info_block=info_block,
@@ -342,7 +345,7 @@ class Agent:
 
     One honest difference from pymdp: ``sample_action`` is **deterministic** here,
     not a draw from a policy posterior. With a fixed linear-Gaussian sensor and fixed
-    process noise the EFE-minimising action is the LQR optimum (ADR-003), so it
+    dynamics noise the EFE-minimising action is the LQR optimum (ADR-003), so it
     returns the single best action. The name keeps the pymdp muscle-memory; the
     behaviour is exact.
 

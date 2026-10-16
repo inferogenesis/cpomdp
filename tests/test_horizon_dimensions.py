@@ -40,10 +40,7 @@ from cpomdp.efe import (
     policy_efe_ffg_trace,
 )
 from cpomdp.enumeration import EnumeratedEfeSearch
-from cpomdp.ffg.factors.linear_gaussian import (
-    CallableGaussianObservation,
-    GaussianTransition,
-)
+from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
 from cpomdp.ffg.graph import CouplingGraph
 from cpomdp.observation import CallableSensor
 from cpomdp.types import Belief, LinearGaussianModel
@@ -132,8 +129,8 @@ def _flat_pair():
     b = np.zeros((4, 2))
     b[0, 0] = 1.0
     b[1, 1] = 1.0
-    sensor = CallableGaussianObservation(_ARENA_C, _cue_noise, _CUE_PARAMS)
-    graph = CouplingGraph(root=0, dims=(4,), couplings=(), observations={0: sensor})
+    sensor = CallableSensor(_ARENA_C, _cue_noise, _CUE_PARAMS)
+    graph = CouplingGraph(dims=(4,), couplings=(), observation_models={0: sensor})
     backend = CouplingGraphBackend(
         graph,
         (GaussianTransition(a, dynamics_noise=q),),
@@ -142,11 +139,7 @@ def _flat_pair():
     )
     model = LinearGaussianModel(
         dynamics_matrix=a,
-        observation_matrix=_ARENA_C,
         dynamics_noise=q,
-        observation_noise=np.eye(
-            3
-        ),  # placeholder under a callable sensor, ignored there
         prior=Belief(mean=np.zeros(4), cov=np.eye(4)),
         control_matrix=b,
         observation_model=CallableSensor(_ARENA_C, _cue_noise, _CUE_PARAMS),
@@ -168,45 +161,47 @@ class TestFfgRolloutAtMultiDimAction:
             backend, belief, _walk(4), pref, info_block=info_block
         )
         assert trace.g.shape == (4,)  # H
-        assert trace.mu_pred.shape == (4, 6)  # H, n
-        assert trace.sigma_pred.shape == (4, 6, 6)
-        assert trace.sigma_post.shape == (4, 6, 6)
-        assert trace.s.shape == (4, 3, 3)  # H, m. Not n, and not p.
+        assert trace.predicted_mean.shape == (4, 6)  # H, n
+        assert trace.predicted_cov.shape == (4, 6, 6)
+        assert trace.posterior_cov.shape == (4, 6, 6)
+        assert trace.predicted_observation_cov.shape == (
+            4,
+            3,
+            3,
+        )  # H, m. Not n, and not p.
 
     def test_sums_equal_the_summed_rollout(self):
         backend, belief, pref = _coupled_backend(), _coupled_belief(), _pref()
         info_block = tuple(backend.block(CONTEXT))
         for h in (1, 2, 4):
-            g, parts = policy_efe_ffg(
-                backend, belief, _walk(h), pref, info_block=info_block
-            )
+            efe = policy_efe_ffg(backend, belief, _walk(h), pref, info_block=info_block)
             trace = policy_efe_ffg_trace(
                 backend, belief, _walk(h), pref, info_block=info_block
             )
-            np.testing.assert_array_equal(g, jnp.sum(trace.g))
-            np.testing.assert_array_equal(parts["pragmatic"], jnp.sum(trace.pragmatic))
-            np.testing.assert_array_equal(parts["epistemic"], jnp.sum(trace.epistemic))
+            np.testing.assert_array_equal(efe.g, jnp.sum(trace.g))
+            np.testing.assert_array_equal(efe.pragmatic, jnp.sum(trace.pragmatic))
+            np.testing.assert_array_equal(efe.epistemic, jnp.sum(trace.epistemic))
 
     def test_h1_reduces_to_one_ffg_step(self):
         backend, belief, pref = _coupled_backend(), _coupled_belief(), _pref()
         info_block = tuple(backend.block(CONTEXT))
         policy = _walk(1)
-        g, parts = policy_efe_ffg(backend, belief, policy, pref, info_block=info_block)
+        efe = policy_efe_ffg(backend, belief, policy, pref, info_block=info_block)
 
         predicted = backend.predicted_belief(belief, policy[0])
-        observation_matrix, _ = backend.observation_model
-        g_ref, parts_ref = _ffg_efe_step(
+        observation_matrix = backend.model.observation_matrix
+        efe_ref = _ffg_efe_step(
             predicted.mean,
             predicted.cov,
             observation_matrix,
-            backend.observation_noise_at(predicted.mean),
+            backend.model.observation_noise_at(predicted.mean),
             pref.target,
             pref.precision,
             info_block,
         )
-        np.testing.assert_array_equal(g, g_ref)
-        np.testing.assert_array_equal(parts["pragmatic"], parts_ref["pragmatic"])
-        np.testing.assert_array_equal(parts["epistemic"], parts_ref["epistemic"])
+        np.testing.assert_array_equal(efe.g, efe_ref.g)
+        np.testing.assert_array_equal(efe.pragmatic, efe_ref.pragmatic)
+        np.testing.assert_array_equal(efe.epistemic, efe_ref.epistemic)
 
     def test_action_reaches_every_control_axis(self):
         # A guard on the fixture itself: if only one action component moved the state,
@@ -244,8 +239,8 @@ class TestFfgRolloutAtMultiDimAction:
         )
         rc = rollout_conditioning(trace)
         assert rc.all_positive_definite
-        assert rc.cond_sigma_pred.shape == (4,)
-        assert rc.cond_s.shape == (4,)
+        assert rc.cond_predicted_cov.shape == (4,)
+        assert rc.cond_predicted_observation_cov.shape == (4,)
 
 
 # --- the flat and FFG rollouts still agree once the action is wider ----------------
@@ -256,16 +251,14 @@ class TestFfgReducesToFlatAtMultiDimAction:
         pref = _pref()
         for h in (2, 3):
             policy = _policy([[0.5, -0.4], [-0.3, 0.2], [0.1, 0.6]], h)
-            g, parts = policy_efe_ffg(
-                backend, belief, policy, pref, info_block=range(4)
-            )
-            g_ref, parts_ref = policy_efe(model, belief, policy, pref)
-            np.testing.assert_allclose(float(g), float(g_ref), atol=1e-9)
+            efe = policy_efe_ffg(backend, belief, policy, pref, info_block=range(4))
+            efe_ref = policy_efe(model, belief, policy, pref)
+            np.testing.assert_allclose(float(efe.g), float(efe_ref.g), atol=1e-9)
             np.testing.assert_allclose(
-                float(parts["pragmatic"]), float(parts_ref["pragmatic"]), atol=1e-9
+                float(efe.pragmatic), float(efe_ref.pragmatic), atol=1e-9
             )
             np.testing.assert_allclose(
-                float(parts["epistemic"]), float(parts_ref["epistemic"]), atol=1e-9
+                float(efe.epistemic), float(efe_ref.epistemic), atol=1e-9
             )
 
 
@@ -452,7 +445,7 @@ def _priced_joint_width(action_set, horizon: int, n_dims: int, context_dim: int)
         action_set, horizon, n_dims, context_dim=context_dim
     )
     per_policy = peak_gib * 1024**3 / policies
-    joint_squared = ((per_policy / 8) - horizon * action_set.action_dim) / 4
+    joint_squared = ((per_policy / 8) - horizon * action_set.n_controls) / 4
     return round(joint_squared**0.5)
 
 
@@ -474,7 +467,7 @@ class TestEnumerationCostPricesTheRealJoint:
         action_set = cue_maze.axis_action_set(n_dims)
         backend = cue_maze.build_maze(n_dims, context_dim=context_dim)
         priced = _priced_joint_width(action_set, 2, n_dims, context_dim)
-        assert priced == backend.n_total
+        assert priced == backend.model.n_states
 
     def test_a_wider_context_is_charged_for(self):
         # The regression itself: a hardcoded `1 + 2·n_dims` returns the same estimate at

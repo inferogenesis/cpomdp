@@ -4,6 +4,7 @@ import math
 import operator
 from collections.abc import Sequence
 from dataclasses import dataclass
+from functools import cached_property
 from typing import Protocol, runtime_checkable
 
 import jax
@@ -13,11 +14,12 @@ from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
 from cpomdp._validation import validate_covariance
-from cpomdp.backends.base import EfeBackend
+from cpomdp.backends.base import GraphBackend
 from cpomdp.control import LQRController, _validate_cost
 from cpomdp.efe import (
     _checked_info_block,
     _ffg_efe_step,
+    _goal_and_precision,
     expected_free_energy,
     policy_efe,
 )
@@ -194,7 +196,7 @@ class ActionSelector(Protocol):
     """Chooses an action from a belief and a preference.
 
     The abstraction wall for action selection. [`LQRSelector`][cpomdp.LQRSelector] is
-    the fixed-noise case, a fixed sensor and fixed process noise, where EFE collapses
+    the fixed-noise case, a fixed sensor and fixed dynamics noise, where EFE collapses
     to LQR (ADR-003). [`EFESelector`][cpomdp.EFESelector] is the state-dependent one.
     [`Agent`][cpomdp.Agent] depends only on this, never on a concrete selector.
     """
@@ -210,7 +212,7 @@ class LQRSelector:
 
     A thin wrapper: it owns no control logic, it just forwards to the
     front-loaded controller, unpacking the belief's mean and the preference's
-    target. EFE collapses to LQR under a fixed sensor and fixed process noise
+    target. EFE collapses to LQR under a fixed sensor and fixed dynamics noise
     (ADR-003), so for that regime this *is* the action selector.
     """
 
@@ -326,6 +328,7 @@ class EFESelector:
         when no candidate scores a finite ``G``. The first call compiles the work and
         later calls reuse it.
         """
+        _goal_and_precision(preference)  # refused here, not inside the compiled call
         return self._choose(belief, preference)
 
     def _score_and_choose(
@@ -340,11 +343,11 @@ class EFESelector:
         """``G`` for every candidate over the horizon, in grid order."""
         if self._horizon == 1:
             return jax.vmap(
-                lambda a: expected_free_energy(self._model, belief, a, preference)[0]
+                lambda a: expected_free_energy(self._model, belief, a, preference).g
             )(self._candidates)
-        return jax.vmap(
-            lambda pol: policy_efe(self._model, belief, pol, preference)[0]
-        )(self._policies)
+        return jax.vmap(lambda pol: policy_efe(self._model, belief, pol, preference).g)(
+            self._policies
+        )
 
     @property
     def candidates(self) -> Float64[Array, "k p"]:
@@ -400,7 +403,7 @@ class FfgEfeSelector:
 
     def __init__(
         self,
-        backend: EfeBackend,
+        backend: GraphBackend,
         *,
         action_bounds: tuple[float, float],
         n_candidates: int = _DEFAULT_N_CANDIDATES,
@@ -440,11 +443,11 @@ class FfgEfeSelector:
         checked_info_block = _checked_info_block(backend, info_block)
         # Front-load (ADR-002): the candidate grid, the info block, the constant C.
         # R is *not* front-loaded — it may be state-dependent, so it is read per
-        # candidate at μ⁺ via ``observation_noise_at`` (issue #27); a fixed sensor
-        # returns the same constant each time.
+        # candidate at μ⁺ via ``model.observation_noise_at`` (issue #27). A fixed
+        # sensor returns the same constant each time.
         self._backend = backend
         self._info_block = checked_info_block
-        self._observation_matrix, _ = backend.observation_model  # C (constant)
+        self._observation_matrix = backend.model.observation_matrix  # C (constant)
         self._candidates = candidates
         self._distance_from_zero = jnp.linalg.norm(candidates, axis=1)
         self._choose = jax.jit(self._score_and_choose)  # compiled once, on first use
@@ -459,6 +462,7 @@ class FfgEfeSelector:
         and scores that are not finite go as for
         [`EFESelector`][cpomdp.EFESelector], and the first call compiles the work.
         """
+        _goal_and_precision(preference)  # refused here, not inside the compiled call
         return self._choose(belief, preference)
 
     def _score_and_choose(
@@ -466,10 +470,10 @@ class FfgEfeSelector:
     ) -> Float64[Array, "p"]:
         def g_of(action: Float64[Array, "p"]) -> Float64[Array, ""]:
             predicted = self._backend.predicted_belief(belief, action)  # μ⁺, Σ⁺
-            observation_noise = self._backend.observation_noise_at(
+            observation_noise = self._backend.model.observation_noise_at(
                 predicted.mean
             )  # R(μ⁺)
-            g, _ = _ffg_efe_step(
+            return _ffg_efe_step(
                 predicted.mean,
                 predicted.cov,
                 self._observation_matrix,
@@ -477,8 +481,7 @@ class FfgEfeSelector:
                 preference.target,
                 preference.precision,
                 self._info_block,
-            )
-            return g
+            ).g
 
         g = jax.vmap(g_of)(self._candidates)
         return _grid_choice(self._candidates, self._distance_from_zero, g)
@@ -609,7 +612,8 @@ class ObservationGoal:
     gain about that node's marginal, the factored-EFE regime on a branching backend,
     issue #26). ``None`` means whole-state info gain. The Agent dispatches an
     ObservationGoal to an EFESelector, or to an FfgEfeSelector on a branching backend.
-    Not a pytree. The Agent reads it once at construction and keeps a Preference.
+    Not a pytree. The Agent reads it once at construction and keeps its
+    ``preference``, which it hands to the EFE functions.
     """
 
     target: Float64[Array, "m"]
@@ -664,3 +668,14 @@ class ObservationGoal:
                 f"info_node must be a non-negative node index or None, "
                 f"got {self.info_node}"
             )
+
+    @cached_property
+    def preference(self) -> Preference:
+        """The target and precision, as the preference a score is taken against.
+
+        The [`Preference`][cpomdp.Preference] that
+        [`expected_free_energy`][cpomdp.expected_free_energy] and the rollouts in
+        ``cpomdp.efe`` take. The search settings stay on the goal. Built once, since
+        the goal cannot change.
+        """
+        return Preference(self.target, self.precision)

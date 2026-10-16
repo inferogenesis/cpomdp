@@ -21,13 +21,9 @@ from cpomdp.backends.base import InadmissiblePartitionError
 from cpomdp.backends.coupling import CouplingGraphBackend
 from cpomdp.efe import policy_efe_ffg, policy_efe_ffg_trace
 from cpomdp.enumeration import ChunkedEfeSearch, EnumeratedEfeSearch, FiniteActionSet
-from cpomdp.ffg.factors.linear_gaussian import (
-    CallableGaussianObservation,
-    GaussianCoupling,
-    GaussianObservation,
-    GaussianTransition,
-)
+from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
 from cpomdp.ffg.graph import Coupling, CouplingGraph
+from cpomdp.observation import CallableSensor, FixedSensor
 from cpomdp.selection import FfgEfeSelector, ObservationGoal, Preference
 from cpomdp.types import Belief
 
@@ -40,29 +36,28 @@ def _sharp_near_zero(state, params):
 def _hub_graph(*, fast_relevant=True, slow_relevant=False, fast_sensor=None):
     # hub 0 -> fast 1 (gradient path) and slow 2 (methylation-like); observe 1 and 2.
     if fast_sensor is None:
-        fast_sensor = GaussianObservation([[1.0]], observation_noise=[[0.1]])
+        fast_sensor = FixedSensor([[1.0]], observation_noise=[[0.1]])
     return CouplingGraph(
-        root=0,
         dims=(1, 1, 1),
         couplings=(
             Coupling(
                 0,
                 1,
-                GaussianCoupling([[0.8]], coupling_noise=[[0.05]]),
-                1.0,
+                [[0.8]],
+                coupling_noise=[[0.05]],
                 efe_relevant=fast_relevant,
             ),
             Coupling(
                 0,
                 2,
-                GaussianCoupling([[0.6]], coupling_noise=[[0.05]]),
-                1.0,
+                [[0.6]],
+                coupling_noise=[[0.05]],
                 efe_relevant=slow_relevant,
             ),
         ),
-        observations={
+        observation_models={
             1: fast_sensor,
-            2: GaussianObservation([[1.0]], observation_noise=[[0.1]]),
+            2: FixedSensor([[1.0]], observation_noise=[[0.1]]),
         },
     )
 
@@ -90,11 +85,9 @@ def _selector(backend, info_block=(0, 1, 2)):
 
 def test_coupling_carries_efe_relevant_flag():
     # The declared-relevance seam: an edge can be flagged EFE-load-bearing; default off.
-    flagged = Coupling(
-        0, 1, GaussianCoupling([[1.0]], coupling_noise=[[0.1]]), 1.0, efe_relevant=True
-    )
+    flagged = Coupling(0, 1, [[1.0]], coupling_noise=[[0.1]], efe_relevant=True)
     assert flagged.efe_relevant is True
-    plain = Coupling(0, 1, GaussianCoupling([[1.0]], coupling_noise=[[0.1]]), 1.0)
+    plain = Coupling(0, 1, [[1.0]], coupling_noise=[[0.1]])
     assert plain.efe_relevant is False
 
 
@@ -137,9 +130,7 @@ def test_pure_filtering_partition_is_not_guarded():
 def test_agent_rejects_inadmissible_partition():
     # The Agent builds the FFG selector, so the guard reaches the user-facing path too.
     # It builds one only where the action moves the information term.
-    sensor = CallableGaussianObservation(
-        [[1.0]], _sharp_near_zero, {"r0": jnp.array(0.1)}
-    )
+    sensor = CallableSensor([[1.0]], _sharp_near_zero, {"r0": jnp.array(0.1)})
     backend = _backend(_hub_graph(fast_sensor=sensor), partition=[[0, 2], [1]])
     with pytest.raises(InadmissiblePartitionError):
         Agent.from_backend(
