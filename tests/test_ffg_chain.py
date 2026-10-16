@@ -25,7 +25,7 @@ import pytest
 
 from cpomdp.backends.base import InferenceBackend
 from cpomdp.backends.kalman import KalmanBackend
-from cpomdp.dynamics import CallableProcessNoise
+from cpomdp.dynamics import CallableDynamicsNoise
 from cpomdp.ffg.chain import ChainBackend
 from cpomdp.observation import CallableSensor
 from cpomdp.types import Belief, LinearGaussianModel
@@ -217,7 +217,7 @@ def _callable_process_scalar_model(*, control_matrix=None):
         observation_noise=[[R]],
         prior=Belief(mean=[PRIOR_MEAN], cov=[[PRIOR_VAR]]),
         control_matrix=control_matrix,
-        dynamics_noise_model=CallableProcessNoise(_quad_process, _QPROC),
+        dynamics_noise_model=CallableDynamicsNoise(_quad_process, _QPROC),
     )
 
 
@@ -289,7 +289,7 @@ class TestChainCallableSensorParity:
         np.testing.assert_allclose(chain_belief.cov, kalman_belief.cov, atol=1e-7)
 
 
-class TestChainCallableProcessNoiseParity:
+class TestChainCallableDynamicsNoiseParity:
     def test_constant_callable_reduces_to_fixed_chain(self):
         q0 = [[Q]]
         fixed = _scalar_model()
@@ -298,7 +298,9 @@ class TestChainCallableProcessNoiseParity:
             observation_matrix=[[C]],
             observation_noise=[[R]],
             prior=Belief(mean=[PRIOR_MEAN], cov=[[PRIOR_VAR]]),
-            dynamics_noise_model=CallableProcessNoise(lambda x, p: jnp.array(q0), None),
+            dynamics_noise_model=CallableDynamicsNoise(
+                lambda x, p: jnp.array(q0), None
+            ),
         )
         cf_fixed, cf_call = ChainBackend(fixed), ChainBackend(callable_model)
         b_fixed, b_call = fixed.prior, callable_model.prior
@@ -326,7 +328,7 @@ class TestChainCallableProcessNoiseParity:
             observation_matrix=[[1.0, 0.0]],
             observation_noise=[[1.0]],
             prior=Belief(mean=[0.0, 0.0], cov=[[1.0, 0.0], [0.0, 1.0]]),
-            dynamics_noise_model=CallableProcessNoise(_quad_process, q2d),
+            dynamics_noise_model=CallableDynamicsNoise(_quad_process, q2d),
         )
         kalman, chain = KalmanBackend(model), ChainBackend(model)
         k_belief = c_belief = model.prior

@@ -137,7 +137,7 @@ class TestOverBackendSharedAccounting:
         assert ffg.n_policies == 9  # 3^2
         assert ffg.cost_per_cycle == 18  # |A|^H * H = 9 * 2
 
-    def test_rejects_wrong_action_dim(self):
+    def test_rejects_an_action_set_of_other_n_controls(self):
         backend, _ = _single_node_pair(state_dependent=False)  # p = 1
         wrong = FiniteActionSet([[-1.0, 0.0], [1.0, 0.0]], version="v1")  # p = 2
         with np.testing.assert_raises(ValueError):

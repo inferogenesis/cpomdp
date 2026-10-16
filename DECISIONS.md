@@ -4711,3 +4711,73 @@ a state-dependent one, since a fixed object's `Q` is the field.
   and so did the test fixtures. They now leave it out.
 - The comparison is exact. A value recomputed by hand that differs in the last bit is
   refused, and omitting it is the fix.
+
+## ADR-072 — the two noises are named alike, and each name means one thing
+
+**Date:** 2026-10-16
+**Status:** Accepted
+**Supersedes:** ADR-006's note "On changing the matrices names", that the letters survive
+as aliases. ADR-065's report fields `process_non_constant` and `process_noise_spread`,
+which never shipped.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+The two noises used different schemes. The sensor protocol was `ObservationModel`,
+held in the field `observation_model`, and `CallableSensor` took `noise_fn` and
+`noise_params`. The dynamics protocol was `DynamicsNoise`, the CamelCase of the matrix
+field `dynamics_noise`, held in `dynamics_noise_model`. Its callable was
+`CallableProcessNoise(q_fn, q_params)`. A user who had written `R(x)` could not write
+`Q(x)` by analogy, and "process" and "dynamics" named one channel. A noise object passed
+for a matrix field failed inside `float()`.
+
+The same argument had four names. The flat sensors called the state `x`, the graph
+factors `state`, the graph backend `mean`. `linearize(state=...)` worked on one family
+and failed on the other.
+
+`SensorReport` reported on `Q` too. Its `R` fields were unprefixed, so
+`report.noise_spread` read as covering both noises and covered only `R`. Its `Q` fields
+sat under the retired "process" root. `Belief.ndim` was the state count, where NumPy's
+`ndim` is an array's rank, and `FiniteActionSet.action_dim` named the dimension the
+model calls `n_controls`. Every model field had a second public name, a letter, and in
+pymdp `A` is the likelihood and `C` the preferences.
+
+### Decision
+
+Each object has one name for each thing, and the two noises use the same scheme.
+
+- `DynamicsNoise` is `DynamicsNoiseModel`. `CallableProcessNoise` is
+  `CallableDynamicsNoise`, and takes `noise_fn` and `noise_params` as `CallableSensor`
+  does. The grouped-prefix rule would give `dynamics_noise_fn`. I took the sensor's names
+  instead, because the class name already scopes the group and the two callables then
+  read the same.
+- No fixed dynamics-noise class ships. A constant `Q` goes in `dynamics_noise`, and the
+  protocol exists for `Q(x)`. `is_fixed` stays, since the filter's fixed path reads it.
+- A noise object passed for a matrix field raises a `TypeError` naming the slot it
+  belongs in.
+- The protocols take their arguments by position: `linearize(state, /)`,
+  `gaussianize(mean, cov, /)` and `noise_at(state, /)`. An implementation may then name
+  them as it likes, and the built-in ones use those names. `gaussianize` takes a belief,
+  so its arguments are the belief's field names. I did not add `noise_at` to the sensor
+  protocol. Every sensor written outside the library would then fail the runtime check.
+- `SensorReport` is `ProbeReport`, named for `probe_model`, which returns it. Each field
+  is prefixed with the object it describes: `observation_matrix_`, `observation_noise_`,
+  `dynamics_noise_` or `epistemic_`. "Varies" replaces "non-constant".
+- `Belief.ndim` is `n_states`, and `action_dim` is `n_controls` on `FiniteActionSet` and
+  the harness's action sequence.
+- The `.A`, `.B`, `.C`, `.Q` and `.R` properties go.
+
+None keeps a deprecated alias. v0.5.0 already breaks every model call site (ADR-067
+counts the breaks), so these ride the migration v0.4 users face anyway. An alias kept
+through 0.5.x would keep two names alive, which is the defect being removed.
+
+### Consequences
+
+- Each old name a release shipped is a break, listed in the changelog with its
+  replacement. The report's `Q` fields never shipped and are renamed in place.
+- Nothing per cycle changes. `CallableDynamicsNoise.noise_at` reads its argument as a
+  float array, as the sensors already did, and that is free on an array already of that
+  type.
+- `EfeBackend.n_total` and `observation_noise_at(mean)` belong to the graph backend's
+  surface and are left to that change. The graph backend's private joint sensor names its
+  arguments `x` and `sigma`, and the positional protocol accepts it as it is.

@@ -142,7 +142,7 @@ class Agent:
 
     One honest difference from pymdp: ``sample_action`` is **deterministic** here,
     not a draw from a policy posterior. With a fixed linear-Gaussian sensor and fixed
-    process noise the EFE-minimising action is the LQR optimum (ADR-003), so it
+    dynamics noise the EFE-minimising action is the LQR optimum (ADR-003), so it
     returns the single best action. The name keeps the pymdp muscle-memory; the
     behaviour is exact.
 

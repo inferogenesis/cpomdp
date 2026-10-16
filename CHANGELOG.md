@@ -398,8 +398,8 @@ certainty equivalence is optimal, and no use of the readings beats it.
   model under a fixed sensor reported a constant epistemic value the kernel never
   computes. The probe now takes `Q` at each predicted mean as the kernel does. Where a
   sampled `Q` is not a covariance it raises, instead of dropping that sample from
-  `epistemic_range`. `SensorReport` gains `process_non_constant` and
-  `process_noise_spread`, and `flattens` needs both noises constant. Under `Q(x)` the
+  `epistemic_range`. The report gains `dynamics_noise_varies` and
+  `dynamics_noise_spread`, and `flattens` needs both noises constant. Under `Q(x)` the
   action reaches the recursion with `R` fixed.
 - `CouplingGraph` checks each sensor's width against the node it observes. A one-column
   `C` on a two-dimensional node used to construct, and `CouplingGraphBackend` broadcast
@@ -558,8 +558,39 @@ certainty equivalence is optimal, and no use of the readings beats it.
   constants (`SENSOR` is `OBSERVATION_MATRIX`, `PROCESS_NOISE` is `DYNAMICS_NOISE`).
   `LinearGaussianModel.observation_model` and `InferenceBackend.observation_model()` now
   share a name on two classes: the field holds the declaration, the method returns the
-  `(C, R)` it resolves to. The `.A`/`.B`/`.C`/`.Q`/`.R` aliases are unchanged, and no
-  numerical behaviour moved.
+  `(C, R)` it resolves to. No numerical behaviour moved.
+- **Breaking:** `LinearGaussianModel` drops its `.A`, `.B`, `.C`, `.Q` and `.R`
+  properties. Each field has its role name only. In pymdp `A` is the likelihood and `C`
+  the preferences, so `model.A` handed a pymdp user the dynamics matrix with no error,
+  and every field carried two public names.
+- **Breaking:** the dynamics-noise classes take the observation side's names.
+  `DynamicsNoise` is `DynamicsNoiseModel`, the protocol the `dynamics_noise_model` field
+  holds, as `observation_model` holds an `ObservationModel`. `CallableProcessNoise` is
+  `CallableDynamicsNoise`, and takes `noise_fn` and `noise_params` (were `q_fn` and
+  `q_params`), as `CallableSensor` does. A user who had written `R(x)` could not write
+  `Q(x)` by analogy, and "process" and "dynamics" named one channel. A noise object
+  passed for a matrix field now raises a `TypeError` naming the slot it belongs in. It
+  used to fail inside `float()`. The API page is "Dynamics noise", and no longer says a
+  plain matrix satisfies the protocol. A constant `Q` goes in `dynamics_noise`.
+- **Breaking:** `ObservationModel.linearize(state, /)`, `ObservationModel.gaussianize(mean,
+  cov, /)` and `DynamicsNoiseModel.noise_at(state, /)` take their arguments by position,
+  so an implementation may name them as it likes. `FixedSensor`, `CallableSensor` and
+  `CallableDynamicsNoise` name them that way. The flat sensors called the state `x`, and
+  `linearize(state=...)` worked on the graph factors and failed on them.
+  `CallableDynamicsNoise.noise_at` reads a list as an array, as the sensors do.
+- **Breaking:** `SensorReport` is `ProbeReport`, named for `probe_model`, which returns
+  it. It reports on `Q` as well as the sensor. Each field now carries the name of the
+  object it describes: `rank` and `full_row_rank` are `observation_matrix_rank` and
+  `observation_matrix_full_row_rank`. `definite`, `indefinite_at`, `non_constant`,
+  `noise_spread` and `loewner_comparable` are `observation_noise_definite`,
+  `observation_noise_indefinite_at`, `observation_noise_varies`,
+  `observation_noise_spread` and `observation_noise_loewner_ordered`.
+  `report.noise_spread` read as covering both noises and covered only `R`. The summary
+  says "R varies" and "Q varies" where it said "non-constant".
+- **Breaking:** `Belief.ndim` is `Belief.n_states` and `FiniteActionSet.action_dim` is
+  `FiniteActionSet.n_controls`, the names `LinearGaussianModel` gives the same two
+  dimensions. In NumPy and JAX `ndim` is an array's rank. A belief over two states read
+  `prior.ndim == 2` beside `prior.mean.ndim == 1`.
 - **Breaking:** the epistemic term's aim is named `info_node` and `info_block`, not
   `target`. `target` carried two unrelated types on exported API: a desired value
   (`Float64[Array, "n"]`) on `StateGoal` and `ObservationGoal`, and the joint-state

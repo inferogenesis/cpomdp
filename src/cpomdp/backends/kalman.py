@@ -41,7 +41,7 @@ def _gain_and_posterior_cov(
     Args:
         dynamics_matrix: The state-transition matrix A, shape ``(n, n)``.
         observation_matrix: The observation matrix C, shape ``(m, n)``.
-        dynamics_noise: The process-noise covariance Q, shape ``(n, n)``.
+        dynamics_noise: The dynamics-noise covariance Q, shape ``(n, n)``.
         observation_noise: The observation-noise covariance R, shape ``(m, m)``.
         prior_cov: The incoming belief's covariance, shape ``(n, n)``.
 

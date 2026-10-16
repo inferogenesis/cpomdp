@@ -137,7 +137,7 @@ class TestGaussianObservation:
 
 
 class TestCallableGaussianObservation:
-    """The FFG twin of ``CallableSensor``: constant C, ``noise_fn(x, params) -> R(x)``.
+    """The FFG twin of ``CallableSensor``: constant C, ``noise_fn`` gives R(x).
 
     Oracle-first, and the *fixed* factor is the oracle: a constant ``noise_fn`` must
     reproduce ``GaussianObservation`` exactly (the reduction), and the state-dependent

@@ -170,7 +170,7 @@ class ModelStructure:
         (ADR-010), to relax if it proves a faff.
 
         Conditional independence (EXPERIMENTAL): factors declared independent must have
-        ≈0 cross-blocks in the dynamics ``A`` (and the fixed process noise ``Q``) to
+        ≈0 cross-blocks in the dynamics ``A`` (and the fixed dynamics noise ``Q``) to
         ``atol``, and a sensory channel must read within a single factor. A
         state-dependent ``Q(x)`` has no single matrix to check, so it is skipped. This
         criterion checks one-step blocks now and tightens to the rigorous

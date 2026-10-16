@@ -29,7 +29,7 @@ from cpomdp._lab.degraded import DiagonalCovarianceBackend, WrongFixedRBackend
 from cpomdp._validation import UNVERSIONED, validate_declared
 from cpomdp.backends.base import InferenceBackend
 from cpomdp.backends.kalman import KalmanBackend
-from cpomdp.dynamics import DynamicsNoise
+from cpomdp.dynamics import DynamicsNoiseModel
 from cpomdp.observation import ObservationModel
 from cpomdp.structure import ModelStructure
 from cpomdp.types import Belief, LinearGaussianModel
@@ -128,7 +128,7 @@ class ModelSpec:
         dynamics_matrix: State to next state — A, shape ``(n, n)``.
         observation_matrix: State to reading — C, shape ``(m, n)``. ``None`` to leave
             it to ``observation_model``.
-        dynamics_noise: Process-noise covariance — Q, shape ``(n, n)``. ``None`` to
+        dynamics_noise: Dynamics-noise covariance — Q, shape ``(n, n)``. ``None`` to
             leave it to ``dynamics_noise_model``.
         observation_noise: Reading-noise covariance — R, shape ``(m, m)``. ``None`` to
             leave it to ``observation_model``.
@@ -137,7 +137,7 @@ class ModelSpec:
         control_matrix: Action to state — B, shape ``(n, p)``. ``None`` for a model
             that takes no action.
         observation_model: A state-dependent sensor, passed through.
-        dynamics_noise_model: State-dependent process noise, passed through.
+        dynamics_noise_model: State-dependent dynamics noise, passed through.
         structure: A declared factor / blanket partition, passed through.
         version: A non-empty tag, so a parameter changed later shows up in the diff.
     """
@@ -151,7 +151,7 @@ class ModelSpec:
     version: str
     control_matrix: np.ndarray | None = None
     observation_model: ObservationModel | None = None
-    dynamics_noise_model: DynamicsNoise | None = None
+    dynamics_noise_model: DynamicsNoiseModel | None = None
     structure: ModelStructure | None = None
 
     def __init__(
@@ -166,7 +166,7 @@ class ModelSpec:
         version: str,
         control_matrix: ArrayLike | None = None,
         observation_model: ObservationModel | None = None,
-        dynamics_noise_model: DynamicsNoise | None = None,
+        dynamics_noise_model: DynamicsNoiseModel | None = None,
         structure: ModelStructure | None = None,
     ) -> None:
         for name, value in (

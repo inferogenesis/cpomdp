@@ -8,8 +8,8 @@ between steps:
   `y − Cμ⁺` has zero expectation (no real future observation);
 - the covariance contracts by the Kalman update `Σ_post = Σ⁺ − Σ⁺Cᵀ S⁻¹ C Σ⁺`,
   computed inline from the `(Σ⁺, S)` `_efe_step` already returns plus the `C` the
-  rollout fetches itself (`model.C` fixed, else `linearize(μ⁺)[0]`), then
-  symmetrized as a PSD guard.
+  rollout fetches itself (`model.observation_matrix` fixed, else
+  `linearize(μ⁺)[0]`), then symmetrized as a PSD guard.
 
 The signature is deliberately `horizon`-free: `H` is `policy.shape[0]` (which
 `lax.scan` uses as its static trip count), so a separate kwarg would be a
@@ -35,7 +35,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from cpomdp.dynamics import CallableProcessNoise
+from cpomdp.dynamics import CallableDynamicsNoise
 from cpomdp.efe import expected_free_energy, policy_efe
 from cpomdp.observation import CallableSensor
 from cpomdp.selection import Preference
@@ -81,8 +81,9 @@ def _q_well(x, params):
 
 
 def _internal_q_model():
-    pn = CallableProcessNoise(
-        q_fn=_q_well, q_params={"base": jnp.array(0.05), "slope": jnp.array(0.4)}
+    dynamics_noise_model = CallableDynamicsNoise(
+        noise_fn=_q_well,
+        noise_params={"base": jnp.array(0.05), "slope": jnp.array(0.4)},
     )
     return LinearGaussianModel(
         dynamics_matrix=[[1.0]],
@@ -90,7 +91,7 @@ def _internal_q_model():
         observation_noise=[[0.3]],
         prior=Belief(mean=[0.0], cov=[[0.2]]),
         control_matrix=[[1.0]],
-        dynamics_noise_model=pn,
+        dynamics_noise_model=dynamics_noise_model,
     )
 
 
