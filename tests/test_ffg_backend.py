@@ -472,9 +472,10 @@ class TestCarryPartition:
             )
 
     def test_a_run_is_profiled_by_scanning_infer_states_and_severed_mass(self):
-        # The per-run severed-mass profile (ADR-016) is one jitted scan over the two
-        # eager surfaces. The full joint severs nothing and a singleton cut severs at
-        # every step. The scan computes nothing the step-by-step loop does not.
+        # The per-run severed-mass profile (ADR-016) is one jitted scan over
+        # infer_states and severed_mass. The full joint severs nothing and a singleton
+        # cut severs at every step. The scan computes nothing the step-by-step loop
+        # does not.
         full = _build(
             _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
         )

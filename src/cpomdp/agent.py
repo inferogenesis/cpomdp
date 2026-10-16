@@ -127,11 +127,11 @@ _BUILT_IN_SELECTORS = (*_STATE_SPACE_SELECTORS, *_OBSERVATION_SPACE_SELECTORS)
 _GRAPH_SCORED_SELECTORS = (FFGEFESelector, RecedingHorizonSelector, OpenLoopSelector)
 
 
-def _equal_unless_traced(first: ArrayLike, second: ArrayLike) -> bool:
-    """Whether two arrays are equal. A traced one cannot be read, so counts as equal."""
+def _known_equal(first: ArrayLike, second: ArrayLike) -> bool:
+    """Whether two arrays are known to be equal. A traced one cannot be read, so not."""
     first_value, second_value = concrete(first), concrete(second)
     if first_value is None or second_value is None:
-        return True
+        return False
     return bool(np.array_equal(first_value, second_value))
 
 
@@ -139,9 +139,9 @@ def _same_couplings(first: CouplingGraphBackend, second: CouplingGraphBackend) -
     """Whether two graph backends' edges join the same nodes with equal factors."""
     first_edges, second_edges = first.graph.couplings, second.graph.couplings
     return len(first_edges) == len(second_edges) and all(
-        (a.parent, a.child) == (b.parent, b.child)
-        and _equal_unless_traced(a.coupling_matrix, b.coupling_matrix)
-        and _equal_unless_traced(a.coupling_noise, b.coupling_noise)
+        (a.parent, a.child, a.efe_relevant) == (b.parent, b.child, b.efe_relevant)
+        and _known_equal(a.coupling_matrix, b.coupling_matrix)
+        and _known_equal(a.coupling_noise, b.coupling_noise)
         for a, b in zip(first_edges, second_edges, strict=True)
     )
 
@@ -152,8 +152,9 @@ def _scores_another_plant(selector: ActionSelector, backend: InferenceBackend) -
     A custom selector is not checked (ADR-080). A graph-scored selector compares the
     backend it scores on: the same object passes, and a ``CouplingGraphBackend`` with an
     equal interface model and equal couplings passes too, since the couplings are part
-    of the plant and the interface model leaves them out. Any other graph backend's
-    couplings cannot be read, so it passes only as the same object.
+    of the plant and the interface model leaves them out. A coupling that cannot be
+    read under a trace counts as different. Any other graph backend passes on an equal
+    model when that model is its plant, and only as the same object when it is not.
     """
     if not isinstance(selector, _BUILT_IN_SELECTORS):
         return False
@@ -169,7 +170,9 @@ def _scores_another_plant(selector: ActionSelector, backend: InferenceBackend) -
         isinstance(graph, CouplingGraphBackend)
         and isinstance(backend, CouplingGraphBackend)
     ):
-        return True
+        if is_graph_interface(graph.model) or is_graph_interface(backend.model):
+            return True  # its couplings cannot be read, so only identity passes
+        return not _same_model(graph.model, backend.model)
     return not (
         _same_model(graph.model, backend.model) and _same_couplings(graph, backend)
     )

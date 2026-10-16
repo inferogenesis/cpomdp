@@ -293,3 +293,44 @@ def test_a_flat_selector_is_refused_on_a_coupled_graph_agent():
     selector = EFESelector(flat, action_bounds=(-1.0, 1.0))
     with pytest.raises(ValueError, match="another"):
         Agent.from_backend(agent_graph, Preference(jnp.zeros(2)), selector=selector)
+
+
+def test_the_research_wrappers_refuse_a_coupled_graphs_model():
+    # Each rebuilds the model field by field, which would drop the mark.
+    from cpomdp._lab.degraded import WrongFixedRBackend
+    from cpomdp._lab.harness import World
+
+    model = _backend(coupled=True).model
+    with pytest.raises(TypeError, match="couplings"):
+        WrongFixedRBackend(model, magnitude=0.1)
+    with pytest.raises(TypeError, match="couplings"):
+        World(model)
+
+
+def test_a_driver_over_a_graph_with_another_efe_flag_is_refused():
+    # efe_relevant changes what the score aims at, so it is part of what is compared.
+    def flagged(relevant):
+        graph = CouplingGraph(
+            dims=(1, 1),
+            couplings=(
+                Coupling(0, 1, [[0.8]], coupling_noise=[[0.05]], efe_relevant=relevant),
+            ),
+            observation_models={
+                0: CallableSensor([[1.0]], _sharp_near_zero, ()),
+                1: FixedSensor([[1.0]], observation_noise=[[0.1]]),
+            },
+        )
+        transitions = (
+            GaussianTransition([[0.9]], dynamics_noise=[[0.1]]),
+            GaussianTransition([[0.9]], dynamics_noise=[[0.1]]),
+        )
+        return CouplingGraphBackend(
+            graph, transitions, prior=unit_prior(graph), control_matrix=[[1.0], [0.0]]
+        )
+
+    with pytest.raises(ValueError, match="another"):
+        Agent.from_backend(
+            flagged(False),
+            Preference(jnp.zeros(2)),
+            selector=_driver_over(flagged(True)),
+        )

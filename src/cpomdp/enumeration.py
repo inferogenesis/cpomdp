@@ -347,7 +347,8 @@ class _FlatScorer:
 class _FFGScorer:
     """Scores with ``policy_efe_ffg`` on an FFG backend, aimed at ``info_block``.
 
-    The block is checked once, by ``over_backend``, so ``score`` skips the check.
+    The block is resolved from ``info_node`` once, by ``over_backend``, so ``score``
+    resolves nothing.
     """
 
     backend: "GraphBackend"
