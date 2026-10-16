@@ -430,6 +430,8 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `action_bounds=([-1, 5], [1, -5])` constructed with its second axis inverted and the
   selectors then failed inside JAX's `linspace`. An infinite bound and a fractional
   `n_candidates` are refused too, and `ObservationGoal.action_bounds` holds two floats.
+  `ObservationGoal` and `EFESelector` check `horizon` through one helper as well. A
+  fractional horizon passed both and failed later inside `range` or `jnp.repeat`.
 - When no candidate scores a finite `G`, `EFESelector` and `FfgEfeSelector` return NaN,
   and `Agent.sample_action` refuses it, naming the noise. Both selectors returned the
   first candidate, which looks decisive. With `R(x) = 1 - x0²` at `x0 = 2` every score
