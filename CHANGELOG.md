@@ -355,8 +355,8 @@ certainty equivalence is optimal, and no use of the readings beats it.
 - The README called inference JIT-compilable end to end. The backends and selectors are.
   The `Agent` is not. It holds its belief, so a jitted `agent.infer_states` filtered
   every observation against the belief it was traced with, and the next eager call
-  raised `UnexpectedTracerError`. The `Agent` docstring, its API page and the README now say
-  it is eager, and the page shows a backend driven under `jax.lax.scan`.
+  raised `UnexpectedTracerError`. The `Agent` docstring, its API page and the README
+  now say it is eager, and the page shows a backend driven under `jax.lax.scan`.
 - No page said which public names survive `jit`, `vmap` and `grad`, and
   `KalmanBackend.infer_states` called itself an eager orchestrator while it traces. The
   backends page now carries one row per public name, and
