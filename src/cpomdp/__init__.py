@@ -29,6 +29,10 @@ a ``Preference`` and ``selector=``.
 Whether a state-dependent sensor earns its keep is a question about the states an
 action can actually reach: ``probe_model`` samples that reachable set and
 reports back a ``ProbeReport``.
+
+Importing the package sets ``jax_enable_x64`` for the whole process, so every JAX array
+defaults to float64. The filter is checked to 1e-9 against its oracles, which float32
+cannot hold (ADR-004).
 """
 
 import jax as _jax

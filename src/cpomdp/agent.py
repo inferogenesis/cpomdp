@@ -340,8 +340,14 @@ class Agent:
     | ``qs`` | ``belief`` | posterior over the state |
     | ``infer_states`` | ``infer_states`` | fold an observation in |
     | ``sample_action`` | ``sample_action`` | choose an action |
+    | ``A`` | ``observation_matrix``, ``observation_noise`` | the likelihood |
+    | ``B`` | ``dynamics_matrix``, ``control_matrix``, ``dynamics_noise`` | transition |
     | ``C`` | ``objective`` | a StateGoal, an ObservationGoal, or a Preference |
     | ``D`` | ``model.prior`` | belief before any observation |
+    | ``infer_policies`` | folded into ``sample_action`` | score the actions |
+
+    The model has no letter aliases. Control theory's ``A`` is pymdp's ``B``, and its
+    ``C`` is pymdp's ``A``, so each field goes by its role name only.
 
     One honest difference from pymdp: ``sample_action`` is **deterministic** here,
     not a draw from a policy posterior. With a fixed linear-Gaussian sensor and fixed

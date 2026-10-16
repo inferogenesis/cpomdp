@@ -11,7 +11,7 @@ Continuous active inference for Python. The continuous-state sibling of [pymdp](
 
 **cpomdp** is a JAX-native active inference toolbox for continuous state spaces. You give it a linear-Gaussian generative model and you get an agent that tracks hidden states and selects actions by minimising expected free energy.
 
-Continuous means continuous: positions, velocities, concentrations, temperatures. State-dependent observation noise keeps the epistemic term alive, so information-seeking behaviour is available in a regime where it is [**provably**](#how-provable-is-your-result-experimental) absent. Inference runs as message passing over a Forney factor graph. The backends and action selectors are JIT-compilable and vmappable. The `Agent` that drives them runs eagerly.
+Continuous means continuous: positions, velocities, concentrations, temperatures. State-dependent observation noise keeps the epistemic term alive, so information-seeking behaviour is available in a regime where it is [**provably**](#how-provable-is-your-result-experimental) absent. Inference runs as message passing over a Forney factor graph. The JAX backends, the EFE functions and the action selectors are pure over pytrees, so they compose under `jit`, `vmap`, `grad` and `lax.scan`. The `Agent` that drives them is an eager convenience, and the [backends page](https://cpomdp.inferogenesis.com/api/backends/#which-names-trace) lists which public names trace.
 
 The loop is `infer_states` / `sample_action`, which pymdp users will recognise. cpomdp is its continuous-state sibling. The machinery underneath is its own.
 
@@ -19,7 +19,7 @@ Full documentation, including API reference and guides, lives at [cpomdp.inferog
 
 ## What cpomdp does
 
-**Exact continuous perception.** Linear mean dynamics and Gaussian noise make the filter an exact Kalman filter, closed form, nothing sampled. Under fixed noise there is no variational gap. The same code path runs whether you are tracking or acting.
+**Exact continuous perception under fixed noise.** Linear mean dynamics and fixed Gaussian noise make the filter an exact Kalman filter, closed form, nothing sampled. There is no variational gap. Under a state-dependent `R(x)` or `Q(x)` the filter reads the noise at the predicted mean. That is a first-order plug-in, and its posterior is approximate. The same code path runs whether you are tracking or acting.
 
 **Action that reaches the posterior covariance.** cpomdp lets the observation noise depend on the state, `R(x)` (Corva 2026), or the process noise, `Q(x)`. The mean stays linear. Because the covariance now responds to what the agent does, the epistemic term of expected free energy differs across policies and information-seeking behaviour becomes available. Under a *fixed* linear-Gaussian sensor and fixed process noise that term is identical for every policy (Koudahl, Kouw & de Vries 2021). State-dependent noise is the smallest deviation from that model which escapes the result.
 
@@ -77,6 +77,8 @@ Or the latest from source:
 pip install git+https://github.com/inferogenesis/cpomdp
 ```
 
+Importing cpomdp switches JAX to 64-bit floats for the whole process (`jax_enable_x64`). The filter is checked against its oracles to 1e-9, which float32 cannot hold. Every other JAX array in the process then defaults to float64 too, at twice the memory. Turning the flag off again after the import makes beliefs and posteriors come back float32, with no warning.
+
 That's all you need for normal use. There's also an optional RxInfer (Julia) backend that the test suite leans on as a correctness oracle. You almost certainly don't need it, but if you want it:
 
 ```bash
@@ -122,18 +124,23 @@ Run that and the belief lands on `[1, 0]`. The agent worked out it was at positi
 
 ## The pymdp parallel
 
-If you've used pymdp, the loop is the same and most of the names are too. Four carry over verbatim:
+If you've used pymdp, the loop is the same. Four names carry over verbatim:
 
 > `Agent` · `qs` · `infer_states` · `sample_action`
 
 (`qs` is a read-only alias for `belief`, cpomdp's canonical name, so `agent.qs` and `agent.belief` are the same posterior. Use whichever your fingers reach for.)
 
-Only two things are spelled differently:
+The model's parts and the policy step are spelled differently:
 
-| pymdp | cpomdp                          | what it is                           |
-| ----- | ------------------------------- | ------------------------------------ |
-| `C`   | `StateGoal` / `ObservationGoal` | the goal you pursue, and how sharply |
-| `D`   | `model.prior`                   | belief before you've seen anything   |
+| pymdp            | cpomdp                                                | what it is                                      |
+| ---------------- | ----------------------------------------------------- | ----------------------------------------------- |
+| `A`              | `observation_matrix`, `observation_noise`             | how a state produces a reading                  |
+| `B`              | `dynamics_matrix`, `control_matrix`, `dynamics_noise` | how the state moves, and how an action moves it |
+| `C`              | `StateGoal` / `ObservationGoal`                       | the goal you pursue, and how sharply            |
+| `D`              | `model.prior`                                         | belief before you've seen anything              |
+| `infer_policies` | folded into `sample_action`                           | scoring the actions on offer                    |
+
+The model has no letter aliases. Control theory's `A` is pymdp's `B`, and its `C` is pymdp's `A`, so each field goes by its role name only.
 
 One honest difference in behaviour. `sample_action` here is deterministic, not a sample from a policy posterior. For a linear-Gaussian model with fixed noise the action that minimises expected free energy turns out to be exactly the LQR optimum ([Koudahl, Kouw and de Vries 2021](https://doi.org/10.3390/e23121565)), so there's a single best action and that's what comes back. Same loop, exact answer. The reasoning is in [DECISIONS.md](https://github.com/inferogenesis/cpomdp/blob/main/DECISIONS.md) (ADR-003) if you want it.
 
@@ -158,7 +165,7 @@ agent.sample_action()                 # ValueError: this Agent has no objective 
 
 | you want to | reach for |
 | ----------------------------------------- | ---------------------------------------------------------------------------- |
-| perceive, exactly | `Agent.infer_states`, `KalmanBackend` |
+| perceive, exactly under fixed noise | `Agent.infer_states`, `KalmanBackend` |
 | reach a target state | `StateGoal` with `LQRSelector` |
 | act on expected free energy, where `R(x)` or `Q(x)` varies | `ObservationGoal` (the `Agent` builds an `EFESelector` and reads its horizon off the model), `expected_free_energy` |
 | ...over an H-step horizon | `cpomdp.efe.policy_efe`, `policy_efe_trace` |
@@ -181,12 +188,14 @@ Most toolboxes let you build an agent and stop there. cpomdp also labels how wel
 
 Every check the suite runs carries three labels. A **warrant** says what established the claim. `PROVED` covers a theorem, a symbolic identity, or a finite domain exhausted under a completeness certificate. `CERTIFIED` covers validated numerics over a compact domain. `CORROBORATED` covers a sample of a continuum, which settles existence and refutes a universal by counterexample and decides no universal at any sample count. A **tier** says how well the number itself is known: `EXACT`, `BOUNDED`, or `COMPUTED`. An **outcome** says what the falsifier did, and a falsifier does not pass. It fires or it does not. `PROVED` with nothing behind it does not construct.
 
-Those labels reach a test run. `pip install "warrantlib[pytest]"` adds a plugin, and a test hands its findings over with the `record_check` fixture. A fired check fails, so does an unresolved one, and the two that never ran here skip with the progress letters keeping them apart: `v` for void by construction, `e` for measured elsewhere. Under `-v` a row reads `NOT TRIGGERED` where it would have read `PASSED`. The run closes with the accounting a reader needs first.
+Those labels reach a test run. cpomdp installs warrantlib, and warrantlib registers a pytest plugin that every pytest run in the environment loads. A test hands its findings over with the `record_check` fixture. A fired check fails, so does an unresolved one, and the two that never ran here skip with the progress letters keeping them apart: `v` for void by construction, `e` for measured elsewhere. Under `-v` a row reads `NOT TRIGGERED` where it would have read `PASSED`. The run closes with the accounting a reader needs first.
 
 ```text
 70 registered, 70 tested here, none fired
    PROVED        NOT TRIGGERED   70
 ```
+
+The plugin needs pytest 8 or newer. A project on an older pytest, or one that does not want the plugin, switches it off with `-p no:warrant`, on the command line or in `addopts`.
 
 Registered and tested here are separate counts because they answer separate questions. Registering seventy falsifiers and testing sixty of them is a different claim from testing all seventy, and one number cannot carry both.
 
@@ -203,7 +212,7 @@ Treat this as experimental. It may move out of cpomdp into a standalone inferoge
 
 ## Swappable backends
 
-You can swap the inference engine if you want to. `KalmanBackend` is the default and does the real work. `RxInferBackend` re-derives the same answers through Julia and exists mainly so the fast path has something independent to check itself against. Both sit behind the `InferenceBackend` protocol, so you can write your own.
+You can swap the inference engine if you want to. `KalmanBackend` is the default and does the real work. `RxInferBackend` re-derives its answers on fixed-noise models through Julia, so the Kalman path has something independent to check itself against. It refuses a model with `R(x)` or `Q(x)`. Both sit behind the `InferenceBackend` protocol, so you can write your own.
 
 ## Status
 

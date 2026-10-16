@@ -135,8 +135,11 @@ nothing checks drifts from the writer without saying so.
 
 ## Running checks under pytest
 
-`pip install "warrantlib[pytest]"` adds a plugin, loaded through pytest's `pytest11`
-entry point. It needs no configuration to do the first half of its job.
+warrantlib registers a pytest plugin through pytest's `pytest11` entry point, so every
+pytest run in an environment with warrantlib installed loads it. Installing cpomdp
+installs warrantlib. The plugin needs pytest 8 or newer, which the `warrantlib[pytest]`
+extra pins, and no configuration to do the first half of its job. `-p no:warrant`
+switches it off, on the command line or in `addopts`.
 
 A test hands its findings over with the `record_check` fixture, and the run reports them
 in the vocabulary the check used rather than as a column of dots.

@@ -237,7 +237,9 @@ certainty equivalence is optimal, and no use of the readings beats it.
   The pytest plugin collects the manifest, turning every declared check into an item.
   The item exists because the check was declared, so a check that stops reporting still
   has a row and the row fails naming it.
-- A pytest plugin, behind `pip install "warrantlib[pytest]"` (warrantlib 0.3.0). A test
+- A pytest plugin (warrantlib 0.3.0), which pytest loads wherever warrantlib is
+  installed, and so wherever cpomdp is. It needs pytest 8 or newer, which the
+  `warrantlib[pytest]` extra pins, and `-p no:warrant` switches it off. A test
   hands its findings to the run with the `record_check` fixture, and the run reports them
   in the warrant vocabulary: the progress letter separates a void check from one measured
   elsewhere, `-v` prints `NOT TRIGGERED` where it would have printed `PASSED`, and the run
@@ -247,7 +249,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
   stays one of pytest's own three: `junitxml` branches on that and nothing else, so a
   fourth value would write the row as no row at all. Categories stay standard too, so
   `N passed` still counts what it always did and `assert_outcomes` still sees it. Loaded
-  through the `pytest11` entry point, so no configuration is needed; `dependencies` stays
+  through the `pytest11` entry point, so no configuration is needed. `dependencies` stays
   empty and importing `warrantlib` still pulls in no pytest, which a test asserts in a
   clean interpreter.
 - `report_to_dict` / `report_from_dict` / `SCHEMA_VERSION` (warrantlib 0.3.0) — a
@@ -392,6 +394,16 @@ certainty equivalence is optimal, and no use of the readings beats it.
   belief it was traced with on every call, and the next eager call raised
   `UnexpectedTracerError`. The `Agent` docstring, its API page and the README now say
   it is eager, and the page shows a backend driven under `jax.lax.scan`.
+- No page said which public names survive `jit`, `vmap` and `grad`, and
+  `KalmanBackend.infer_states` called itself an eager orchestrator while it traces. The
+  backends page now carries one row per public name, and
+  `tests/test_transform_table.py` runs every row. The README and `InferenceBackend`
+  point at it.
+- `KalmanBackend`, its API page and the README called the filter exact for any
+  linear-Gaussian model, and said `RxInferBackend` re-derives the same answers. Under a
+  state-dependent `R(x)` or `Q(x)` the filter reads the noise at the predicted mean, a
+  first-order plug-in, and `RxInferBackend` refuses such a model. Each now says the
+  filter is exact under fixed noise, and the oracle agrees only there.
 - `EFESelector` described varying-sequence search as a deferred v0.4 `GradientEFESelector`
   seam, in its rendered class docstring and in the `ValueError` a `p > 1` caller hits. That
   search shipped in v0.4.4 as `EnumeratedEfeSearch`, whose own docstring says it supports
@@ -424,12 +436,21 @@ certainty equivalence is optimal, and no use of the readings beats it.
   PyPI, on GitHub and on the docs site. The figures are pinned to the commit that last
   changed them, so a later rename on `main` cannot break a published page, and the docs
   site still serves its own copies.
+- The README's pymdp table said only `C` and `D` are spelled differently. It and the
+  `Agent` docstring now map `A`, `B` and `infer_policies` as well, and say that
+  `model.A` and `model.C` are control-theory letters for pymdp's `B` and `A`.
+- Importing cpomdp has switched JAX to 64-bit floats for the whole process since 0.2.0,
+  and only that release's changelog said so. The README's install section and the
+  package docstring now say it, and what turning the flag off again does.
 - `cpomdp._lab.additivity.variational_free_energy` and `RxInferBackend` refuse a
   state-dependent sensor. Both read the plain `observation_noise` whatever the model
   carried, so a model with `R(x)` was priced or filtered against a constant without
   saying so. `AdditivityCheck` already refused through `predicted_belief`. A direct call
   did not. `RxInferBackend` refuses a state-dependent `Q(x)` too, since its Julia model
   takes one fixed `Q` as well, and it refuses before Julia starts.
+- `InferenceBackend` said nothing about state-dependent noise. It now states the rule
+  those refusals follow: a backend honours the model's `observation_model` and
+  `dynamics_noise_model`, or refuses the model.
 - `probe_model` added the plain `dynamics_noise` to every predicted covariance, whatever
   `Q(x)` the model carried. The EFE kernel adds `Q` at the predicted mean, so a `Q(x)`
   model under a fixed sensor reported a constant epistemic value the kernel never

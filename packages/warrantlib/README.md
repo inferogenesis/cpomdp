@@ -7,8 +7,8 @@ keeping that difference in a check suite's output instead of losing it there, an
 pytest plugin that reports it.
 
 ```bash
-pip install "warrantlib[pytest]"   # the vocabulary and the plugin
-pip install warrantlib             # the vocabulary alone
+pip install "warrantlib[pytest]"   # the vocabulary, and a pytest the plugin runs on
+pip install warrantlib             # the vocabulary, and the plugin if pytest is there
 ```
 
 Python 3.11 and up. The standard library is the only dependency. The extra adds pytest
@@ -16,8 +16,22 @@ and nothing else, and `import warrantlib` pulls in no pytest either way.
 
 ## Running checks under pytest
 
-The plugin loads through pytest's `pytest11` entry point. Nothing to configure and no
-`-p` flag.
+The plugin loads through pytest's `pytest11` entry point, so every pytest run in an
+environment with warrantlib installed carries it, extra or not. Nothing to configure. It
+needs pytest 8 or newer, which the extra pins.
+
+A project that has warrantlib only as a dependency of something else can switch the
+plugin off for one run, or for every run:
+
+```bash
+pytest -p no:warrant
+```
+
+```toml
+# pyproject.toml
+[tool.pytest.ini_options]
+addopts = "-p no:warrant"
+```
 
 A test hands its findings over with the `record_check` fixture.
 

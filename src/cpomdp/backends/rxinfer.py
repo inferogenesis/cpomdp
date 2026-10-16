@@ -1,9 +1,9 @@
-"""RxInfer (Julia) inference backend — the correctness oracle for v0.1.
+"""RxInfer (Julia) inference backend, the correctness oracle for fixed-noise models.
 
-The native KalmanBackend is the default fast path; this re-derives the same
-linear-Gaussian filter step through RxInfer.jl's message passing, reached
-in-process via juliacall (ADR-001/002). Sharing no code with the JAX fast path,
-it is the independent check that the fast path's matrix algebra is right.
+KalmanBackend is the default. This re-derives its filter step on a fixed-noise model
+through RxInfer.jl's message passing, reached in-process via juliacall (ADR-001,
+ADR-002). It shares no code with the JAX path, so it is the independent check that the
+Kalman path's matrix algebra is right.
 
 Starting Julia is slow (import + ``using RxInfer`` + JIT warmup), so it is done
 once per process, lazily, on the first backend built — never per inference.
@@ -119,12 +119,13 @@ def _julia() -> _JuliaModule:
 
 
 class RxInferBackend:
-    """Linear-Gaussian filtering via RxInfer.jl — the oracle backend.
+    """Linear-Gaussian filtering via RxInfer.jl, the oracle backend.
 
     Satisfies the InferenceBackend protocol: built from a model, advances a
-    belief one step at a time. No steady-state mode — that belongs to the native
-    fast path; this backend exists for correctness, not speed. The first instance
-    built in a process loads the Julia runtime; later ones reuse it.
+    belief one step at a time. On a fixed-noise model it gives
+    [`KalmanBackend`][cpomdp.KalmanBackend]'s answers through separate machinery.
+    It exists for correctness, so it has no steady-state mode. The first instance
+    built in a process loads the Julia runtime, and later ones reuse it.
 
     Fixed noise only. The Julia model takes one ``Q`` and one ``R``, so a model
     carrying a state-dependent ``R(x)`` or ``Q(x)`` raises ``ValueError`` here, before
