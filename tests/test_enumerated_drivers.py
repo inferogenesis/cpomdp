@@ -28,6 +28,7 @@ from cpomdp.agent import Agent
 from cpomdp.enumeration import (
     ChunkedEfeSearch,
     EnumeratedEfeSearch,
+    ExhaustiveEfeSearch,
     FiniteActionSet,
     OpenLoopSelector,
     RecedingHorizonSelector,
@@ -194,6 +195,27 @@ def _chunked(horizon=2):
     return ChunkedEfeSearch(_model(), _action_set(), horizon=horizon, chunk=4)
 
 
+class _CountingSearch(ExhaustiveEfeSearch):
+    """A wrapper that counts plans, standing for any search the drivers were not
+    written against."""
+
+    def __init__(self, inner: ExhaustiveEfeSearch) -> None:
+        self._inner = inner
+        self.plans = 0
+
+    def evaluate(self, belief, preference):
+        self.plans += 1
+        return self._inner.evaluate(belief, preference)
+
+    @property
+    def horizon(self):
+        return self._inner.horizon
+
+    @property
+    def cost_per_plan(self):
+        return self._inner.cost_per_plan
+
+
 @pytest.mark.parametrize("driver", [RecedingHorizonSelector, OpenLoopSelector])
 class TestDrivesEitherSearch:
     def test_the_chunked_search_gives_the_front_loaded_actions(self, driver):
@@ -217,8 +239,18 @@ class TestDrivesEitherSearch:
 
     def test_something_other_than_a_search_is_refused(self, driver):
         selector = EFESelector(_model(), n_candidates=3, action_bounds=(-1.0, 1.0))
-        with pytest.raises(TypeError, match="EnumeratedEfeSearch or a ChunkedEfe"):
+        with pytest.raises(TypeError, match="drives an ExhaustiveEfeSearch"):
             driver(selector)
+
+    def test_any_exhaustive_search_drives_it(self, driver):
+        # The drivers take the kind, so a third search or a wrapper needs no edit to
+        # either driver.
+        wrapper = _CountingSearch(_search())
+        selector = driver(wrapper)
+        np.testing.assert_array_equal(
+            selector.select(_b0(), _pref()), driver(_search()).select(_b0(), _pref())
+        )
+        assert wrapper.plans == 1
 
     def test_the_chunked_driver_runs_in_the_agent_loop(self, driver):
         goal = ObservationGoal(target=[1.0], action_bounds=(-1.0, 1.0))

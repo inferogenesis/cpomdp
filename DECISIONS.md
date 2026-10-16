@@ -4695,9 +4695,16 @@ dataclasses read by name. A tuple would let one position name `g` on one search 
 both paths. On the chunked path its count is what the loop produces, so a certificate
 cannot exist before a run. The front-loaded search still checks completeness at
 construction and attaches that certificate to every result. The chunked result has no
-`visited`, which repeated `certificate.visited`. Both drivers take either search and
-refuse anything else with a `TypeError`. A driver's `certificate` is its last plan's,
-`None` before the first.
+`visited`, which repeated `certificate.visited`. A driver's `certificate` is its last
+plan's, `None` before the first.
+
+**One base names the kind.** `ExhaustiveEfeSearch` is an abstract base both searches
+subclass. It owns the validation, the scorer each constructor builds, `policies_at`,
+`n_policies`, `horizon` and `warrant`, and declares `evaluate` and `cost_per_plan`. Both
+drivers take any `ExhaustiveEfeSearch` and refuse anything else with a `TypeError`. The
+check is nominal, so the `PROVED` a driver reports still comes from a search that
+declared itself exhaustive. A union of the two classes would have needed both drivers
+edited for a third search or a wrapper.
 
 **`cost_per_plan` on a search, `cost_per_cycle` on a selector.** A search reports the
 step evaluations of one `evaluate` as `cost_per_plan`, the name the drivers already
@@ -4728,5 +4735,6 @@ certificate is unchanged. It certifies coverage (ADR-030), and every policy was 
   the certificate needs. A driver over the front-loaded search pays none.
 - Compilation no longer lands on every plan, so RFC-001 measures the search rather than
   the compiler. `EFESelector` at a horizon above 1 is outside this decision.
-- `ChunkedEfeSearch.policies_at` refuses an index outside the enumeration, -1 included,
-  because a base-`|A|` decode wraps it to a real policy.
+- `policies_at` is on both searches and refuses an index outside the enumeration, -1
+  included, because a base-`|A|` decode wraps it to a real policy. Under `jit` or
+  `vmap` it cannot raise, so it decodes such an index to a NaN policy.
