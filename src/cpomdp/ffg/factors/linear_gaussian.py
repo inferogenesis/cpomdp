@@ -163,17 +163,17 @@ class CallableGaussianObservation:
 
     The state-dependent sibling of [`GaussianObservation`][cpomdp.GaussianObservation]:
     the observation map stays linear (constant ``C``), but the noise covariance varies
-    with the state through
-    ``noise_fn(x, params) -> R(x)``. Evaluated at the predicted mean ``μ⁺`` — which the
-    action moves — ``R`` is no longer action-invariant, so the FFG epistemic term stops
-    collapsing to LQR (ADR-003) and the chosen action can seek states where the sensor
-    is sharper (the dual effect, ADR-014 finding #1). ``message(y, state)`` emits the
+    with the state through ``noise_fn(state, noise_params) -> R(x)``. Evaluated at the
+    predicted mean ``μ⁺``, which the action moves, ``R`` is no longer action-invariant,
+    so the FFG epistemic term stops collapsing to LQR (ADR-003) and the chosen action
+    can seek states where the sensor is sharper (the dual effect, ADR-014 finding #1).
+    ``message(y, state)`` emits the
     same information-form message as the fixed factor, at the plugged-in ``R(state)``.
 
     - ``observation_matrix`` — C, shape ``(m, n)`` (constant); a traced pytree **leaf**.
-    - ``noise_fn`` — ``(x, params) -> R(x)``, a positive-definite ``(m, m)`` covariance;
-      **static aux** (a callable cannot be a traced leaf, and keeping it static lets
-      ``jit`` cache on it). Pass a *module-level* function, not a closure.
+    - ``noise_fn`` — ``(state, noise_params) -> R(x)``, a positive-definite ``(m, m)``
+      covariance; **static aux** (a callable cannot be a traced leaf, and keeping it
+      static lets ``jit`` cache on it). Pass a *module-level* function, not a closure.
     - ``noise_params`` — the sensor's tunables; a traced **leaf**, so the EFE is
       grad-able w.r.t. them (sensor learning). Keep every tunable here, not in a
       closure over ``noise_fn``, or ``jit`` caching breaks.
@@ -210,11 +210,12 @@ class CallableGaussianObservation:
         r0 = jnp.asarray(self.noise_fn(jnp.zeros(n), self.noise_params))  # R(0)
         if r0.shape != (m, m):
             raise ValueError(
-                f"noise_fn(x, params) must return an (m, m)=({m}, {m}) covariance "
-                f"matching the {m}-row observation_matrix, got shape {r0.shape}"
+                f"noise_fn(state, noise_params) must return an (m, m)=({m}, {m}) "
+                f"covariance matching the {m}-row observation_matrix, got shape "
+                f"{r0.shape}"
             )
         # R(x) is inverted in the message, so it must be positive-definite.
-        validate_covariance(r0, "noise_fn(x, params)", require_definite=True)
+        validate_covariance(r0, "noise_fn(state, noise_params)", require_definite=True)
 
     def message(
         self, observation: ArrayLike, state: ArrayLike | None = None

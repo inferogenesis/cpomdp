@@ -9,7 +9,7 @@ The stateful façade you drive: `infer_states` to perceive, `sample_action` to a
 
     A curious agent is one whose information term changes with the action. The Agent
     builds one for an `ObservationGoal` on a sensor whose noise depends on the state. An
-    EFE selector passed explicitly makes one on a model whose process noise `Q(x)` varies
+    EFE selector passed explicitly makes one on a model whose dynamics noise `Q(x)` varies
     with the state, a [`CallableDynamicsNoise`][cpomdp.CallableDynamicsNoise]. That case
     is claimed at horizon 1 only. Green marks it.
     Amber is EFE whose information term is the same for every action, blue is LQR, grey a

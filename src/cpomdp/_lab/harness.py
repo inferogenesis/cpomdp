@@ -157,7 +157,7 @@ class World:
             # has gone negative by the state the walk reaches is drawn as |λ| rather
             # than as NaN: a finite, plausible state sampled from the wrong Q, with
             # nothing raised. Semi-definite stays legal here, indefinite does not.
-            validate_covariance(dynamics_noise, "dynamics_noise_model.noise_at(x)")
+            validate_covariance(dynamics_noise, "dynamics_noise_model.noise_at(state)")
         # svd rather than the cholesky default: dynamics_noise is only required
         # positive *semi*-definite, so a noiseless state dimension is legal here.
         self._state = jax.random.multivariate_normal(

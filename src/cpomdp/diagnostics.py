@@ -293,7 +293,7 @@ def _process_noises(
         noise = process.noise_at(mu)
         at = tuple(float(v) for v in mu)
         validate_covariance(
-            noise, f"dynamics_noise_model.noise_at(x) at the sampled mean {at}"
+            noise, f"dynamics_noise_model.noise_at(state) at the sampled mean {at}"
         )
         noises.append(np.asarray(noise, dtype=float))
     return noises
