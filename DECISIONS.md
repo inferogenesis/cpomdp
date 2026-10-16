@@ -4636,7 +4636,7 @@ versions break before 1.0, as cpomdp's do.
 - A warrantlib 0.4 reaches cpomdp users only through a cpomdp release that lifts the
   cap.
 
-## ADR-071 — the graph backend reads like the flat model
+## ADR-076 — the graph backend reads like the flat model
 
 **Date:** 2026-10-15
 **Status:** Accepted
@@ -4717,11 +4717,11 @@ Every quantity has one home, and it is the home it has on a flat backend.
   inversions per step than the information-form joint. It changes the factor, which
   this decision does not touch.
 
-## ADR-072 — R at a mean is read off the model, and the partition cuts every surface
+## ADR-077 — R at a mean is read off the model, and the partition cuts every surface
 
 **Date:** 2026-10-16
 **Status:** Accepted
-**Supersedes:** ADR-071's "R at a mean is `observation_noise_at`" on the backend, its
+**Supersedes:** ADR-076's "R at a mean is `observation_noise_at`" on the backend, its
 listing of `observation_noise_at` among `GraphBackend`'s members, and its single refusal
 reason for a matrix that is not definite. ADR-032's `backend.observation_noise_at(μ⁺)`
 as the place R(μ⁺) is read.
@@ -4729,7 +4729,7 @@ as the place R(μ⁺) is read.
 
 ### The question
 
-ADR-071 left `observation_noise_at` on the graph backend while every other quantity moved
+ADR-076 left `observation_noise_at` on the graph backend while every other quantity moved
 onto `backend.model`. A flat backend has no such accessor, so code reading R at a mean
 needed one call for a graph and another for a flat model. The prior was also cut by the
 partition in `infer_states` and not in the other surfaces, so `filter_sequence` and

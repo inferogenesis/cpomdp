@@ -1,4 +1,4 @@
-"""The names ADR-069 promotes to the top level, and one ADR-071 makes private, pinned.
+"""The names ADR-069 promotes to the top level, and one ADR-076 makes private, pinned.
 
 The strict docs build resolves `cpomdp.LQRController` through the import whether or not
 `__all__` lists it, so the API page alone does not catch a name falling off the surface.
@@ -27,7 +27,7 @@ def test_a_promoted_name_is_exported_at_the_top_level(name, obj):
 
 def test_the_chain_backend_is_private():
     # It gives KalmanBackend's numbers at two extra inversions per step, and exists to
-    # show the message algebra is the Kalman filter on a chain (ADR-012). ADR-071 made
+    # show the message algebra is the Kalman filter on a chain (ADR-012). ADR-076 made
     # it private.
     with pytest.raises(ModuleNotFoundError):
         importlib.import_module("cpomdp.ffg.chain")

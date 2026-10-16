@@ -64,7 +64,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
 - `LinearGaussianModel.observation_noise_at(state)` reads R at a state on any model. A
   model with no sensor or a fixed one returns `observation_noise`. A state-dependent
   sensor is linearized at `state`. The graph EFE paths and `probe_model` read R through
-  it (ADR-071).
+  it (ADR-076).
 - `cpomdp._lab.harness` — a world and an agent held apart, so what an agent's model gets
   wrong about the process is a measurable quantity rather than zero by construction.
   `World` runs the process and hands out observations, exposing no accessor that returns
@@ -425,7 +425,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
   never ran, and the EFE predicted from correlation the filter dropped. The full-joint
   partition is unchanged. A mixed partition such as `[[0, 1, 3, 4], [2]]` over a
   correlated prior also returns a different posterior now, since the dense path inverts
-  the cut prior (ADR-072).
+  the cut prior (ADR-077).
 - Every refusal of a covariance that is not positive-definite gave one reason, "a
   noiseless or degenerate sensor sends the information gain to infinity". A
   semi-definite `dynamics_noise` on a `GaussianTransition` or `coupling_noise` on a
@@ -504,7 +504,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
   step and exists to show that the message algebra is the Kalman filter on a chain,
   which `tests/test_ffg_chain.py` holds it to. Filter with `KalmanBackend`. The
   flagship example's agreement check between the two moves into that test file, on the
-  same model and the same scripted inputs (ADR-071).
+  same model and the same scripted inputs (ADR-076).
 - **Breaking:** a *fixed* `observation_model` or `dynamics_noise_model` must now restate
   the model's `observation_noise` / `dynamics_noise` exactly, and a sensor's linearized
   observation matrix must equal `observation_matrix`. `LinearGaussianModel` previously
@@ -635,7 +635,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `backend.model.observation_noise_at(mean)`, an accessor every `LinearGaussianModel`
   now has. C was read off the model and R off the backend, so code reading R at a mean
   over a flat and a graph backend branched on which it held. A fixed graph's model
-  returns the R built at construction, so nothing is rebuilt per call (ADR-071).
+  returns the R built at construction, so nothing is rebuilt per call (ADR-076).
 - **Breaking:** one protocol describes a graph backend, `GraphBackend` in
   `cpomdp.backends.base`. It was `EfeBackend`, a name that suggested `KalmanBackend`
   cannot score EFE, and `cpomdp.diagnostics.ProbeBackend` restated part of it for

@@ -15,7 +15,7 @@ Two independent oracles guard the claim:
   shares no code with either backend, so a transpose/gain/order bug that happened to
   afflict both matrix paths still gets caught.
 
-``ChainBackend`` is private (ADR-071): it exists to be held to this gate.
+``ChainBackend`` is private (ADR-076): it exists to be held to this gate.
 """
 
 import bacillus_uncertain_food
