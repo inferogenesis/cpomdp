@@ -228,6 +228,38 @@ def test_a_carry_partition_written_in_another_order_is_the_same_plant():
     assert agent.selector is selector
 
 
+def _hub_backend(edge_order):
+    edges = {
+        "fast": Coupling(0, 1, [[0.8]], coupling_noise=[[0.05]]),
+        "slow": Coupling(0, 2, [[0.4]], coupling_noise=[[0.02]]),
+    }
+    graph = CouplingGraph(
+        dims=(1, 1, 1),
+        couplings=tuple(edges[name] for name in edge_order),
+        observation_models={
+            0: CallableSensor([[1.0]], _sharp_near_zero, ()),
+            1: FixedSensor([[1.0]], observation_noise=[[0.1]]),
+            2: FixedSensor([[1.0]], observation_noise=[[0.1]]),
+        },
+    )
+    transitions = tuple(
+        GaussianTransition([[0.9]], dynamics_noise=[[0.1]]) for _ in range(3)
+    )
+    return CouplingGraphBackend(
+        graph,
+        transitions,
+        prior=unit_prior(graph),
+        control_matrix=[[1.0], [0.0], [0.0]],
+    )
+
+
+def test_a_graph_with_its_edges_listed_in_another_order_is_the_same_plant():
+    agent_graph = _hub_backend(("fast", "slow"))
+    selector = _driver_over(_hub_backend(("slow", "fast")))
+    agent = Agent.from_backend(agent_graph, Preference(jnp.zeros(3)), selector=selector)
+    assert agent.selector is selector
+
+
 def test_a_graph_backend_reads_back_its_carry_partition():
     assert _coupled_backend(0.05).partition == ((0, 1),)
     assert _coupled_backend(0.05, partition=[[1], [0]]).partition == ((1,), (0,))

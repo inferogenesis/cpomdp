@@ -143,17 +143,20 @@ def _clusters(backend: CouplingGraphBackend) -> set[frozenset[int]]:
 def _same_couplings(first: CouplingGraphBackend, second: CouplingGraphBackend) -> bool:
     """Whether two graph backends join the same nodes with equal factors and carry.
 
-    The carry partition is compared with the edges, since it cuts the covariance the
+    Edges match by the nodes they join, in whatever order the graph lists them. The
+    carry partition is compared with the edges, since it cuts the covariance the
     predict step passes between them.
     """
-    first_edges, second_edges = first.graph.couplings, second.graph.couplings
     if _clusters(first) != _clusters(second):
         return False
-    return len(first_edges) == len(second_edges) and all(
-        (a.parent, a.child, a.efe_relevant) == (b.parent, b.child, b.efe_relevant)
+    # A tree gives each node one parent, so (parent, child) names an edge.
+    first_edges = {(e.parent, e.child): e for e in first.graph.couplings}
+    second_edges = {(e.parent, e.child): e for e in second.graph.couplings}
+    return first_edges.keys() == second_edges.keys() and all(
+        a.efe_relevant == b.efe_relevant
         and _known_equal(a.coupling_matrix, b.coupling_matrix)
         and _known_equal(a.coupling_noise, b.coupling_noise)
-        for a, b in zip(first_edges, second_edges, strict=True)
+        for a, b in ((first_edges[key], second_edges[key]) for key in first_edges)
     )
 
 

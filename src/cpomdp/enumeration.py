@@ -482,7 +482,7 @@ class ExhaustiveEFESearch(ABC):
 
         Args:
             belief: the belief to plan from.
-            preference: the goal and precision the EFE scores against.
+            preference: the target and precision the EFE scores against.
         """
 
     def policies_at(self, indices: ArrayLike) -> Float64[Array, "... H p"]:
@@ -669,7 +669,7 @@ class EnumeratedEFESearch(ExhaustiveEFESearch):
 
         Args:
             belief: the belief to plan from.
-            preference: the goal and precision the EFE scores against.
+            preference: the target and precision the EFE scores against.
 
         Returns:
             The argmin, its score, its index, the certificate and the score vector.
@@ -852,7 +852,7 @@ class ChunkedEFESearch(ExhaustiveEFESearch):
 
         Args:
             belief: the belief to plan from.
-            preference: the goal and precision the EFE scores against.
+            preference: the target and precision the EFE scores against.
 
         Returns:
             The argmin, its score, its index, and the certificate the loop's own count
