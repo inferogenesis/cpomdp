@@ -11,7 +11,7 @@ Continuous active inference for Python. The continuous-state sibling of [pymdp](
 
 **cpomdp** is a JAX-native active inference toolbox for continuous state spaces. You give it a linear-Gaussian generative model and you get an agent that tracks hidden states and selects actions by minimising expected free energy.
 
-Continuous means continuous: positions, velocities, concentrations, temperatures. State-dependent observation noise keeps the epistemic term alive, so information-seeking behaviour is available in a regime where it is [**provably**](#how-provable-is-your-result-experimental) absent. Inference runs as message passing over a Forney factor graph. The JAX backends, the EFE functions and the action selectors are pure over pytrees, so they compose under `jit`, `vmap`, `grad` and `lax.scan`. The `Agent` that drives them is an eager convenience, and the [backends page](https://cpomdp.inferogenesis.com/api/backends/#which-names-trace) lists which public names trace.
+Continuous means continuous: positions, velocities, concentrations, temperatures. State-dependent observation noise keeps the epistemic term alive, so information-seeking behaviour is available in a regime where it is [**provably**](#how-provable-is-your-result-experimental) absent. Branching models run inference as message passing over a Forney factor graph. The JAX backends, the EFE functions and the action selectors are pure over pytrees, so they compose under `jit`, `vmap`, `grad` and `lax.scan`. The `Agent` that drives them is an eager convenience, and the [backends page](https://cpomdp.inferogenesis.com/api/backends/#which-names-trace) lists which public names trace.
 
 The loop is `infer_states` / `sample_action`, which pymdp users will recognise. cpomdp is its continuous-state sibling. The machinery underneath is its own.
 
@@ -105,7 +105,7 @@ dt = 0.1
 model = LinearGaussianModel(
     dynamics_matrix=[[1, dt], [0, 1]],   # velocity carries position along
     control_matrix=[[0], [dt]],          # a push nudges velocity
-    observation_matrix=[[1, 0]],               # we observe position only
+    observation_matrix=[[1, 0]],         # we observe position only
     dynamics_noise=jnp.eye(2) * 1e-6,
     observation_noise=[[1e-2]],
     prior=Belief(mean=[0, 0], cov=jnp.eye(2)),
@@ -116,9 +116,9 @@ agent = Agent(model, StateGoal([1.0, 0.0]))
 
 true_state = jnp.array([0.0, 0.0])
 for _ in range(100):
-    obs = model.observation_matrix @ true_state            # what the agent gets to see
-    agent.infer_states(obs)                           # perceive
-    action = agent.sample_action()                    # act
+    obs = model.observation_matrix @ true_state     # what the agent gets to see
+    agent.infer_states(obs)                         # perceive
+    action = agent.sample_action()                  # act
     true_state = model.dynamics_matrix @ true_state + model.control_matrix @ action
 
 print(jnp.round(agent.belief.mean, 3))   # ≈ [1, 0]
@@ -146,7 +146,7 @@ The model's parts and the policy step are spelled differently:
 
 The model also answers to `.A`, `.B`, `.C`, `.Q` and `.R`. Those are control-theory letters. `model.A` is the dynamics matrix, pymdp's `B`, and `model.C` is the observation matrix, pymdp's `A`.
 
-One honest difference in behaviour. `sample_action` here is deterministic, not a sample from a policy posterior. For a linear-Gaussian model with fixed noise the action that minimises expected free energy turns out to be exactly the LQR optimum ([Koudahl, Kouw and de Vries 2021](https://doi.org/10.3390/e23121565)), so there's a single best action and that's what comes back. Same loop, exact answer. The reasoning is in [DECISIONS.md](https://github.com/inferogenesis/cpomdp/blob/main/DECISIONS.md) (ADR-003) if you want it.
+One honest difference in behaviour. `sample_action` here is deterministic, not a sample from a policy posterior. For a linear-Gaussian model with fixed noise the action that minimises expected free energy turns out to be exactly the LQR optimum ([Koudahl, Kouw and de Vries 2021](https://doi.org/10.3390/e23121565)), so there's a single best action and that's what comes back. Same loop, exact answer. The reasoning is in [DECISIONS.md](https://github.com/inferogenesis/cpomdp/blob/main/DECISIONS.md) (ADR-003) if you want it. ADR-072 corrects its account of the filter. The `Agent` recomputes the Kalman gain every step.
 
 ## Just want to track, not act?
 
