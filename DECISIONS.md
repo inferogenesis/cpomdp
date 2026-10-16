@@ -5666,18 +5666,19 @@ plant. `Agent.from_backend(graph, StateGoal(...))` regulated it with LQR, and
 
 ### Decision
 
-A coupled graph backend marks its model. `KalmanBackend`, `Agent`, `EFESelector`, the
-flat search constructors, `LQRController`, `lqr_schedule`, `kalman_schedule` and
-`probe_model` refuse a marked model at construction and name the routes that keep the
-couplings, the backend itself or `backend.to_flat_model()`. A `StateGoal` on a coupled
+A coupled graph backend marks its model. Both flat backends, `Agent`, `EFESelector`,
+the flat search constructors, `LQRController`, `lqr_schedule`, `kalman_schedule`,
+`probe_model` and the flat EFE functions refuse a marked model and name the routes that
+keep the couplings, the backend itself or `backend.to_flat_model()`. A `StateGoal` on a coupled
 graph is refused. A graph with no couplings is its own plant and carries no mark.
 
 ### Consequences
 
-- The mark is an attribute on the one model object, not a field, so the model's pytree
-  is unchanged. A model rebuilt from its leaves carries no mark, and nothing rebuilds
-  the backend's own.
-- The checks run at construction. The per-cycle EFE functions carry none, so the hot
-  path is unchanged.
+- The mark is an attribute, not a field, so it adds no leaf. It rides in the model's
+  static aux data, so a copy rebuilt through `jax.tree.map`, `device_put` or a `jit`
+  boundary keeps it, and the jit cache keys on it.
+- The constructors check once. The EFE functions check one attribute per eager call
+  and once per trace under `jit`, which leaves the fixed-noise hot path a matrix
+  product.
 - The `InferenceBackend.model` docstring now promises the sizes, prior, sensor and
   control a backend reads, not a model it filters exactly.

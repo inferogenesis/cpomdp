@@ -172,8 +172,8 @@ def _efe_path(
         )
     is_graph = isinstance(backend, GraphBackend)
     if not _information_can_move(model):
-        # A StateGoal on a graph runs LQR on a model without its couplings, so a graph
-        # user is pointed only at the EFE selector.
+        # A StateGoal on a coupled graph is refused, so a graph user is pointed at the
+        # EFE selector.
         way_out = (
             "Pass a Preference with selector=FFGEFESelector(...) to choose by EFE "
             "anyway."
@@ -453,7 +453,8 @@ class Agent:
             ValueError: If the objective and the backend's model are incompatible, as
                 for the constructor.
             TypeError: On an objective and ``selector=`` that do not pair, as for the
-                constructor.
+                constructor, or on a ``StateGoal`` with a coupled graph backend, whose
+                model leaves out the couplings LQR would need.
         """
         agent = cls.__new__(cls)
         agent._setup(backend, objective, selector)
@@ -483,7 +484,10 @@ class Agent:
             refuse_graph_interface(
                 model,
                 "a StateGoal, which regulates with LQR,",
-                remedy="Pass an ObservationGoal for the graph's EFE selector.",
+                remedy=(
+                    "Pass an ObservationGoal on a state-dependent sensor, or a "
+                    "Preference with selector=FFGEFESelector(...)."
+                ),
             )
             self._preference, self._selector = _lqr_path(model, objective)
         elif isinstance(objective, ObservationGoal):

@@ -6,6 +6,7 @@ regulate a plant without them, with nothing raised. Each model-taking constructo
 refuses it and names the route that keeps the couplings.
 """
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -21,10 +22,12 @@ from cpomdp import (
     GaussianTransition,
     KalmanBackend,
     LQRController,
+    Preference,
     StateGoal,
 )
 from cpomdp.control import kalman_schedule, lqr_schedule
 from cpomdp.diagnostics import probe_model
+from cpomdp.efe import expected_free_energy, policy_efe, policy_efe_trace
 from cpomdp.enumeration import ChunkedEFESearch, EnumeratedEFESearch, FiniteActionSet
 
 
@@ -77,6 +80,21 @@ _CONSUMERS = {
     ),
     "kalman_schedule": lambda model: kalman_schedule(model, horizon=2),
     "probe_model": lambda model: probe_model(model, model.prior, [jnp.zeros(1)]),
+    "expected_free_energy": lambda model: expected_free_energy(
+        model, model.prior, jnp.zeros(1), Preference(jnp.zeros(model.n_observations))
+    ),
+    "policy_efe": lambda model: policy_efe(
+        model,
+        model.prior,
+        jnp.zeros((2, 1)),
+        Preference(jnp.zeros(model.n_observations)),
+    ),
+    "policy_efe_trace": lambda model: policy_efe_trace(
+        model,
+        model.prior,
+        jnp.zeros((2, 1)),
+        Preference(jnp.zeros(model.n_observations)),
+    ),
 }
 
 
@@ -101,3 +119,27 @@ def test_a_state_goal_on_a_coupled_graph_is_refused():
     # LQR on the interface model would regulate a plant without the couplings.
     with pytest.raises(TypeError, match="couplings"):
         Agent.from_backend(_backend(coupled=True), StateGoal(jnp.zeros(2)))
+
+
+def test_the_mark_survives_a_pytree_rebuild():
+    # tree_map, device_put and a jit boundary all rebuild the model from its leaves.
+    rebuilt = jax.tree.map(jnp.asarray, _backend(coupled=True).model)
+    with pytest.raises(TypeError, match="couplings"):
+        KalmanBackend(rebuilt)
+
+
+def test_a_jitted_score_on_the_marked_model_is_refused_at_trace():
+    model = _backend(coupled=True).model
+    preference = Preference(jnp.zeros(model.n_observations))
+    with pytest.raises(TypeError, match="couplings"):
+        jax.jit(lambda m: expected_free_energy(m, m.prior, jnp.zeros(1), preference).g)(
+            model
+        )
+
+
+def test_the_rxinfer_oracle_refuses_a_coupled_graphs_model():
+    # Checked before Julia starts, so this runs without the rxinfer extra.
+    from cpomdp.backends.rxinfer import RxInferBackend
+
+    with pytest.raises(TypeError, match="couplings"):
+        RxInferBackend(_backend(coupled=True).model)

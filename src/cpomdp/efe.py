@@ -102,6 +102,7 @@ import jax.numpy as jnp
 from jax import lax
 from jaxtyping import Array, Float64
 
+from cpomdp._validation import refuse_graph_interface
 from cpomdp.backends.base import InadmissiblePartitionError
 from cpomdp.types import Belief, LinearGaussianModel
 
@@ -266,6 +267,7 @@ def expected_free_energy(
         ValueError: If the model has no control matrix.
         TypeError: If ``preference`` is not a [`Preference`][cpomdp.Preference].
     """
+    refuse_graph_interface(model, "expected_free_energy")
     if model.control_matrix is None:
         raise ValueError(
             "expected_free_energy needs a model with a control matrix; an action "
@@ -319,6 +321,7 @@ def policy_efe(
         ValueError: If the model has no control matrix.
         TypeError: If ``preference`` is not a [`Preference`][cpomdp.Preference].
     """
+    refuse_graph_interface(model, "policy_efe")
     if model.control_matrix is None:
         raise ValueError(
             "policy_efe needs a model with a control matrix; an action has no "
@@ -382,6 +385,7 @@ def policy_efe_trace(
         ValueError: If the model has no control matrix.
         TypeError: If ``preference`` is not a [`Preference`][cpomdp.Preference].
     """
+    refuse_graph_interface(model, "policy_efe_trace")
     if model.control_matrix is None:
         raise ValueError(
             "policy_efe_trace needs a model with a control matrix; an action has no "

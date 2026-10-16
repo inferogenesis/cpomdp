@@ -14,6 +14,7 @@ __all__ = [
     "UNVERSIONED",
     "concrete",
     "equilibrium_drift",
+    "is_graph_interface",
     "mark_graph_interface",
     "refuse_graph_interface",
     "require_fixed_noise",
@@ -41,10 +42,15 @@ _GRAPH_INTERFACE = "_leaves_out_couplings"
 def mark_graph_interface(model: object) -> None:
     """Mark a coupled graph backend's model as its interface rather than its plant.
 
-    The mark is an attribute of this one object, not a field. A model rebuilt from its
-    leaves carries none, and nothing in the backend rebuilds it.
+    The mark is an attribute, not a field, so it adds no leaf. The model's pytree
+    carries it in its static aux data, so a rebuilt model keeps it.
     """
     object.__setattr__(model, _GRAPH_INTERFACE, True)
+
+
+def is_graph_interface(model: object) -> bool:
+    """Whether ``model`` is a coupled graph backend's interface model."""
+    return bool(getattr(model, _GRAPH_INTERFACE, False))
 
 
 def refuse_graph_interface(
@@ -58,7 +64,7 @@ def refuse_graph_interface(
     Raises:
         TypeError: If ``model`` is a coupled ``CouplingGraphBackend``'s ``model``.
     """
-    if getattr(model, _GRAPH_INTERFACE, False):
+    if is_graph_interface(model):
         if remedy is None:
             remedy = (
                 "Pass the backend where one is taken, or backend.to_flat_model() for a "
