@@ -5558,7 +5558,7 @@ at construction.
 - The `LQRController` docstring and the backends page say the Agent filters per step.
   ADR-002 and ADR-003 keep their wording.
 
-## ADR-087 — a public name spells an acronym in capitals
+## ADR-088 — a public name spells an acronym in capitals
 
 **Date:** 2026-10-16
 **Status:** Accepted
@@ -5584,7 +5584,7 @@ module names stay lower case.
   exception to the rule would be the thing to remember.
 - Earlier ADRs keep the spellings they were written in (ADR-038).
 
-## ADR-088 — the severed mass traces, and a run is profiled with a scan
+## ADR-089 — the severed mass traces, and a run is profiled with a scan
 
 **Date:** 2026-10-16
 **Status:** Accepted
@@ -5617,7 +5617,7 @@ its cheap node-by-node pass, paid the dense cost for a profile it might not want
 - ADR-016's argument against storing per-step state on the backend still holds. The
   profile lives in the scan's output, never on `self`.
 
-## ADR-089 — the epistemic target is a node on every graph entry point
+## ADR-090 — the epistemic target is a node on every graph entry point
 
 **Date:** 2026-10-16
 **Status:** Accepted
