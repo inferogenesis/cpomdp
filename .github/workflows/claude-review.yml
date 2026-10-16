@@ -40,6 +40,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Logs each tool call and denial, so a review that posts nothing shows why.
+          show_full_output: true
           prompt: |
             Review this PR against its merge base.
 
@@ -47,6 +49,13 @@ jobs:
             searching, and tag each finding [BLOCKER] or [NIT]. A severity
             floor applied during the search reads as an instruction to look
             less hard. Filter at output instead.
+
+            A [BLOCKER] is anything that gives a silent wrong result, refuses
+            valid input, has a side effect at install or at run time the
+            caller did not ask for, or fixes a public-API shape that is costly
+            to change after release. It is a blocker however rare the input
+            that reaches it. A [NIT] changes no behaviour: wording, a stale
+            comment, a leftover name in prose.
 
             Every finding cites path:line and the concrete call or input that
             goes wrong. If you cannot give both, drop it.
@@ -65,16 +74,15 @@ jobs:
             one-liners capped at five with "plus K similar". Lead with "no
             blockers" when there are none. Don't summarise what the PR does,
             the author knows. Add no attribution footer and no links off this
-            repository. Write the comment to /tmp/review.md with the Write
-            tool, then post it with `gh pr comment <number> --body-file
-            /tmp/review.md`. Never put the body inline or in a heredoc.
+            repository. Write the comment to review.md at the repository root
+            with the Write tool, then post it with `gh pr comment <number>
+            --body-file review.md`. Never put the body inline or in a heredoc.
           # Read/Grep/Glob let the review read surrounding code beyond the
           # diff hunks. The read-only git and shell forms are here because a
           # blocked call still costs a turn. Reviews were spending 9 to 18 of
           # their 40 turns on denials, dying before they could post.
-          # Write is for the comment file only. A long body passed inline or through a
-          # heredoc fell outside the gh pr comment pattern, and on #143 two reviews
-          # finished without posting.
+          # Write is for the comment file only. On #143 three reviews finished without
+          # posting. The file now sits inside the checkout, where Write may reach.
           # Opus on the first review, which does the heavy lifting over the whole
           # diff; Sonnet on each later push. A manual re-run of the job replays
           # the original event, so a re-run of the opening review is an Opus one.
