@@ -219,9 +219,9 @@ class TestFfgRolloutAtMultiDimAction:
         info_block = tuple(backend.block(CONTEXT))
 
         def score(policy):
-            return policy_efe_ffg(backend, belief, policy, pref, info_block=info_block)[
-                0
-            ]
+            return policy_efe_ffg(
+                backend, belief, policy, pref, info_block=info_block
+            ).g
 
         grad = jax.grad(score)(_walk(4))
         assert grad.shape == (4, 2)  # H, p
@@ -273,10 +273,10 @@ class TestCrossoverAtMultiDimAction:
             )
             g_walk = policy_efe_ffg(
                 backend, belief, _walk(h), pref, info_block=info_block
-            )[0]
+            ).g
             g_reach = policy_efe_ffg(
                 backend, belief, _reach(h), pref, info_block=info_block
-            )[0]
+            ).g
             assert stat.horizon == h
             np.testing.assert_allclose(
                 float(stat.delta_g), float(g_walk) - float(g_reach), atol=1e-9

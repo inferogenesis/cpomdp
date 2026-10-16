@@ -151,7 +151,7 @@ class TestEagerIdentity:
         model = _model()
         search = EnumeratedEfeSearch(model, _actions(), horizon=3)
         eager = jax.vmap(
-            lambda policy: policy_efe(model, belief, policy, preference)[0]
+            lambda policy: policy_efe(model, belief, policy, preference).g
         )(search.policies)
         compiled = search.evaluate(belief, preference).g
         np.testing.assert_array_equal(np.asarray(compiled), np.asarray(eager))
@@ -164,9 +164,9 @@ class TestEagerIdentity:
             backend, _actions(), info_block=[0], horizon=3
         )
         eager = jax.vmap(
-            lambda policy: policy_efe_ffg(
-                backend, belief, policy, preference, info_block=[0]
-            )[0]
+            lambda policy: (
+                policy_efe_ffg(backend, belief, policy, preference, info_block=[0]).g
+            )
         )(search.policies)
         compiled = search.evaluate(belief, preference).g
         np.testing.assert_array_equal(np.asarray(compiled), np.asarray(eager))

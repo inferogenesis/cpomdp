@@ -95,8 +95,9 @@ THE DATA FLOW  (top → bottom: what goes in → what comes out)
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING
 
+import jax
 import jax.numpy as jnp
 from jax import lax
 from jaxtyping import Array, Float64
@@ -124,19 +125,20 @@ __all__ = [
 ]
 
 
-class EfeResult(NamedTuple):
+@jax.tree_util.register_dataclass
+@dataclass(frozen=True)
+class EfeResult:
     """Expected free energy and the two terms it is made of.
 
     [`expected_free_energy`][cpomdp.expected_free_energy],
     [`policy_efe`][cpomdp.efe.policy_efe] and
-    [`policy_efe_ffg`][cpomdp.efe.policy_efe_ffg] return one. ``g`` comes first, so
-    ``result[0]`` is G. [`PolicyEfeTrace`][cpomdp.efe.PolicyEfeTrace] leads with the
-    same three fields, one entry per step.
+    [`policy_efe_ffg`][cpomdp.efe.policy_efe_ffg] return one.
+    [`PolicyEfeTrace`][cpomdp.efe.PolicyEfeTrace] has the same three fields, one entry
+    per step. Fields are read by name. A record does not index or unpack, as the search
+    results do not.
 
-    A ``NamedTuple`` is a JAX pytree with no registration, so a ``vmap`` over
-    candidate actions returns one record with every field batched. Rank the batch by
-    its ``g``, as ``jnp.argmin(batch.g)``. NumPy's ``argmin`` on the record itself
-    flattens all three fields together and can return an index past the candidates.
+    A registered JAX pytree, so a ``vmap`` over candidate actions returns one record
+    with every field batched. Rank the batch by its ``g``, as ``jnp.argmin(batch.g)``.
 
     Differentiate ``g`` too. Three fields are not the ``(value, aux)`` pair that
     ``jax.value_and_grad(..., has_aux=True)`` expects, so a function differentiated
@@ -154,7 +156,9 @@ class EfeResult(NamedTuple):
     epistemic: Float64[Array, ""]
 
 
-class PolicyEfeTrace(NamedTuple):
+@jax.tree_util.register_dataclass
+@dataclass(frozen=True)
+class PolicyEfeTrace:
     """One H-step rollout's per-step record, each field stacked along a leading H axis.
 
     The first three fields are the per-step [`EfeResult`][cpomdp.efe.EfeResult], and
@@ -162,9 +166,8 @@ class PolicyEfeTrace(NamedTuple):
     the rollout carries between steps, kept for inspection: the covariance a policy
     carries, and the matrices whose conditioning the rollout depends on.
 
-    A ``NamedTuple`` is a JAX pytree with no registration. ``lax.scan`` emits it as its
-    ``ys``, and it survives ``jit``, ``vmap`` and ``grad``, gaining any outer ``vmap``
-    axis too.
+    A registered JAX pytree. ``lax.scan`` emits it as its ``ys``, and it survives
+    ``jit``, ``vmap`` and ``grad``, gaining any outer ``vmap`` axis too.
 
     *Predicted* means after the dynamics and the action and before any observation.
     *Posterior* means after the predict-only Kalman update the rollout carries to the

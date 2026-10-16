@@ -825,14 +825,14 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `ObservationGoal.info_target` becomes `info_node`. `StateGoal.target` and
   `ObservationGoal.target` keep the name, which now has one meaning.
 - **Breaking:** `expected_free_energy`, `policy_efe` and `policy_efe_ffg` return an
-  `EfeResult`, a `NamedTuple` of `g`, `pragmatic` and `epistemic`. They returned
-  `(G, {"pragmatic": ..., "epistemic": ...})`. Their trace siblings returned a
-  `NamedTuple`, so one family answered in two forms, and a misspelt key failed only when
-  it ran. `g` comes first, so `result[0]` still reads `G`. Code that unpacked
-  `G, parts = ...` reads `result.g` and `result.pragmatic` instead. A `vmap` over
-  candidate actions returns one `EfeResult` with every field batched, and the batch is
-  ranked by `batch.g`. NumPy's `argmin` on the record itself flattens all three fields
-  and returns an index past the candidates. The old pair fitted
+  `EfeResult` with fields `g`, `pragmatic` and `epistemic`. They returned
+  `(G, {"pragmatic": ..., "epistemic": ...})`, and their trace siblings a `NamedTuple`,
+  so one family answered in two forms and a misspelt key failed only when it ran.
+  `EfeResult` and `PolicyEfeTrace` are frozen dataclasses registered with JAX, read by
+  name as the search results are. Neither indexes nor unpacks, so `result[0]` and
+  `G, parts = ...` both fail and read `result.g` instead. A `vmap` over candidate
+  actions returns one `EfeResult` with every field batched, ranked by `batch.g`.
+  The old pair fitted
   `jax.value_and_grad(..., has_aux=True)` as it stood. A function differentiated that
   way now returns `(result.g, result)`, and `jax.grad` takes one returning `result.g`.
 - **Breaking:** `PolicyEfeTrace`'s moment fields are `predicted_mean`, `predicted_cov`,

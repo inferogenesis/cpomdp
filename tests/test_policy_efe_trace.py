@@ -30,6 +30,8 @@ Imports `policy_efe_trace`/`PolicyEfeTrace` directly, so until they land this mo
 collection-red — the `ImportError` naming `policy_efe_trace` is the build cue.
 """
 
+import dataclasses
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -224,7 +226,7 @@ class TestTraceMatchesNumpyOracle:
                     )
 
     def test_fields_are_named_for_what_they_hold(self):
-        assert PolicyEfeTrace._fields == (
+        assert tuple(field.name for field in dataclasses.fields(PolicyEfeTrace)) == (
             "g",
             "pragmatic",
             "epistemic",
@@ -308,12 +310,12 @@ class TestTraceTransforms:
         policy = _policy([0.4, -0.2])
         eager = policy_efe_trace(model, belief, policy, pref)
         jitted = jax.jit(lambda p: policy_efe_trace(model, belief, p, pref))(policy)
-        for field in eager._fields:
+        for field in dataclasses.fields(eager):
             np.testing.assert_allclose(
-                getattr(jitted, field),
-                getattr(eager, field),
+                getattr(jitted, field.name),
+                getattr(eager, field.name),
                 atol=1e-12,
-                err_msg=field,
+                err_msg=field.name,
             )
 
     def test_vmap_over_policies(self):

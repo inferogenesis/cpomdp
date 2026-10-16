@@ -107,7 +107,7 @@ class TestHorizonSelect:
 
         def g_of(c):
             policy = jnp.broadcast_to(c[None, :], (2, 1))  # constant action, H=2
-            return float(policy_efe(model, belief, policy, pref)[0])
+            return float(policy_efe(model, belief, policy, pref).g)
 
         cands = jnp.linspace(-3.0, 3.0, n)[:, None]
         g_min = min(g_of(c) for c in cands)
@@ -211,5 +211,5 @@ class TestEFESelectorValidation:
         )
         sel = EFESelector(model, n_candidates=21, action_bounds=(-3.0, 3.0))
         chosen = sel.select(belief, _pref())
-        g = float(expected_free_energy(model, belief, chosen, _pref())[0])
+        g = float(expected_free_energy(model, belief, chosen, _pref()).g)
         assert jnp.isfinite(g)  # a NaN-scoring candidate did not win

@@ -11,6 +11,7 @@ pragmatic form is correct — that is rfcs/004's job; the fixed-sensor collapse 
 is satisfied by all three candidate forms.
 """
 
+import dataclasses
 from types import SimpleNamespace
 
 import jax
@@ -119,30 +120,50 @@ class TestAgainstNumpyOracle:
 
 
 class TestTheResultRecord:
-    """Every EFE function returns one record, with G first so ``[0]`` still reads it."""
+    """Every EFE function returns one record, read by name as the search results are."""
 
     def test_the_one_step_result_names_its_terms(self):
         result = expected_free_energy(
             _model(), _belief(), jnp.array([0.4]), _obs_preference()
         )
         assert isinstance(result, EfeResult)
-        assert result[0] is result.g
         np.testing.assert_allclose(
             result.g, result.pragmatic - result.epistemic, atol=1e-12
         )
+
+    def test_the_record_does_not_index_or_unpack(self):
+        # A position named G on one function could name another field on the next.
+        result = expected_free_energy(
+            _model(), _belief(), jnp.array([0.4]), _obs_preference()
+        )
+        with pytest.raises(TypeError):
+            result[0]  # ty: ignore[not-subscriptable]
+        with pytest.raises(TypeError):
+            _g, _pragmatic, _epistemic = result  # ty: ignore[not-iterable]
+
+    def test_a_jitted_call_returns_the_whole_record(self):
+        model, belief, pref = _model(), _belief(), _obs_preference()
+        jitted = jax.jit(lambda a: expected_free_energy(model, belief, a, pref))
+        result = jitted(jnp.array([0.4]))
+        assert isinstance(result, EfeResult)
+        assert result.g.shape == ()
 
     def test_the_rollout_returns_the_same_record(self):
         model, belief, pref = _model(), _belief(), _obs_preference()
         one_step = expected_free_energy(model, belief, jnp.array([0.4]), pref)
         rollout = policy_efe(model, belief, jnp.array([[0.4]]), pref)
         assert isinstance(rollout, EfeResult)
-        for field in EfeResult._fields:
+        for field in dataclasses.fields(EfeResult):
             np.testing.assert_allclose(
-                getattr(rollout, field), getattr(one_step, field), atol=1e-12
+                getattr(rollout, field.name),
+                getattr(one_step, field.name),
+                atol=1e-12,
             )
 
     def test_the_trace_leads_with_the_same_fields(self):
-        assert PolicyEfeTrace._fields[:3] == EfeResult._fields
+        trace_fields = [field.name for field in dataclasses.fields(PolicyEfeTrace)]
+        result_fields = [field.name for field in dataclasses.fields(EfeResult)]
+        assert trace_fields[:3] == result_fields
 
     def test_a_gradient_is_taken_of_g_with_the_record_as_its_aux(self):
         model, belief, preference = _model(), _belief(), _obs_preference()
@@ -270,7 +291,7 @@ class TestTransforms:
         action = jnp.array([0.4])
 
         eager = expected_free_energy(model, belief, action, pref).g
-        jitted = jax.jit(lambda a: expected_free_energy(model, belief, a, pref)[0])(
+        jitted = jax.jit(lambda a: expected_free_energy(model, belief, a, pref).g)(
             action
         )
         np.testing.assert_allclose(jitted, eager, atol=1e-12)
@@ -279,17 +300,17 @@ class TestTransforms:
         model, belief, pref = _model(), _belief(), _obs_preference()
         actions = jnp.array([[-1.0], [0.0], [0.5], [2.0]])
 
-        batched = jax.vmap(lambda a: expected_free_energy(model, belief, a, pref)[0])(
+        batched = jax.vmap(lambda a: expected_free_energy(model, belief, a, pref).g)(
             actions
         )
         per_action = jnp.array(
-            [expected_free_energy(model, belief, a, pref)[0] for a in actions]
+            [expected_free_energy(model, belief, a, pref).g for a in actions]
         )
         np.testing.assert_allclose(batched, per_action, atol=1e-12)
 
     def test_grad_over_action_runs(self):
         model, belief, pref = _model(), _belief(), _obs_preference()
-        grad = jax.grad(lambda a: expected_free_energy(model, belief, a, pref)[0])(
+        grad = jax.grad(lambda a: expected_free_energy(model, belief, a, pref).g)(
             jnp.array([0.4])
         )
         assert grad.shape == (1,)
@@ -332,7 +353,7 @@ class TestCallableSensorBreaksCollapse:
             sensor = CallableSensor([[1.0, 0.0]], _state_noise, params)
             return expected_free_energy(
                 _model(observation_model=sensor), belief, action, pref
-            )[0]
+            ).g
 
         grads = jax.tree_util.tree_leaves(
             jax.grad(efe_of_params)({"base": jnp.array(0.2), "slope": jnp.array(0.5)})
@@ -384,7 +405,7 @@ class TestPrecisionControlsBalance:
                 [
                     expected_free_energy(
                         model, belief, jnp.array([a]), Preference([0.0], [[precision]])
-                    )[0]
+                    ).g
                     for a in actions
                 ]
             )
@@ -404,7 +425,7 @@ class TestGaussianizeDispatch:
         # behaviour-preserving on the linear case.
         belief, pref = _belief(), _obs_preference()
         action = jnp.array([0.4])
-        g_none = expected_free_energy(_model(), belief, action, pref)[0]
+        g_none = expected_free_energy(_model(), belief, action, pref).g
         g_fixed = expected_free_energy(
             _model(
                 observation_model=FixedSensor([[1.0, 0.0]], observation_noise=[[0.5]])
@@ -412,7 +433,7 @@ class TestGaussianizeDispatch:
             belief,
             action,
             pref,
-        )[0]
+        ).g
         np.testing.assert_array_equal(g_none, g_fixed)
 
 
@@ -517,7 +538,7 @@ class TestFormProof:
         # EXACTLY H[Q(o)] — the double-counted predicted-observation entropy.
         model, action = _ramp_model(), jnp.array([0.6])
         g_kernel = float(
-            expected_free_energy(model, _RAMP_BELIEF, action, _RAMP_PREF)[0]
+            expected_free_energy(model, _RAMP_BELIEF, action, _RAMP_PREF).g
         )
         c = _form_components(model, _RAMP_BELIEF, action)
         np.testing.assert_allclose(g_kernel, c["g_full"], atol=1e-9)  # kernel == full
@@ -615,9 +636,9 @@ class TestInternalProcessNoise:
             _INTERNAL_PREF.target,
             _INTERNAL_PREF.precision,
         )[0]
-        g_kernel = expected_free_energy(base, _INTERNAL_BELIEF, action, _INTERNAL_PREF)[
-            0
-        ]
+        g_kernel = expected_free_energy(
+            base, _INTERNAL_BELIEF, action, _INTERNAL_PREF
+        ).g
         np.testing.assert_allclose(g_kernel, g_ref, atol=1e-10)
 
     def test_grad_wrt_Q_params(self):
@@ -635,7 +656,7 @@ class TestInternalProcessNoise:
             )
             return expected_free_energy(
                 model, _INTERNAL_BELIEF, action, _INTERNAL_PREF
-            )[0]
+            ).g
 
         grads = jax.tree_util.tree_leaves(
             jax.grad(efe_of_params)({"base": jnp.array(0.05), "slope": jnp.array(0.4)})
@@ -681,10 +702,10 @@ class TestStraddledSFlip:
             return float(s[0, 0])
 
         def forbidden_g(action):
-            gf = float(expected_free_energy(model, belief, action, pref)[0])
+            gf = float(expected_free_energy(model, belief, action, pref).g)
             return gf - 0.5 * np.log(2 * np.pi * np.e * s_of(action))  # gf − H[Q(o)]
 
-        g_low = float(expected_free_energy(model, belief, a_low, pref)[0])
-        g_high = float(expected_free_energy(model, belief, a_high, pref)[0])
+        g_low = float(expected_free_energy(model, belief, a_low, pref).g)
+        g_high = float(expected_free_energy(model, belief, a_high, pref).g)
         assert g_low < g_high  # full (kernel) prefers S=1/Λ
         assert forbidden_g(a_high) < forbidden_g(a_low)  # forbidden flips to S=2/Λ

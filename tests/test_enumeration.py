@@ -121,7 +121,7 @@ def _oracle(model, belief, preference, action_set, horizon):
     policies = np.array(seqs, dtype=float)  # (N, H, p)
     g = np.array(
         [
-            float(policy_efe(model, belief, jnp.asarray(pol), preference)[0])
+            float(policy_efe(model, belief, jnp.asarray(pol), preference).g)
             for pol in policies
         ]
     )
