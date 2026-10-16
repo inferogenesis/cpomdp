@@ -160,7 +160,6 @@ def test_branching_tree_matches_coupling_graph():
     ]
     obs_r = 0.10
     graph = CouplingGraph(
-        root=chea,
         dims=(1, 1, 1, 1, 1),
         couplings=tuple(
             Coupling(p, c, [[w]], coupling_noise=[[q]]) for p, c, w, q in edges

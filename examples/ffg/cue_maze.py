@@ -360,7 +360,6 @@ def build_maze(
         efe_relevant=True,  # the covariance path the instrumental epistemic rides
     )
     graph = CouplingGraph(
-        root=CONTEXT,
         dims=(context_dim, arena_dim),
         couplings=(context_to_arena,),
         observation_models={ARENA: arena_sensor},

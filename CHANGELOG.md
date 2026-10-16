@@ -463,6 +463,9 @@ certainty equivalence is optimal, and no use of the readings beats it.
   read-only, and `observation_models` is a read-only mapping. Construction is the only place
   the wiring is checked. A sensor added afterwards to node 7 of a two-node graph skipped
   the range check and reached the backend. Build a new graph instead.
+- **Breaking:** `CouplingGraph` takes no `root`. The root is the one node no coupling
+  points to, so a stated root could only repeat the couplings or contradict them.
+  Drop the argument. `graph.root` still reads it back.
 - **Breaking:** `CouplingGraph.infer` is `infer_root(readings, prior)`. It takes the
   readings first and the prior second, the order `infer_states(observation, prior)`
   takes. It was the one inference call that took the belief first. A call in the old

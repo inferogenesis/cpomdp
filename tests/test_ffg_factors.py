@@ -105,9 +105,7 @@ class TestLikelihoodMessage:
 def _node_message(sensor, reading, state=None):
     """The message a one-node graph builds from ``sensor``'s reading at ``state``."""
     n = sensor.linearize(jnp.zeros(1))[0].shape[1] if state is None else len(state)
-    graph = CouplingGraph(
-        root=0, dims=(n,), couplings=(), observation_models={0: sensor}
-    )
+    graph = CouplingGraph(dims=(n,), couplings=(), observation_models={0: sensor})
     return graph._observation_message(0, reading, state)
 
 

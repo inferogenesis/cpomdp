@@ -130,9 +130,7 @@ def _flat_pair():
     b[0, 0] = 1.0
     b[1, 1] = 1.0
     sensor = CallableSensor(_ARENA_C, _cue_noise, _CUE_PARAMS)
-    graph = CouplingGraph(
-        root=0, dims=(4,), couplings=(), observation_models={0: sensor}
-    )
+    graph = CouplingGraph(dims=(4,), couplings=(), observation_models={0: sensor})
     backend = CouplingGraphBackend(
         graph,
         (GaussianTransition(a, dynamics_noise=q),),

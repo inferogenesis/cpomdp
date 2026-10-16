@@ -206,29 +206,29 @@ class CouplingGraph:
     """A rooted tree of Gaussian-coupled variables.
 
     The ``N`` nodes are indexed ``0..N-1`` with dimensions ``dims``. ``couplings`` are
-    the tree edges, directed away from ``root``, and ``observation_models`` maps a node
-    index to the sensor on it. A node takes the sensor a flat model takes: a
+    the tree edges, each directed from parent to child, and the root is the one node no
+    edge points to. ``observation_models`` maps a node index to the sensor on it. A node
+    takes the sensor a flat model takes: a
     [`FixedSensor`][cpomdp.FixedSensor], a state-dependent
     [`CallableSensor`][cpomdp.CallableSensor], or any other
     [`ObservationModel`][cpomdp.ObservationModel]. Construction validates the wiring
     and raises if it is malformed.
 
     Args:
-        root: index of the node the tree is rooted at.
         dims: ``dims[i]`` is the dimension of node ``i``; its length is the node count.
         couplings: the tree edges — one per non-root node, each that node's only parent.
+            The node left without a parent is the root.
         observation_models: maps a node index to the ``ObservationModel`` that reads
             it.
 
     Raises:
-        TypeError: if ``root`` or a dimension is not an int, an edge is not a
-            ``Coupling``, or an observation model is not an ``ObservationModel``.
-        ValueError: if ``dims`` is empty or non-positive; if ``root``, an edge, or an
-            observation model references an out-of-range node; if an edge's
-            ``coupling_matrix`` is not ``(dim[child], dim[parent])``; if a sensor's
-            ``C`` is not as wide as the node it observes; or if the edges do not form a
-            tree rooted at ``root`` — the root has a parent, a node has two parents or
-            none, or the edges contain a cycle.
+        TypeError: if a dimension is not an int, an edge is not a ``Coupling``, or an
+            observation model is not an ``ObservationModel``.
+        ValueError: if ``dims`` is empty or non-positive; if an edge or an observation
+            model references an out-of-range node; if an edge's ``coupling_matrix`` is
+            not ``(dim[child], dim[parent])``; if a sensor's ``C`` is not as wide as the
+            node it observes; or if the edges do not form a tree — a node has two
+            parents, more than one node has none, or the edges contain a cycle.
 
     The four fields are read-only once built. Construction is where the wiring is
     checked, so a graph that needs other wiring is a new graph.
@@ -236,16 +236,15 @@ class CouplingGraph:
 
     def __init__(
         self,
-        root: int,
         dims: Sequence[int],
         couplings: Sequence[Coupling],
         observation_models: Mapping[int, ObservationModel],
     ) -> None:
-        self._root = _as_int(root, "root")
         self._dims = tuple(_as_int(dim, f"dims[{i}]") for i, dim in enumerate(dims))
         self._couplings = tuple(couplings)
         self._observation_models = dict(observation_models)
         self._validate()
+        self._root = self._find_root()
         self._sensor_at_zero = self._linearize_sensors_at_zero()
         self._parent_edge = {edge.child: edge for edge in self._couplings}
         # Deepest first, so a child folds into its parent before the parent moves up.
@@ -255,7 +254,7 @@ class CouplingGraph:
 
     @property
     def root(self) -> int:
-        """The index of the node the tree is rooted at."""
+        """The one node no coupling points to, which the tree hangs from."""
         return self._root
 
     @property
@@ -277,8 +276,6 @@ class CouplingGraph:
         n = len(self.dims)
         if n == 0 or any(d <= 0 for d in self.dims):
             raise ValueError(f"dims must be non-empty positive ints, got {self.dims}")
-        if not 0 <= self.root < n:
-            raise ValueError(f"root {self.root} out of range for {n} nodes")
 
         for edge in self.couplings:
             if not isinstance(edge, Coupling):
@@ -305,24 +302,35 @@ class CouplingGraph:
                     f"{type(sensor).__name__}"
                 )
 
-        # The edges must form a tree rooted at `root`: each non-root node has exactly
-        # one parent, the root has none, and every node walks up to the root.
+    def _find_root(self) -> int:
+        """The one node no edge points to, once the edges are checked to form a tree.
+
+        A tree has one parent per node but the root, and every node walks up to it.
+        """
+        node_count = len(self.dims)
         children = [edge.child for edge in self.couplings]
-        if self.root in children:
-            raise ValueError(f"root {self.root} must not be a child of any coupling")
         if len(children) != len(set(children)):
             raise ValueError("a node has more than one parent — not a tree")
-        if set(children) != set(range(n)) - {self.root}:
-            raise ValueError("every non-root node must have exactly one parent")
+        without_parent = sorted(set(range(node_count)) - set(children))
+        if not without_parent:
+            raise ValueError(
+                "every node has a parent, so the couplings contain a cycle — not a tree"
+            )
+        if len(without_parent) > 1:
+            raise ValueError(
+                f"nodes {without_parent} have no parent, and a tree has one root"
+            )
+        (root,) = without_parent
 
         parent_of = {edge.child: edge.parent for edge in self.couplings}
-        for start in range(n):
+        for start in range(node_count):
             node, seen = start, set()
-            while node != self.root:
+            while node != root:
                 if node in seen:
                     raise ValueError("couplings contain a cycle — not a tree")
                 seen.add(node)
                 node = parent_of[node]
+        return root
 
     def _depth(self, node: int) -> int:
         """The number of edges from ``node`` up to the root."""
