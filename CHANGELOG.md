@@ -573,12 +573,12 @@ certainty equivalence is optimal, and no use of the readings beats it.
   way now returns `(result.g, result)`, and `jax.grad` takes one returning `result.g`.
 - **Breaking:** `PolicyEfeTrace`'s moment fields are `predicted_mean`, `predicted_cov`,
   `posterior_cov` and `predicted_observation_cov`, renamed from `mu_pred`, `sigma_pred`,
-  `sigma_post` and `s`. `RolloutConditioning`'s fields follow them, so `cond_s` is
-  `cond_predicted_observation_cov` and `min_eig_sigma_post` is `min_eig_posterior_cov`,
-  with `cond_predicted_cov` and `cond_posterior_cov` beside them. `trace.s` could not be
-  read without the docstring. S also went by four names across the docstrings, and is
-  the predicted observation covariance in all of them now. `g`, `pragmatic` and
-  `epistemic` keep their names, which `EfeResult` shares.
+  `sigma_post` and `s`. `RolloutConditioning`'s fields follow them. `cond_sigma_pred` is
+  `cond_predicted_cov`, `cond_s` is `cond_predicted_observation_cov`, `cond_sigma_post`
+  is `cond_posterior_cov` and `min_eig_sigma_post` is `min_eig_posterior_cov`.
+  `trace.s` could not be read without the docstring. S also went by four names across
+  the docstrings, and is the predicted observation covariance in every public one now.
+  `g`, `pragmatic` and `epistemic` keep their names, which `EfeResult` shares.
 - `ObservationGoal.preference` is the `Preference` the expected free energy functions
   score against, built once from the goal's target and precision. Passing the goal
   itself to `expected_free_energy`, `policy_efe` or a sibling raised `'ObservationGoal'
