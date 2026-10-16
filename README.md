@@ -140,7 +140,7 @@ The model's parts and the policy step are spelled differently:
 | `D`              | `model.prior`                                         | belief before you've seen anything              |
 | `infer_policies` | folded into `sample_action`                           | scoring the actions on offer                    |
 
-The model also answers to `.A`, `.B`, `.C`, `.Q` and `.R`. Those are control-theory letters. `model.A` is the dynamics matrix, pymdp's `B`, and `model.C` is the observation matrix, pymdp's `A`.
+The model has no letter aliases. Control theory's `A` is pymdp's `B`, and its `C` is pymdp's `A`, so each field goes by its role name only.
 
 One honest difference in behaviour. `sample_action` here is deterministic, not a sample from a policy posterior. For a linear-Gaussian model with fixed noise the action that minimises expected free energy turns out to be exactly the LQR optimum ([Koudahl, Kouw and de Vries 2021](https://doi.org/10.3390/e23121565)), so there's a single best action and that's what comes back. Same loop, exact answer. The reasoning is in [DECISIONS.md](https://github.com/inferogenesis/cpomdp/blob/main/DECISIONS.md) (ADR-003) if you want it.
 

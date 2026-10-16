@@ -53,7 +53,8 @@ closures.
 | `expected_free_energy`, `cpomdp.efe.policy_efe` | Traces |
 | `LQRSelector.select` | Traces, with a gradient through the gain |
 | `EFESelector.select`, `FfgEfeSelector.select`, `cpomdp.enumeration.RecedingHorizonSelector.select` | Traces. The action is an argmin over fixed candidates, so its gradient is zero |
-| `Agent.infer_states`, `Agent.sample_action`, `cpomdp.enumeration.OpenLoopSelector.select` | Does not. Each keeps state between calls. A traced call restarts from the state it was traced with and leaves a tracer behind |
+| `Agent.infer_states`, `cpomdp.enumeration.OpenLoopSelector.select` | Does not. Each keeps state between calls. A traced call restarts from the state it was traced with and leaves a tracer behind |
+| `Agent.sample_action` | Does not. It reads the action on the host to refuse a NaN, so a traced call raises before it keeps anything |
 | `KalmanBackend(model, steady_state=True)`, `LQRController(...)`, `Agent(model, goal)` | Does not. Each solves once on the host at construction |
 | `RxInferBackend.infer_states` | Does not. It calls Julia |
 | `probe_model` | Does not. It runs in NumPy on the host |

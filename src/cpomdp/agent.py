@@ -346,9 +346,8 @@ class Agent:
     | ``D`` | ``model.prior`` | belief before any observation |
     | ``infer_policies`` | folded into ``sample_action`` | score the actions |
 
-    The model's ``.A`` to ``.R`` are control-theory letters. ``model.A`` is the
-    dynamics matrix, pymdp's ``B``, and ``model.C`` the observation matrix, pymdp's
-    ``A``.
+    The model has no letter aliases. Control theory's ``A`` is pymdp's ``B``, and its
+    ``C`` is pymdp's ``A``, so each field goes by its role name only.
 
     One honest difference from pymdp: ``sample_action`` is **deterministic** here,
     not a draw from a policy posterior. With a fixed linear-Gaussian sensor and fixed

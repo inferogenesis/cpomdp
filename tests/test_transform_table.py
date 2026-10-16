@@ -249,11 +249,13 @@ def test_a_jitted_agent_restarts_from_the_belief_it_was_traced_with():
         agent.infer_states(OBSERVATIONS[2])
 
 
-def test_a_jitted_sample_action_leaves_a_tracer_behind():
+def test_a_jitted_sample_action_raises_before_it_keeps_the_action():
+    # It reads the action on the host to refuse a NaN, so the trace stops there and
+    # the agent keeps no tracer.
     agent = Agent(_fixed_model(), StateGoal([1.0, 0.0]))
-    jax.jit(agent.sample_action)()
-    with pytest.raises(jax.errors.UnexpectedTracerError):
-        agent.infer_states(OBSERVATIONS[0])
+    with pytest.raises(jax.errors.TracerBoolConversionError):
+        jax.jit(agent.sample_action)()
+    agent.infer_states(OBSERVATIONS[0])
 
 
 def test_a_jitted_open_loop_selector_leaks_its_plan():
