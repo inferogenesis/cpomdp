@@ -606,10 +606,11 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `LQRSelector`, and a target of the wrong length is refused. The old pairing of a goal
   with a selector reading the other space cannot be written:
   `Agent(model, StateGoal(target), selector=EFESelector(...))` pursued `C · x = target`
-  and settled away from the target whenever `C` is not the identity. A built-in
-  selector scoring a different model is refused. One built from an equal copy, such as
-  a model rebuilt from the same config, is taken. A custom selector is not checked
-  (ADR-080).
+  and settled away from the target whenever `C` is not the identity. Every built-in
+  selector, search and search driver names the model it scores under as `model`, and
+  one scoring a different model is refused. One built from an equal copy, such as a
+  model rebuilt from the same config, is taken. A custom selector is checked when its
+  `model` is a `LinearGaussianModel` (ADR-080).
 - **Breaking:** an `ObservationGoal` goes to EFE wherever a noise depends on the state,
   on a flat model and a graph alike. The dispatch read the sensor and the backend's
   type. A model whose only state dependence was `Q(x)` was refused as a fixed sensor and

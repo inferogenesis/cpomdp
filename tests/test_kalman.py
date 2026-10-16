@@ -445,7 +445,7 @@ class TestKalmanCallableSensor:
             KalmanBackend(model, steady_state=True)
 
 
-# --- state-dependent process noise Q(x) in the filter (the R(x) dual) --------
+# --- state-dependent dynamics noise Q(x) in the filter (the R(x) dual) --------
 # CallableDynamicsNoise carries Q(x); the filter's covariance predict must evaluate
 # it at the predicted mean μ⁻ (the same point the EFE kernel uses), gated so the
 # fixed path stays byte-identical.

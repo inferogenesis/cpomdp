@@ -536,7 +536,7 @@ def test_a_process_noise_that_goes_indefinite_is_refused_not_drawn():
 
 def test_a_noiseless_dynamics_direction_is_still_legal():
     # The guard above must not reach past indefinite into semi-definite: a state
-    # dimension with no process noise is a deterministic direction, not an error.
+    # dimension with no dynamics noise is a deterministic direction, not an error.
     def noiseless_second_direction(mean, params):
         return jnp.diag(jnp.array([1e-4, 0.0]))
 

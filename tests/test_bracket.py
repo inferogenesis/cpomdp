@@ -88,7 +88,7 @@ class TestFullInformationCost:
         assert abs(closed - sampled) < 4 * standard_error
 
     def test_without_noise_it_is_the_whole_plan_quadratic_alone(self):
-        # A known start and no process noise: the whole cost is x0ᵀ P_H x0, which the
+        # A known start and no dynamics noise: the whole cost is x0ᵀ P_H x0, which the
         # brute-force plan already pins.
         model = LinearGaussianModel(
             dynamics_matrix=DYNAMICS,

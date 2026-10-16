@@ -15,7 +15,7 @@ Lemma 1 rests on, with no plotting deps:
         effect, the control reaching a covariance rather than only a mean;
 - (iii) the one-step epistemic value *varies* across a candidate-action grid;
 - twin  freezing `R` at the predicted mean `μ⁻` makes that same term dead-flat —
-        ADR-003's collapse: a fixed linear-Gaussian sensor with fixed process noise
+        ADR-003's collapse: a fixed linear-Gaussian sensor with fixed dynamics noise
         reduces EFE to LQR;
 - pin   `R(μ⁻(a))` — the noise the sensor presents at the predicted mean — traces a
         curve across the grid. No horizontal line follows a curve, which is the

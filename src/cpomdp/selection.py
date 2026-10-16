@@ -17,8 +17,8 @@ from cpomdp.backends.base import GraphBackend
 from cpomdp.control import LQRController, _validate_cost
 from cpomdp.efe import (
     _ffg_efe_step,
-    _goal_and_precision,
     _info_block_of,
+    _target_and_precision,
     expected_free_energy,
     policy_efe,
 )
@@ -227,6 +227,11 @@ class LQRSelector:
         """
         return self.controller.action(belief.mean, preference.target)
 
+    @property
+    def model(self) -> LinearGaussianModel:
+        """The model the controller's gain was solved for."""
+        return self.controller.model
+
 
 def _require_scalar_control(
     control_matrix: Float64[Array, "n p"] | None, selector: str, search: str
@@ -329,7 +334,7 @@ class EFESelector:
         when no candidate scores a finite ``G``. The first call compiles the work and
         later calls reuse it.
         """
-        _goal_and_precision(preference)  # refused here, not inside the compiled call
+        _target_and_precision(preference)  # refused here, not inside the compiled call
         return self._choose(belief, preference)
 
     def _score_and_choose(
@@ -359,6 +364,11 @@ class EFESelector:
     def n_candidates(self) -> int:
         """How many actions the grid holds in total, each scored once per cycle."""
         return self._candidates.shape[0]
+
+    @property
+    def model(self) -> LinearGaussianModel:
+        """The model every candidate is scored under."""
+        return self._model
 
     @property
     def horizon(self) -> int:
@@ -462,7 +472,7 @@ class FFGEFESelector:
         and scores that are not finite go as for
         [`EFESelector`][cpomdp.EFESelector], and the first call compiles the work.
         """
-        _goal_and_precision(preference)  # refused here, not inside the compiled call
+        _target_and_precision(preference)  # refused here, not inside the compiled call
         return self._choose(belief, preference)
 
     def _score_and_choose(
@@ -495,6 +505,11 @@ class FFGEFESelector:
     def n_candidates(self) -> int:
         """How many actions the grid holds in total, each scored once per cycle."""
         return self._candidates.shape[0]
+
+    @property
+    def model(self) -> LinearGaussianModel:
+        """The backend's model, whose sizes, sensor and control the score reads."""
+        return self._backend.model
 
     @property
     def horizon(self) -> int:

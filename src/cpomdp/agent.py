@@ -118,14 +118,12 @@ def _same_model(first: LinearGaussianModel, second: LinearGaussianModel) -> bool
 
 
 def _selector_model(selector: ActionSelector) -> LinearGaussianModel | None:
-    """The model a built-in selector scores under, or None for a custom one."""
-    if isinstance(selector, EFESelector):
-        return selector._model
-    if isinstance(selector, FFGEFESelector):
-        return selector._backend.model
-    if isinstance(selector, LQRSelector):
-        return selector.controller.model
-    return None
+    """The model a selector names as the one it scores under, or None if it names none.
+
+    Every built-in selector and search driver exposes ``model``. A custom selector may.
+    """
+    model = getattr(selector, "model", None)
+    return model if isinstance(model, LinearGaussianModel) else None
 
 
 def _lqr_path(
@@ -379,7 +377,7 @@ class Agent:
         ``StateGoal`` steers in state space via LQR (it needs a fixed sensor). An
         ``ObservationGoal`` seeks a preferred observation via EFE, over the goal's
         horizon or, left unset, the shortest at which the target moves the scores. It
-        needs a control matrix, and a sensor noise ``R(x)`` or process noise ``Q(x)``
+        needs a control matrix, and a sensor noise ``R(x)`` or dynamics noise ``Q(x)``
         that depends on the state, on a flat model and a graph alike. To choose with a
         selector of your own, pass a [`Preference`][cpomdp.Preference] and
         ``selector=``. The selector then carries the search. Omit the objective for a

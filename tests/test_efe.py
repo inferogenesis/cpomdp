@@ -550,12 +550,12 @@ class TestFormProof:
         )
 
 
-# --- Phase 2d: internal process noise Q(μ⁺) breaks the collapse FROM THE INSIDE,
+# --- Phase 2d: internal dynamics noise Q(μ⁺) breaks the collapse FROM THE INSIDE,
 # with the observation noise R held FIXED (RFC-001 Section 8: the binding constraint
 # lives in internal processing, not the sensor). dynamics_noise REPLACES the fixed
 # dynamics_noise matrix when set (mirrors observation). Q is evaluated at μ⁺.
 def _q_well(x, params):
-    """Internal process noise Q(x), low near 0, growing with position². Module-level."""
+    """Internal dynamics noise Q(x), low near 0 and growing with position²."""
     return jnp.array([[params["base"] + params["slope"] * x[0] ** 2]])
 
 

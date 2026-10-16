@@ -6,7 +6,7 @@ than a hard-coded linear-Gaussian one. Every other kernel test uses
 `filter_sequence` would go unnoticed. The double below is defined here, in numpy,
 outside the package, and the filter has to run it unchanged.
 
-State-dependent process noise is the case it is written in, because that is the one
+State-dependent dynamics noise is the case it is written in, because that is the one
 the seam is claimed to admit and no shipped class provides (issue #56). Nothing here
 makes `Q(x)` a supported surface: the double is a test fixture, not an export.
 """

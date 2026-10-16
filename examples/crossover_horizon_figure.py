@@ -1,6 +1,6 @@
 """R(x) and a long enough H bring curiosity back to a linear-Gaussian agent.
 
-Under a *fixed* linear-Gaussian sensor and fixed process noise the epistemic term of
+Under a *fixed* linear-Gaussian sensor and fixed dynamics noise the epistemic term of
 expected free energy is a constant across policies, so it cannot change any decision and
 the agent reduces to LQR (the collapse `efe_collapse_figure.py` draws). A
 state-dependent `R(x)` breaks that: the action reaches the noise, and curiosity becomes
@@ -121,7 +121,7 @@ R_NEAR = 0.02  # on the beacon: the goal is legible
 R_DULL = 12000.0  # off it, and on the commit channel throughout: it is not
 WELL_WIDTH = 1.0  # λ, how far the legible region reaches
 
-# --- process noise and prior --------------------------------------------------------
+# --- dynamics noise and prior --------------------------------------------------------
 Q_POSITION = 1e-3  # the agent tracks its own position by dead reckoning
 Q_GOAL = 1e-4  # the goal is static, so this only keeps the recursion well posed
 PRIOR_COV_POSITION = 0.05  # it knows where it is ...

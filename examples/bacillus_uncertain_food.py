@@ -112,7 +112,7 @@ BEACON_PT = np.array([0.0, 2.7])  # up and central, clearly off the start→food
 # demo sensed through. Only the channel it is attached to differs here.
 R_LO, R_HI, R_WIDTH = 0.02, 1.30, 2.3
 R_SELF = 0.05  # fixed proprioceptive noise: the agent always senses ITSELF clearly
-Q_AGENT = 2e-5  # near-zero process noise on the agent block (existing idiom)
+Q_AGENT = 2e-5  # near-zero dynamics noise on the agent block (existing idiom)
 Q_FOOD = 1e-6  # the food is stationary. The FFG chain filter needs Q > 0
 PRIOR_COV_AGENT = 2.6
 LQR_GOAL_PRECISION = 0.22  # the LQR agent's cost weight on (agent - food-belief)
@@ -168,9 +168,9 @@ REGIMES = [
 def _beacon_params() -> dict[str, float]:
     """The beacon falloff's tunables — shared by ``build_model`` and ``simulate``.
 
-    Single source of truth so the model's filtering noise and the simulator's
-    truth-process noise can never drift apart (``model.observation_model`` is typed as
-    the ``ObservationModel`` Protocol).
+    Single source of truth so the model's filtering noise and the simulator's dynamics
+    noise can never drift apart (``model.observation_model`` is typed as the
+    ``ObservationModel`` Protocol).
     """
     return {
         "bx": float(BEACON_PT[0]),

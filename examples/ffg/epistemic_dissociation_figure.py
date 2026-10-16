@@ -95,7 +95,7 @@ PRIOR_COV_ARM = 5.0  # perceived-arm inherits the context uncertainty
 R_LO, R_HI, R_WIDTH = 0.02, 200.0, 1.2
 R_GOAL = 200.0  # the fixed "commit" channel: dull, but carries the pragmatic pull
 
-# process noise (all strictly positive; the information form inverts them)
+# dynamics noise (all strictly positive; the information form inverts them)
 Q_CONTEXT, Q_POSITION, Q_ARM = 1e-2, 1e-4, 1e-2
 # coupling 0->1 noise: f tracks context tightly, x is left essentially free
 COUPLE_Q_POSITION, COUPLE_Q_ARM = 1e3, 1e-2
