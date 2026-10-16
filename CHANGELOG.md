@@ -571,6 +571,9 @@ certainty equivalence is optimal, and no use of the readings beats it.
 
 ### Changed
 
+- **Breaking:** `Agent.qs` is gone. It was a read-only alias of `Agent.belief`, so one
+  posterior had two names and the README told users to pick either. pymdp's `qs` is
+  `agent.belief`.
 - **Breaking:** `Agent` takes a model or a backend, never both. `Agent(model, objective)`
   filters with the default per-step `KalmanBackend`, and
   `Agent.from_backend(backend, objective)` takes any other engine, a
