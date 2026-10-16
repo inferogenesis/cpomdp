@@ -40,8 +40,8 @@ from warrantlib import CompletenessCertificate, Warrant
 
 if TYPE_CHECKING:
     # Duck-typed at runtime (read for .goal/.precision via the efe kernels, and the
-    # backend's predict/observation methods), so no runtime dependency on selection or
-    # the backends package — keeps selection/backends -> enumeration the only edges.
+    # backend's predict and its model's C and R), so no runtime dependency on selection
+    # or the backends package — keeps selection/backends -> enumeration the only edges.
     from cpomdp.backends.base import GraphBackend
     from cpomdp.selection import Preference
 

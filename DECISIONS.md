@@ -4646,7 +4646,8 @@ model now follows.
 **Supersedes:** ADR-016's names `partition_error` and `rollout` for the two surfaces of
 the severed-mass diagnostic, and `rollout`'s stacked `Belief`. The two surfaces stand.
 ADR-013's validation strategy, for where the flagship's check of `KalmanBackend` against
-`ChainBackend` runs.
+`ChainBackend` runs. ADR-069's listing of `cpomdp.ffg.chain` among the implementation
+modules that stay importable: the module is now private, at `cpomdp.ffg._chain`.
 **Phase:** v0.5.0, the public API review before release
 
 ### The question
