@@ -1234,6 +1234,28 @@ class _UnstoredSensor:
         return c @ x, c @ sigma @ c.T + r, r
 
 
+class _BadNoiseSensor(_UnstoredSensor):
+    """A fixed protocol-only sensor whose R is whatever the test hands it."""
+
+    def __init__(self, noise):
+        self._gain = jnp.asarray([[1.0]], dtype=float)
+        self._noise = jnp.asarray(noise, dtype=float)
+
+
+@pytest.mark.parametrize(
+    "noise",
+    [[[0.0]], [[-1.0]], [[1.0, 0.0], [0.0, 1.0]]],
+    ids=["zero", "negative", "shape"],
+)
+def test_a_fixed_sensor_with_an_unusable_r_is_refused_when_the_graph_is_built(noise):
+    # A fixed sensor's R is front-loaded and inverted every step, so the graph checks it
+    # once. FixedSensor checks itself, and the protocol is open to sensors that do not.
+    with pytest.raises(ValueError, match="node 0"):
+        CouplingGraph(
+            dims=(1,), couplings=(), observation_models={0: _BadNoiseSensor(noise)}
+        )
+
+
 def _one_node_graph_backend(sensor):
     """A single scalar node with a control, observed by ``sensor``."""
     graph = CouplingGraph(dims=(1,), couplings=(), observation_models={0: sensor})
