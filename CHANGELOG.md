@@ -466,7 +466,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
   and settled away from the target whenever `C` is not the identity. A built-in
   selector scoring a different model is refused. One built from an equal copy, such as
   a model rebuilt from the same config, is taken. A custom selector is not checked
-  (ADR-071).
+  (ADR-080).
 - **Breaking:** an `ObservationGoal` goes to EFE wherever a noise depends on the state,
   on a flat model and a graph alike. The dispatch read the sensor and the backend's
   type. A model whose only state dependence was `Q(x)` was refused as a fixed sensor and
@@ -476,7 +476,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
   action. A flat model with the same sensors was refused. Both are refused now, and the
   message names the selector to pass with a `Preference` for EFE with a flat information
   term. `examples/ffg/epistemic_dissociation_figure.py` hands both of its agents one
-  `FfgEfeSelector` that way (ADR-072).
+  `FfgEfeSelector` that way (ADR-081).
 - **Breaking:** on the LQR path `Agent` refuses a `StateGoal` target the dynamics do not
   hold at zero action, where `A · target ≠ target`. LQR regulates the offset from the
   target and charges for effort, so it settled short. With `A = 0.9` and a target of 1

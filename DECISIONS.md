@@ -4636,7 +4636,7 @@ versions break before 1.0, as cpomdp's do.
 - A warrantlib 0.4 reaches cpomdp users only through a cpomdp release that lifts the
   cap.
 
-## ADR-071 — a goal configures the selector the Agent builds, and `selector=` takes a `Preference`
+## ADR-080 — a goal configures the selector the Agent builds, and `selector=` takes a `Preference`
 
 **Date:** 2026-10-15
 **Status:** Accepted
@@ -4716,7 +4716,7 @@ An `ActionGrid` object holding the three numbers was the alternative. It would n
 clump. It would also add a public type and move about sixty test lines before any search
 over it exists. Promoting one later breaks nothing the keywords do now.
 
-## ADR-072 — an `ObservationGoal` is curious wherever a noise depends on the state
+## ADR-081 — an `ObservationGoal` is curious wherever a noise depends on the state
 
 **Date:** 2026-10-15
 **Status:** Accepted
@@ -4749,7 +4749,7 @@ The test is structural. It reads each noise object's `is_fixed` flag and evaluat
 noise.
 
 The review recommended relaxing the `Q(x)` half only and keeping the graph exception,
-since three tests and the flagship relied on it. I made the rule one. Since ADR-071 the
+since three tests and the flagship relied on it. I made the rule one. Since ADR-080 the
 ablation has a hand-built form, and a rule keyed on the backend's type cannot be read off
 the model.
 
@@ -4765,17 +4765,17 @@ the model.
   filter can read, and LQR stays blind to the information term.
 - The flags are fixed at construction, so the check adds nothing per cycle.
 
-## ADR-073 — a goal on Q(x) alone stops at horizon 1
+## ADR-082 — a goal on Q(x) alone stops at horizon 1
 
 **Date:** 2026-10-16
 **Status:** Accepted
-**Supersedes:** ADR-072's consequence that a `Q(x)`-only model with an `ObservationGoal`
+**Supersedes:** ADR-081's consequence that a `Q(x)`-only model with an `ObservationGoal`
 gets an `EFESelector` at the horizon ADR-068 reads off the model, for horizons past 1.
 **Phase:** v0.5.0, the public API review before release
 
 ### The question
 
-ADR-072 sent a model whose only state dependence is `Q(x)` to the EFE path, and ADR-068's
+ADR-081 sent a model whose only state dependence is `Q(x)` to the EFE path, and ADR-068's
 probe then picks the shortest horizon at which the target moves the scores. On a double
 integrator observed in position that horizon is 2. The `Q(x)` surface above horizon 1
 is registered as unclaimed (#56), and the Agent page says `Q(x)` is claimed at horizon 1
