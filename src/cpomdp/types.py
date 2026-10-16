@@ -534,6 +534,6 @@ def refuse_graph_interface(model: object, consumer: str) -> None:
         raise TypeError(
             f"{consumer} was given a CouplingGraphBackend's model, which leaves out "
             "the graph's couplings, so it would compute on a plant without them. "
-            "Pass the backend where one is taken, or backend.to_flat_model() for a "
-            "flat model that keeps them."
+            "Use the graph backend itself, or backend.to_flat_model() for a flat model "
+            "that keeps them."
         )
