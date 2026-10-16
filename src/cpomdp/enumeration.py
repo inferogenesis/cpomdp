@@ -77,7 +77,7 @@ class PolicyBudgetError(ValueError):
     """
 
 
-# The front-loaded search's default policy budget (ADR-071). It admits every
+# The front-loaded search's default policy budget (ADR-083). It admits every
 # front-loaded run the repository makes, the largest being 9^6 = 531,441, and refuses
 # 9^7, whose front-loaded run the warrant ledger records at 5.4 GiB.
 _DEFAULT_MAX_POLICIES = 1 << 21

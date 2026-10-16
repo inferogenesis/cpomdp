@@ -357,7 +357,7 @@ def _nine_actions():
 
 class TestPolicyBudget:
     def test_the_default_is_two_to_the_twenty_first(self):
-        # ADR-071 declares this number. Moving it is a decision, so it moves here too.
+        # ADR-083 declares this number. Moving it is a decision, so it moves here too.
         default = inspect.signature(EnumeratedEfeSearch).parameters["max_policies"]
         assert default.default == 2**21
 

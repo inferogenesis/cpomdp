@@ -664,7 +664,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
   memory-capped host down without raising. The error gives the count, the step
   evaluations of one plan and a floor on the memory, and names `ChunkedEfeSearch`,
   which both drivers take. `max_policies=None` lifts the budget. The set is now decoded
-  from its indices rather than built through `itertools.product` on the host (ADR-071).
+  from its indices rather than built through `itertools.product` on the host (ADR-083).
 - `PROVED` without evidence does not construct, enforced in `CheckReport`. Two kinds
   qualify, one per decisive prover: a completeness certificate for an exhaustive
   enumeration, a `SymbolicReduction` for a theorem or a symbolic identity (Provers 1 and
