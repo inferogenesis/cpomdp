@@ -4635,3 +4635,149 @@ versions break before 1.0, as cpomdp's do.
 - The next floor change meets the race again, with the two options ADR-040 lists.
 - A warrantlib 0.4 reaches cpomdp users only through a cpomdp release that lifts the
   cap.
+
+## ADR-071 — a model field beside its noise object holds that object's value
+
+**Date:** 2026-10-16
+**Status:** Accepted
+**Supersedes:** ADR-064's decision that a value passed beside a state-dependent sensor
+is kept and not warned on, and the same sentence in ADR-065 for `Q`.
+**Extends:** ADR-064 and ADR-065 to `observation_matrix`, and ADR-066 to the spec's
+`observation_matrix`.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+A model with a state-dependent sensor took any positive-definite `observation_noise`
+beside it and read none of it. With `observation_noise=[[123.0]]` beside a
+`CallableSensor`, `model.observation_noise` returned 123. The Kalman filter and the EFE
+kernel gave what the derived model gives. Setting the field to tune the sensor changed
+nothing and said nothing. `dataclasses.replace(model, prior=...)` passed the old field
+back, so the model kept `R` at the old prior mean. `dynamics_noise` beside a `Q(x)` did
+the same. A third-party backend reading either field computed against a constant no
+filter in the library uses.
+
+ADR-064 kept the passed value for one consumer. `WrongFixedRBackend` scales a nominal
+`R` on purpose, and a nominal taken at another operating point is legitimate there.
+That consumer can take its constant as an argument of its own.
+
+`observation_matrix` had the converse problem. The model required it beside a sensor
+that already carries `C`, and refused the pair unless they were the same array. Every
+`R(x)` model typed `C` twice.
+
+### Decision
+
+One rule covers `observation_matrix`, `observation_noise` and `dynamics_noise`. Beside
+its object each field is the object's value at `prior.mean`: the sensor's `C`, the
+sensor's `R` there, and the dynamics noise model's `Q` there. Omitted, the field is read
+once at construction. Passed, it must equal that value exactly, or the model raises a
+`ValueError` saying to omit it. With no object the field is required, as before.
+
+Fixed and state-dependent objects follow the same rule. A fixed object returns the same
+value at every state, so the guard that already refused a fixed sensor disagreeing with
+the field is now one case of it.
+
+A passed value is compared rather than refused outright. `dataclasses.replace` passes
+every field back to the constructor, and refusing any value would break it. Replacing
+the prior or the sensor now raises where it used to keep a stale value. Passing the
+fields the object supplies as `None` reads them again. Under a trace the values cannot
+be compared. The check is skipped, as every construction check is, and the field holds
+the object's value.
+
+`WrongFixedRBackend` takes the constant it scales as `observation_noise=`, defaulting
+to the model's field. `ModelSpec` accepts `observation_matrix=None` beside a sensor, as
+ADR-066 made it accept the noises.
+
+I kept the field names. `nominal_observation_noise` would mislabel the fixed case,
+where the field is the true `R`. I added no public predicate either. The test every
+consumer with a fixed path makes is now the private `state_dependent`. It replaced
+eight copies of `x is None or x.is_fixed` across five modules. `ModelStructure.validate`
+skipped the `Q` check whenever a `dynamics_noise_model` was present. It now skips only
+a state-dependent one, since a fixed object's `Q` is the field.
+
+### Consequences
+
+- The field means one value whichever object is carried. A consumer that needs `R(x)`
+  or `Q(x)` reads the object. One that needs a constant refuses the model, as
+  `require_fixed_noise` already does.
+- Construction compares at most three arrays. Nothing in the loop changes, and the
+  fixed-sensor filter reads the fields as before.
+- `CouplingGraphBackend` built its flat model with a representative `R(0)` beside its
+  joint sensor. With a prior away from the origin that model stopped constructing, so
+  the backend now leaves the field to the sensor.
+- `ModelSpec` refuses a perturbation of any field its object supplies, with one message.
+  The scaled cell could never build, fixed object or not.
+- Five examples passed a value nothing read, or restated one that happened to agree,
+  and so did the test fixtures. They now leave it out.
+- The comparison is exact. A value recomputed by hand that differs in the last bit is
+  refused, and omitting it is the fix.
+
+## ADR-072 — the two noises are named alike, and each name means one thing
+
+**Date:** 2026-10-16
+**Status:** Accepted
+**Supersedes:** ADR-006's note "On changing the matrices names", that the letters survive
+as aliases. ADR-065's report fields `process_non_constant` and `process_noise_spread`,
+which never shipped.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+The two noises used different schemes. The sensor protocol was `ObservationModel`,
+held in the field `observation_model`, and `CallableSensor` took `noise_fn` and
+`noise_params`. The dynamics protocol was `DynamicsNoise`, the CamelCase of the matrix
+field `dynamics_noise`, held in `dynamics_noise_model`. Its callable was
+`CallableProcessNoise(q_fn, q_params)`. A user who had written `R(x)` could not write
+`Q(x)` by analogy, and "process" and "dynamics" named one channel. A noise object passed
+for a matrix field failed inside `float()`.
+
+The same argument had four names. The flat sensors called the state `x`, the graph
+factors `state`, the graph backend `mean`. `linearize(state=...)` worked on one family
+and failed on the other.
+
+`SensorReport` reported on `Q` too. Its `R` fields were unprefixed, so
+`report.noise_spread` read as covering both noises and covered only `R`. Its `Q` fields
+sat under the retired "process" root. `Belief.ndim` was the state count, where NumPy's
+`ndim` is an array's rank, and `FiniteActionSet.action_dim` named the dimension the
+model calls `n_controls`. Every model field had a second public name, a letter, and in
+pymdp `A` is the likelihood and `C` the preferences.
+
+### Decision
+
+Each object has one name for each thing, and the two noises use the same scheme.
+
+- `DynamicsNoise` is `DynamicsNoiseModel`. `CallableProcessNoise` is
+  `CallableDynamicsNoise`, and takes `noise_fn` and `noise_params` as `CallableSensor`
+  does. The grouped-prefix rule would give `dynamics_noise_fn`. I took the sensor's names
+  instead, because the class name already scopes the group and the two callables then
+  read the same.
+- No fixed dynamics-noise class ships. A constant `Q` goes in `dynamics_noise`, and the
+  protocol exists for `Q(x)`. `is_fixed` stays, since the filter's fixed path reads it.
+- A noise object passed for a matrix field raises a `TypeError` naming the slot it
+  belongs in.
+- The protocols take their arguments by position: `linearize(state, /)`,
+  `gaussianize(mean, cov, /)` and `noise_at(state, /)`. An implementation may then name
+  them as it likes, and the built-in ones use those names. `gaussianize` takes a belief,
+  so its arguments are the belief's field names. I did not add `noise_at` to the sensor
+  protocol. Every sensor written outside the library would then fail the runtime check.
+- `SensorReport` is `ProbeReport`, named for `probe_model`, which returns it. Each field
+  is prefixed with the object it describes: `observation_matrix_`, `observation_noise_`,
+  `dynamics_noise_` or `epistemic_`. "Varies" replaces "non-constant".
+- `Belief.ndim` is `n_states`, and `action_dim` is `n_controls` on `FiniteActionSet` and
+  the harness's action sequence.
+- The `.A`, `.B`, `.C`, `.Q` and `.R` properties go.
+
+None keeps a deprecated alias. v0.5.0 already breaks every model call site (ADR-067
+counts the breaks), so these ride the migration v0.4 users face anyway. An alias kept
+through 0.5.x would keep two names alive, which is the defect being removed.
+
+### Consequences
+
+- Each old name a release shipped is a break, listed in the changelog with its
+  replacement. The report's `Q` fields never shipped and are renamed in place.
+- Nothing per cycle changes. `CallableDynamicsNoise.noise_at` reads its argument as a
+  float array, as the sensors already did, and that is free on an array already of that
+  type.
+- `EfeBackend.n_total` and `observation_noise_at(mean)` belong to the graph backend's
+  surface and are left to that change. The graph backend's private joint sensor names its
+  arguments `x` and `sigma`, and the positional protocol accepts it as it is.

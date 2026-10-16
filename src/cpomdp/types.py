@@ -1,15 +1,15 @@
 """Core data types: the Gaussian ``Belief`` and its ``LinearGaussianModel``."""
 
-from collections.abc import Callable
 from dataclasses import dataclass
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
-from cpomdp._validation import validate_covariance, validate_finite
-from cpomdp.dynamics import DynamicsNoise
+from cpomdp._validation import concrete, validate_covariance, validate_finite
+from cpomdp.dynamics import DynamicsNoiseModel
 from cpomdp.observation import ObservationModel
 from cpomdp.structure import ModelStructure
 
@@ -65,8 +65,8 @@ class Belief:
             )
 
     @property
-    def ndim(self) -> int:
-        """Dimensionality of the state — the length of the mean vector."""
+    def n_states(self) -> int:
+        """Dimension of the state (n), the length of the mean vector."""
         return self.mean.shape[0]
 
     def tree_flatten(
@@ -89,17 +89,70 @@ class Belief:
         return obj
 
 
-def _declared_or(
-    declared: ArrayLike | None, derive: Callable[[], ArrayLike]
-) -> Float64[Array, "k k"]:
-    """``declared`` as a float array, or what ``derive`` returns when it is ``None``."""
-    return jnp.asarray(derive() if declared is None else declared, dtype=float)
+def _field_value(
+    declared: ArrayLike | None,
+    carried: ArrayLike | None,
+    *,
+    field: str,
+    carrier: str,
+    carried_as: str,
+) -> Float64[Array, "k l"]:
+    """What a model field holds, given what was passed and what its object carries.
+
+    With no object the field is what was passed, and must be passed. Beside an object
+    the field is the object's value at the prior mean, so a passed value must be that
+    value exactly (DECISIONS.md ADR-071). Under a trace the values cannot be compared.
+    The check is skipped like every other construction check, and the field still
+    holds the object's value.
+
+    Args:
+        declared: The value passed for the field, or ``None``.
+        carried: The object's value at the prior mean, or ``None`` with no object.
+        field: The field's name, for the messages.
+        carrier: The object's slot, for the messages.
+        carried_as: What the object's value is, for the messages.
+
+    Raises:
+        TypeError: If neither supplies a value.
+        ValueError: If both do and they differ.
+    """
+    if carried is None:
+        if declared is None:
+            raise TypeError(f"{field} is required when no {carrier} supplies it")
+        return jnp.asarray(declared, dtype=float)
+    carried = jnp.asarray(carried, dtype=float)
+    if declared is None:
+        return carried
+    declared_values, carried_values = concrete(declared), concrete(carried)
+    if (
+        declared_values is not None
+        and carried_values is not None
+        and not np.array_equal(declared_values, carried_values)
+    ):
+        raise ValueError(
+            f"{field} is not the {carrier}'s {carried_as}. The field is read from "
+            f"the {carrier}, so omit it or pass None."
+        )
+    return carried
+
+
+def _refuse_noise_object(value: object, field: str) -> None:
+    """Name the slot a noise object belongs in when it is passed for a matrix field."""
+    for protocol, kind, slot in (
+        (ObservationModel, "an ObservationModel", "observation_model"),
+        (DynamicsNoiseModel, "a DynamicsNoiseModel", "dynamics_noise_model"),
+    ):
+        if isinstance(value, protocol):
+            raise TypeError(
+                f"{field} takes a matrix, got {type(value).__name__}, {kind}. "
+                f"Pass it as {slot}."
+            )
 
 
 # A pytree leaf of a LinearGaussianModel: a matrix, the prior Belief, a child
-# sensor/process-noise model, or None (an absent control_matrix,
+# observation or dynamics noise model, or None (an absent control_matrix,
 # observation_model or dynamics_noise_model).
-_ModelLeaf = Array | Belief | ObservationModel | DynamicsNoise | None
+_ModelLeaf = Array | Belief | ObservationModel | DynamicsNoiseModel | None
 
 
 @jax.tree_util.register_pytree_node_class
@@ -120,8 +173,7 @@ class LinearGaussianModel:
     letters, to avoid the letter collision with discrete active inference
     (pymdp), where the same letters mean different things. The "also known as"
     column lists the terms other backgrounds use, so readers can still find the
-    right field. (Letters survive as ``.A``/``.B``/``.C``/``.Q``/``.R`` aliases
-    for backend use.)
+    right field. Each field has that one name.
 
     | role name | letter | meaning | shape | also known as |
     | --- | --- | --- | --- | --- |
@@ -143,17 +195,20 @@ class LinearGaussianModel:
     Three optional fields (all default ``None`` → the plain fixed-matrix model)
     extend it: ``observation_model`` (an [`ObservationModel`][cpomdp.ObservationModel]
     for state-dependent sensing ``R(x)``), ``dynamics_noise_model`` (a
-    [`DynamicsNoise`][cpomdp.DynamicsNoise] for state-dependent process noise
-    ``Q(x)``), and ``structure`` (a [`ModelStructure`][cpomdp.ModelStructure]
+    [`DynamicsNoiseModel`][cpomdp.DynamicsNoiseModel] for state-dependent dynamics
+    noise ``Q(x)``), and ``structure`` (a [`ModelStructure`][cpomdp.ModelStructure]
     declaring the factor / Markov-blanket partition).
 
-    ``observation_noise`` is optional when an ``observation_model`` is given. Omitted,
-    it is the sensor's ``R`` at ``prior.mean``, read once at construction. Beside a
-    state-dependent sensor the field is a nominal value. A consumer that understands
-    the sensor reads ``R(x)`` from the sensor. One that needs a single ``R`` either
-    refuses the model or documents that it reads this one (DECISIONS.md ADR-064).
-    ``dynamics_noise`` follows the same rule beside a ``dynamics_noise_model``, and is
-    then its ``Q`` at ``prior.mean`` (ADR-065).
+    ``observation_matrix`` and ``observation_noise`` are optional when an
+    ``observation_model`` is given. Omitted, they are the sensor's ``C`` and its ``R``
+    at ``prior.mean``, read once at construction. Passed, they must be those values
+    exactly, so a sensor's channel is never described twice and each field means one
+    thing (DECISIONS.md ADR-064, ADR-071). ``dynamics_noise`` follows the same rule
+    beside a ``dynamics_noise_model``, and is its ``Q`` at ``prior.mean`` (ADR-065).
+    A consumer that understands a state-dependent object reads ``R(x)`` or ``Q(x)``
+    from it. One that needs a constant refuses the model. To move the prior with
+    ``dataclasses.replace``, pass the noises an object supplies as ``None`` so they
+    are read again at the new mean.
     """
 
     dynamics_matrix: Float64[Array, "n n"]
@@ -163,27 +218,32 @@ class LinearGaussianModel:
     prior: Belief
     control_matrix: Float64[Array, "n p"] | None
     observation_model: ObservationModel | None
-    dynamics_noise_model: DynamicsNoise | None
+    dynamics_noise_model: DynamicsNoiseModel | None
     structure: ModelStructure | None
 
     def __init__(
         self,
         dynamics_matrix: ArrayLike,
         *,
-        observation_matrix: ArrayLike,
+        observation_matrix: ArrayLike | None = None,
         dynamics_noise: ArrayLike | None = None,
         observation_noise: ArrayLike | None = None,
         prior: Belief,
         control_matrix: ArrayLike | None = None,
         observation_model: ObservationModel | None = None,
-        dynamics_noise_model: DynamicsNoise | None = None,
+        dynamics_noise_model: DynamicsNoiseModel | None = None,
         structure: ModelStructure | None = None,
     ) -> None:
+        for field, value in (
+            ("dynamics_matrix", dynamics_matrix),
+            ("observation_matrix", observation_matrix),
+            ("dynamics_noise", dynamics_noise),
+            ("observation_noise", observation_noise),
+            ("control_matrix", control_matrix),
+        ):
+            _refuse_noise_object(value, field)
         object.__setattr__(
             self, "dynamics_matrix", jnp.asarray(dynamics_matrix, dtype=float)
-        )
-        object.__setattr__(
-            self, "observation_matrix", jnp.asarray(observation_matrix, dtype=float)
         )
         object.__setattr__(self, "prior", prior)
         object.__setattr__(
@@ -197,22 +257,46 @@ class LinearGaussianModel:
         object.__setattr__(self, "dynamics_noise_model", dynamics_noise_model)
         object.__setattr__(self, "structure", structure)
         self._validate_noise_sources()
+        sensor_matrix, sensor_noise = self._sensor_at_prior()
         object.__setattr__(
             self,
-            "dynamics_noise",
-            _declared_or(dynamics_noise, self._process_noise_at_prior),
+            "observation_matrix",
+            _field_value(
+                observation_matrix,
+                sensor_matrix,
+                field="observation_matrix",
+                carrier="observation_model",
+                carried_as="C",
+            ),
         )
         object.__setattr__(
             self,
             "observation_noise",
-            _declared_or(observation_noise, self._sensor_noise_at_prior),
+            _field_value(
+                observation_noise,
+                sensor_noise,
+                field="observation_noise",
+                carrier="observation_model",
+                carried_as="R at prior.mean",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "dynamics_noise",
+            _field_value(
+                dynamics_noise,
+                self._dynamics_noise_at_prior(),
+                field="dynamics_noise",
+                carrier="dynamics_noise_model",
+                carried_as="Q at prior.mean",
+            ),
         )
         self._validate()
 
     def _validate_noise_sources(self) -> None:
         """Check the kinds of the prior and the two noise objects before any is read.
 
-        An omitted noise is read from its object at the prior mean before anything
+        The fields beside an object are read from it at the prior mean before anything
         else is validated, so these three are checked first.
         """
         if not isinstance(self.prior, Belief):
@@ -225,37 +309,33 @@ class LinearGaussianModel:
                 f"got {type(self.observation_model).__name__}"
             )
         if self.dynamics_noise_model is not None and not isinstance(
-            self.dynamics_noise_model, DynamicsNoise
+            self.dynamics_noise_model, DynamicsNoiseModel
         ):
             raise TypeError(
-                f"dynamics_noise_model must be a DynamicsNoise, "
+                f"dynamics_noise_model must be a DynamicsNoiseModel, "
                 f"got {type(self.dynamics_noise_model).__name__}"
             )
 
-    def _process_noise_at_prior(self) -> Float64[Array, "n n"]:
-        """The process noise's ``Q`` at the prior mean, for a model given no ``Q``.
+    def _sensor_at_prior(
+        self,
+    ) -> tuple[Float64[Array, "m n"] | None, Float64[Array, "m m"] | None]:
+        """The sensor's ``(C, R)`` at the prior mean, ``(None, None)`` with no sensor.
+
+        A fixed sensor returns its own pair at any state (DECISIONS.md ADR-064).
+        """
+        if self.observation_model is None:
+            return None, None
+        return self.observation_model.linearize(self.prior.mean)
+
+    def _dynamics_noise_at_prior(self) -> Float64[Array, "n n"] | None:
+        """The dynamics noise model's ``Q`` at the prior mean, ``None`` with none.
 
         The rule ADR-064 sets for ``R`` (DECISIONS.md ADR-065). ``_validate`` probes
         ``Q(x)`` at the origin as well, a separate check left where it was.
         """
         if self.dynamics_noise_model is None:
-            raise TypeError(
-                "dynamics_noise is required when no dynamics_noise_model supplies it"
-            )
+            return None
         return self.dynamics_noise_model.noise_at(self.prior.mean)
-
-    def _sensor_noise_at_prior(self) -> Float64[Array, "m m"]:
-        """The sensor's ``R`` at the prior mean, for a model given no observation noise.
-
-        The prior mean is where ``_validate`` already probes the sensor, so a fixed
-        sensor's own ``R`` comes back here and meets the exact-equality guard by
-        construction (DECISIONS.md ADR-064).
-        """
-        if self.observation_model is None:
-            raise TypeError(
-                "observation_noise is required when no observation_model supplies it"
-            )
-        return self.observation_model.linearize(self.prior.mean)[1]
 
     def _validate(self) -> None:
         # dynamics is square and defines the state dimension n.
@@ -303,58 +383,16 @@ class LinearGaussianModel:
                 f"control_matrix must have {n} rows to match the {n}-D state, "
                 f"got shape {self.control_matrix.shape}"
             )
-        if self.observation_model is not None:
-            # An observation_model restates the observation channel, and the consumers
-            # split on which restatement they read: the Kalman filter and the world use
-            # the plain fields when the sensor is fixed, the EFE kernel uses the sensor
-            # whenever one is present. Probe it here so a disagreement is refused at
-            # the one place every consumer passes through.
-            sensor_matrix, sensor_noise = self.observation_model.linearize(
-                self.prior.mean
-            )
-            sensor_matrix = jnp.asarray(sensor_matrix)
-            sensor_noise = jnp.asarray(sensor_noise)
-            if not jnp.array_equal(sensor_matrix, self.observation_matrix):
-                raise ValueError(
-                    "observation_model.linearize returns an observation matrix that "
-                    "is not the model's observation_matrix. One of the two would be "
-                    "read depending on the consumer, so they must be the same array."
-                )
-            if sensor_noise.shape != (m, m):
-                raise ValueError(
-                    f"observation_model.linearize must return an {m}x{m} observation "
-                    f"noise to match the {m}-D observation, got shape "
-                    f"{sensor_noise.shape}"
-                )
-            if self.observation_model.is_fixed and not jnp.array_equal(
-                sensor_noise, self.observation_noise
-            ):
-                raise ValueError(
-                    "a fixed observation_model carries an observation noise that is "
-                    "not the model's observation_noise. A state-dependent sensor may "
-                    "vary; a fixed one restates the field and must restate it exactly."
-                )
-
-        # dynamics_noise_model (optional): state-dependent Q(x). CallableProcessNoise
-        # check its own shape (no n), so probe it here, where n is known.
+        # dynamics_noise_model (optional): state-dependent Q(x). CallableDynamicsNoise
+        # cannot check its own shape (no n), so probe it here, where n is known.
         # _validate_noise_sources checked its kind.
         if self.dynamics_noise_model is not None:
             q_probe = jnp.asarray(self.dynamics_noise_model.noise_at(jnp.zeros(n)))
-            validate_covariance(q_probe, "dynamics_noise_model.noise_at(x)")
+            validate_covariance(q_probe, "dynamics_noise_model.noise_at(state)")
             if q_probe.shape != (n, n):
                 raise ValueError(
-                    f"dynamics_noise_model.noise_at(x) must return an {n}x{n} "
+                    f"dynamics_noise_model.noise_at(state) must return an {n}x{n} "
                     f"covariance to match the {n}-D state, got shape {q_probe.shape}"
-                )
-            # The same split as the sensor: a fixed object restates dynamics_noise,
-            # and the EFE kernel reads the object where the filter reads the field.
-            if self.dynamics_noise_model.is_fixed and not jnp.array_equal(
-                q_probe, self.dynamics_noise
-            ):
-                raise ValueError(
-                    "a fixed dynamics_noise_model returns a covariance that is not "
-                    "the model's dynamics_noise. A state-dependent Q(x) may vary; a "
-                    "fixed one restates the field and must restate it exactly."
                 )
 
         # structure (optional): declarative metadata; validated opt-in via
@@ -368,9 +406,10 @@ class LinearGaussianModel:
             )
 
         # prior is over the same n-D state. _validate_noise_sources checked its kind.
-        if self.prior.ndim != n:
+        if self.prior.n_states != n:
             raise ValueError(
-                f"prior must be over the {n}-D state, got a {self.prior.ndim}-D belief"
+                f"prior must be over the {n}-D state, "
+                f"got a {self.prior.n_states}-D belief"
             )
 
     @property
@@ -388,44 +427,17 @@ class LinearGaussianModel:
         """Dimension of an action (p); 0 if the model has no control."""
         return 0 if self.control_matrix is None else self.control_matrix.shape[1]
 
-    # --- control-theory letter aliases (for backend/maths internals) ---
-    @property
-    def A(self) -> Float64[Array, "n n"]:
-        """A: the state-transition matrix (alias of ``dynamics_matrix``)."""
-        return self.dynamics_matrix
-
-    @property
-    def B(self) -> Float64[Array, "n p"] | None:
-        """B: the control matrix (alias of ``control_matrix``); ``None`` if unset."""
-        return self.control_matrix
-
-    @property
-    def C(self) -> Float64[Array, "m n"]:
-        """C: the observation matrix (alias of ``observation_matrix``)."""
-        return self.observation_matrix
-
-    @property
-    def Q(self) -> Float64[Array, "n n"]:
-        """Q: the process-noise covariance (alias of ``dynamics_noise``)."""
-        return self.dynamics_noise
-
-    @property
-    def R(self) -> Float64[Array, "m m"]:
-        """R: the observation-noise covariance (alias of ``observation_noise``)."""
-        return self.observation_noise
-
     def tree_flatten(self) -> tuple[tuple[_ModelLeaf, ...], ModelStructure | None]:
         """Leaves for JAX: every matrix plus the ``prior`` belief; ``structure`` is aux.
 
         ``control_matrix``, ``observation_model`` and ``dynamics_noise_model`` are
-        included as (possibly
-        ``None``) children; an uncontrolled / fixed-sensor / fixed-Q model contributes
-        no leaf there and the ``None`` is restored on rebuild. A non-``None``
-        ``observation_model``/``dynamics_noise_model`` is itself a pytree and recurses
-        into its own
-        leaves. ``structure`` (declarative metadata, no array leaves) rides in the
-        static aux_data, so two models differing only in ``structure`` are different
-        pytrees and a jit keyed on the model re-specialises when it changes.
+        included as (possibly ``None``) children; an uncontrolled / fixed-sensor /
+        fixed-Q model contributes no leaf there and the ``None`` is restored on
+        rebuild. A non-``None`` ``observation_model``/``dynamics_noise_model`` is itself
+        a pytree and recurses into its own leaves. ``structure`` (declarative metadata,
+        no array leaves) rides in the static aux_data, so two models differing only in
+        ``structure`` are different pytrees and a jit keyed on the model re-specialises
+        when it changes.
         """
         children = (
             self.dynamics_matrix,

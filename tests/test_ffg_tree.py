@@ -572,7 +572,7 @@ class TestCouplingGraphValidation:
         copied = round_trip(graph)
         assert sorted(copied.observations) == [1]
         with pytest.raises(TypeError):
-            copied.observations[7] = sensor  # ty: ignore[invalid-assignment]
+            copied.observations[7] = sensor
 
 
 # --- CouplingGraph.infer vs the normal backend on the hand-flattened joint ---

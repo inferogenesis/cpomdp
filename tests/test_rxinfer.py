@@ -14,7 +14,7 @@ from numpy.typing import ArrayLike
 from cpomdp.backends.base import InferenceBackend
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.backends.rxinfer import RxInferBackend, _rxinfer_chemotaxis_tree_root
-from cpomdp.dynamics import CallableProcessNoise
+from cpomdp.dynamics import CallableDynamicsNoise
 from cpomdp.ffg.factors.linear_gaussian import GaussianCoupling, GaussianObservation
 from cpomdp.ffg.graph import Coupling, CouplingGraph
 from cpomdp.observation import CallableSensor
@@ -129,20 +129,29 @@ def _rising_noise(x, params):
     ("slot", "noise_model"),
     [
         ("observation_model", CallableSensor([[1.0]], _rising_noise, ())),
-        ("dynamics_noise_model", CallableProcessNoise(_rising_noise, ())),
+        ("dynamics_noise_model", CallableDynamicsNoise(_rising_noise, ())),
     ],
 )
 def test_refuses_state_dependent_noise(slot, noise_model):
     # The Julia model takes one Q and one R. Built over R(x) or Q(x) it would filter
     # on the plain fields, a constant where the model varies.
-    model = LinearGaussianModel(
-        dynamics_matrix=[[0.9]],
-        observation_matrix=[[1.0]],
-        dynamics_noise=[[0.5]],
-        observation_noise=[[1.0]],
-        prior=Belief(mean=[0.0], cov=[[10.0]]),
-        **{slot: noise_model},
-    )
+    # The noise object supplies its own field, so only the other one is passed.
+    prior = Belief(mean=[0.0], cov=[[10.0]])
+    if slot == "observation_model":
+        model = LinearGaussianModel(
+            dynamics_matrix=[[0.9]],
+            dynamics_noise=[[0.5]],
+            prior=prior,
+            observation_model=noise_model,
+        )
+    else:
+        model = LinearGaussianModel(
+            dynamics_matrix=[[0.9]],
+            observation_matrix=[[1.0]],
+            observation_noise=[[1.0]],
+            prior=prior,
+            dynamics_noise_model=noise_model,
+        )
     with pytest.raises(ValueError, match=f"{slot} is state-dependent"):
         RxInferBackend(model)
 
