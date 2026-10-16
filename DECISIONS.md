@@ -4636,7 +4636,7 @@ versions break before 1.0, as cpomdp's do.
 - A warrantlib 0.4 reaches cpomdp users only through a cpomdp release that lifts the
   cap.
 
-## ADR-071 — the EFE functions answer in one record and take one preference
+## ADR-078 — the EFE functions answer in one record and take one preference
 
 **Date:** 2026-10-15
 **Status:** Accepted
