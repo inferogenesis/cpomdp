@@ -476,6 +476,18 @@ certainty equivalence is optimal, and no use of the readings beats it.
 - `FiniteActionSet` refuses a non-finite action and names its row. A NaN action scored
   NaN on every policy that took it, and a search over the set still certified it
   `PROVED`. A repeated action is still accepted and counts toward `|A|`.
+- When every policy scored NaN, both searches returned the first declared sequence as
+  their best and certified it `PROVED`. The front-loaded search scored it NaN and the
+  chunked one `+inf`. With no finite score there is no argmin, so the result now
+  carries a NaN `best_policy` and `best_g` and a `best_index` of -1, and a driver
+  returns a NaN action. The certificate still holds, because it certifies that every
+  policy was scored. `ChunkedEfeSearch.policies_at` refuses an index outside the
+  enumeration, -1 included, which would otherwise decode to a real policy.
+- Each exhaustive search re-traced and recompiled its rollout on every plan, a fixed
+  cost per plan that `cost_per_plan` does not count. A driver paid it every agent step.
+  Each search now compiles once, on its first plan, and takes the belief and the
+  preference as arguments. `tests/test_search_compilation.py` counts the traces across
+  two plans and holds the compiled scores equal to the eager path's under `==`.
 - `FfgEfeSelector` refuses a backend with no control matrix or with more than one action
   dimension, as `EFESelector` does. A control-free backend returned the grid's first
   action, and `p = 2` constructed and then failed at the first `select`. The two

@@ -32,6 +32,7 @@ from cpomdp.enumeration import (
     OpenLoopSelector,
     RecedingHorizonSelector,
 )
+from cpomdp.observation import CallableSensor
 from cpomdp.selection import (
     ActionSelector,
     EFESelector,
@@ -233,3 +234,28 @@ class TestOpenLoopResetDropsTheCertificate:
         sel.select(_b0(), _pref())
         sel.reset()
         assert sel.certificate is None
+
+
+class TestNoFiniteScore:
+    @pytest.mark.parametrize("driver", [RecedingHorizonSelector, OpenLoopSelector])
+    def test_a_driver_returns_a_nan_action_rather_than_the_first_one(self, driver):
+        # The search has no best policy, so the driver has no action to give. A NaN
+        # action is what the Agent can refuse. The first declared action looked
+        # decisive and was not.
+        sensor = CallableSensor(
+            observation_matrix=[[1.0]],
+            noise_fn=lambda x, p: jnp.array([[p["r"] - x[0] ** 2]]),
+            noise_params={"r": jnp.array(1.0)},
+        )
+        model = LinearGaussianModel(
+            dynamics_matrix=[[1.0]],
+            observation_matrix=[[1.0]],
+            dynamics_noise=[[0.05]],
+            prior=Belief(mean=[0.0], cov=[[1.0]]),
+            control_matrix=[[1.0]],
+            observation_model=sensor,
+        )
+        actions = FiniteActionSet([[0.0], [0.5]], version="v1")
+        selector = driver(EnumeratedEfeSearch(model, actions, horizon=2))
+        action = selector.select(Belief(mean=[2.0], cov=[[0.1]]), _pref())
+        assert np.all(np.isnan(np.asarray(action)))

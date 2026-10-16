@@ -404,6 +404,62 @@ class TestInterchangeable:
         assert not hasattr(chunked, "reduce")
 
 
+class TestNoFiniteScore:
+    """Once R(x) stops being a covariance every policy scores NaN, and none is best.
+
+    `R(x) = 1 - x0^2` is negative wherever `|x0| > 1`, so from a belief at 2 every
+    policy in the set scores NaN. The certificate still holds, since it certifies that
+    every policy was scored. What changes is that no policy wins.
+    """
+
+    @staticmethod
+    def _model():
+        sensor = CallableSensor(
+            observation_matrix=[[1.0]],
+            noise_fn=lambda x, p: jnp.array([[p["r"] - x[0] ** 2]]),
+            noise_params={"r": jnp.array(1.0)},
+        )
+        return LinearGaussianModel(
+            dynamics_matrix=[[1.0]],
+            observation_matrix=[[1.0]],
+            dynamics_noise=[[0.05]],
+            prior=Belief(mean=[0.0], cov=[[1.0]]),
+            control_matrix=[[1.0]],
+            observation_model=sensor,
+        )
+
+    @pytest.mark.parametrize("search_type", [EnumeratedEfeSearch, ChunkedEfeSearch])
+    def test_no_policy_is_returned_as_best(self, search_type):
+        search = search_type(self._model(), _finite_set([0.0, 0.5]), horizon=2)
+        result = search.evaluate(Belief(mean=[2.0], cov=[[0.1]]), _pref())
+        assert np.all(np.isnan(np.asarray(result.best_policy)))
+        assert np.isnan(float(result.best_g))
+        assert int(result.best_index) == -1
+        assert result.certificate.complete
+
+    def test_the_premise_every_score_is_nan(self):
+        search = EnumeratedEfeSearch(self._model(), _finite_set([0.0, 0.5]), horizon=2)
+        result = search.evaluate(Belief(mean=[2.0], cov=[[0.1]]), _pref())
+        assert np.all(np.isnan(np.asarray(result.g)))
+
+    @pytest.mark.parametrize("index", [-1, 4])
+    def test_an_index_outside_the_enumeration_decodes_to_nothing(self, index):
+        # -1 is the no-winner index. Decoded as a base-|A| numeral it would wrap to a
+        # real policy, so the decoder refuses it, and anything past the end.
+        search = ChunkedEfeSearch(self._model(), _finite_set([0.0, 0.5]), horizon=2)
+        with pytest.raises(ValueError, match=r"outside 0\.\.3"):
+            search.policies_at(jnp.asarray([0, index]))
+
+    @pytest.mark.parametrize("search_type", [EnumeratedEfeSearch, ChunkedEfeSearch])
+    def test_one_finite_score_is_still_the_best(self, search_type):
+        # From 0.5, a step of 2 lands where R is negative and a step of -0.5 does not.
+        search = search_type(self._model(), _finite_set([2.0, -0.5]), horizon=1)
+        result = search.evaluate(Belief(mean=[0.5], cov=[[0.1]]), _pref())
+        assert int(result.best_index) == 1
+        assert np.isfinite(float(result.best_g))
+        np.testing.assert_array_equal(np.asarray(result.best_policy), [[-0.5]])
+
+
 class TestAtScale:
     """The cheap fixtures above all fit, so none of them can show residency.
 
