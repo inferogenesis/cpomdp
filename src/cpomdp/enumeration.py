@@ -5,7 +5,7 @@ The enumerated counterpart of ``EFESelector``'s continuous grid, and a deliberat
 action box and tiles each sample into a **constant-action** policy — a sample of a
 continuum, warrant ``CORROBORATED`` (Prover 3 · sample: corroborates, never
 decides).
-``EnumeratedEfeSearch`` enumerates **every** length-H sequence of a finite, declared,
+``EnumeratedEFESearch`` enumerates **every** length-H sequence of a finite, declared,
 versioned ``FiniteActionSet`` — all ``|A|^H`` of them, *varying* sequences included — so
 "no policy in this set flips" is **decided**, not sampled: warrant ``PROVED``
 (Prover 3 · enumeration). A ``CompletenessCertificate`` records ``expected = |A|^H``
@@ -50,11 +50,11 @@ if TYPE_CHECKING:
     from cpomdp.selection import Preference
 
 __all__ = [
-    "ChunkedEfeSearch",
+    "ChunkedEFESearch",
     "CompletenessCertificate",
-    "EnumeratedEfeSearch",
+    "EnumeratedEFESearch",
     "EnumeratedSearchResult",
-    "ExhaustiveEfeSearch",
+    "ExhaustiveEFESearch",
     "FiniteActionSet",
     "IncompleteEnumerationError",
     "OpenLoopSelector",
@@ -71,11 +71,11 @@ class IncompleteEnumerationError(Exception):
 class PolicyBudgetError(ValueError):
     """A front-loaded search asked to hold more policies than its budget allows.
 
-    ``EnumeratedEfeSearch`` holds every policy and every score at once, so its
+    ``EnumeratedEFESearch`` holds every policy and every score at once, so its
     footprint grows with ``|A|^H``. The count is exact before anything is allocated,
     and an oversized set is refused there rather than exhausting the host. The message
     gives the count, the step evaluations one plan costs and a floor on the memory. It
-    names [`ChunkedEfeSearch`][cpomdp.enumeration.ChunkedEfeSearch], which runs the
+    names [`ChunkedEFESearch`][cpomdp.enumeration.ChunkedEFESearch], which runs the
     same enumeration at a footprint its block sets and drives the same selectors.
     """
 
@@ -203,7 +203,7 @@ def _check_budget(
         f"max_policies = {max_policies:,}. One plan costs "
         f"{n_policies * horizon:,} step evaluations, and holding the set needs at "
         f"least {floor_gib:.2f} GiB for the policies, their scores and one belief per "
-        "policy, before XLA's intermediates. ChunkedEfeSearch runs the same "
+        "policy, before XLA's intermediates. ChunkedEFESearch runs the same "
         "enumeration in blocks at a footprint its block sets, earns the same "
         "certificate and drives RecedingHorizonSelector and OpenLoopSelector. To hold "
         "the set anyway, pass max_policies=None or a larger budget."
@@ -259,7 +259,7 @@ def _decode_policies(
 class SearchResult:
     """The outcome of one exhaustive search: the best plan and the evidence for it.
 
-    [`ChunkedEfeSearch`][cpomdp.enumeration.ChunkedEfeSearch] returns one. The
+    [`ChunkedEFESearch`][cpomdp.enumeration.ChunkedEFESearch] returns one. The
     front-loaded search returns
     [`EnumeratedSearchResult`][cpomdp.enumeration.EnumeratedSearchResult], which adds
     the score vector. Fields are read by name. A result does not unpack or index, so
@@ -340,7 +340,7 @@ class _FlatScorer:
 
 
 @dataclass(frozen=True)
-class _FfgScorer:
+class _FFGScorer:
     """Scores with ``policy_efe_ffg`` on an FFG backend, aimed at ``info_block``.
 
     The block is checked once, by ``over_backend``, so ``score`` skips the check.
@@ -411,13 +411,13 @@ def _winner_or_none(
     )
 
 
-class ExhaustiveEfeSearch(ABC):
+class ExhaustiveEFESearch(ABC):
     """An EFE search that scores every length-H sequence of a declared action set.
 
     The kind the drivers take.
-    [`EnumeratedEfeSearch`][cpomdp.enumeration.EnumeratedEfeSearch] holds every policy
+    [`EnumeratedEFESearch`][cpomdp.enumeration.EnumeratedEFESearch] holds every policy
     and every score at once, and
-    [`ChunkedEfeSearch`][cpomdp.enumeration.ChunkedEfeSearch] scores the set a chunk
+    [`ChunkedEFESearch`][cpomdp.enumeration.ChunkedEFESearch] scores the set a chunk
     at a time. Both earn the same ``PROVED`` certificate. Code that reads only what
     this class and [`SearchResult`][cpomdp.enumeration.SearchResult] declare runs on
     either.
@@ -453,14 +453,14 @@ class ExhaustiveEfeSearch(ABC):
     @classmethod
     def _graph_scorer(
         cls, backend: "GraphBackend", info_block: Sequence[int]
-    ) -> _FfgScorer:
+    ) -> _FFGScorer:
         """``over_backend``'s scorer, its block checked here rather than per policy."""
         if backend.model.control_matrix is None:
             raise ValueError(
                 f"{cls.__name__}.over_backend needs a backend with a control matrix; "
                 "an action has no effect without one."
             )
-        return _FfgScorer(backend, _checked_info_block(backend, info_block))
+        return _FFGScorer(backend, _checked_info_block(backend, info_block))
 
     @abstractmethod
     def evaluate(self, belief: Belief, preference: "Preference") -> SearchResult:
@@ -516,7 +516,7 @@ class ExhaustiveEfeSearch(ABC):
         return Warrant.PROVED
 
 
-class EnumeratedEfeSearch(ExhaustiveEfeSearch):
+class EnumeratedEFESearch(ExhaustiveEFESearch):
     """Exhaustive EFE search over ``A^H`` for a declared finite action set (ADR-031).
 
     Front-loads (ADR-002) the full ``|A|^H`` enumeration of *varying* sequences at
@@ -525,7 +525,7 @@ class EnumeratedEfeSearch(ExhaustiveEfeSearch):
     Because the set is finite and fully enumerated the search **decides** its universal,
     warrant ``PROVED``, distinct from ``EFESelector``'s ``CORROBORATED`` grid.
 
-    [`ChunkedEfeSearch`][cpomdp.enumeration.ChunkedEfeSearch] runs the same enumeration
+    [`ChunkedEFESearch`][cpomdp.enumeration.ChunkedEFESearch] runs the same enumeration
     in blocks. The two take the same model, set and horizon, answer the same
     ``evaluate`` and drive the same selectors. Swapping one for the other changes the
     memory a plan needs and no line that reads the result.
@@ -542,7 +542,7 @@ class EnumeratedEfeSearch(ExhaustiveEfeSearch):
     Memory grows with the set. While ``evaluate`` runs, every policy, its score and a
     belief per policy are resident at once, at least ``8 · |A|^H · (H·p + 1 + n + n²)``
     bytes before XLA's intermediates. A set past ``max_policies`` is refused at
-    construction with that floor in the message. ``ChunkedEfeSearch`` holds one block
+    construction with that floor in the message. ``ChunkedEFESearch`` holds one block
     at a time.
 
     Args:
@@ -577,7 +577,7 @@ class EnumeratedEfeSearch(ExhaustiveEfeSearch):
         info_block: Sequence[int],
         horizon: int,
         max_policies: int | None = _DEFAULT_MAX_POLICIES,
-    ) -> "EnumeratedEfeSearch":
+    ) -> "EnumeratedEFESearch":
         """Exhaustive search that scores on an FFG ``backend`` via ``policy_efe_ffg``.
 
         The FFG counterpart of the flat constructor: it enumerates the same ``A^H`` set
@@ -710,11 +710,11 @@ class _BlockReducer(Protocol):
     ) -> Any: ...
 
 
-class ChunkedEfeSearch(ExhaustiveEfeSearch):
+class ChunkedEFESearch(ExhaustiveEFESearch):
     """Exhaustive EFE search over ``A^H`` in blocks, at ``O(chunk)`` residency.
 
     The same enumeration as
-    [`EnumeratedEfeSearch`][cpomdp.enumeration.EnumeratedEfeSearch] and the same
+    [`EnumeratedEFESearch`][cpomdp.enumeration.EnumeratedEFESearch] and the same
     warrant, run so that neither the policy set nor the score vector is ever
     materialised. That is what puts sets past the front-loaded path's memory ceiling in
     reach, and the reason to have it is a set declared too large to hold, never a
@@ -768,7 +768,7 @@ class ChunkedEfeSearch(ExhaustiveEfeSearch):
         info_block: Sequence[int],
         horizon: int,
         chunk: int = _DEFAULT_CHUNK,
-    ) -> "ChunkedEfeSearch":
+    ) -> "ChunkedEFESearch":
         """Chunked search that scores on an FFG ``backend`` via ``policy_efe_ffg``.
 
         Raises:
@@ -955,11 +955,11 @@ class ChunkedEfeSearch(ExhaustiveEfeSearch):
 class _SearchDriver(ABC):
     """What both drivers share: the search, its accounting and the last certificate."""
 
-    def __init__(self, search: ExhaustiveEfeSearch) -> None:
-        if not isinstance(search, ExhaustiveEfeSearch):
+    def __init__(self, search: ExhaustiveEFESearch) -> None:
+        if not isinstance(search, ExhaustiveEFESearch):
             raise TypeError(
-                f"{type(self).__name__} drives an ExhaustiveEfeSearch, such as "
-                f"EnumeratedEfeSearch or ChunkedEfeSearch, got {type(search).__name__}."
+                f"{type(self).__name__} drives an ExhaustiveEFESearch, such as "
+                f"EnumeratedEFESearch or ChunkedEFESearch, got {type(search).__name__}."
             )
         self._search = search
         self._certificate: CompletenessCertificate | None = None
@@ -1034,7 +1034,7 @@ class RecedingHorizonSelector(_SearchDriver):
 
     Raises:
         TypeError: If ``search`` is not an
-            [`ExhaustiveEfeSearch`][cpomdp.enumeration.ExhaustiveEfeSearch].
+            [`ExhaustiveEFESearch`][cpomdp.enumeration.ExhaustiveEFESearch].
     """
 
     def select(self, belief: Belief, preference: "Preference") -> Float64[Array, "p"]:
@@ -1066,10 +1066,10 @@ class OpenLoopSelector(_SearchDriver):
 
     Raises:
         TypeError: If ``search`` is not an
-            [`ExhaustiveEfeSearch`][cpomdp.enumeration.ExhaustiveEfeSearch].
+            [`ExhaustiveEFESearch`][cpomdp.enumeration.ExhaustiveEFESearch].
     """
 
-    def __init__(self, search: ExhaustiveEfeSearch) -> None:
+    def __init__(self, search: ExhaustiveEFESearch) -> None:
         super().__init__(search)
         self._committed: Float64[Array, "H p"] | None = None
         self._step = 0

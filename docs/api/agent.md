@@ -51,7 +51,7 @@ The stateful façade you drive: `infer_states` to perceive, `sample_action` to a
 
     | You pass | Both noises fixed | `R(x)` or `Q(x)` |
     | --- | --- | --- |
-    | observation `Preference` + `selector=EFESelector(…)` or `FfgEfeSelector(…)` | EFE with a flat information term, the ablation of a curious agent | Curious EFE at the horizon given, which is not checked |
+    | observation `Preference` + `selector=EFESelector(…)` or `FFGEFESelector(…)` | EFE with a flat information term, the ablation of a curious agent | Curious EFE at the horizon given, which is not checked |
     | observation `Preference` + `selector=RecedingHorizonSelector(…)` or `OpenLoopSelector(…)` | Search with a flat information term | Curious search over varying action sequences |
     | state `Preference` + `selector=LQRSelector(…)` | LQR with your controller | LQR with your controller, blind to the information term |
     | a `Preference` of the wrong length for a built-in selector | Refused | Refused |

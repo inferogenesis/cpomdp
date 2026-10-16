@@ -30,8 +30,8 @@ import pytest
 from _support import unit_prior
 from cpomdp.backends.coupling import CouplingGraphBackend
 from cpomdp.efe import (
-    EfeResult,
-    PolicyEfeTrace,
+    EFEResult,
+    PolicyEFETrace,
     _ffg_efe_step,
     policy_efe,
     policy_efe_ffg,
@@ -131,7 +131,7 @@ class TestFfgSumsEqualScalars:
         for h in (1, 2, 3):
             policy = _policy([0.4, -0.3, 0.1][:h])
             efe = policy_efe_ffg(backend, belief, policy, pref, info_block=info_block)
-            assert isinstance(efe, EfeResult)
+            assert isinstance(efe, EFEResult)
             trace = policy_efe_ffg_trace(
                 backend, belief, policy, pref, info_block=info_block
             )
@@ -203,7 +203,7 @@ class TestFfgNoCouplingReducesToPolicyEfe:
         self._check(state_dependent=True)
 
 
-# --- the trace is the flat PolicyEfeTrace, at the joint shapes ---------------------
+# --- the trace is the flat PolicyEFETrace, at the joint shapes ---------------------
 class TestFfgTraceShape:
     def test_field_shapes(self):
         backend, belief, pref = _coupled_backend(), _coupled_belief(), _pref()
@@ -228,7 +228,7 @@ class TestFfgTraceShape:
         trace = policy_efe_ffg_trace(
             backend, belief, policy, pref, info_block=info_block
         )
-        assert isinstance(trace, PolicyEfeTrace)
+        assert isinstance(trace, PolicyEFETrace)
         assert len(jax.tree_util.tree_leaves(trace)) == 7
 
     def test_posterior_cov_is_tighter_than_predicted_cov(self):

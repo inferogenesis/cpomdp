@@ -34,7 +34,7 @@ coupling makes those differ, so no fixed linear-Gaussian model reproduces `R(μ�
 clash is `R(x)` plus a coupling, not the branching. That inexpressibility is the reason to
 reach for the FFG here; the A-vs-B behaviour below is what it buys.
 
-Two agents run the same maze, the same goal, and the same `FfgEfeSelector`. One line differs
+Two agents run the same maze, the same goal, and the same `FFGEFESelector`. One line differs
 — the cue sensor:
 
 ```python

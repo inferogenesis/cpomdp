@@ -18,7 +18,7 @@ from cpomdp.backends.coupling import CouplingGraphBackend
 from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
 from cpomdp.ffg.graph import CouplingGraph
 from cpomdp.observation import CallableSensor, FixedSensor
-from cpomdp.selection import EFESelector, FfgEfeSelector, Preference
+from cpomdp.selection import EFESelector, FFGEFESelector, Preference
 from cpomdp.types import Belief, LinearGaussianModel
 
 # A push moves the velocity, and position is what the sensor reads. At horizon 1 the
@@ -105,7 +105,7 @@ class TestATieGoesToTheCandidateNearestZero:
         backend = _graph_double_integrator(
             FixedSensor(READ_POSITION, observation_noise=[[0.1]])
         )
-        selector = FfgEfeSelector(backend, action_bounds=(-2.0, 2.0))
+        selector = FFGEFESelector(backend, action_bounds=(-2.0, 2.0))
         np.testing.assert_allclose(
             selector.select(backend.model.prior, Preference([1.0])), [0.0], atol=1e-12
         )
@@ -143,7 +143,7 @@ class TestNoFiniteScoreGivesNoAction:
         backend = _graph_double_integrator(
             CallableSensor(READ_POSITION, _goes_negative, None)
         )
-        selector = FfgEfeSelector(backend, action_bounds=(-1.0, 1.0), n_candidates=3)
+        selector = FFGEFESelector(backend, action_bounds=(-1.0, 1.0), n_candidates=3)
         assert bool(jnp.isnan(selector.select(_PAST_THE_EDGE, Preference([0.0]))).all())
 
     def test_one_finite_score_is_enough(self):

@@ -72,6 +72,7 @@
     "excinfo",
     "exitstatus",
     "facecolor",
+    "FFGEFE",
     "figsize",
     "filterwarnings",
     "flatnonzero",
@@ -167,7 +168,6 @@
     "numpy",
     "Okabe",
     "Ornstein",
-    "Østergaard",
     "overclaims",
     "parameterises",
     "parseoutcomes",
@@ -277,6 +277,7 @@
     "yticks",
     "Zenodo",
     "zorder",
+    "Østergaard",
     "Δcov",
     "Δmean"
   ],

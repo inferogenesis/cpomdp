@@ -39,7 +39,7 @@ from cpomdp.efe import (
     policy_efe_ffg,
     policy_efe_ffg_trace,
 )
-from cpomdp.enumeration import EnumeratedEfeSearch
+from cpomdp.enumeration import EnumeratedEFESearch
 from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
 from cpomdp.ffg.graph import CouplingGraph
 from cpomdp.observation import CallableSensor
@@ -408,7 +408,7 @@ class TestEnumeratedSearchAtMultiDimAction:
     def test_certificate_and_argmin_shape(self):
         backend, belief, pref = _coupled_backend(), _coupled_belief(), _pref()
         action_set = _action_set()
-        search = EnumeratedEfeSearch.over_backend(
+        search = EnumeratedEFESearch.over_backend(
             backend, action_set, info_block=tuple(backend.block(CONTEXT)), horizon=3
         )
         result = search.evaluate(belief, pref)
@@ -424,7 +424,7 @@ class TestEnumeratedSearchAtMultiDimAction:
         # member.
         backend = _coupled_backend()
         action_set = _action_set()
-        search = EnumeratedEfeSearch.over_backend(
+        search = EnumeratedEFESearch.over_backend(
             backend, action_set, info_block=tuple(backend.block(CONTEXT)), horizon=2
         )
         policies = np.asarray(search.policies)

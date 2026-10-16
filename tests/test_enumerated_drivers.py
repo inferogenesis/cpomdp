@@ -15,7 +15,7 @@ and a `replan_interval` (1 receding, H open-loop). `cost_per_cycle` is the amort
 per-cycle cost, so `cost_per_cycle * cycles` is a correct total either way: `|A|^H * H`
 for receding, `|A|^H` for open-loop. Neither reports the grid's `n_candidates * H`.
 
-Both drivers take `EnumeratedEfeSearch` or `ChunkedEfeSearch`, and give the same
+Both drivers take `EnumeratedEFESearch` or `ChunkedEFESearch`, and give the same
 actions on either. Their `certificate` is the last plan's, since the chunked search
 earns one per run.
 """
@@ -26,9 +26,9 @@ import pytest
 
 from cpomdp.agent import Agent
 from cpomdp.enumeration import (
-    ChunkedEfeSearch,
-    EnumeratedEfeSearch,
-    ExhaustiveEfeSearch,
+    ChunkedEFESearch,
+    EnumeratedEFESearch,
+    ExhaustiveEFESearch,
     FiniteActionSet,
     OpenLoopSelector,
     RecedingHorizonSelector,
@@ -60,7 +60,7 @@ def _action_set():
 
 
 def _search(horizon=2):
-    return EnumeratedEfeSearch(_model(), _action_set(), horizon=horizon)
+    return EnumeratedEFESearch(_model(), _action_set(), horizon=horizon)
 
 
 def _pref():
@@ -178,7 +178,7 @@ class TestModesDiffer:
 class TestDrivesAgent:
     def test_receding_selector_runs_in_the_agent_loop(self):
         model = _model()
-        search = EnumeratedEfeSearch(model, _action_set(), horizon=2)
+        search = EnumeratedEFESearch(model, _action_set(), horizon=2)
         agent = Agent(
             model, Preference([1.0]), selector=RecedingHorizonSelector(search)
         )
@@ -192,14 +192,14 @@ class TestDrivesAgent:
 
 # --- either search drives either driver --------------------------------------------
 def _chunked(horizon=2):
-    return ChunkedEfeSearch(_model(), _action_set(), horizon=horizon, chunk=4)
+    return ChunkedEFESearch(_model(), _action_set(), horizon=horizon, chunk=4)
 
 
-class _CountingSearch(ExhaustiveEfeSearch):
+class _CountingSearch(ExhaustiveEFESearch):
     """A wrapper that counts plans, standing for any search the drivers were not
     written against."""
 
-    def __init__(self, inner: ExhaustiveEfeSearch) -> None:
+    def __init__(self, inner: ExhaustiveEFESearch) -> None:
         self._inner = inner
         self.plans = 0
 
@@ -239,7 +239,7 @@ class TestDrivesEitherSearch:
 
     def test_something_other_than_a_search_is_refused(self, driver):
         selector = EFESelector(_model(), n_candidates=3, action_bounds=(-1.0, 1.0))
-        with pytest.raises(TypeError, match="drives an ExhaustiveEfeSearch"):
+        with pytest.raises(TypeError, match="drives an ExhaustiveEFESearch"):
             driver(selector)
 
     def test_any_exhaustive_search_drives_it(self, driver):
@@ -288,7 +288,7 @@ class TestNoFiniteScore:
             observation_model=sensor,
         )
         actions = FiniteActionSet([[0.0], [0.5]], version="v1")
-        selector = driver(EnumeratedEfeSearch(model, actions, horizon=2))
+        selector = driver(EnumeratedEFESearch(model, actions, horizon=2))
         with pytest.raises(ValueError, match="no policy"):
             selector.select(Belief(mean=[2.0], cov=[[0.1]]), _pref())
         assert selector.certificate is None

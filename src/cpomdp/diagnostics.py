@@ -57,7 +57,7 @@ if TYPE_CHECKING:
     # so diagnostics depends on none of these at runtime (they already depend on nothing
     # here). Keeps the dependency one-way.
     from cpomdp.backends.base import GraphBackend
-    from cpomdp.efe import PolicyEfeTrace
+    from cpomdp.efe import PolicyEFETrace
     from cpomdp.types import Belief, LinearGaussianModel
 
 
@@ -434,7 +434,7 @@ def _condition_numbers(matrices: ArrayLike) -> np.ndarray:
     return np.array([np.linalg.cond(m) for m in stack])
 
 
-def rollout_conditioning(trace: "PolicyEfeTrace") -> RolloutConditioning:
+def rollout_conditioning(trace: "PolicyEFETrace") -> RolloutConditioning:
     """Per-step condition numbers and PD flags of a rollout trace, on the host.
 
     Reads the per-step matrices ``policy_efe_trace`` already returns and applies the
@@ -444,7 +444,7 @@ def rollout_conditioning(trace: "PolicyEfeTrace") -> RolloutConditioning:
     which is the only place they can raise. Pure NumPy.
 
     Args:
-        trace: a ``PolicyEfeTrace``, read for its ``predicted_cov`` (``Σ⁺``),
+        trace: a ``PolicyEFETrace``, read for its ``predicted_cov`` (``Σ⁺``),
             ``predicted_observation_cov`` (``S``) and ``posterior_cov`` (``Σ_post``)
             columns.
 

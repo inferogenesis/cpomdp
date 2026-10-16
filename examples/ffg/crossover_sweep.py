@@ -16,7 +16,7 @@ reach/walk pair over the horizon and shows two things:
   every horizon — there is no crossover.
 
 That null is a *search-family artefact*, not a property of the objective. It is the
-concrete reason the exhaustive varying-sequence search (``EnumeratedEfeSearch``) is
+concrete reason the exhaustive varying-sequence search (``EnumeratedEFESearch``) is
 necessary rather than optional: the crossover horizon lives there, where the best policy
 is free to become a two-phase walk. Read this demo as the motivation for that search.
 
@@ -142,7 +142,7 @@ def check() -> None:
     )
     print("  the constant walk overshoots the cue: it senses once and never exploits.")
     print("  The crossover is a varying sequence — it lives in the exhaustive")
-    print("  EnumeratedEfeSearch, not in the constant-action family. -- PASS")
+    print("  EnumeratedEFESearch, not in the constant-action family. -- PASS")
 
 
 def main():

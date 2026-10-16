@@ -20,7 +20,7 @@ from cpomdp.ffg.graph import Coupling, CouplingGraph
 from cpomdp.observation import CallableSensor, FixedSensor
 from cpomdp.selection import (
     EFESelector,
-    FfgEfeSelector,
+    FFGEFESelector,
     ObservationGoal,
     Preference,
 )
@@ -80,7 +80,7 @@ def test_ffg_selector_reduces_to_efe_selector_single_node():
     preference = Preference(target=[1.0], precision=[[2.0]])
     action_bounds, n_candidates = (-2.0, 2.0), 21
 
-    ffg = FfgEfeSelector(
+    ffg = FFGEFESelector(
         backend,
         info_block=range(2),
         n_candidates=n_candidates,
@@ -125,7 +125,7 @@ def _two_node_rx_backend():
     [
         (None, "control matrix"),
         # The search named must be the one that takes a backend.
-        ([[1.0, 0.0], [0.0, 1.0]], r"p=1\).*EnumeratedEfeSearch\.over_backend"),
+        ([[1.0, 0.0], [0.0, 1.0]], r"p=1\).*EnumeratedEFESearch\.over_backend"),
     ],
 )
 def test_selector_refuses_a_backend_it_cannot_search(control_matrix, match):
@@ -139,7 +139,7 @@ def test_selector_refuses_a_backend_it_cannot_search(control_matrix, match):
         control_matrix=control_matrix,
     )
     with pytest.raises(ValueError, match=match):
-        FfgEfeSelector(
+        FFGEFESelector(
             backend, info_block=range(2), n_candidates=5, action_bounds=(-1.0, 1.0)
         )
 
@@ -150,23 +150,23 @@ class TestSameQuestionsAsEFESelector:
     def test_defaults_match_the_flat_selector_and_the_goal(self):
         # 21 candidates as on ObservationGoal and EFESelector, and the whole joint
         # state as info_node=None means on the goal.
-        selector = FfgEfeSelector(_two_node_backend(), action_bounds=(-2.0, 2.0))
+        selector = FFGEFESelector(_two_node_backend(), action_bounds=(-2.0, 2.0))
         assert selector.n_candidates == 21
         assert repr(selector).endswith("info_block=[0, 1])")
 
     def test_reports_a_sampled_warrant(self):
-        selector = FfgEfeSelector(_two_node_backend(), action_bounds=(-2.0, 2.0))
+        selector = FFGEFESelector(_two_node_backend(), action_bounds=(-2.0, 2.0))
         assert selector.warrant is Warrant.CORROBORATED
 
     def test_the_grid_is_readable_as_the_actions_searched(self):
-        selector = FfgEfeSelector(
+        selector = FFGEFESelector(
             _two_node_backend(), action_bounds=(-1.0, 1.0), n_candidates=3
         )
         np.testing.assert_array_equal(selector.candidates, [[-1.0], [0.0], [1.0]])
 
     def test_per_axis_bounds_are_refused_with_the_flat_selectors_words(self):
         with pytest.raises(ValueError, match="two scalars"):
-            FfgEfeSelector(
+            FFGEFESelector(
                 _two_node_backend(),
                 action_bounds=([-1, 5], [1, -5]),  # ty: ignore[invalid-argument-type]
             )
@@ -185,7 +185,7 @@ def test_agent_on_ffg_backend_acts_via_ffg_selector():
     action = agent.sample_action()
 
     assert np.asarray(action).shape == (1,)
-    assert isinstance(agent.selector, FfgEfeSelector)
+    assert isinstance(agent.selector, FFGEFESelector)
 
 
 def test_an_observation_goal_on_fixed_graph_sensors_is_refused():
@@ -194,7 +194,7 @@ def test_an_observation_goal_on_fixed_graph_sensors_is_refused():
     backend = _two_node_backend()
     with pytest.raises(ValueError, match="both noises are fixed"):
         Agent.from_backend(backend, ObservationGoal([0.5], action_bounds=(-2.0, 2.0)))
-    selector = FfgEfeSelector(
+    selector = FFGEFESelector(
         backend, info_block=[0], n_candidates=21, action_bounds=(-2.0, 2.0)
     )
     agent = Agent.from_backend(backend, Preference([0.5]), selector=selector)
@@ -207,7 +207,7 @@ def test_the_graph_selector_prints_its_horizon_and_target():
         ObservationGoal([0.5], action_bounds=(-2.0, 2.0), info_node=0),
     )
     assert repr(agent.selector) == (
-        "FfgEfeSelector(horizon=1, n_candidates=21, action_bounds=(-2.0, 2.0), "
+        "FFGEFESelector(horizon=1, n_candidates=21, action_bounds=(-2.0, 2.0), "
         "info_block=[0])"
     )
 
@@ -220,7 +220,7 @@ def test_agent_ffg_whole_state_when_info_target_none():
         backend,
         ObservationGoal([0.5], action_bounds=(-2.0, 2.0)),  # no info_node
     )
-    assert isinstance(agent.selector, FfgEfeSelector)
+    assert isinstance(agent.selector, FFGEFESelector)
     assert repr(agent.selector).endswith("info_block=[0, 1])")  # whole joint state
 
 
@@ -285,7 +285,7 @@ def test_ffg_agent_matches_kalman_efe_agent_end_to_end():
     ffg_agent = Agent.from_backend(
         backend,
         Preference([0.5]),
-        selector=FfgEfeSelector(
+        selector=FFGEFESelector(
             backend,
             info_block=range(2),
             n_candidates=n_candidates,
@@ -316,7 +316,7 @@ def test_ffg_agent_matches_kalman_efe_agent_end_to_end():
 def _score_components(backend, belief, preference, candidates, info_block):
     """``(pragmatic, epistemic)`` per candidate — the selector's kernel, exposed.
 
-    Mirrors ``FfgEfeSelector.select``'s per-candidate work (predict → ``R(μ⁺)`` →
+    Mirrors ``FFGEFESelector.select``'s per-candidate work (predict → ``R(μ⁺)`` →
     ``_ffg_efe_step``) but returns the two ``G`` components, so a test can compare the
     full-``G`` argmin against a pragmatic-only one at the *same* ``R(μ⁺)``.
     """
@@ -429,7 +429,7 @@ class TestStateDependentSelection:
         belief = Belief(mean=[0.3, -0.2], cov=[[0.7, 0.1], [0.1, 0.4]])
         preference = Preference(target=[1.0], precision=[[2.0]])
         action_bounds, n_candidates = (-2.0, 2.0), 21
-        ffg = FfgEfeSelector(
+        ffg = FFGEFESelector(
             rx,
             info_block=range(2),
             n_candidates=n_candidates,
@@ -477,7 +477,7 @@ class TestStateDependentSelection:
         assert not np.isclose(
             float(full_action[0]), float(pragmatic_action[0])
         )  # the epistemic genuinely moved the decision, away from the pragmatic goal
-        selector = FfgEfeSelector(
+        selector = FFGEFESelector(
             rx,
             info_block=range(1),
             n_candidates=n_candidates,
@@ -503,7 +503,7 @@ def test_the_graph_selector_traces_its_kernel_once(monkeypatch):
 
     monkeypatch.setattr(selection, "_ffg_efe_step", counted)
     backend = _two_node_rx_backend()
-    selector = FfgEfeSelector(backend, action_bounds=(-2.0, 2.0))
+    selector = FFGEFESelector(backend, action_bounds=(-2.0, 2.0))
     for mean in ([0.0, 0.0], [0.3, -0.1], [-0.5, 0.4]):
         selector.select(Belief(mean=mean, cov=np.eye(2)), Preference([0.5]))
     assert len(traced) == 1
@@ -514,7 +514,7 @@ def test_the_graph_selector_refuses_a_goal_in_place_of_a_preference():
     from types import SimpleNamespace
 
     backend = _two_node_backend()
-    selector = FfgEfeSelector(
+    selector = FFGEFESelector(
         backend, info_block=range(2), n_candidates=5, action_bounds=(-2.0, 2.0)
     )
     stand_in = SimpleNamespace(goal=jnp.array([0.5]), precision=jnp.eye(1))

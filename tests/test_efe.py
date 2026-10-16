@@ -21,8 +21,8 @@ import pytest
 
 from cpomdp.dynamics import CallableDynamicsNoise
 from cpomdp.efe import (
-    EfeResult,
-    PolicyEfeTrace,
+    EFEResult,
+    PolicyEFETrace,
     expected_free_energy,
     policy_efe,
     policy_efe_trace,
@@ -126,7 +126,7 @@ class TestTheResultRecord:
         result = expected_free_energy(
             _model(), _belief(), jnp.array([0.4]), _obs_preference()
         )
-        assert isinstance(result, EfeResult)
+        assert isinstance(result, EFEResult)
         np.testing.assert_allclose(
             result.g, result.pragmatic - result.epistemic, atol=1e-12
         )
@@ -141,19 +141,31 @@ class TestTheResultRecord:
         with pytest.raises(TypeError):
             _g, _pragmatic, _epistemic = result  # ty: ignore[not-iterable]
 
+    def test_numpy_refuses_to_read_the_record_as_an_array(self):
+        # np.argmin on the record would rank three stacked fields or a 0-d object, so
+        # either way it returned an index that is not a candidate's.
+        model, belief, pref = _model(), _belief(), _obs_preference()
+        actions = jnp.array([[-1.0], [0.0], [0.5]])
+        batch = jax.vmap(lambda a: expected_free_energy(model, belief, a, pref))(
+            actions
+        )
+        with pytest.raises(TypeError, match=r"batch\.g"):
+            np.argmin(batch)
+        assert int(jnp.argmin(batch.g)) in range(3)
+
     def test_a_jitted_call_returns_the_whole_record(self):
         model, belief, pref = _model(), _belief(), _obs_preference()
         jitted = jax.jit(lambda a: expected_free_energy(model, belief, a, pref))
         result = jitted(jnp.array([0.4]))
-        assert isinstance(result, EfeResult)
+        assert isinstance(result, EFEResult)
         assert result.g.shape == ()
 
     def test_the_rollout_returns_the_same_record(self):
         model, belief, pref = _model(), _belief(), _obs_preference()
         one_step = expected_free_energy(model, belief, jnp.array([0.4]), pref)
         rollout = policy_efe(model, belief, jnp.array([[0.4]]), pref)
-        assert isinstance(rollout, EfeResult)
-        for field in dataclasses.fields(EfeResult):
+        assert isinstance(rollout, EFEResult)
+        for field in dataclasses.fields(EFEResult):
             np.testing.assert_allclose(
                 getattr(rollout, field.name),
                 getattr(one_step, field.name),
@@ -161,8 +173,8 @@ class TestTheResultRecord:
             )
 
     def test_the_trace_leads_with_the_same_fields(self):
-        trace_fields = [field.name for field in dataclasses.fields(PolicyEfeTrace)]
-        result_fields = [field.name for field in dataclasses.fields(EfeResult)]
+        trace_fields = [field.name for field in dataclasses.fields(PolicyEFETrace)]
+        result_fields = [field.name for field in dataclasses.fields(EFEResult)]
         assert trace_fields[:3] == result_fields
 
     def test_a_gradient_is_taken_of_g_with_the_record_as_its_aux(self):
@@ -174,7 +186,7 @@ class TestTheResultRecord:
             return result.g, result
 
         (value, record), gradient = jax.value_and_grad(scored, has_aux=True)(action)
-        assert isinstance(record, EfeResult)
+        assert isinstance(record, EFEResult)
         assert value is record.g
         np.testing.assert_array_equal(
             gradient,
@@ -187,7 +199,7 @@ class TestTheResultRecord:
         batched = jax.vmap(lambda a: expected_free_energy(model, belief, a, pref))(
             actions
         )
-        assert isinstance(batched, EfeResult)
+        assert isinstance(batched, EFEResult)
         assert batched.pragmatic.shape == batched.epistemic.shape == (4,)
 
 

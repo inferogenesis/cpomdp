@@ -61,7 +61,7 @@ from cpomdp import (
     Coupling,
     CouplingGraph,
     CouplingGraphBackend,
-    FfgEfeSelector,
+    FFGEFESelector,
     FixedSensor,
     GaussianTransition,
     IncompatibleLinearizationError,
@@ -198,7 +198,7 @@ def build_agent(backend: CouplingGraphBackend) -> Agent:
         [0.0, 0.0],  # observe zero displacement on both channels
         [[GOAL_PRECISION, 0.0], [0.0, INFO_PRECISION]],  # weight commit only
     )
-    selector = FfgEfeSelector(
+    selector = FFGEFESelector(
         backend,
         info_block=backend.block(CONTEXT),
         n_candidates=GRID_N,
