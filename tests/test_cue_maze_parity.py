@@ -46,7 +46,7 @@ def _joint_mean(position: float) -> jnp.ndarray:
 def test_node_shapes_and_wiring_agree(pair):
     """dims, root, and which node carries the observation."""
     maze, registered = pair
-    assert maze.graph.dims == registered.graph.dims
+    assert maze.dims == registered.dims
     assert maze.graph.root == registered.graph.root
     assert sorted(maze.graph.observations) == sorted(registered.graph.observations)
 
@@ -66,11 +66,9 @@ def test_dynamics_and_control_agree(pair):
             theirs.dynamics_noise,
             err_msg=f"Q differs at node {node}",
         )
-    # `model`, not `to_flat_model()`: flattening raises on an R(x) model with
-    # couplings, which is exactly what both of these are.
-    np.testing.assert_allclose(
-        maze.model.control_matrix, registered.model.control_matrix
-    )
+    # `_control` rather than `to_flat_model().control`: flattening raises on an R(x)
+    # model with couplings, which is exactly what both of these are.
+    np.testing.assert_allclose(maze._control, registered._control)
 
 
 def test_the_starting_belief_agrees(pair):
@@ -102,11 +100,11 @@ def test_the_whole_rx_surface_agrees(pair):
     """
     maze, registered = pair
     np.testing.assert_allclose(
-        maze.model.observation_matrix, registered.model.observation_matrix
+        maze.observation_model[0], registered.observation_model[0]
     )
     for position in PROBE_POSITIONS:
         np.testing.assert_allclose(
-            maze.model.observation_noise_at(_joint_mean(position)),
-            registered.model.observation_noise_at(_joint_mean(position)),
+            maze.observation_noise_at(_joint_mean(position)),
+            registered.observation_noise_at(_joint_mean(position)),
             err_msg=f"R(x) differs at position {position}",
         )

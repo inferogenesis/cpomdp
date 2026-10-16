@@ -5,11 +5,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from cpomdp._validation import (
-    equilibrium_drift,
-    require_fixed_noise,
-    validate_covariance,
-)
+from cpomdp._validation import equilibrium_drift, require_fixed_noise
 from cpomdp.dynamics import CallableProcessNoise
 from cpomdp.observation import CallableSensor, FixedSensor
 from cpomdp.types import Belief, LinearGaussianModel
@@ -88,22 +84,3 @@ def test_equilibrium_drift_is_skipped_under_a_trace():
 
     jax.jit(traced)(jnp.ones(1))
     assert seen == [None]
-
-
-def test_a_definite_refusal_gives_the_reason_its_caller_passed():
-    with pytest.raises(
-        ValueError, match="noise must be positive-definite because a draw factors it"
-    ):
-        validate_covariance(
-            jnp.zeros((1, 1)),
-            "noise",
-            require_definite=True,
-            reason="a draw factors it",
-        )
-
-
-def test_a_definite_refusal_with_no_reason_gives_none():
-    # One reason for every caller was wrong for most of them.
-    with pytest.raises(ValueError, match="noise must be positive-definite") as refusal:
-        validate_covariance(jnp.zeros((1, 1)), "noise", require_definite=True)
-    assert "because" not in str(refusal.value)

@@ -153,11 +153,7 @@ class TestLinearGaussianModels:
     def test_rejects_noiseless_observation_noise(self):
         # A noiseless R=0 sends the EFE information gain to +inf and silently
         # collapses action selection — reject it as not positive-definite.
-        with pytest.raises(
-            ValueError,
-            match="positive-definite because a noiseless sensor sends the information "
-            "gain to infinity",
-        ):
+        with pytest.raises(ValueError, match="positive-definite"):
             LinearGaussianModel(**_valid_kwargs(observation_noise=[[0.0]]))
 
     def test_rejects_control_wrong_rows(self):
@@ -426,41 +422,6 @@ class TestAnOmittedObservationNoiseIsReadFromTheSensor:
             LinearGaussianModel(
                 **_without_observation_noise(observation_model=sensor, prior=[2.0, 0.0])
             )
-
-
-class TestTheObservationNoiseAtAState:
-    """``observation_noise_at`` is the one read of R at a state, with or without a
-    sensor, so no consumer branches on which kind of sensor the model carries.
-    """
-
-    def test_with_no_sensor_it_is_the_declared_noise_everywhere(self):
-        model = LinearGaussianModel(**_valid_kwargs())
-        np.testing.assert_array_equal(model.observation_noise_at([3.0, -1.0]), [[1.0]])
-
-    def test_a_fixed_sensor_gives_its_own_noise_everywhere(self):
-        sensor = FixedSensor([[1.0, 0.0]], observation_noise=[[0.5]])
-        model = LinearGaussianModel(
-            **_without_observation_noise(observation_model=sensor)
-        )
-        np.testing.assert_array_equal(model.observation_noise_at([3.0, -1.0]), [[0.5]])
-
-    def test_a_state_dependent_sensor_is_read_at_the_state_asked_about(self):
-        sensor = CallableSensor([[1.0, 0.0]], _rising_noise, ())
-        model = LinearGaussianModel(
-            **_without_observation_noise(
-                observation_model=sensor, prior=_OFF_ORIGIN_PRIOR
-            )
-        )
-        np.testing.assert_allclose(model.observation_noise_at([3.0, 0.0]), [[10.0]])
-        np.testing.assert_allclose(model.observation_noise_at([0.0, 0.0]), [[1.0]])
-
-    def test_it_traces_under_jit(self):
-        sensor = CallableSensor([[1.0, 0.0]], _rising_noise, ())
-        model = LinearGaussianModel(
-            **_without_observation_noise(observation_model=sensor)
-        )
-        noise_at = jax.jit(model.observation_noise_at)
-        np.testing.assert_allclose(noise_at(jnp.array([3.0, 0.0])), [[10.0]])
 
 
 def _rising_process_noise(x, params):

@@ -492,7 +492,7 @@ def _numpy_score(policy) -> float:
     of the scoring kernel, not of shared plumbing.
     """
     backend, belief, preference, info_block = _setup()
-    observation_matrix = np.asarray(backend.model.observation_matrix)  # C
+    observation_matrix = np.asarray(backend.observation_model[0])  # C
     precision = np.asarray(preference.precision)  # Lambda
     goal = np.asarray(preference.goal)
     idx = np.array(info_block)
@@ -503,7 +503,7 @@ def _numpy_score(policy) -> float:
         predicted = backend.predicted_belief(carry, jnp.array([float(action)]))
         mean = np.asarray(predicted.mean)  # mu+
         cov = np.asarray(predicted.cov)  # Sigma+
-        noise = np.asarray(backend.model.observation_noise_at(predicted.mean))  # R(mu+)
+        noise = np.asarray(backend.observation_noise_at(predicted.mean))  # R(mu+)
         obs = observation_matrix @ mean  # o+ = C mu+
         innovation = observation_matrix @ cov @ observation_matrix.T + noise  # S
         pragmatic = 0.5 * (obs - goal) @ precision @ (obs - goal) + 0.5 * np.trace(

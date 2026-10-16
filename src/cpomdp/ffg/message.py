@@ -170,12 +170,7 @@ class CanonicalGaussian:
             ValueError: If the precision is not positive-definite (singular or
                 indefinite) — moment form does not exist.
         """
-        validate_covariance(
-            self.precision,
-            "precision",
-            require_definite=True,
-            reason="the moment form inverts it",
-        )
+        validate_covariance(self.precision, "precision", require_definite=True)
 
         mean = jnp.linalg.solve(self.precision, self.potential)
         cov = jnp.linalg.inv(self.precision)
@@ -227,12 +222,7 @@ class CanonicalGaussian:
         ha = self.potential[keep_idx]
         hb = self.potential[elim_idx]
 
-        validate_covariance(
-            Lbb,
-            "eliminated block",
-            require_definite=True,
-            reason="marginalizing it out inverts it",
-        )
+        validate_covariance(Lbb, "eliminated block", require_definite=True)
 
         Lprime = Laa - Lab @ jnp.linalg.solve(Lbb, Lba)  # Λaa − Λab Λbb⁻¹ Λba
         hprime = ha - Lab @ jnp.linalg.solve(Lbb, hb)  # ha  − Λab Λbb⁻¹ hb
