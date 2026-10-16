@@ -507,6 +507,7 @@ def policy_efe_ffg(
         horizon.
 
     Raises:
+        TypeError: If ``info_node`` is not a node index or a sequence of them.
         InadmissiblePartitionError: If the backend's carry partition severs an
             EFE-load-bearing edge.
         ValueError: If ``info_node`` is not a node of the graph.
@@ -587,6 +588,7 @@ def policy_efe_ffg_trace(
         emits, of arrays stacked along a leading H axis.
 
     Raises:
+        TypeError: If ``info_node`` is not a node index or a sequence of them.
         InadmissiblePartitionError: If the backend's carry partition severs an
             EFE-load-bearing edge.
         ValueError: If ``info_node`` is not a node of the graph.
@@ -663,7 +665,12 @@ def _info_node_index(node: object) -> int:
 def _info_nodes(
     info_node: SupportsIndex | Sequence[SupportsIndex],
 ) -> tuple[int, ...]:
-    """``info_node`` as a tuple of node indices: one node, or each of several."""
+    """``info_node`` as a tuple of node indices: one node, or each of several.
+
+    A list, a tuple or a 1-D integer array names several nodes.
+    """
+    if isinstance(info_node, np.ndarray | jax.Array) and info_node.ndim == 1:
+        return tuple(_info_node_index(node) for node in np.asarray(info_node))
     if isinstance(info_node, Sequence) and not isinstance(info_node, str):
         return tuple(_info_node_index(node) for node in info_node)
     return (_info_node_index(info_node),)

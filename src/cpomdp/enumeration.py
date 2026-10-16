@@ -593,6 +593,7 @@ class EnumeratedEFESearch(ExhaustiveEFESearch):
         constructor cannot express. The policy budget is the flat constructor's.
 
         Raises:
+            TypeError: If ``info_node`` is not a node index or a sequence of them.
             InadmissiblePartitionError: If the backend's carry partition severs an
                 EFE-load-bearing edge.
             PolicyBudgetError: If ``|A|^H`` exceeds ``max_policies``.
@@ -779,6 +780,7 @@ class ChunkedEFESearch(ExhaustiveEFESearch):
         """Chunked search that scores on an FFG ``backend`` via ``policy_efe_ffg``.
 
         Raises:
+            TypeError: If ``info_node`` is not a node index or a sequence of them.
             InadmissiblePartitionError: If the backend's carry partition severs an
                 EFE-load-bearing edge.
             ValueError: If the backend has no control matrix, if ``info_node`` is

@@ -96,12 +96,19 @@ def _checked_horizon(horizon: int) -> int:
 def _stored_info_node(
     info_node: SupportsIndex | Sequence[SupportsIndex] | None,
 ) -> int | tuple[int, ...] | None:
-    """``info_node`` as an ``ObservationGoal`` keeps it: an int, a tuple, or None."""
+    """``info_node`` as an ``ObservationGoal`` keeps it: an int, a tuple, or None.
+
+    One node is an int however it was written, so ``2`` and ``[2]`` compare equal.
+
+    Raises:
+        ValueError: If a node list is empty.
+    """
     if info_node is None:
         return None
     nodes = _info_nodes(info_node)
-    single = not isinstance(info_node, Sequence) or isinstance(info_node, str)
-    return nodes[0] if single else nodes
+    if not nodes:
+        raise ValueError("info_node names no node. Pass None for the whole state.")
+    return nodes[0] if len(nodes) == 1 else nodes
 
 
 def _candidate_grid(
@@ -438,6 +445,7 @@ class FFGEFESelector:
                 [`ObservationGoal`][cpomdp.ObservationGoal].
 
         Raises:
+            TypeError: If ``info_node`` is not a node index or a sequence of them.
             InadmissiblePartitionError: If the backend's carry partition severs an
                 EFE-load-bearing edge.
             ValueError: If the backend has no control matrix or more than one action

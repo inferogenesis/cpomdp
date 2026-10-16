@@ -212,6 +212,22 @@ def test_info_node_takes_a_numpy_integer():
     assert goal.info_node == 2
 
 
+def test_one_node_is_stored_as_an_int_however_it_is_written():
+    # 2 and [2] name the same target, so the goal holds one form and compares equal.
+    one = ObservationGoal([0.0, 0.0], action_bounds=(-1.0, 1.0), info_node=2)
+    listed = ObservationGoal([0.0, 0.0], action_bounds=(-1.0, 1.0), info_node=[2])
+    assert listed.info_node == one.info_node == 2
+    several = ObservationGoal(
+        [0.0, 0.0], action_bounds=(-1.0, 1.0), info_node=np.array([0, 2])
+    )
+    assert several.info_node == (0, 2)
+
+
+def test_an_empty_node_list_is_refused_when_the_goal_is_built():
+    with pytest.raises(ValueError, match="names no node"):
+        ObservationGoal([0.0, 0.0], action_bounds=(-1.0, 1.0), info_node=[])
+
+
 def test_info_node_refuses_a_bool():
     # True is an int to Python and would aim at node 1 without a word.
     with pytest.raises(TypeError, match="info_node"):
