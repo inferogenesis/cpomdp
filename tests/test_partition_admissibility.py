@@ -32,9 +32,9 @@ from cpomdp.selection import FfgEfeSelector, ObservationGoal, Preference
 from cpomdp.types import Belief
 
 
-def _sharp_near_zero(x, params):
+def _sharp_near_zero(state, params):
     """R(x) sharpest at zero, so the action moves the information term."""
-    return params["r0"] * (1.0 + jnp.dot(x, x)) * jnp.eye(1)
+    return params["r0"] * (1.0 + jnp.dot(state, state)) * jnp.eye(1)
 
 
 def _hub_graph(*, fast_relevant=True, slow_relevant=False, fast_sensor=None):
@@ -150,9 +150,10 @@ def test_agent_rejects_inadmissible_partition():
 def test_selector_still_selects_on_admissible_partition():
     # After admission, the selector actually works on the factored partition.
     backend = _backend(_hub_graph(), partition=[[0, 1], [2]])
-    sel = _selector(backend)
+    selector = _selector(backend)
     belief = Belief(mean=np.zeros(3), cov=np.eye(3))
-    action = sel.select(belief, Preference(target=[0.5, 0.5], precision=np.eye(2)))
+    preference = Preference(target=[0.5, 0.5], precision=np.eye(2))
+    action = selector.select(belief, preference)
     assert np.asarray(action).shape == (1,)
 
 

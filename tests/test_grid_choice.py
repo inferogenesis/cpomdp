@@ -32,14 +32,14 @@ PUSH_ON_VELOCITY = [[0.0], [0.1]]
 READ_POSITION = [[1.0, 0.0]]
 
 
-def _sharp_near_one(x, params):
+def _sharp_near_one(state, params):
     """R(x) sharpest at position 1, a function of what the sensor already reads."""
-    return jnp.array([[0.01 + (x[0] - 1.0) ** 2]])
+    return jnp.array([[0.01 + (state[0] - 1.0) ** 2]])
 
 
-def _goes_negative(x, params):
-    """R(x) = 1 - x0², a covariance only for |x0| < 1."""
-    return jnp.array([[1.0 - x[0] ** 2]])
+def _goes_negative(state, params):
+    """R(x) = 1 - x0², a covariance only for |x0| < 1, with x0 the position."""
+    return jnp.array([[1.0 - state[0] ** 2]])
 
 
 def _double_integrator(noise_fn=_sharp_near_one):
