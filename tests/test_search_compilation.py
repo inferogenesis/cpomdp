@@ -10,9 +10,14 @@ a second plan reuses the first one's program.
 - `TestEagerIdentity`: the compiled scores equal an eager `vmap` of the same scorer
   under `==`. The published numbers came from the eager path, so a moved bit is a
   finding.
+- `TestTransforms`: `evaluate` composes with `jax.jit` and `jax.vmap` and returns the
+  whole result, certificate included, on both searches.
+- `TestCompiledLoop`: a receding-horizon loop compiles under `jax.lax.scan` on either
+  search, and a miscount still fails when the chunked count is only known at run time.
 """
 
 import jax
+import jax.numpy as jnp
 import numpy as np
 import pytest
 
@@ -24,6 +29,7 @@ from cpomdp.enumeration import (
     ChunkedEfeSearch,
     EnumeratedEfeSearch,
     FiniteActionSet,
+    IncompleteEnumerationError,
     RecedingHorizonSelector,
 )
 from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
@@ -164,3 +170,90 @@ class TestEagerIdentity:
         )(search.policies)
         compiled = search.evaluate(belief, preference).g
         np.testing.assert_array_equal(np.asarray(compiled), np.asarray(eager))
+
+
+def _assert_same_result(transformed, eager):
+    """Every field equal, the certificate included."""
+    assert type(transformed) is type(eager)
+    np.testing.assert_array_equal(transformed.best_policy, eager.best_policy)
+    assert float(transformed.best_g) == float(eager.best_g)
+    assert int(transformed.best_index) == int(eager.best_index)
+    assert transformed.certificate == eager.certificate
+
+
+class TestTransforms:
+    @pytest.mark.parametrize("case", SEARCHES)
+    def test_a_jitted_evaluate_returns_the_whole_result(self, case):
+        search = SEARCHES[case][0]()
+        _assert_same_result(jax.jit(search.evaluate)(*FIRST), search.evaluate(*FIRST))
+
+    @pytest.mark.parametrize("case", SEARCHES)
+    def test_evaluate_maps_over_beliefs(self, case):
+        # The belief is built inside the mapped function, because `Belief` refuses a
+        # batched mean at construction.
+        search = SEARCHES[case][0]()
+        first_belief, preference = FIRST
+        means = jnp.stack([first_belief.mean, SECOND[0].mean])
+        batched = jax.vmap(
+            lambda mean: search.evaluate(
+                Belief(mean=mean, cov=first_belief.cov), preference
+            )
+        )(means)
+        for row, mean in enumerate(means):
+            eager = search.evaluate(Belief(mean=mean, cov=first_belief.cov), preference)
+            np.testing.assert_array_equal(batched.best_policy[row], eager.best_policy)
+            assert int(batched.best_index[row]) == int(eager.best_index)
+            assert batched.certificate == eager.certificate
+
+
+class TestCompiledLoop:
+    @pytest.mark.parametrize("case", SEARCHES)
+    def test_a_receding_horizon_loop_compiles_under_scan(self, case):
+        selector = RecedingHorizonSelector(SEARCHES[case][0]())
+        first_belief, preference = FIRST
+
+        def step(mean, _):
+            belief = Belief(mean=mean, cov=first_belief.cov)
+            action = selector.select(belief, preference)
+            return mean.at[0].add(0.5 * action[0]), action
+
+        _, compiled = jax.jit(lambda mean: jax.lax.scan(step, mean, length=3))(
+            first_belief.mean
+        )
+        mean, eager = first_belief.mean, []
+        for _ in range(3):
+            mean, action = step(mean, None)
+            eager.append(action)
+        np.testing.assert_array_equal(compiled, jnp.stack(eager))
+        certificate = selector.certificate
+        assert certificate is not None
+        assert certificate.complete
+
+    def test_a_traced_plan_leaves_no_certificate_on_the_driver(self):
+        # A trace scores nothing, so the driver holds no certificate until a run does.
+        selector = RecedingHorizonSelector(SEARCHES["chunked flat"][0]())
+        first_belief, preference = FIRST
+
+        def plan(mean):
+            return selector.select(Belief(mean=mean, cov=first_belief.cov), preference)
+
+        jax.eval_shape(plan, first_belief.mean)
+        assert selector.certificate is None
+
+    def test_a_chunked_miscount_fails_eagerly_and_compiled(self, monkeypatch):
+        # A masking bug that drops one lane. Eagerly the count is checked on the host.
+        # Compiled, it is checked when the program runs, and the run fails.
+        real = ChunkedEfeSearch._scan_blocks
+
+        def one_short(search, *args, **kwargs):
+            argmin, best_policy, extra = real(search, *args, **kwargs)
+            return argmin._replace(visited=argmin.visited - 1), best_policy, extra
+
+        monkeypatch.setattr(ChunkedEfeSearch, "_scan_blocks", one_short)
+        search = SEARCHES["chunked flat"][0]()
+        with pytest.raises(
+            IncompleteEnumerationError, match="visited 26 of an expected"
+        ):
+            search.evaluate(*FIRST)
+        with pytest.raises(Exception, match="visited 26 of an expected"):
+            jax.block_until_ready(jax.jit(search.evaluate)(*FIRST).best_g)

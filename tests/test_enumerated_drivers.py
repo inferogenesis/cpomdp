@@ -1,4 +1,4 @@
-"""Receding-horizon and open-loop drivers over either exhaustive search.
+"""Receding-horizon and open-loop drivers over an exhaustive search.
 
 The enumerated search returns a whole best sequence. Two drivers turn that into an
 `ActionSelector` the `Agent` loop can run, and they differ in a way item E's
@@ -28,6 +28,7 @@ from cpomdp.agent import Agent
 from cpomdp.enumeration import (
     ChunkedEfeSearch,
     EnumeratedEfeSearch,
+    ExhaustiveEfeSearch,
     FiniteActionSet,
     OpenLoopSelector,
     RecedingHorizonSelector,
@@ -194,6 +195,27 @@ def _chunked(horizon=2):
     return ChunkedEfeSearch(_model(), _action_set(), horizon=horizon, chunk=4)
 
 
+class _CountingSearch(ExhaustiveEfeSearch):
+    """A wrapper that counts plans, standing for any search the drivers were not
+    written against."""
+
+    def __init__(self, inner: ExhaustiveEfeSearch) -> None:
+        self._inner = inner
+        self.plans = 0
+
+    def evaluate(self, belief, preference):
+        self.plans += 1
+        return self._inner.evaluate(belief, preference)
+
+    @property
+    def horizon(self):
+        return self._inner.horizon
+
+    @property
+    def cost_per_plan(self):
+        return self._inner.cost_per_plan
+
+
 @pytest.mark.parametrize("driver", [RecedingHorizonSelector, OpenLoopSelector])
 class TestDrivesEitherSearch:
     def test_the_chunked_search_gives_the_front_loaded_actions(self, driver):
@@ -217,8 +239,18 @@ class TestDrivesEitherSearch:
 
     def test_something_other_than_a_search_is_refused(self, driver):
         selector = EFESelector(_model(), n_candidates=3, action_bounds=(-1.0, 1.0))
-        with pytest.raises(TypeError, match="EnumeratedEfeSearch or a ChunkedEfe"):
+        with pytest.raises(TypeError, match="drives an ExhaustiveEfeSearch"):
             driver(selector)
+
+    def test_any_exhaustive_search_drives_it(self, driver):
+        # The drivers take the kind, so a third search or a wrapper needs no edit to
+        # either driver.
+        wrapper = _CountingSearch(_search())
+        selector = driver(wrapper)
+        np.testing.assert_array_equal(
+            selector.select(_b0(), _pref()), driver(_search()).select(_b0(), _pref())
+        )
+        assert wrapper.plans == 1
 
     def test_the_chunked_driver_runs_in_the_agent_loop(self, driver):
         agent = Agent(_model(), Preference([1.0]), selector=driver(_chunked()))
@@ -238,10 +270,10 @@ class TestOpenLoopResetDropsTheCertificate:
 
 class TestNoFiniteScore:
     @pytest.mark.parametrize("driver", [RecedingHorizonSelector, OpenLoopSelector])
-    def test_a_driver_returns_a_nan_action_rather_than_the_first_one(self, driver):
-        # The search has no best policy, so the driver has no action to give. A NaN
-        # action is what the Agent can refuse. The first declared action looked
-        # decisive and was not.
+    def test_a_driver_refuses_a_belief_no_policy_scores_from(self, driver):
+        # The search has no best policy, so the driver has no action to give. The
+        # first declared action looked decisive and was not, and a NaN action would
+        # reach the plant and the belief with nothing raised.
         sensor = CallableSensor(
             observation_matrix=[[1.0]],
             noise_fn=lambda x, p: jnp.array([[p["r"] - x[0] ** 2]]),
@@ -257,5 +289,6 @@ class TestNoFiniteScore:
         )
         actions = FiniteActionSet([[0.0], [0.5]], version="v1")
         selector = driver(EnumeratedEfeSearch(model, actions, horizon=2))
-        action = selector.select(Belief(mean=[2.0], cov=[[0.1]]), _pref())
-        assert np.all(np.isnan(np.asarray(action)))
+        with pytest.raises(ValueError, match="no policy"):
+            selector.select(Belief(mean=[2.0], cov=[[0.1]]), _pref())
+        assert selector.certificate is None

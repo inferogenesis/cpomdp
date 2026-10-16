@@ -27,13 +27,21 @@ The two searches take the same model, set and horizon, and answer the same `eval
     What an agent step costs depends on how often the agent plans, so only the
     selectors below report `cost_per_cycle`.
 
+::: cpomdp.enumeration.ExhaustiveEfeSearch
+
+::: cpomdp.enumeration.SearchResult
+
 ::: cpomdp.enumeration.EnumeratedEfeSearch
+    options:
+      inherited_members: true
+      show_bases: false
 
 ::: cpomdp.enumeration.EnumeratedSearchResult
 
 ::: cpomdp.enumeration.ChunkedEfeSearch
-
-::: cpomdp.enumeration.ChunkedSearchResult
+    options:
+      inherited_members: true
+      show_bases: false
 
 ::: cpomdp.enumeration.PolicyBudgetError
 
@@ -41,7 +49,7 @@ The two searches take the same model, set and horizon, and answer the same `eval
 
 ## Driving an agent
 
-A search returns a whole plan. The two selectors below turn one into an action per step for `Agent(selector=...)`, and each takes either search. `RecedingHorizonSelector` plans every step and applies the first action. `OpenLoopSelector` plans once and applies the whole sequence. Their `cost_per_cycle` differs by a factor of H for that reason.
+A search returns a whole plan. The two selectors below turn one into an action per step for `Agent(selector=...)`, and each takes any `ExhaustiveEfeSearch`. `RecedingHorizonSelector` plans every step and applies the first action. `OpenLoopSelector` plans once and applies the whole sequence. Their `cost_per_cycle` differs by a factor of H for that reason.
 
 ::: cpomdp.enumeration.RecedingHorizonSelector
     options:

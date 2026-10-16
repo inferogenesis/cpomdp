@@ -282,11 +282,17 @@ certainty equivalence is optimal, and no use of the readings beats it.
 - `cpomdp.enumeration.ChunkedEfeSearch` — the exhaustive search run in blocks, at a
   footprint the block sets rather than `|A|^H`. It enumerates the same set as
   `EnumeratedEfeSearch`, earns the same `PROVED` certificate and takes the same model,
-  set and horizon, with `chunk` in place of a policy budget. `evaluate` returns a `ChunkedSearchResult` with the argmin,
-  its `G`, its index and the certificate. The front-loaded result has those fields under
-  the same names and adds only the score vector. The two paths agree under `==`, ties
-  included (ADR-036). Both drivers take it, and the refinement cells of the fourth
-  falsifier ran on it. The searches and their drivers have an API page.
+  set and horizon, with `chunk` in place of a policy budget. `evaluate` returns a
+  `SearchResult` with the argmin, its `G`, its index and the certificate. The
+  front-loaded search returns `EnumeratedSearchResult`, a `SearchResult` that adds the
+  score vector. The two paths agree under `==`, ties included (ADR-036). Both drivers
+  take it, and the refinement cells of the fourth falsifier ran on it. `evaluate`
+  composes with `jit`, `vmap` and `lax.scan`, where a callback checks the loop's count
+  when the program runs. The searches and their drivers have an API page.
+- `cpomdp.enumeration.ExhaustiveEfeSearch`, the base both exhaustive searches share
+  (ADR-083). It declares `evaluate`, `policies_at`, `n_policies`, `horizon`,
+  `cost_per_plan` and `warrant`. The drivers take any `ExhaustiveEfeSearch`, so a third
+  search or a wrapper drives them with no edit to either.
 - `Provenance` (warrantlib 0.2.0) — which ref registered a claim and which one measured
   it, plus one line saying what a reviewer will find at the first. A `PROVED` report
   requires one, on the same terms as it requires evidence, and carries them as a tuple
@@ -479,10 +485,12 @@ certainty equivalence is optimal, and no use of the readings beats it.
 - When every policy scored NaN, both searches returned the first declared sequence as
   their best and certified it `PROVED`. The front-loaded search scored it NaN and the
   chunked one `+inf`. With no finite score there is no argmin, so the result now
-  carries a NaN `best_policy` and `best_g` and a `best_index` of -1, and a driver
-  returns a NaN action. The certificate still holds, because it certifies that every
-  policy was scored. `ChunkedEfeSearch.policies_at` refuses an index outside the
-  enumeration, -1 included, which would otherwise decode to a real policy.
+  carries a NaN `best_policy` and `best_g` and a `best_index` of -1. A driver raises
+  `ValueError` on such a run, and returns a NaN action only under a trace, where it
+  cannot raise. The certificate still holds, because it certifies that every
+  policy was scored. `policies_at`, now on both searches, refuses an index outside the
+  enumeration, -1 included, which would otherwise decode to a real policy. Under `jit`
+  or `vmap` it decodes such an index to a NaN policy.
 - Each exhaustive search re-traced and recompiled its rollout on every plan, a fixed
   cost per plan that `cost_per_plan` does not count. A driver paid it every agent step.
   Each search now compiles once, on its first plan, and takes the belief and the
@@ -695,6 +703,9 @@ certainty equivalence is optimal, and no use of the readings beats it.
   receding-horizon driver is a different quantity and is unmeasured. The declaration now
   travels with the number in the `PROVED` details, in `warrant_numbers.md`, in the ledger
   and in the README, and a test asserts it so the qualifier cannot be dropped silently.
+- cpomdp requires `jax>=0.4.36`, up from `>=0.4`. The search results register with JAX
+  through field metadata, which older releases cannot read, so `import cpomdp.enumeration`
+  failed on them.
 - cpomdp requires `warrantlib>=0.3,<0.4`, up from `>=0.1`. The tree builds the
   completeness certificates 0.3 introduced, and against 0.2 the modules that build them
   failed to import. The cap is there because warrantlib's minor versions break before
@@ -941,10 +952,11 @@ certainty equivalence is optimal, and no use of the readings beats it.
   search's figure overstated the open-loop driver by a factor of H, and the README did
   exactly that.
 - **Breaking:** the certificate travels with the decision. `EnumeratedEfeSearch` loses
-  its `certificate` property, and `evaluate` returns the certificate on the result,
-  which gains `best_g`, `best_index` and `certificate` after `g`. Unpacking the result
-  into two names no longer works. A driver's `certificate` is the last plan's, `None`
-  before its first, because the chunked search earns one per run.
+  its `certificate` property, and `evaluate` returns the certificate on the result.
+  `EnumeratedSearchResult` is a frozen dataclass read by name. It no longer unpacks or
+  indexes. It subclasses `SearchResult`, the chunked search's result, and gains
+  `best_g`, `best_index` and `certificate`. A driver's `certificate` is the last plan's,
+  `None` before its first, because the chunked search earns one per run.
 - **Breaking:** `EnumeratedEfeSearch` and its `over_backend` refuse a set of more than
   `max_policies` policies, `2^21` unless set, with a `PolicyBudgetError`. `|A|^H` is
   exact before anything is allocated, and an oversized set used to take a

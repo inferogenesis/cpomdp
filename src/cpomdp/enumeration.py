@@ -22,16 +22,18 @@ Imported from ``cpomdp.enumeration``. None of it is re-exported at the top level
 
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import partial
 from typing import TYPE_CHECKING, Any, NamedTuple, Protocol
 
 import jax
 import jax.numpy as jnp
 import numpy as np
+from jax.errors import ConcretizationTypeError, TracerArrayConversionError
 from jaxtyping import Array, Float64, Int
 from numpy.typing import ArrayLike
 
+from cpomdp._validation import concrete
 from cpomdp.efe import _checked_info_block, _policy_efe_ffg, policy_efe
 from cpomdp.types import Belief, LinearGaussianModel
 
@@ -49,15 +51,16 @@ if TYPE_CHECKING:
 
 __all__ = [
     "ChunkedEfeSearch",
-    "ChunkedSearchResult",
     "CompletenessCertificate",
     "EnumeratedEfeSearch",
     "EnumeratedSearchResult",
+    "ExhaustiveEfeSearch",
     "FiniteActionSet",
     "IncompleteEnumerationError",
     "OpenLoopSelector",
     "PolicyBudgetError",
     "RecedingHorizonSelector",
+    "SearchResult",
 ]
 
 
@@ -120,7 +123,14 @@ class FiniteActionSet:
                 f"a FiniteActionSet needs at least 2 actions to search, got "
                 f"{self.actions.shape[0]}"
             )
-        finite = np.all(np.isfinite(np.asarray(self.actions)), axis=1)
+        values = concrete(self.actions)
+        if values is None:
+            raise TypeError(
+                "a FiniteActionSet is built outside jit, vmap and grad. Under a trace "
+                "its actions cannot be checked for NaN. Build it once and close over "
+                "it."
+            )
+        finite = np.all(np.isfinite(values), axis=1)
         if not finite.all():
             rows = ", ".join(str(row) for row in np.flatnonzero(~finite))
             raise ValueError(
@@ -244,17 +254,22 @@ def _decode_policies(
     return action_set.actions[digits]
 
 
-class EnumeratedSearchResult(NamedTuple):
-    """The outcome of one front-loaded exhaustive search.
+@jax.tree_util.register_dataclass
+@dataclass(frozen=True)
+class SearchResult:
+    """The outcome of one exhaustive search: the best plan and the evidence for it.
 
-    It carries every field of ``ChunkedSearchResult`` under the same name, so code
-    that reads those runs on either search. The one addition is the score vector,
-    which the chunked path never holds.
+    [`ChunkedEfeSearch`][cpomdp.enumeration.ChunkedEfeSearch] returns one. The
+    front-loaded search returns
+    [`EnumeratedSearchResult`][cpomdp.enumeration.EnumeratedSearchResult], which adds
+    the score vector. Fields are read by name. A result does not unpack or index, so
+    no position can name one field on one search and another on the other.
+
+    A JAX pytree whose certificate is static data, so a jitted or vmapped
+    ``evaluate`` returns the whole result.
 
     Attributes:
         best_policy: the argmin sequence, shape ``(H, p)``.
-        g: the summed EFE of every enumerated policy, in enumeration order, shape
-            ``(|A|^H,)``.
         best_g: the argmin's summed EFE, G.
         best_index: the argmin's position in the enumeration.
         certificate: the completeness certificate (ADR-030).
@@ -265,10 +280,26 @@ class EnumeratedSearchResult(NamedTuple):
     """
 
     best_policy: Float64[Array, "H p"]
-    g: Float64[Array, "N"]
     best_g: Float64[Array, ""]
     best_index: Int[Array, ""]
-    certificate: CompletenessCertificate
+    certificate: CompletenessCertificate = field(metadata={"static": True})
+
+
+@jax.tree_util.register_dataclass
+@dataclass(frozen=True)
+class EnumeratedSearchResult(SearchResult):
+    """The outcome of one front-loaded exhaustive search, every policy's score included.
+
+    A [`SearchResult`][cpomdp.enumeration.SearchResult] plus the score vector, which
+    only the front-loaded path holds. Code that reads the shared fields runs on either
+    search.
+
+    Attributes:
+        g: the summed EFE of every enumerated policy, in enumeration order, shape
+            ``(|A|^H,)``.
+    """
+
+    g: Float64[Array, "N"]
 
 
 class _PolicyScorer(Protocol):
@@ -369,8 +400,8 @@ def _winner_or_none(
 
     A NaN score is masked to ``+inf`` before the argmin, so when every score is NaN the
     argmin lands on index 0 by default. Reporting that policy would present the first
-    declared sequence as a decision. The NaN policy is jit-safe and reaches the caller
-    as a NaN action, which the caller can refuse.
+    declared sequence as a decision. The NaN policy is jit-safe. A driver refuses it
+    on a concrete run and passes it on under a trace.
     """
     found = masked_best < jnp.inf
     return (
@@ -380,7 +411,112 @@ def _winner_or_none(
     )
 
 
-class EnumeratedEfeSearch:
+class ExhaustiveEfeSearch(ABC):
+    """An EFE search that scores every length-H sequence of a declared action set.
+
+    The kind the drivers take.
+    [`EnumeratedEfeSearch`][cpomdp.enumeration.EnumeratedEfeSearch] holds every policy
+    and every score at once, and
+    [`ChunkedEfeSearch`][cpomdp.enumeration.ChunkedEfeSearch] scores the set a chunk
+    at a time. Both earn the same ``PROVED`` certificate. Code that reads only what
+    this class and [`SearchResult`][cpomdp.enumeration.SearchResult] declare runs on
+    either.
+
+    It is public as a type, for annotations and ``isinstance``. Subclassing it outside
+    cpomdp is not supported: a subclass records its set and horizon through the private
+    ``_enumerate``, and the ``PROVED`` it inherits holds only for a search that does.
+    """
+
+    _action_set: FiniteActionSet
+    _horizon: int
+    _n_policies: int
+
+    def _enumerate(
+        self, scorer: _PolicyScorer, action_set: FiniteActionSet, horizon: int
+    ) -> None:
+        """Validate the specification and record the enumeration's size."""
+        _validate_spec(scorer, action_set, horizon)
+        self._action_set = action_set
+        self._horizon = int(horizon)
+        self._n_policies = action_set.size**self._horizon
+
+    @classmethod
+    def _flat_scorer(cls, model: LinearGaussianModel) -> _FlatScorer:
+        """The flat constructor's scorer, refusing a model no action can move."""
+        if model.control_matrix is None:
+            raise ValueError(
+                f"{cls.__name__} needs a model with a control matrix; an action has no "
+                "effect on a control-free (pure-tracking) model."
+            )
+        return _FlatScorer(model)
+
+    @classmethod
+    def _graph_scorer(
+        cls, backend: "GraphBackend", info_block: Sequence[int]
+    ) -> _FfgScorer:
+        """``over_backend``'s scorer, its block checked here rather than per policy."""
+        if backend.model.control_matrix is None:
+            raise ValueError(
+                f"{cls.__name__}.over_backend needs a backend with a control matrix; "
+                "an action has no effect without one."
+            )
+        return _FfgScorer(backend, _checked_info_block(backend, info_block))
+
+    @abstractmethod
+    def evaluate(self, belief: Belief, preference: "Preference") -> SearchResult:
+        """Score every policy from ``belief``, and return the argmin with its evidence.
+
+        Args:
+            belief: the belief to plan from.
+            preference: the goal and precision the EFE scores against.
+        """
+
+    def policies_at(self, indices: ArrayLike) -> Float64[Array, "... H p"]:
+        """The policies ``indices`` name, decoded from the index rather than looked up.
+
+        The way to turn a result's ``best_index`` back into a plan, on either search.
+        An index outside ``0..|A|^H - 1`` names no policy. Under ``jit`` or ``vmap`` it
+        decodes to a NaN policy, the one a result with no winner carries.
+
+        Raises:
+            ValueError: If a concrete index lies outside the enumeration, including
+                the -1 a result carries when no policy scored finitely. Decoded, it
+                would wrap to a real policy.
+        """
+        indices = jnp.asarray(indices)
+        outside = (indices < 0) | (indices >= self._n_policies)
+        flagged = concrete(outside)  # None under a trace, where nothing can raise
+        if flagged is not None and flagged.any():
+            named = np.asarray(indices)[flagged.astype(bool)].tolist()
+            raise ValueError(
+                f"indices {named} lie outside 0..{self._n_policies - 1}, the "
+                "enumeration's range."
+            )
+        policies = _decode_policies(indices, self._action_set, self._horizon)
+        return jnp.where(outside[..., None, None], jnp.nan, policies)
+
+    @property
+    def n_policies(self) -> int:
+        """The enumerated policy count ``|A|^H``, attributable work (RFC-001)."""
+        return self._n_policies
+
+    @property
+    def horizon(self) -> int:
+        """The sequence length H."""
+        return self._horizon
+
+    @property
+    @abstractmethod
+    def cost_per_plan(self) -> int:
+        """Step evaluations one ``evaluate`` runs (RFC-001)."""
+
+    @property
+    def warrant(self) -> Warrant:
+        """``PROVED``: a finite set enumerated in full decides its universal."""
+        return Warrant.PROVED
+
+
+class EnumeratedEfeSearch(ExhaustiveEfeSearch):
     """Exhaustive EFE search over ``A^H`` for a declared finite action set (ADR-031).
 
     Front-loads (ADR-002) the full ``|A|^H`` enumeration of *varying* sequences at
@@ -430,12 +566,7 @@ class EnumeratedEfeSearch:
         horizon: int,
         max_policies: int | None = _DEFAULT_MAX_POLICIES,
     ) -> None:
-        if model.control_matrix is None:
-            raise ValueError(
-                "EnumeratedEfeSearch needs a model with a control matrix; an "
-                "action has no effect on a control-free (pure-tracking) model."
-            )
-        self._setup(_FlatScorer(model), action_set, horizon, max_policies)
+        self._setup(self._flat_scorer(model), action_set, horizon, max_policies)
 
     @classmethod
     def over_backend(
@@ -464,14 +595,9 @@ class EnumeratedEfeSearch:
                 action set's dimension or the horizon does not fit, or if
                 ``max_policies`` is below 1.
         """
-        if backend.model.control_matrix is None:
-            raise ValueError(
-                "EnumeratedEfeSearch.over_backend needs a backend with a control "
-                "matrix; an action has no effect without one."
-            )
         search = cls.__new__(cls)
-        target = _checked_info_block(backend, info_block)
-        search._setup(_FfgScorer(backend, target), action_set, horizon, max_policies)
+        scorer = cls._graph_scorer(backend, info_block)
+        search._setup(scorer, action_set, horizon, max_policies)
         return search
 
     def _setup(
@@ -482,15 +608,13 @@ class EnumeratedEfeSearch:
         max_policies: int | None,
     ) -> None:
         """Shared construction: validate, front-load ``A^H``, assert the certificate."""
-        _validate_spec(scorer, action_set, horizon)
-        self._horizon = int(horizon)
+        self._enumerate(scorer, action_set, horizon)
         _check_budget(scorer, action_set, self._horizon, max_policies)
-        n_policies = action_set.size**self._horizon
-        _check_index_ceiling(n_policies)
+        _check_index_ceiling(self._n_policies)
         # Front-load the enumeration once: one row per A^H sequence, decoded from its
         # index by the function the chunked path decodes with.
         self._policies = _decode_policies(
-            jnp.arange(n_policies), action_set, self._horizon
+            jnp.arange(self._n_policies), action_set, self._horizon
         )  # (N, H, p)
 
         self._certificate = _certify(
@@ -529,28 +653,18 @@ class EnumeratedEfeSearch:
 
     @property
     def policies(self) -> Float64[Array, "N H p"]:
-        """The enumerated ``A^H`` policies, shape ``(|A|^H, H, p)`` (front-loaded)."""
+        """The enumerated ``A^H`` policies, shape ``(|A|^H, H, p)`` (front-loaded).
+
+        A result's ``best_index`` goes through ``policies_at``, which refuses the -1
+        of a result with no winner. Used to index this array, -1 picks the last
+        policy.
+        """
         return self._policies
 
     @property
-    def n_policies(self) -> int:
-        """The enumerated policy count ``|A|^H`` — attributable work (RFC-001)."""
-        return int(self._policies.shape[0])
-
-    @property
-    def horizon(self) -> int:
-        """The sequence length H."""
-        return self._horizon
-
-    @property
     def cost_per_plan(self) -> int:
-        """Step evaluations one ``evaluate`` costs, ``|A|^H * H`` (RFC-001)."""
-        return self.n_policies * self._horizon
-
-    @property
-    def warrant(self) -> Warrant:
-        """``PROVED`` — a finite set enumerated in full decides its universal."""
-        return Warrant.PROVED
+        """Step evaluations one ``evaluate`` runs, ``|A|^H * H`` (RFC-001)."""
+        return self._n_policies * self._horizon
 
 
 # Measured on the crossover model at |A|^H = 9^6, sweeping 64 to 65536. Throughput has
@@ -596,32 +710,7 @@ class _BlockReducer(Protocol):
     ) -> Any: ...
 
 
-class ChunkedSearchResult(NamedTuple):
-    """The outcome of one chunked exhaustive search.
-
-    No score vector, which is the point: at ``17^7`` one would cost 3.28 GB. Every
-    field is also on the front-loaded result, under the same name.
-
-    Attributes:
-        best_policy: the argmin sequence, shape ``(H, p)``.
-        best_g: the argmin's summed EFE, G.
-        best_index: the argmin's position in the enumeration, the index
-            ``policies_at`` decodes.
-        certificate: the completeness certificate (ADR-030). Its ``visited`` is the
-            count of policies the loop scored, carried by the loop rather than read
-            off an array's length.
-
-    When no policy scores finitely there is no argmin, and the result reads as on the
-    front-loaded path: NaN, -1 and a NaN policy beside a certificate that still holds.
-    """
-
-    best_policy: Float64[Array, "H p"]
-    best_g: Float64[Array, ""]
-    best_index: Int[Array, ""]
-    certificate: CompletenessCertificate
-
-
-class ChunkedEfeSearch:
+class ChunkedEfeSearch(ExhaustiveEfeSearch):
     """Exhaustive EFE search over ``A^H`` in blocks, at ``O(chunk)`` residency.
 
     The same enumeration as
@@ -641,6 +730,11 @@ class ChunkedEfeSearch:
 
     It takes no policy budget. Its footprint is set by ``chunk``, and its time grows
     with ``cost_per_plan``.
+
+    ``evaluate`` composes with ``jit``, ``vmap`` and ``lax.scan``. Inside one, the
+    loop's count exists only once the program runs. The certificate then states the
+    expected count, and a callback checks the loop's count in the run, so a miscount
+    fails the run instead of certifying it.
 
     Args:
         model: the flat model to score on. It needs a control matrix.
@@ -663,12 +757,7 @@ class ChunkedEfeSearch:
         horizon: int,
         chunk: int = _DEFAULT_CHUNK,
     ) -> None:
-        if model.control_matrix is None:
-            raise ValueError(
-                "ChunkedEfeSearch needs a model with a control matrix; an action has "
-                "no effect on a control-free (pure-tracking) model."
-            )
-        self._setup(_FlatScorer(model), action_set, horizon, chunk)
+        self._setup(self._flat_scorer(model), action_set, horizon, chunk)
 
     @classmethod
     def over_backend(
@@ -690,14 +779,10 @@ class ChunkedEfeSearch:
                 action set's dimension or the horizon does not fit, or if ``chunk`` is
                 below 1.
         """
-        if backend.model.control_matrix is None:
-            raise ValueError(
-                "ChunkedEfeSearch.over_backend needs a backend with a control "
-                "matrix; an action has no effect without one."
-            )
         search = cls.__new__(cls)
-        target = _checked_info_block(backend, info_block)
-        search._setup(_FfgScorer(backend, target), action_set, horizon, chunk)
+        search._setup(
+            cls._graph_scorer(backend, info_block), action_set, horizon, chunk
+        )
         return search
 
     def _setup(
@@ -708,14 +793,11 @@ class ChunkedEfeSearch:
         chunk: int,
     ) -> None:
         """Validate, and size the enumeration against the index dtype's ceiling."""
-        _validate_spec(scorer, action_set, horizon)
+        self._enumerate(scorer, action_set, horizon)
         if chunk < 1:
             raise ValueError(f"chunk must be >= 1, got {chunk}")
 
         self._scorer = scorer
-        self._action_set = action_set
-        self._horizon = int(horizon)
-        self._n_policies = action_set.size**self._horizon
         # A block wider than the enumeration pads the difference and scores it, so an
         # oversized default would charge real work for lanes it then masks away. At
         # |A|^H = 6561 against a 65536 block that is ten times the arithmetic for the
@@ -727,7 +809,7 @@ class ChunkedEfeSearch:
         # front-loaded path.
         self._scan_compiled = jax.jit(partial(self._scan_blocks, reducer=None))
 
-    def evaluate(self, belief: Belief, preference: "Preference") -> ChunkedSearchResult:
+    def evaluate(self, belief: Belief, preference: "Preference") -> SearchResult:
         """Score every policy in blocks, and return the argmin with its evidence.
 
         One ``lax.scan`` over ``ceil(|A|^H / chunk)`` blocks. Each block decodes its own
@@ -751,7 +833,7 @@ class ChunkedEfeSearch:
         belief: Belief,
         preference: "Preference",
         reducer: _BlockReducer | None,
-    ) -> tuple[ChunkedSearchResult, Any]:
+    ) -> tuple[SearchResult, Any]:
         """``evaluate`` with an extra per-block fold, and the fold's final carry.
 
         The seam for evidence the argmin does not carry. The carry is ``Any`` because it
@@ -764,14 +846,34 @@ class ChunkedEfeSearch:
 
     def _result(
         self, argmin: _ArgminCarry, best_policy: Float64[Array, "H p"]
-    ) -> ChunkedSearchResult:
+    ) -> SearchResult:
         """The loop's answer, certified on the count the loop itself carried."""
-        return ChunkedSearchResult(
+        return SearchResult(
             best_policy=best_policy,
             best_g=argmin.best_g,
             best_index=argmin.best_index,
-            certificate=_certify(self._action_set, self._horizon, int(argmin.visited)),
+            certificate=self._certify_count(argmin.visited),
         )
+
+    def _certify_count(self, visited: Array) -> CompletenessCertificate:
+        """The certificate the loop's count earns, checked now or when the run ends.
+
+        Eagerly the count is read on the host and checked here. Under ``jit``, ``vmap``
+        or ``scan`` it exists only once the program runs. The certificate then states
+        the expected count, and a callback checks the loop's count against it in the
+        run, so a miscount fails the run rather than certifying it.
+        """
+        try:
+            count = int(np.asarray(visited))
+        except (TracerArrayConversionError, ConcretizationTypeError):
+            jax.debug.callback(self._check_count, visited)
+            return _certify(self._action_set, self._horizon, self._n_policies)
+        return _certify(self._action_set, self._horizon, count)
+
+    def _check_count(self, visited: Array) -> None:
+        """Raise from inside a compiled run if the loop's count is short."""
+        for count in np.ravel(np.asarray(visited)):
+            _certify(self._action_set, self._horizon, int(count))
 
     def _scan_blocks(
         self,
@@ -830,37 +932,6 @@ class ChunkedEfeSearch:
         argmin = argmin._replace(best_g=best_g, best_index=best_index)
         return argmin, best_policy, extra
 
-    def policies_at(self, indices: ArrayLike) -> Float64[Array, "... H p"]:
-        """The policies named by ``indices``, decoded rather than looked up.
-
-        The counterpart of ``best_index``: a chunked run reports where its winner sat
-        in the enumeration, and this turns that back into a plan. Also how a caller
-        checks that an index means the same policy here as on the front-loaded path.
-
-        Raises:
-            ValueError: If an index lies outside the enumeration, including the ``-1``
-                a result carries when no policy scored finitely. Decoded, it would
-                wrap to a real policy.
-        """
-        indices = jnp.asarray(indices)
-        outside = np.asarray((indices < 0) | (indices >= self._n_policies))
-        if outside.any():
-            raise ValueError(
-                f"indices {np.asarray(indices)[outside].tolist()} lie outside "
-                f"0..{self._n_policies - 1}, the enumeration's range."
-            )
-        return _decode_policies(indices, self._action_set, self._horizon)
-
-    @property
-    def n_policies(self) -> int:
-        """The policy count ``|A|^H`` — attributable work (RFC-001)."""
-        return self._n_policies
-
-    @property
-    def horizon(self) -> int:
-        """The sequence length H."""
-        return self._horizon
-
     @property
     def chunk(self) -> int:
         """The block size actually used, clamped to ``|A|^H``.
@@ -877,30 +948,40 @@ class ChunkedEfeSearch:
 
     @property
     def cost_per_plan(self) -> int:
-        """Step evaluations one ``evaluate`` costs, ``|A|^H * H`` (RFC-001)."""
+        """Step evaluations one ``evaluate`` runs, ``|A|^H * H`` (RFC-001)."""
         return self._n_policies * self._horizon
-
-    @property
-    def warrant(self) -> Warrant:
-        """``PROVED`` — a finite set enumerated in full decides its universal."""
-        return Warrant.PROVED
 
 
 class _SearchDriver(ABC):
     """What both drivers share: the search, its accounting and the last certificate."""
 
-    def __init__(self, search: EnumeratedEfeSearch | ChunkedEfeSearch) -> None:
-        if not isinstance(search, EnumeratedEfeSearch | ChunkedEfeSearch):
+    def __init__(self, search: ExhaustiveEfeSearch) -> None:
+        if not isinstance(search, ExhaustiveEfeSearch):
             raise TypeError(
-                f"{type(self).__name__} drives an EnumeratedEfeSearch or a "
-                f"ChunkedEfeSearch, got {type(search).__name__}."
+                f"{type(self).__name__} drives an ExhaustiveEfeSearch, such as "
+                f"EnumeratedEfeSearch or ChunkedEfeSearch, got {type(search).__name__}."
             )
         self._search = search
         self._certificate: CompletenessCertificate | None = None
 
     def _plan(self, belief: Belief, preference: "Preference") -> Float64[Array, "H p"]:
-        """Run the search on ``belief`` and keep the certificate it earned."""
+        """Run the search on ``belief`` and keep the certificate it earned.
+
+        Raises:
+            ValueError: If a concrete run finds no policy with a finite score.
+        """
         result = self._search.evaluate(belief, preference)
+        # A trace scores nothing, so only a run that read a real count keeps its
+        # certificate. It cannot raise either, and returns the NaN policy instead.
+        best_index = concrete(result.best_index)
+        if best_index is None:
+            return result.best_policy
+        if best_index < 0:
+            raise ValueError(
+                "no policy scored finitely from this belief, so there is no action to "
+                "take. Every score was NaN, which points at a noise that is not "
+                "positive-definite where the rollouts reach."
+            )
         self._certificate = result.certificate
         return result.best_policy
 
@@ -942,17 +1023,18 @@ class _SearchDriver(ABC):
 class RecedingHorizonSelector(_SearchDriver):
     """Re-plans every step and applies the first action of the best sequence.
 
-    An ``ActionSelector`` over either exhaustive search. Every ``select`` re-runs the
+    An ``ActionSelector`` over an exhaustive search. Every ``select`` re-runs the
     full ``A^H`` search on the current belief, so the belief drives every choice. It
     costs a whole plan per step, ``cost_per_cycle = |A|^H * H``. A measurement has to
     declare which mode it ran, so this and ``OpenLoopSelector`` stay separate (ADR-031).
 
     Args:
-        search: the search to plan with, an ``EnumeratedEfeSearch`` or a
-            ``ChunkedEfeSearch``. Both give the same actions.
+        search: the search to plan with. Either shipped search gives the same
+            actions.
 
     Raises:
-        TypeError: If ``search`` is neither.
+        TypeError: If ``search`` is not an
+            [`ExhaustiveEfeSearch`][cpomdp.enumeration.ExhaustiveEfeSearch].
     """
 
     def select(self, belief: Belief, preference: "Preference") -> Float64[Array, "p"]:
@@ -968,7 +1050,7 @@ class RecedingHorizonSelector(_SearchDriver):
 class OpenLoopSelector(_SearchDriver):
     """Plans once, then applies the whole best sequence without looking at beliefs.
 
-    An ``ActionSelector`` over either exhaustive search. It plans on the belief of the
+    An ``ActionSelector`` over an exhaustive search. It plans on the belief of the
     first ``select`` and returns the plan's actions in order, ignoring the interim
     beliefs. It re-plans only when the committed sequence is spent, or after ``reset``.
     Ignoring the interim beliefs is what makes it open-loop. One plan covers H steps, so
@@ -979,14 +1061,15 @@ class OpenLoopSelector(_SearchDriver):
     eagerly, one ``select`` per step, so the mutation is safe.
 
     Args:
-        search: the search to plan with, an ``EnumeratedEfeSearch`` or a
-            ``ChunkedEfeSearch``. Both give the same actions.
+        search: the search to plan with. Either shipped search gives the same
+            actions.
 
     Raises:
-        TypeError: If ``search`` is neither.
+        TypeError: If ``search`` is not an
+            [`ExhaustiveEfeSearch`][cpomdp.enumeration.ExhaustiveEfeSearch].
     """
 
-    def __init__(self, search: EnumeratedEfeSearch | ChunkedEfeSearch) -> None:
+    def __init__(self, search: ExhaustiveEfeSearch) -> None:
         super().__init__(search)
         self._committed: Float64[Array, "H p"] | None = None
         self._step = 0

@@ -31,17 +31,20 @@ numbers, bit for bit.
 import subprocess
 import sys
 import textwrap
+from dataclasses import fields
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
 
 from cpomdp.enumeration import (
     ChunkedEfeSearch,
-    ChunkedSearchResult,
     EnumeratedEfeSearch,
     EnumeratedSearchResult,
+    ExhaustiveEfeSearch,
     FiniteActionSet,
+    SearchResult,
 )
 from cpomdp.observation import CallableSensor
 from cpomdp.selection import Preference
@@ -375,11 +378,29 @@ class TestInterchangeable:
         assert int(a.best_index) == int(b.best_index)
         assert a.certificate == b.certificate
 
-    def test_the_chunked_fields_are_a_subset_of_the_front_loaded_ones(self):
-        # The front-loaded result adds the whole score vector `g` and nothing else.
-        shared = set(ChunkedSearchResult._fields)
-        assert shared == {"best_policy", "best_g", "best_index", "certificate"}
-        assert set(EnumeratedSearchResult._fields) == shared | {"g"}
+    def test_the_front_loaded_result_is_a_search_result_plus_the_score_vector(self):
+        shared = ("best_policy", "best_g", "best_index", "certificate")
+        assert tuple(field.name for field in fields(SearchResult)) == shared
+        assert issubclass(EnumeratedSearchResult, SearchResult)
+        front_loaded_fields = tuple(
+            field.name for field in fields(EnumeratedSearchResult)
+        )
+        assert front_loaded_fields == (*shared, "g")
+
+    def test_each_search_returns_its_own_result_type(self):
+        front, chunked = self._both()
+        assert type(front.evaluate(_beacon_belief(), _pref())) is EnumeratedSearchResult
+        assert type(chunked.evaluate(_beacon_belief(), _pref())) is SearchResult
+
+    @pytest.mark.parametrize("which", [0, 1])
+    def test_a_result_is_read_by_name_alone(self, which):
+        # A position that named one field on one search and another field on the other
+        # would make the swap silently wrong. No position names anything.
+        result = self._both()[which].evaluate(_beacon_belief(), _pref())
+        with pytest.raises(TypeError):
+            iter(result)
+        with pytest.raises(TypeError):
+            result[1]
 
     def test_the_front_loaded_best_is_read_off_its_own_vector(self):
         front, _ = self._both()
@@ -387,13 +408,24 @@ class TestInterchangeable:
         assert float(result.best_g) == float(result.g[result.best_index])
         assert result.certificate.complete
 
-    @pytest.mark.parametrize(
-        "name", ["evaluate", "n_policies", "horizon", "cost_per_plan", "warrant"]
-    )
-    def test_the_shared_surface(self, name):
+    def test_both_are_the_one_kind(self):
         front, chunked = self._both()
-        assert hasattr(front, name)
-        assert hasattr(chunked, name)
+        assert isinstance(front, ExhaustiveEfeSearch)
+        assert isinstance(chunked, ExhaustiveEfeSearch)
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "evaluate",
+            "policies_at",
+            "n_policies",
+            "horizon",
+            "cost_per_plan",
+            "warrant",
+        ],
+    )
+    def test_the_shared_surface_is_declared_on_the_kind(self, name):
+        assert hasattr(ExhaustiveEfeSearch, name)
 
     def test_the_certificate_lives_on_the_result_alone(self):
         # The chunked count is produced by the loop, so its certificate cannot exist
@@ -442,13 +474,33 @@ class TestNoFiniteScore:
         result = search.evaluate(Belief(mean=[2.0], cov=[[0.1]]), _pref())
         assert np.all(np.isnan(np.asarray(result.g)))
 
+    @pytest.mark.parametrize("search_type", [EnumeratedEfeSearch, ChunkedEfeSearch])
     @pytest.mark.parametrize("index", [-1, 4])
-    def test_an_index_outside_the_enumeration_decodes_to_nothing(self, index):
+    def test_an_index_outside_the_enumeration_decodes_to_nothing(
+        self, search_type, index
+    ):
         # -1 is the no-winner index. Decoded as a base-|A| numeral it would wrap to a
         # real policy, so the decoder refuses it, and anything past the end.
-        search = ChunkedEfeSearch(self._model(), _finite_set([0.0, 0.5]), horizon=2)
+        search = search_type(self._model(), _finite_set([0.0, 0.5]), horizon=2)
         with pytest.raises(ValueError, match=r"outside 0\.\.3"):
             search.policies_at(jnp.asarray([0, index]))
+
+    @pytest.mark.parametrize("search_type", [EnumeratedEfeSearch, ChunkedEfeSearch])
+    def test_compiled_an_index_outside_decodes_to_a_nan_policy(self, search_type):
+        # A compiled decode cannot raise. It returns the NaN policy a result with no
+        # winner carries, never the real policy -1 would wrap to.
+        search = search_type(self._model(), _finite_set([0.0, 0.5]), horizon=2)
+        decoded = jax.jit(search.policies_at)(jnp.asarray([3, -1, 4]))
+        np.testing.assert_array_equal(decoded[0], search.policies_at(3))
+        assert np.all(np.isnan(np.asarray(decoded[1:])))
+
+    @pytest.mark.parametrize("search_type", [EnumeratedEfeSearch, ChunkedEfeSearch])
+    def test_the_decode_maps_over_indices(self, search_type):
+        search = search_type(self._model(), _finite_set([0.0, 0.5]), horizon=2)
+        np.testing.assert_array_equal(
+            jax.vmap(search.policies_at)(jnp.arange(4)),
+            search.policies_at(jnp.arange(4)),
+        )
 
     @pytest.mark.parametrize("search_type", [EnumeratedEfeSearch, ChunkedEfeSearch])
     def test_one_finite_score_is_still_the_best(self, search_type):
@@ -540,3 +592,19 @@ class TestCostAndWarrant:
         # size is a residency choice and carries no evidential weight.
         search = ChunkedEfeSearch(_model(), _finite_set([-1.0, 1.0]), horizon=2)
         assert search.warrant is Warrant.PROVED
+
+
+class TestCountIsReadExactly:
+    def test_a_count_past_float_precision_certifies(self):
+        # 3^34 is odd and above 2^53, so a float read rounds it and the certificate
+        # would refuse a complete run.
+        search = ChunkedEfeSearch(_model(), _finite_set([-1.0, 0.0, 1.0]), horizon=34)
+        visited = jnp.asarray(3**34, dtype=jnp.int64)
+        assert search._certify_count(visited).visited == 3**34
+
+    def test_an_action_set_is_refused_under_jit(self):
+        # Under a trace its actions cannot be checked for NaN, and the search would
+        # certify a set that holds one. Built outside the transform, it is checked.
+        size = jax.jit(lambda actions: FiniteActionSet(actions, version="v1").size)
+        with pytest.raises(TypeError, match="outside"):
+            size(jnp.array([[0.0], [jnp.nan]]))

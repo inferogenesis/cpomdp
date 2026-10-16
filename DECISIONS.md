@@ -5397,3 +5397,59 @@ certificate is unchanged. It certifies coverage (ADR-030), and every policy was 
   the compiler. `EFESelector` at a horizon above 1 is outside this decision.
 - `ChunkedEfeSearch.policies_at` refuses an index outside the enumeration, -1 included,
   because a base-`|A|` decode wraps it to a real policy.
+
+## ADR-084 — one base names the exhaustive searches, and both trace
+
+**Date:** 2026-10-16
+**Status:** Accepted
+**Supersedes:** ADR-083's result shapes and its rule that the drivers take either of the
+two named classes. ADR-035's decision that `SearchWarrant` stays as an alias of
+`Warrant`, so the type has one name.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+ADR-083 made the two searches answer one `evaluate`. Their results still differed by
+position, so a tuple index could read `g` on one search and `best_g` on the other, and
+the drivers took a union of two classes that a third search would have had to join. The
+chunked search also ran eagerly only, so a compiled agent loop could drive the
+front-loaded search and not the chunked one.
+
+### Decision
+
+**Results are read by name.** The chunked search returns a `SearchResult` carrying
+`best_policy`, `best_g`, `best_index` and `certificate`. The front-loaded one returns
+`EnumeratedSearchResult`, a subclass that adds the score vector `g`. Both are frozen
+dataclasses and pytrees, with the certificate as static data. The chunked result has no
+`visited`, which repeated `certificate.visited`.
+
+**One base names the kind.** `ExhaustiveEfeSearch` is an abstract base both searches
+subclass. It owns the validation, the scorer each constructor builds, `policies_at`,
+`n_policies`, `horizon` and `warrant`, and declares `evaluate` and `cost_per_plan`. Both
+drivers take any `ExhaustiveEfeSearch` and refuse anything else with a `TypeError`. The
+check is nominal, so the `PROVED` a driver reports still comes from a search that
+declared itself exhaustive. The base is public as a type and not as an extension point:
+a subclass records its enumeration through the private `_enumerate`, so subclassing
+outside cpomdp is unsupported until a user needs it (ADR-069).
+
+**Both searches trace.** `evaluate` composes with `jit`, `vmap` and `lax.scan` on either
+search. The chunked certificate rests on a count the loop produces, which a trace cannot
+read on the host. Inside a transformation the certificate states the expected count and
+a `jax.debug.callback` checks the loop's count in the run, so a miscount fails the run.
+The count is read as an exact integer. A driver keeps a certificate only from a run that
+read a real count, so a trace leaves none. A `FiniteActionSet` is refused under a trace,
+where its actions cannot be checked for NaN. The result dataclasses register with JAX
+through `register_dataclass` and field metadata, which needs JAX 0.4.36, so that is the
+floor.
+
+### Consequences
+
+- A driver over the chunked search pays one host read per plan, the loop's count. Inside
+  `jit` or `scan` that read is a callback in the run.
+- `policies_at` is on both searches and refuses an index outside the enumeration, -1
+  included, because a base-`|A|` decode wraps it to a real policy. Under `jit` or `vmap`
+  it decodes such an index to a NaN policy.
+- A driver raises `ValueError` on a concrete run where no policy scored finitely. This
+  supersedes ADR-083's NaN action for the agent to refuse. Nothing downstream refused it,
+  so the NaN reached the plant and the belief. Under a trace the driver still returns
+  the NaN policy, since it cannot raise there.
