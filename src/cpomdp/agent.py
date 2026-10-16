@@ -370,7 +370,10 @@ class Agent:
         if objective.info_node is None:
             info_block = range(backend.model.n_states)  # whole-state info gain
         else:
-            info_block = backend.block(objective.info_node)  # refuses a stray node
+            try:
+                info_block = backend.block(objective.info_node)
+            except ValueError as error:
+                raise ValueError(f"info_node {objective.info_node}: {error}") from error
         return FfgEfeSelector(
             backend,
             info_block=info_block,

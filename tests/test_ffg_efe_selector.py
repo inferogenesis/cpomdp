@@ -182,8 +182,9 @@ def test_agent_ffg_whole_state_when_info_target_none():
 
 
 def test_an_info_node_outside_the_graph_is_refused_by_the_backend():
-    # The Agent leaves the range check to `backend.block`, the one place that knows it.
-    with pytest.raises(ValueError, match=r"node 2 .* 0\.\.1"):
+    # The Agent leaves the range check to `backend.block`, the one place that knows it,
+    # and names the argument the caller set.
+    with pytest.raises(ValueError, match=r"info_node 2: node 2 .* 0\.\.1"):
         Agent.from_backend(
             _two_node_backend(),
             ObservationGoal([0.5], action_bounds=(-2.0, 2.0), info_node=2),
