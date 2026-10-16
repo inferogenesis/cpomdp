@@ -6,8 +6,8 @@ Schur complement). It emits a ``CanonicalGaussian`` message assembled from the
 canonical-form algebra.
 
 The within-slice coupling ``N(child; W·parent, Q)`` is the graph edge itself,
-``Coupling`` in ``cpomdp.ffg.graph`` (ADR-073). A node's observation is the flat model's
-sensor (ADR-071). Its message is ``likelihood_message`` in ``cpomdp.ffg._message``,
+``Coupling`` in ``cpomdp.ffg.graph`` (ADR-075). A node's observation is the flat model's
+sensor (ADR-073). Its message is ``likelihood_message`` in ``cpomdp.ffg._message``,
 built from the sensor's ``(C, R)``.
 
 The transition inverts its noise covariance, so it requires it positive-**definite**.

@@ -4636,7 +4636,7 @@ versions break before 1.0, as cpomdp's do.
 - A warrantlib 0.4 reaches cpomdp users only through a cpomdp release that lifts the
   cap.
 
-## ADR-071 — a graph node takes the flat model's sensor, and the message passing is private
+## ADR-073 — a graph node takes the flat model's sensor, and the message passing is private
 
 **Date:** 2026-10-15
 **Status:** Accepted
@@ -4699,7 +4699,7 @@ documents, and they are the hot path the energy work is most likely to change (R
 - ADR-019 and ADR-021 keep their wording. Their `CallableGaussianObservation` is this
   ADR's `CallableSensor` on a graph node.
 
-## ADR-072 — an edge carries no timescale
+## ADR-074 — an edge carries no timescale
 
 **Date:** 2026-10-15
 **Status:** Accepted
@@ -4738,11 +4738,11 @@ that is not a `GaussianCoupling` and an `efe_relevant` that is not a bool raise
   lands.
 - The coupling-graph figure's code panel drops `tau=0.0`.
 
-## ADR-073 — an edge is one class
+## ADR-075 — an edge is one class
 
 **Date:** 2026-10-16
 **Status:** Accepted
-**Supersedes:** ADR-021's export of `GaussianCoupling`. ADR-072's field check that a
+**Supersedes:** ADR-021's export of `GaussianCoupling`. ADR-074's field check that a
 factor is a `GaussianCoupling`, since the factor is no longer a separate object.
 **Phase:** v0.5.0, the public API review before release
 
@@ -4750,7 +4750,7 @@ factor is a `GaussianCoupling`, since the factor is no longer a separate object.
 
 An edge took two public classes. `Coupling` held the endpoints and wrapped a
 `GaussianCoupling`, which held `W` and `Q`. Both docstrings called themselves a graph
-edge and gave the same equation. Once its message methods went private (ADR-071),
+edge and gave the same equation. Once its message methods went private (ADR-073),
 `GaussianCoupling` had no public behaviour and one consumer, `Coupling.factor`. A user
 wrote `Coupling(0, 1, GaussianCoupling([[0.9]], coupling_noise=[[0.05]]))` and had to
 learn which class went inside which.
@@ -4761,9 +4761,9 @@ learn which class went inside which.
 `coupling_noise` (Q) itself, validates them as `GaussianCoupling` did, and carries the
 message algebra as private methods. `GaussianCoupling` is removed. No tier-2 factor
 exists, so folding the class in closes no live seam. A second factor kind would bring
-its own protocol, which ADR-071 leaves to the first user who writes one.
+its own protocol, which ADR-073 leaves to the first user who writes one.
 
-`efe_relevant` is keyword-only. Dropping `tau` (ADR-072) moved it into the fourth
+`efe_relevant` is keyword-only. Dropping `tau` (ADR-074) moved it into the fourth
 positional slot, where a stale v0.4.4 call put its τ. Keyword-only, that call fails on
 arity.
 
@@ -4774,7 +4774,7 @@ an `int`, and a NumPy bool as a `bool`.
 ### Consequences
 
 - Every `Coupling` call changes again. The `GaussianCoupling` wrapper goes and its two
-  arguments move up. ADR-072's removal of `tau` lands in the same release, so a v0.4.4
+  arguments move up. ADR-074's removal of `tau` lands in the same release, so a v0.4.4
   caller migrates once.
 - A `Coupling` is not a pytree. Nothing traces through an edge. The graph's couplings
   are constants of any traced function, and the readings are what a test differentiates.

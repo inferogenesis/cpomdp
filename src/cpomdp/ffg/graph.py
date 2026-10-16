@@ -47,7 +47,7 @@ class Coupling:
 
     Where a [`GaussianTransition`][cpomdp.GaussianTransition] steps one node in time,
     an edge couples two nodes within a slice. The maths is the same. A node's timescale
-    is its transition, so an edge carries none (ADR-072).
+    is its transition, so an edge carries none (ADR-074).
 
     ``efe_relevant`` is a modeller's *declaration* that this edge carries information
     the instrumental epistemic depends on — a physics call, not a structural one (in
