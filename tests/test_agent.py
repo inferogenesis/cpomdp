@@ -459,6 +459,32 @@ class TestRegimeDispatch:
 
         assert epistemic(1.5) != pytest.approx(epistemic(-1.5))
 
+    def _q_of_x_double_integrator(self):
+        # The push reaches the observed position a step after it moves the velocity.
+        position_and_velocity = [[1.0, 0.1], [0.0, 1.0]]
+        return LinearGaussianModel(
+            dynamics_matrix=position_and_velocity,
+            observation_matrix=[[1.0, 0.0]],
+            dynamics_noise_model=CallableProcessNoise(
+                lambda state, params: jnp.eye(2) * (0.01 + state[1] ** 2), None
+            ),
+            observation_noise=[[0.3]],
+            prior=Belief(mean=[0.0, 0.0], cov=jnp.eye(2)),
+            control_matrix=[[0.0], [0.1]],
+        )
+
+    def test_q_of_x_alone_past_horizon_one_is_refused(self):
+        # Q(x) is claimed at horizon 1 only (#56), so the Agent does not build the
+        # horizon-2 selector this model would need.
+        with pytest.raises(ValueError, match="horizon 1"):
+            Agent(self._q_of_x_double_integrator(), _OBS_GOAL)
+
+    def test_q_of_x_past_horizon_one_is_reached_by_hand(self):
+        model = self._q_of_x_double_integrator()
+        selector = EFESelector(model, action_bounds=(-2.0, 2.0), horizon=2)
+        agent = Agent(model, Preference([1.0]), selector=selector)
+        assert agent.selector is selector
+
     def test_observation_goal_wrong_obs_dim_raises(self):
         # A 2-D obs goal on a model that observes m=1 must fail at construction, not
         # crash cryptically deep in the EFE kernel at sample_action.
@@ -738,3 +764,13 @@ def test_efe_agent_reaches_lower_uncertainty_than_lqr():
     assert efe_final < 0.5 * lqr_final  # the payoff: markedly more certain under R(x)
     assert max(efe_pos) > 1.0  # mechanism: it sought the beacon, off the goal
     assert abs(float(lqr_mean[0])) < 0.05  # the LQR baseline does reach its state goal
+
+
+def test_a_selector_built_for_another_model_is_refused():
+    # The Agent filters under its model, so a selector scoring another would plan for
+    # a plant the agent is not filtering.
+    agent_model = _corridor_model(fixed=False)
+    other_model = _corridor_model(fixed=False)
+    selector = EFESelector(other_model, action_bounds=(-2.0, 2.0))
+    with pytest.raises(ValueError, match="another model"):
+        Agent(agent_model, _OBS_PREFERENCE, selector=selector)

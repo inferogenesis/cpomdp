@@ -4755,8 +4755,9 @@ the model.
 
 ### Consequences
 
-- A `Q(x)`-only model with an `ObservationGoal` gets an `EFESelector` at the horizon
-  ADR-068 reads off the model.
+- A `Q(x)`-only model with an `ObservationGoal` gets an `EFESelector` when ADR-068
+  reads horizon 1 off the model. Past horizon 1 it is refused, because `Q(x)` is
+  claimed at horizon 1 only (#56). A `Preference` with `selector=` reaches it by hand.
 - A graph with fixed sensors and an `ObservationGoal` is refused.
   `examples/ffg/epistemic_dissociation_figure.py` hands both of its agents the same
   `FfgEfeSelector`, so the ablation differs from the curious agent in the cue alone. Three

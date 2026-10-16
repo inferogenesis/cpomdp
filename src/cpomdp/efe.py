@@ -203,7 +203,7 @@ def expected_free_energy(
             ``(observation_matrix, observation_noise)``.
         belief: The current belief ``(μ, Σ)``.
         action: The candidate action ``a``, shape ``(p,)``.
-        preference: The goal as an OBSERVATION-space ``Preference`` — ``goal`` is a
+        preference: The goal as an OBSERVATION-space ``Preference`` — ``target`` is a
             preferred observation ``g`` (shape ``(m,)``) and ``precision`` is ``Λ``
             (shape ``(m, m)``). See FRAGILE(lit) #1 in the module docstring.
 
@@ -389,7 +389,7 @@ def policy_efe_ffg(
             (R at μ⁺), and ``block``.
         belief: The starting joint belief ``(μ, Σ)`` over the ``n_total``-D joint state.
         policy: The ``H`` actions to roll out, shape ``(H, p)``.
-        preference: The OBSERVATION-space goal — ``goal`` (g) and ``precision`` (Λ).
+        preference: The OBSERVATION-space goal — ``target`` (g) and ``precision`` (Λ).
         info_block: The joint-state indices whose info gain is the per-step epistemic
             value.
 

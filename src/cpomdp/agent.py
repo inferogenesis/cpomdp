@@ -68,6 +68,12 @@ def _preference_for_selector(
         )
     if model.control_matrix is None:
         raise ValueError("selector= needs a model with a control matrix to act with.")
+    selector_model = _selector_model(selector)
+    if selector_model is not None and selector_model is not model:
+        raise ValueError(
+            f"this {type(selector).__name__} was built for another model. The Agent "
+            "filters under its own model, so build the selector from the same one."
+        )
     if isinstance(selector, _STATE_SPACE_SELECTORS):
         space, length = "a state", model.n_states
     elif isinstance(selector, _OBSERVATION_SPACE_SELECTORS):
@@ -82,6 +88,17 @@ def _preference_for_selector(
     if isinstance(selector, _STATE_SPACE_SELECTORS):
         _require_held_target(model, objective.target, "the Preference's target")
     return objective
+
+
+def _selector_model(selector: ActionSelector) -> LinearGaussianModel | None:
+    """The model a built-in selector scores under, or None for a custom one."""
+    if isinstance(selector, EFESelector):
+        return selector._model
+    if isinstance(selector, FfgEfeSelector):
+        return selector._backend.model
+    if isinstance(selector, LQRSelector):
+        return selector.controller.model
+    return None
 
 
 def _lqr_path(
@@ -151,7 +168,18 @@ def _efe_path(
     preference = Preference(target, objective.precision)
     if isinstance(backend, EfeBackend):
         return preference, _graph_efe_selector(backend, objective)
-    return preference, _reaching_efe_selector(model, objective, preference)
+    selector = _reaching_efe_selector(model, objective, preference)
+    sensor_is_fixed = (
+        model.observation_model is None or model.observation_model.is_fixed
+    )
+    if sensor_is_fixed and selector.horizon > 1:
+        raise ValueError(
+            f"only Q(x) depends on the state here, and the target first moves the "
+            f"scores at horizon {selector.horizon}. Q(x) is claimed at horizon 1 only "
+            f"(#56). To score it anyway, pass a Preference with "
+            f"selector=EFESelector(model, ..., horizon={selector.horizon})."
+        )
+    return preference, selector
 
 
 def _graph_efe_selector(
@@ -287,7 +315,7 @@ class Agent:
     | ``qs`` | ``belief`` | posterior over the state |
     | ``infer_states`` | ``infer_states`` | fold an observation in |
     | ``sample_action`` | ``sample_action`` | choose an action |
-    | ``C`` | ``objective`` | a StateGoal or ObservationGoal |
+    | ``C`` | ``objective`` | a StateGoal, an ObservationGoal, or a Preference |
     | ``D`` | ``model.prior`` | belief before any observation |
 
     One honest difference from pymdp: ``sample_action`` is **deterministic** here,
@@ -557,9 +585,10 @@ class Agent:
         action = self._selector.select(self.belief, self._preference)
         if bool(jnp.isnan(action).any()):
             raise ValueError(
-                "the selector returned no action: no candidate scored a finite "
-                "expected free energy at this belief. A state-dependent R(x) or Q(x) "
-                "that is not a covariance at the predicted states does this."
+                "the selector returned a non-finite action at this belief. For an "
+                "EFE selector, no candidate scored a finite expected free energy, "
+                "which a state-dependent R(x) or Q(x) that is not a covariance at "
+                "the predicted states does."
             )
         self._last_action = action
         return action
