@@ -47,9 +47,7 @@ def ignores_the_state(x, params):
 def chain(noise_fn, *, control_matrix=1.0):
     model = LinearGaussianModel(
         dynamics_matrix=[[1.0]],
-        observation_matrix=[[1.0]],
         dynamics_noise=[[1.0]],
-        observation_noise=[[1.0]],
         prior=Belief([0.0], [[1.0]]),
         control_matrix=[[control_matrix]],
         observation_model=CallableSensor([[1.0]], noise_fn, None),

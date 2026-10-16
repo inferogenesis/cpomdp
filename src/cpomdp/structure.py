@@ -32,6 +32,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from cpomdp._validation import state_dependent
+
 # TODO(revisit): this makes me uneasy. ModelStructure referencing LinearGaussianModel
 # even for types is a peer back-reference only validate needs — the reason this import
 # hides under TYPE_CHECKING. Not a layering break, so I'm keeping it FOR NOW. Come back
@@ -190,7 +192,7 @@ class ModelStructure:
         # fixed Q only — a state-dependent Q(x) has no single matrix to check (skip it).
         q_mat = (
             None
-            if model.dynamics_noise_model is not None
+            if state_dependent(model.dynamics_noise_model) is not None
             else np.asarray(model.dynamics_noise)
         )
         for name_i, idx_i in self.factors:

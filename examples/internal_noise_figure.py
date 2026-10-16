@@ -62,7 +62,7 @@ def _model(dynamics_noise_model=None):
     return LinearGaussianModel(
         dynamics_matrix=DYNAMICS_MATRIX,
         observation_matrix=OBSERVATION_MATRIX,
-        dynamics_noise=DYNAMICS_NOISE,
+        dynamics_noise=DYNAMICS_NOISE if dynamics_noise_model is None else None,
         observation_noise=OBSERVATION_NOISE,
         prior=BELIEF,
         control_matrix=CONTROL_MATRIX,

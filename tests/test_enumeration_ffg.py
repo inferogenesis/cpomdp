@@ -61,9 +61,9 @@ def _single_node_pair(*, state_dependent):
     )
     model = LinearGaussianModel(
         dynamics_matrix=a,
-        observation_matrix=c,
+        observation_matrix=None if state_dependent else c,
         dynamics_noise=q,
-        observation_noise=r0,
+        observation_noise=None if state_dependent else r0,
         prior=Belief(mean=np.zeros(2), cov=np.eye(2)),
         control_matrix=b,
         observation_model=obs_flat,
