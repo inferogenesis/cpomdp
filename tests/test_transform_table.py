@@ -175,9 +175,7 @@ def _selectors():
             id="EFESelector",
         ),
         pytest.param(
-            FFGEFESelector(
-                graph, info_block=range(2), n_candidates=5, action_bounds=(-1.0, 1.0)
-            ),
+            FFGEFESelector(graph, n_candidates=5, action_bounds=(-1.0, 1.0)),
             unit_prior(graph.graph),
             preference,
             True,

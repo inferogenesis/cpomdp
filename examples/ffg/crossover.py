@@ -107,15 +107,15 @@ EPS_PLATEAU = 0.2  # the epistemic pull varies by less than this: flat, not grow
 
 
 def _setup():
-    """``(backend, belief, preference, info_block)`` for the coupled-tree cue task."""
+    """``(backend, belief, preference, info_node)`` for the coupled-tree cue task."""
     backend = demo.build_backend(epistemic_alive=True, cue_x=demo.CUE_DETOUR_X)
     belief = demo.start_belief()
     preference = Preference(
         target=[0.0, 0.0],
         precision=[[demo.GOAL_PRECISION, 0.0], [0.0, demo.INFO_PRECISION]],
     )
-    info_block = tuple(backend.block(demo.CONTEXT))
-    return backend, belief, preference, info_block
+    info_node = demo.CONTEXT
+    return backend, belief, preference, info_node
 
 
 def _cue_ward(policy) -> bool:
@@ -138,9 +138,9 @@ def _reach(horizon: int):
 # --- 1. the decisive, selection-free measurement -----------------------------------
 def argmin_at(horizon: int, action_set=ACTION_SET):
     """The exhaustive argmin at a horizon: ``(n_policies, Gmin, argmin, cue_ward)``."""
-    backend, belief, preference, info_block = _setup()
+    backend, belief, preference, info_node = _setup()
     search = EnumeratedEFESearch.over_backend(
-        backend, action_set, info_block=info_block, horizon=horizon
+        backend, action_set, info_node=info_node, horizon=horizon
     )
     result = search.evaluate(belief, preference)
     policy = np.asarray(result.best_policy).ravel()
@@ -246,9 +246,9 @@ def measure_refinement(action_set, horizon: int) -> RefinementRow:
             f"{action_set.version} cannot land on the cue within H = {horizon}, so any "
             "null it produces is geometry and not a result (registered void guard)"
         )
-    backend, belief, preference, info_block = _setup()
+    backend, belief, preference, info_node = _setup()
     search = ChunkedEFESearch.over_backend(
-        backend, action_set, info_block=info_block, horizon=horizon
+        backend, action_set, info_node=info_node, horizon=horizon
     )
     result = search.evaluate(belief, preference)
     policy = np.asarray(result.best_policy).ravel()
@@ -416,11 +416,11 @@ def measure_extension(max_horizon: int = EXT_BAR) -> ExtensionMeasurement:
     # to do with the objective, and the outcome for that is NOT APPLICABLE.
     sensed = demo_maze.best_reachable_noise(EXT_SET, 1, max_horizon) <= demo_maze.R_LO
     # One enumeration per horizon, and the certificate comes off that same run.
-    backend, belief, preference, info_block = _setup()
+    backend, belief, preference, info_node = _setup()
     policy = ()
     for horizon in range(1, max_horizon + 1):
         result = EnumeratedEFESearch.over_backend(
-            backend, EXT_SET, info_block=info_block, horizon=horizon
+            backend, EXT_SET, info_node=info_node, horizon=horizon
         ).evaluate(belief, preference)
         policy = np.asarray(result.best_policy).ravel()
         if _cue_ward(policy):
@@ -430,9 +430,9 @@ def measure_extension(max_horizon: int = EXT_BAR) -> ExtensionMeasurement:
 
 def measure_flip(horizon: int) -> FlipMeasurement:
     """Enumerate at ``horizon`` and read off everything the falsifiers need."""
-    backend, belief, preference, info_block = _setup()
+    backend, belief, preference, info_node = _setup()
     result = EnumeratedEFESearch.over_backend(
-        backend, ACTION_SET, info_block=info_block, horizon=horizon
+        backend, ACTION_SET, info_node=info_node, horizon=horizon
     ).evaluate(belief, preference)
     walk, reach = _numpy_score(_walk(horizon)), _numpy_score(_reach(horizon))
     return FlipMeasurement(
@@ -447,7 +447,7 @@ def measure_flip(horizon: int) -> FlipMeasurement:
 # --- 2. the mechanism split (post-selection exposition) ----------------------------
 def mechanism_curve(max_horizon=MAX_H):
     """Per-horizon ``(H, Δε, Δc, ΔG)`` for the selected walk against the coast reach."""
-    backend, belief, preference, info_block = _setup()
+    backend, belief, preference, info_node = _setup()
     rows = []
     for horizon in range(1, max_horizon + 1):
         stat = crossover_statistic(
@@ -456,7 +456,7 @@ def mechanism_curve(max_horizon=MAX_H):
             _walk(horizon),
             _reach(horizon),
             preference,
-            info_block=info_block,
+            info_node=info_node,
         )
         rows.append(
             (
@@ -488,11 +488,11 @@ def _numpy_score(policy) -> float:
     -- independently of ``_ffg_efe_step``. So agreement is a cross-implementation check
     of the scoring kernel, not of shared plumbing.
     """
-    backend, belief, preference, info_block = _setup()
+    backend, belief, preference, info_node = _setup()
     observation_matrix = np.asarray(backend.model.observation_matrix)  # C
     precision = np.asarray(preference.precision)  # Lambda
     goal = np.asarray(preference.target)
-    idx = np.array(info_block)
+    idx = np.array(backend.block(info_node))
 
     carry = belief
     total = 0.0
@@ -573,13 +573,13 @@ def conditioning(policy):
     fires, the kernel's ``_logdet_pd`` or this module's ``_host_logdet_pd``, and the
     epistemic never goes NaN.
     """
-    backend, belief, preference, info_block = _setup()
+    backend, belief, preference, info_node = _setup()
     trace = policy_efe_ffg_trace(
         backend,
         belief,
         jnp.asarray(policy).reshape(-1, 1),
         preference,
-        info_block=info_block,
+        info_node=info_node,
     )
     return rollout_conditioning(trace)
 
@@ -595,15 +595,13 @@ def epistemic_counterfactual(horizon=FLIP_H, actions=None):
     NaN-safe argmin is never exercised here.
     """
     actions = V1 if actions is None else actions
-    backend, belief, preference, info_block = _setup()
+    backend, belief, preference, info_node = _setup()
     combos = np.array(list(itertools.product(actions, repeat=horizon)), dtype=float)
 
     @jax.jit
     def batch(pols):
         def one(pol):
-            efe = policy_efe_ffg(
-                backend, belief, pol, preference, info_block=info_block
-            )
+            efe = policy_efe_ffg(backend, belief, pol, preference, info_node=info_node)
             return efe.g, efe.pragmatic
 
         return jax.vmap(one)(pols)
@@ -970,10 +968,10 @@ def _print_tables() -> None:
         f"   all PD = {rc.all_positive_definite}; min eig(Σ_post) = {min_eig:.3e} "
         f"({min_eig / MIN_EIG_FLOOR:.0e}x the floor); max cond = {max_cond:.0f}"
     )
-    backend, belief, preference, info_block = _setup()
+    backend, belief, preference, info_node = _setup()
     walk_ship = float(
         policy_efe_ffg(
-            backend, belief, _walk(FLIP_H), preference, info_block=info_block
+            backend, belief, _walk(FLIP_H), preference, info_node=info_node
         ).g
     )
     walk_np, reach_np = _numpy_score(_walk(FLIP_H)), _numpy_score(_reach(FLIP_H))
@@ -1075,10 +1073,10 @@ def check() -> None:
     # 3. The headline number matches an independent NumPy kernel at H* (atol 1e-9). The
     #    oracle takes its ln det magnitude from slogdet, the shipped kernel off a
     #    Cholesky factor. Both reject a non-PD argument (see the audit tests).
-    backend, belief, preference, info_block = _setup()
+    backend, belief, preference, info_node = _setup()
     for policy in (_walk(FLIP_H), _reach(FLIP_H)):
         shipped = float(
-            policy_efe_ffg(backend, belief, policy, preference, info_block=info_block).g
+            policy_efe_ffg(backend, belief, policy, preference, info_node=info_node).g
         )
         assert abs(shipped - _numpy_score(policy)) < 1e-9
 

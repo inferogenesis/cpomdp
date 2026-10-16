@@ -5,7 +5,7 @@ import operator
 from collections.abc import Sequence
 from dataclasses import dataclass
 from functools import cached_property
-from typing import Protocol, runtime_checkable
+from typing import Protocol, SupportsIndex, runtime_checkable
 
 import jax
 import jax.numpy as jnp
@@ -17,9 +17,10 @@ from cpomdp._validation import validate_covariance
 from cpomdp.backends.base import GraphBackend
 from cpomdp.control import LQRController, _validate_cost
 from cpomdp.efe import (
-    _checked_info_block,
     _ffg_efe_step,
     _goal_and_precision,
+    _info_block_of,
+    _info_nodes,
     expected_free_energy,
     policy_efe,
 )
@@ -90,6 +91,24 @@ def _checked_horizon(horizon: int) -> int:
     if steps < 1:
         raise ValueError(f"horizon must be at least 1, got {steps}")
     return steps
+
+
+def _stored_info_node(
+    info_node: SupportsIndex | Sequence[SupportsIndex] | None,
+) -> int | tuple[int, ...] | None:
+    """``info_node`` as an ``ObservationGoal`` keeps it: an int, a tuple, or None.
+
+    One node is an int however it was written, so ``2`` and ``[2]`` compare equal.
+
+    Raises:
+        ValueError: If a node list is empty.
+    """
+    if info_node is None:
+        return None
+    nodes = _info_nodes(info_node)
+    if not nodes:
+        raise ValueError("info_node names no node. Pass None for the whole state.")
+    return nodes[0] if len(nodes) == 1 else nodes
 
 
 def _candidate_grid(
@@ -396,8 +415,8 @@ class FFGEFESelector:
     ``_efe_step`` on a flat model it ``vmap``s ``_ffg_efe_step`` over the candidate
     action grid, reading ``μ⁺``/``Σ⁺``
     from the backend's ``predicted_belief`` (structural couplings folded in) and aiming
-    the epistemic term at ``info_block`` — a joint-state block (a node's block via
-    ``backend.block`` for ``info_node``, or the whole state). One-step
+    the epistemic term at ``info_node``, one node or several, or the whole joint state
+    when it is ``None``. One-step
     (``horizon = 1``); the H-step FFG rollout is a later seam. Conforms to
     [`ActionSelector`][cpomdp.ActionSelector].
     """
@@ -408,7 +427,7 @@ class FFGEFESelector:
         *,
         action_bounds: tuple[float, float],
         n_candidates: int = _DEFAULT_N_CANDIDATES,
-        info_block: Sequence[int] | None = None,
+        info_node: SupportsIndex | Sequence[SupportsIndex] | None = None,
     ) -> None:
         """Front-load the candidate grid, after checking the backend and the target.
 
@@ -418,17 +437,19 @@ class FFGEFESelector:
                 scalars with ``lo < hi``.
             n_candidates: How many evenly spaced actions the grid holds, in total. At
                 least 2.
-            info_block: The joint-state indices the information term is about.
-                ``None`` takes the whole joint state, as ``info_node=None`` does on an
+            info_node: The node whose state the information term is about. ``None``
+                takes the whole joint state, as on an
                 [`ObservationGoal`][cpomdp.ObservationGoal].
 
         Raises:
+            TypeError: If ``info_node`` is not a node index, or a list, tuple,
+                range or 1-D array of them.
             InadmissiblePartitionError: If the backend's carry partition severs an
                 EFE-load-bearing edge.
             ValueError: If the backend has no control matrix or more than one action
                 dimension, if ``action_bounds`` is not two finite scalars in order,
-                if ``n_candidates`` is below 2, or if ``info_block`` is empty, repeats
-                an index or names one outside the joint state.
+                if ``n_candidates`` is below 2, or if ``info_node`` is empty, repeats a
+                node or names one outside the graph.
             TypeError: If ``n_candidates`` is not an integer.
         """
         _require_scalar_control(
@@ -437,17 +458,16 @@ class FFGEFESelector:
             "EnumeratedEFESearch.over_backend",
         )
         candidates = _candidate_grid(action_bounds, n_candidates)
-        if info_block is None:
-            info_block = range(backend.model.n_states)
-        # ADR-018 admissibility, and a block the epistemic can be aimed at. Enforced on
-        # the EFE paths; pure filtering on any partition is never blocked.
-        checked_info_block = _checked_info_block(backend, info_block)
+        # ADR-018 admissibility, enforced on the EFE paths. Pure filtering on any
+        # partition is never blocked.
+        info_block = _info_block_of(backend, info_node)
         # Front-load (ADR-002): the candidate grid, the info block, the constant C.
         # R is *not* front-loaded — it may be state-dependent, so it is read per
         # candidate at μ⁺ via ``model.observation_noise_at`` (issue #27). A fixed
         # sensor returns the same constant each time.
         self._backend = backend
-        self._info_block = checked_info_block
+        self._info_node = _stored_info_node(info_node)
+        self._info_block = info_block
         self._observation_matrix = backend.model.observation_matrix  # C (constant)
         self._candidates = candidates
         self._distance_from_zero = jnp.linalg.norm(candidates, axis=1)
@@ -516,11 +536,11 @@ class FFGEFESelector:
         return Warrant.CORROBORATED
 
     def __repr__(self) -> str:
-        """The horizon, the grid and the joint-state block the epistemic aims at."""
+        """The horizon, the grid and the node the epistemic aims at."""
         lo, hi = float(self._candidates[0, 0]), float(self._candidates[-1, 0])
         return (
             f"FFGEFESelector(horizon={self.horizon}, n_candidates={self.n_candidates}, "
-            f"action_bounds=({lo}, {hi}), info_block={list(self._info_block)})"
+            f"action_bounds=({lo}, {hi}), info_node={self._info_node})"
         )
 
 
@@ -609,9 +629,9 @@ class ObservationGoal:
     the Agent reads off the model (ADR-068). On a double integrator observed in
     position that is 2. ``agent.selector.horizon`` reads it back.
 
-    ``info_node`` optionally aims the epistemic term at a single latent *node* (info
-    gain about that node's marginal, the factored-EFE regime on a branching backend,
-    issue #26). ``None`` means whole-state info gain. The Agent dispatches an
+    ``info_node`` optionally aims the epistemic term at a latent *node*, or at several
+    as their joint marginal (the factored-EFE regime on a branching backend, issue
+    #26). ``None`` means whole-state info gain. The Agent dispatches an
     ObservationGoal to an EFESelector, or to an FFGEFESelector on a branching backend.
     Not a pytree. The Agent reads it once at construction and keeps its
     ``preference``, which it hands to the EFE functions.
@@ -622,7 +642,7 @@ class ObservationGoal:
     action_bounds: tuple[float, float]
     n_candidates: int
     horizon: int | None
-    info_node: int | None
+    info_node: int | tuple[int, ...] | None
 
     def __init__(
         self,
@@ -632,7 +652,7 @@ class ObservationGoal:
         precision: ArrayLike | None = None,
         n_candidates: int = _DEFAULT_N_CANDIDATES,
         horizon: int | None = None,
-        info_node: int | None = None,
+        info_node: SupportsIndex | Sequence[SupportsIndex] | None = None,
     ) -> None:
         target = jnp.asarray(target, dtype=float)
         object.__setattr__(self, "target", target)
@@ -647,9 +667,7 @@ class ObservationGoal:
         object.__setattr__(
             self, "horizon", None if horizon is None else _checked_horizon(horizon)
         )
-        object.__setattr__(
-            self, "info_node", None if info_node is None else int(info_node)
-        )
+        object.__setattr__(self, "info_node", _stored_info_node(info_node))
         self._validate()
 
     def _validate(self) -> None:
@@ -664,9 +682,16 @@ class ObservationGoal:
                 f"precision must be {m}x{m} to match the {m}-D observation goal, "
                 f"got shape {self.precision.shape}"
             )
-        if self.info_node is not None and self.info_node < 0:
+        nodes = (
+            ()
+            if self.info_node is None
+            else (self.info_node,)
+            if isinstance(self.info_node, int)
+            else self.info_node
+        )
+        if any(node < 0 for node in nodes):
             raise ValueError(
-                f"info_node must be a non-negative node index or None, "
+                f"info_node must be non-negative node indices or None, "
                 f"got {self.info_node}"
             )
 

@@ -19,7 +19,7 @@ from _support import unit_prior
 from cpomdp.agent import Agent
 from cpomdp.backends.base import InadmissiblePartitionError
 from cpomdp.backends.coupling import CouplingGraphBackend
-from cpomdp.efe import policy_efe_ffg, policy_efe_ffg_trace
+from cpomdp.efe import _policy_efe_ffg, policy_efe_ffg, policy_efe_ffg_trace
 from cpomdp.enumeration import ChunkedEFESearch, EnumeratedEFESearch, FiniteActionSet
 from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
 from cpomdp.ffg.graph import Coupling, CouplingGraph
@@ -77,9 +77,9 @@ def _backend(graph, partition=None):
     )
 
 
-def _selector(backend, info_block=(0, 1, 2)):
+def _selector(backend, info_node=None):
     return FFGEFESelector(
-        backend, info_block=info_block, n_candidates=11, action_bounds=(-2.0, 2.0)
+        backend, info_node=info_node, n_candidates=11, action_bounds=(-2.0, 2.0)
     )
 
 
@@ -162,7 +162,7 @@ def test_searches_reject_partition_severing_efe_edge():
     backend = _backend(_hub_graph(), partition=_SEVERING)
     for search in (EnumeratedEFESearch, ChunkedEFESearch):
         with pytest.raises(InadmissiblePartitionError, match="sever"):
-            search.over_backend(backend, _actions(), info_block=range(3), horizon=2)
+            search.over_backend(backend, _actions(), horizon=2)
 
 
 def test_rollouts_reject_partition_severing_efe_edge():
@@ -171,18 +171,97 @@ def test_rollouts_reject_partition_severing_efe_edge():
     preference = Preference(jnp.zeros(2))
     for rollout in (policy_efe_ffg, policy_efe_ffg_trace):
         with pytest.raises(InadmissiblePartitionError, match="sever"):
-            rollout(backend, belief, policy, preference, info_block=range(3))
+            rollout(backend, belief, policy, preference)
+
+
+def test_info_node_takes_several_nodes_as_their_joint_marginal():
+    # Nodes 0 and 2 are scored as one target, as their indices were before.
+    backend = _backend(_hub_graph())
+    belief, policy = unit_prior(_hub_graph()), jnp.array([[0.3], [-0.2]])
+    preference = Preference(jnp.zeros(2))
+    by_nodes = policy_efe_ffg(backend, belief, policy, preference, info_node=[0, 2])
+    by_indices = _policy_efe_ffg(
+        backend,
+        belief,
+        policy,
+        preference,
+        (*backend.block(0), *backend.block(2)),
+    )
+    np.testing.assert_array_equal(by_nodes.epistemic, by_indices.epistemic)
 
 
 @pytest.mark.parametrize(
-    ("info_block", "match"),
-    [([], "empty"), ([0, 0], "repeats"), ([99], "outside"), ([-1], "outside")],
+    ("info_node", "match"), [([], "names no node"), ([0, 0], "repeats")]
 )
-def test_info_block_must_name_distinct_joint_indices(info_block, match):
+def test_info_node_refuses_an_empty_or_repeated_list(info_node, match):
     backend = _backend(_hub_graph())
     with pytest.raises(ValueError, match=match):
+        _selector(backend, info_node)
+
+
+def test_info_node_takes_a_numpy_integer():
+    # np.argmax and np.arange hand back NumPy integers, not ints.
+    backend = _backend(_hub_graph())
+    belief, policy = unit_prior(_hub_graph()), jnp.array([[0.3], [-0.2]])
+    preference = Preference(jnp.zeros(2))
+    np.testing.assert_array_equal(
+        policy_efe_ffg(backend, belief, policy, preference, info_node=np.int64(2)).g,
+        policy_efe_ffg(backend, belief, policy, preference, info_node=2).g,
+    )
+    goal = ObservationGoal([0.0, 0.0], action_bounds=(-1.0, 1.0), info_node=np.int64(2))
+    assert goal.info_node == 2
+
+
+def test_one_node_is_stored_as_an_int_however_it_is_written():
+    # 2 and [2] name the same target, so the goal holds one form and compares equal.
+    one = ObservationGoal([0.0, 0.0], action_bounds=(-1.0, 1.0), info_node=2)
+    listed = ObservationGoal([0.0, 0.0], action_bounds=(-1.0, 1.0), info_node=[2])
+    assert listed.info_node == one.info_node == 2
+    several = ObservationGoal(
+        [0.0, 0.0], action_bounds=(-1.0, 1.0), info_node=np.array([0, 2])
+    )
+    assert several.info_node == (0, 2)
+
+
+def test_an_empty_node_list_is_refused_when_the_goal_is_built():
+    with pytest.raises(ValueError, match="names no node"):
+        ObservationGoal([0.0, 0.0], action_bounds=(-1.0, 1.0), info_node=[])
+
+
+@pytest.mark.parametrize("info_node", [b"\x01\x02", bytearray(b"\x01"), "1", {1}])
+def test_info_node_refuses_a_container_that_is_not_a_node_list(info_node):
+    # bytes iterate as ints and would aim at nodes the caller never wrote.
+    with pytest.raises(TypeError, match="info_node"):
+        ObservationGoal([0.0, 0.0], action_bounds=(-1.0, 1.0), info_node=info_node)
+    with pytest.raises(TypeError, match="info_node"):
+        _selector(_backend(_hub_graph()), info_node)
+
+
+def test_a_bad_info_node_is_refused_before_the_partition_is_checked():
+    severed = _backend(_hub_graph(), partition=[[0, 2], [1]])
+    with pytest.raises(TypeError, match="info_node"):
+        _selector(severed, b"\x01")
+
+
+def test_info_node_takes_a_range():
+    goal = ObservationGoal([0.0, 0.0], action_bounds=(-1.0, 1.0), info_node=range(2))
+    assert goal.info_node == (0, 1)
+
+
+def test_info_node_refuses_a_bool():
+    # True is an int to Python and would aim at node 1 without a word.
+    with pytest.raises(TypeError, match="info_node"):
+        ObservationGoal([0.0, 0.0], action_bounds=(-1.0, 1.0), info_node=True)
+
+
+@pytest.mark.parametrize("info_node", [99, -1, 3])
+def test_info_node_must_name_a_node_of_the_graph(info_node):
+    # JAX clamps an out-of-range gather, so a stray target would score another node.
+    backend = _backend(_hub_graph())
+    match = f"info_node {info_node}"
+    with pytest.raises(ValueError, match=match):
         EnumeratedEFESearch.over_backend(
-            backend, _actions(), info_block=info_block, horizon=2
+            backend, _actions(), info_node=info_node, horizon=2
         )
     with pytest.raises(ValueError, match=match):
         policy_efe_ffg(
@@ -190,7 +269,7 @@ def test_info_block_must_name_distinct_joint_indices(info_block, match):
             unit_prior(_hub_graph()),
             jnp.zeros((2, 1)),
             Preference(jnp.zeros(2)),
-            info_block=info_block,
+            info_node=info_node,
         )
     with pytest.raises(ValueError, match=match):
-        _selector(backend, info_block)
+        _selector(backend, info_node)

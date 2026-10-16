@@ -19,9 +19,9 @@ The statistic is defined before the sweep measures H* (see warrant_numbers.md an
 the H-sweep harness does the measuring.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, SupportsIndex
 
 import jax.numpy as jnp
 from jaxtyping import Array, Float64
@@ -62,16 +62,15 @@ def crossover_statistic(
     reach: Float64[Array, "H p"],
     preference: "Preference",
     *,
-    info_block,
+    info_node: SupportsIndex | Sequence[SupportsIndex] | None = None,
 ) -> CrossoverStatistic:
     """The crossover contrast between two equal-length policies at their horizon.
 
     Runs the FFG rollout (``policy_efe_ffg``) for ``walk`` and ``reach``, then
     contrasts the summed components: ``Δε = ε(walk) − ε(reach)``,
     ``Δc = c(walk) − c(reach)``, ``ΔG = Δc − Δε``. The epistemic reading follows
-    ``info_block`` - a node's block (via ``backend.block``) for the node-restricted
-    pull,
-    or the whole state.
+    ``info_node``, a node for the node-restricted pull, or the whole state when it is
+    ``None``.
 
     Raises:
         ValueError: If ``walk`` and ``reach`` have different horizons.
@@ -84,10 +83,8 @@ def crossover_statistic(
             f"{walk.shape[0]} and {reach.shape[0]}"
         )
 
-    walk_efe = policy_efe_ffg(backend, belief, walk, preference, info_block=info_block)
-    reach_efe = policy_efe_ffg(
-        backend, belief, reach, preference, info_block=info_block
-    )
+    walk_efe = policy_efe_ffg(backend, belief, walk, preference, info_node=info_node)
+    reach_efe = policy_efe_ffg(backend, belief, reach, preference, info_node=info_node)
 
     delta_epsilon = walk_efe.epistemic - reach_efe.epistemic
     delta_c = walk_efe.pragmatic - reach_efe.pragmatic
@@ -103,7 +100,7 @@ def crossover_horizon(
     reach_of: Callable[[int], Float64[Array, "H p"]],
     preference: "Preference",
     *,
-    info_block,
+    info_node: SupportsIndex | Sequence[SupportsIndex] | None = None,
     max_horizon: int,
 ) -> int | None:
     """H* — the first horizon at which the walk overtakes the reach.
@@ -121,7 +118,7 @@ def crossover_horizon(
             walk_of(horizon),
             reach_of(horizon),
             preference,
-            info_block=info_block,
+            info_node=info_node,
         )
         if bool(stat.delta_g < 0):
             return horizon

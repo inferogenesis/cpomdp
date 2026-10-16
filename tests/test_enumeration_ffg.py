@@ -105,9 +105,7 @@ class TestOverBackendReducesToFlat:
         action_set, belief, pref = _action_set(), _single_belief(), _pref()
         for h in (2, 3):
             flat = EnumeratedEFESearch(model, action_set, horizon=h)
-            ffg = EnumeratedEFESearch.over_backend(
-                backend, action_set, info_block=range(2), horizon=h
-            )
+            ffg = EnumeratedEFESearch.over_backend(backend, action_set, horizon=h)
             r_flat = flat.evaluate(belief, pref)
             r_ffg = ffg.evaluate(belief, pref)
             np.testing.assert_allclose(
@@ -126,9 +124,7 @@ class TestOverBackendReducesToFlat:
 class TestOverBackendSharedAccounting:
     def test_certificate_cost_and_warrant(self):
         backend, _ = _single_node_pair(state_dependent=False)
-        ffg = EnumeratedEFESearch.over_backend(
-            backend, _action_set(), info_block=range(2), horizon=2
-        )
+        ffg = EnumeratedEFESearch.over_backend(backend, _action_set(), horizon=2)
         assert ffg.warrant is Warrant.PROVED
         assert ffg.evaluate(_single_belief(), _pref()).certificate.complete
         assert ffg.n_policies == 9  # 3^2
@@ -138,16 +134,14 @@ class TestOverBackendSharedAccounting:
         backend, _ = _single_node_pair(state_dependent=False)
         with np.testing.assert_raises(PolicyBudgetError):
             EnumeratedEFESearch.over_backend(
-                backend, _action_set(), info_block=range(2), horizon=2, max_policies=8
+                backend, _action_set(), horizon=2, max_policies=8
             )
 
     def test_rejects_an_action_set_of_other_n_controls(self):
         backend, _ = _single_node_pair(state_dependent=False)  # p = 1
         wrong = FiniteActionSet([[-1.0, 0.0], [1.0, 0.0]], version="v1")  # p = 2
         with np.testing.assert_raises(ValueError):
-            EnumeratedEFESearch.over_backend(
-                backend, wrong, info_block=range(2), horizon=2
-            )
+            EnumeratedEFESearch.over_backend(backend, wrong, horizon=2)
 
 
 # --- it runs on the coupled tree, where the flat search cannot ---------------------
@@ -156,9 +150,9 @@ class TestOverBackendOnCoupledTree:
         backend = _coupled_backend()
         belief = Belief(mean=[0.2, -0.1], cov=[[0.7, 0.1], [0.1, 0.4]])
         pref = Preference(target=[0.5], precision=[[2.0]])
-        info_block = tuple(backend.block(0))
+        info_node = 0
         ffg = EnumeratedEFESearch.over_backend(
-            backend, _action_set(), info_block=info_block, horizon=2
+            backend, _action_set(), info_node=info_node, horizon=2
         )
         result = ffg.evaluate(belief, pref)
         assert result.best_policy.shape == (2, 1)

@@ -383,8 +383,8 @@ certainty equivalence is optimal, and no use of the readings beats it.
   searched, shape `(n_candidates, p)`, so an example plotting the scores reads it rather
   than rebuilding it. `FFGEFESelector.warrant` reads `CORROBORATED`, as
   `EFESelector.warrant` does. Both default to 21 candidates, as `ObservationGoal` does,
-  and `FFGEFESelector` aims at the whole joint state when `info_block` is left out, as
-  `info_node=None` does on the goal. `n_candidates` is the grid's total count
+  and `FFGEFESelector` aims at the whole joint state when `info_node` is left out, as
+  it does on the goal. `n_candidates` is the grid's total count
   everywhere. `ObservationGoal` called it a resolution, which reads as per axis.
 
 ### Fixed
@@ -528,11 +528,12 @@ certainty equivalence is optimal, and no use of the readings beats it.
 - The graph EFE rollouts and searches skipped the checks `FFGEFESelector` makes on its
   target. `policy_efe_ffg`, `policy_efe_ffg_trace`, the crossover statistic and both
   searches' `over_backend` scored on a carry partition that severs an EFE-load-bearing
-  edge, and the searches certified the argmin `PROVED`. None of them checked
-  `info_block`. JAX clamps an out-of-range gather, so index 99 on a 3-state joint scored
-  as index 2. An empty block gave a zero epistemic and a repeated one gave NaN. All of
-  them now refuse both through one check. A search makes it once at construction, so
-  scoring each policy costs nothing extra.
+  edge, and the searches certified the argmin `PROVED`. None of them checked the
+  joint-state indices they were aimed at. JAX clamps an out-of-range gather, so index 99
+  on a 3-state joint scored as index 2. An empty block gave a zero epistemic and a
+  repeated one gave NaN. All of them now refuse a severing partition, a node outside the
+  graph and an empty or repeated node list through one check. A search makes it once at
+  construction, so scoring each policy costs nothing extra.
 - `FiniteActionSet` refuses a non-finite action and names its row. A NaN action scored
   NaN on every policy that took it, and a search over the set still certified it
   `PROVED`. A repeated action is still accepted and counts toward `|A|`.
@@ -820,17 +821,16 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `FiniteActionSet.n_controls`, the names `LinearGaussianModel` gives the same two
   dimensions. In NumPy and JAX `ndim` is an array's rank. A belief over two states read
   `prior.ndim == 2` beside `prior.mean.ndim == 1`.
-- **Breaking:** the epistemic term's aim is named `info_node` and `info_block`, not
-  `target`. `target` carried two unrelated types on exported API: a desired value
-  (`Float64[Array, "n"]`) on `StateGoal` and `ObservationGoal`, and the joint-state
-  indices the epistemic term reads (`Sequence[int]`) on `FFGEFESelector`,
-  `policy_efe_ffg` and both `over_backend` class methods. A reader who learned the first
-  from the Goal classes and passed a goal vector to the FFG API got `G = nan` with no
-  raise, and `_argmin` maps nan to `+inf`, so a different action was selected in silence.
-  The two are one address at two resolutions: `info_node` names a graph node,
-  `backend.block(node)` returns the `info_block` of joint-state coordinates it occupies.
-  `node` and `block` are the words the rest of the tree already uses for those two kinds.
-  `ObservationGoal.info_target` becomes `info_node`. `StateGoal.target` and
+- **Breaking:** the epistemic term's aim is `info_node` on every graph entry point:
+  `ObservationGoal`, `FFGEFESelector`, `policy_efe_ffg`, `policy_efe_ffg_trace`, both
+  `over_backend` class methods and the crossover functions. `None`, the default, is the
+  whole joint state, and a sequence of nodes aims at their joint marginal. The graph
+  APIs took `target`, a name the goals use for a desired value, so a goal vector passed
+  there gave `G = nan` and a different action with no raise. They then took
+  `info_block`, the joint-state indices, while the goal took a node, with a different
+  default on each. A caller converted with `backend.block(node)` and passed the backend
+  twice, and on scalar nodes `info_block=(0,)` read as node 0 until a node grew
+  (ADR-090). `ObservationGoal.info_target` becomes `info_node`. `StateGoal.target` and
   `ObservationGoal.target` keep the name, which now has one meaning.
 - **Breaking:** `expected_free_energy`, `policy_efe` and `policy_efe_ffg` return an
   `EFEResult` with fields `g`, `pragmatic` and `epistemic`. They returned

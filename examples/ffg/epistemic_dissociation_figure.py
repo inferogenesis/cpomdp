@@ -200,7 +200,7 @@ def build_agent(backend: CouplingGraphBackend) -> Agent:
     )
     selector = FFGEFESelector(
         backend,
-        info_block=backend.block(CONTEXT),
+        info_node=CONTEXT,
         n_candidates=GRID_N,
         action_bounds=ACTION_BOUNDS,
     )

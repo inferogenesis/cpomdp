@@ -216,23 +216,17 @@ def _graph_efe_selector(
     """The EFE selector for an ObservationGoal on a branching backend (issue #26).
 
     ``info_node`` names the latent *node* whose marginal info gain is the
-    epistemic value. ``None`` aims at the whole joint state. Translate that node to
-    its joint-state block and hand it to the ``FFGEFESelector``.
+    epistemic value. ``None`` aims at the whole joint state. The selector resolves
+    the node to its joint-state block.
     """
     if objective.horizon not in (None, 1):
         raise ValueError(
             "H-step EFE on the FFG backend is deferred, so ObservationGoal.horizon "
             "must be 1 with a CouplingGraphBackend."
         )
-    info_block = None  # the whole joint state
-    if objective.info_node is not None:
-        try:
-            info_block = backend.block(objective.info_node)
-        except ValueError as error:
-            raise ValueError(f"info_node {objective.info_node}: {error}") from error
     return FFGEFESelector(
         backend,
-        info_block=info_block,
+        info_node=objective.info_node,
         n_candidates=objective.n_candidates,
         action_bounds=objective.action_bounds,
     )

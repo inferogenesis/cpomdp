@@ -82,7 +82,6 @@ def test_ffg_selector_reduces_to_efe_selector_single_node():
 
     ffg = FFGEFESelector(
         backend,
-        info_block=range(2),
         n_candidates=n_candidates,
         action_bounds=action_bounds,
     )
@@ -139,9 +138,7 @@ def test_selector_refuses_a_backend_it_cannot_search(control_matrix, match):
         control_matrix=control_matrix,
     )
     with pytest.raises(ValueError, match=match):
-        FFGEFESelector(
-            backend, info_block=range(2), n_candidates=5, action_bounds=(-1.0, 1.0)
-        )
+        FFGEFESelector(backend, n_candidates=5, action_bounds=(-1.0, 1.0))
 
 
 class TestSameQuestionsAsEFESelector:
@@ -152,7 +149,7 @@ class TestSameQuestionsAsEFESelector:
         # state as info_node=None means on the goal.
         selector = FFGEFESelector(_two_node_backend(), action_bounds=(-2.0, 2.0))
         assert selector.n_candidates == 21
-        assert repr(selector).endswith("info_block=[0, 1])")
+        assert repr(selector).endswith("info_node=None)")
 
     def test_reports_a_sampled_warrant(self):
         selector = FFGEFESelector(_two_node_backend(), action_bounds=(-2.0, 2.0))
@@ -195,7 +192,7 @@ def test_an_observation_goal_on_fixed_graph_sensors_is_refused():
     with pytest.raises(ValueError, match="both noises are fixed"):
         Agent.from_backend(backend, ObservationGoal([0.5], action_bounds=(-2.0, 2.0)))
     selector = FFGEFESelector(
-        backend, info_block=[0], n_candidates=21, action_bounds=(-2.0, 2.0)
+        backend, info_node=0, n_candidates=21, action_bounds=(-2.0, 2.0)
     )
     agent = Agent.from_backend(backend, Preference([0.5]), selector=selector)
     assert agent.selector is selector
@@ -208,11 +205,11 @@ def test_the_graph_selector_prints_its_horizon_and_target():
     )
     assert repr(agent.selector) == (
         "FFGEFESelector(horizon=1, n_candidates=21, action_bounds=(-2.0, 2.0), "
-        "info_block=[0])"
+        "info_node=0)"
     )
 
 
-def test_agent_ffg_whole_state_when_info_target_none():
+def test_agent_ffg_whole_state_when_info_node_is_none():
     # info_node=None on the FFG backend still routes to the FFG selector, aimed at the
     # whole state (the default epistemic).
     backend = _two_node_rx_backend()
@@ -221,7 +218,7 @@ def test_agent_ffg_whole_state_when_info_target_none():
         ObservationGoal([0.5], action_bounds=(-2.0, 2.0)),  # no info_node
     )
     assert isinstance(agent.selector, FFGEFESelector)
-    assert repr(agent.selector).endswith("info_block=[0, 1])")  # whole joint state
+    assert repr(agent.selector).endswith("info_node=None)")  # whole joint state
 
 
 def test_an_info_node_outside_the_graph_is_refused_by_the_backend():
@@ -234,7 +231,7 @@ def test_an_info_node_outside_the_graph_is_refused_by_the_backend():
         )
 
 
-def test_info_target_on_flat_backend_raises():
+def test_info_node_on_a_flat_backend_raises():
     # info_node aims at an FFG node; it is meaningless without a branching backend.
     model = LinearGaussianModel(
         dynamics_matrix=[[1.0]],
@@ -287,7 +284,6 @@ def test_ffg_agent_matches_kalman_efe_agent_end_to_end():
         Preference([0.5]),
         selector=FFGEFESelector(
             backend,
-            info_block=range(2),
             n_candidates=n_candidates,
             action_bounds=action_bounds,
         ),
@@ -431,7 +427,6 @@ class TestStateDependentSelection:
         action_bounds, n_candidates = (-2.0, 2.0), 21
         ffg = FFGEFESelector(
             rx,
-            info_block=range(2),
             n_candidates=n_candidates,
             action_bounds=action_bounds,
         )
@@ -479,7 +474,6 @@ class TestStateDependentSelection:
         )  # the epistemic genuinely moved the decision, away from the pragmatic goal
         selector = FFGEFESelector(
             rx,
-            info_block=range(1),
             n_candidates=n_candidates,
             action_bounds=action_bounds,
         )
@@ -514,9 +508,7 @@ def test_the_graph_selector_refuses_a_goal_in_place_of_a_preference():
     from types import SimpleNamespace
 
     backend = _two_node_backend()
-    selector = FFGEFESelector(
-        backend, info_block=range(2), n_candidates=5, action_bounds=(-2.0, 2.0)
-    )
+    selector = FFGEFESelector(backend, n_candidates=5, action_bounds=(-2.0, 2.0))
     stand_in = SimpleNamespace(goal=jnp.array([0.5]), precision=jnp.eye(1))
     with pytest.raises(TypeError, match="Preference"):
         selector.select(backend.model.prior, stand_in)  # ty: ignore[invalid-argument-type]
