@@ -39,10 +39,8 @@ class CanonicalGaussian:
       point something reads its moment form).
     - ``potential`` -- h = Σ⁻¹μ. A 1-D vector of length n.
 
-    Construct directly from canonical parameters. There is no
-    ``from_moment``/moment-form constructor in v0.4 (open question, parked in
-    the build plan) — moment form is purely a readout view via
-    ``to_moment``.
+    Built from canonical parameters only. Moment form is a readout view, reached
+    through ``to_moment``.
     """
 
     precision: Float64[Array, "n n"]
@@ -150,12 +148,10 @@ class CanonicalGaussian:
           name); the information-filter and message-passing literature call this
           exact vector the *information vector*. One quantity, two names.
 
-        A *view*, computed on demand — not the storage form. The precision must
-        be positive-**definite** here (something is actually reading a combined
-        belief); a singular Λ has no moment form and must raise ``ValueError``
-        rather than return inf/NaN — use ``validate_covariance(...,
-        require_definite=True)`` (its message says "positive-definite"). Prefer a
-        single linear solve over forming Λ⁻¹ explicitly, and stay jit/grad-clean.
+        A *view*, computed on demand. The storage form stays canonical. The
+        precision must be positive-**definite** here, since something is reading a
+        combined belief. A singular or indefinite Λ has no moment form, so it raises.
+        The mean is a linear solve against Λ and the covariance is its inverse.
 
         Returns:
             ``(mean, cov)``, matching the signature

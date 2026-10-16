@@ -451,6 +451,10 @@ certainty equivalence is optimal, and no use of the readings beats it.
   at construction. Assigning `agent.belief` now requires a `Belief` over the model's
   state. A list was accepted and failed on the next step. `InferenceBackend.model` is
   declared a read-only property, which a plain attribute still satisfies.
+- **Breaking:** `CouplingGraph.root`, `dims`, `couplings` and `observations` are
+  read-only, and `observations` is a read-only mapping. Construction is the only place
+  the wiring is checked. A sensor added afterwards to node 7 of a two-node graph skipped
+  the range check and reached the backend. Build a new graph instead.
 - **Breaking:** an `ObservationGoal`'s `horizon` defaults to `None`, and the `Agent` reads
   it off the model: the shortest horizon at which the target moves the expected free
   energy, found by differentiating the candidate grid's scores with respect to the
@@ -469,6 +473,13 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `cpomdp.backends.base` and `cpomdp.backends.rxinfer`. The first is the shape check the
   built-in backends share and the second is the RxInfer test oracle, and a cpomdp user
   calls neither (ADR-069). `import cpomdp` no longer leaves `cpomdp.jax` behind.
+- **Breaking:** the graph model's message passing is private. `GaussianTransition.predict`,
+  `GaussianCoupling.message_to_parent` and `message_to_child`, the graph observation
+  factors' `message` and `CouplingGraph.infer_all` take a leading underscore, and
+  `cpomdp.ffg.message` is `cpomdp.ffg._message`. v0.4.4 published them on the top-level
+  construction classes, typed on a `CanonicalGaussian` no page documents. They are the hot
+  path the energy work will change. A user builds the graph and runs it through
+  `CouplingGraphBackend` or `CouplingGraph.infer`, and neither needs them (ADR-069).
 - **Breaking:** a *fixed* `observation_model` or `dynamics_noise_model` must now restate
   the model's `observation_noise` / `dynamics_noise` exactly, and a sensor's linearized
   observation matrix must equal `observation_matrix`. `LinearGaussianModel` previously

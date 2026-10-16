@@ -4,7 +4,7 @@ The chain (``test_ffg_chain.py``) is the degenerate FFG — every node has degre
 The shared ``CheA`` network ADR-012 targets has a node of degree > 2: one latent
 feeding two branches. This file pins the first genuinely-branching inference — the
 marginal at a shared parent computed by *combining* the upward message from each
-branch (``GaussianCoupling.message_to_parent``) with the prior. The combination is
+branch (``GaussianCoupling._message_to_parent``) with the prior. The combination is
 the factor product ``CanonicalGaussian.__add__``; summing three messages at one node
 is the operation a chain never needs.
 
@@ -14,15 +14,18 @@ The two children are correlated *through* the shared parent (off-diagonal
 ``W₁ P₀ W₂ᵀ`` blocks), which is exactly the structure message passing has to respect.
 """
 
+import copy
+import pickle
+
 import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
 
 from cpomdp import KalmanBackend, LinearGaussianModel
+from cpomdp.ffg._message import CanonicalGaussian
 from cpomdp.ffg.factors.linear_gaussian import GaussianCoupling, GaussianObservation
 from cpomdp.ffg.graph import Coupling, CouplingGraph
-from cpomdp.ffg.message import CanonicalGaussian
 from cpomdp.types import Belief
 
 
@@ -54,11 +57,11 @@ class TestSharedNodeTwoBranches:
 
         # --- FFG: combine the prior with each branch's upward message ---
         prior = _belief_as_canonical(m0, P0)
-        msg1 = GaussianCoupling(W1, coupling_noise=Q1).message_to_parent(
-            GaussianObservation(np.eye(c1), observation_noise=R1).message(y1)
+        msg1 = GaussianCoupling(W1, coupling_noise=Q1)._message_to_parent(
+            GaussianObservation(np.eye(c1), observation_noise=R1)._message(y1)
         )
-        msg2 = GaussianCoupling(W2, coupling_noise=Q2).message_to_parent(
-            GaussianObservation(np.eye(c2), observation_noise=R2).message(y2)
+        msg2 = GaussianCoupling(W2, coupling_noise=Q2)._message_to_parent(
+            GaussianObservation(np.eye(c2), observation_noise=R2)._message(y2)
         )
         out_mean, out_cov = (prior + msg1 + msg2).to_moment()
 
@@ -98,11 +101,11 @@ class TestSharedNodeTwoBranches:
         y1, y2 = rng.standard_normal(1), rng.standard_normal(1)
 
         prior = _belief_as_canonical(m0, P0)
-        msg1 = GaussianCoupling(W1, coupling_noise=Q1).message_to_parent(
-            GaussianObservation(np.eye(1), observation_noise=R1).message(y1)
+        msg1 = GaussianCoupling(W1, coupling_noise=Q1)._message_to_parent(
+            GaussianObservation(np.eye(1), observation_noise=R1)._message(y1)
         )
-        msg2 = GaussianCoupling(W2, coupling_noise=Q2).message_to_parent(
-            GaussianObservation(np.eye(1), observation_noise=R2).message(y2)
+        msg2 = GaussianCoupling(W2, coupling_noise=Q2)._message_to_parent(
+            GaussianObservation(np.eye(1), observation_noise=R2)._message(y2)
         )
         a_mean, a_cov = (prior + msg1 + msg2).to_moment()
         b_mean, b_cov = (msg2 + (msg1 + prior)).to_moment()
@@ -364,7 +367,7 @@ class TestCouplingGraphInfer:
         )
 
 
-# --- CouplingGraph.infer_all: collect + distribute vs the dense joint solve -------
+# --- CouplingGraph._infer_all: collect + distribute vs the dense joint solve -------
 
 
 def _joint_all_marginals_oracle(dims, edges, seeds):
@@ -399,7 +402,7 @@ def _joint_all_marginals_oracle(dims, edges, seeds):
 
 
 def _check_infer_all(dims, edges, seeds, atol=1e-8):
-    """Build the graph, run infer_all, check *every* node's marginal vs the oracle."""
+    """Build the graph, run _infer_all, check *every* node's marginal vs the oracle."""
     couplings = tuple(
         Coupling(parent, child, GaussianCoupling(w, coupling_noise=q), 1.0)
         for parent, child, w, q in edges
@@ -408,7 +411,7 @@ def _check_infer_all(dims, edges, seeds, atol=1e-8):
     seed_msgs = {
         n: CanonicalGaussian(precision, h) for n, (precision, h) in seeds.items()
     }
-    marginals = graph.infer_all(seed_msgs)
+    marginals = graph._infer_all(seed_msgs)
     oracle = _joint_all_marginals_oracle(dims, edges, seeds)
     for node in range(len(dims)):
         out_mean, out_cov = marginals[node].to_moment()
@@ -417,7 +420,7 @@ def _check_infer_all(dims, edges, seeds, atol=1e-8):
 
 
 class TestCouplingGraphInferAll:
-    """The distribute pass: infer_all returns *every* node's marginal (collect alone
+    """The distribute pass: _infer_all returns *every* node's marginal (collect alone
     gives only the root), matching an independent dense joint solve.
     """
 
@@ -531,6 +534,45 @@ class TestCouplingGraphValidation:
                 (Coupling(0, 1, self._w(1, 2), 1.0),),
                 {0: GaussianObservation(np.eye(1), observation_noise=np.eye(1))},
             )
+
+    @pytest.mark.parametrize("field", ["root", "dims", "couplings", "observations"])
+    def test_wiring_cannot_be_reassigned_after_validation(self, field):
+        # Construction is the only place the wiring is checked, so a field written
+        # afterwards would reach the backend unvalidated.
+        graph = CouplingGraph(
+            0,
+            (1, 1),
+            (Coupling(0, 1, self._w(1, 1), 1.0),),
+            {1: GaussianObservation(np.eye(1), observation_noise=np.eye(1))},
+        )
+        with pytest.raises(AttributeError):
+            setattr(graph, field, getattr(graph, field))
+
+    def test_observations_cannot_gain_a_sensor_after_validation(self):
+        # A sensor added to node 7 of a two-node graph would skip the range check.
+        sensor = GaussianObservation(np.eye(1), observation_noise=np.eye(1))
+        graph = CouplingGraph(
+            0, (1, 1), (Coupling(0, 1, self._w(1, 1), 1.0),), {1: sensor}
+        )
+        with pytest.raises(TypeError):
+            # Writing to it is the test, so ty's refusal is expected.
+            graph.observations[7] = sensor  # ty: ignore[invalid-assignment]
+
+    @pytest.mark.parametrize(
+        "round_trip",
+        [copy.deepcopy, lambda graph: pickle.loads(pickle.dumps(graph))],
+        ids=["deepcopy", "pickle"],
+    )
+    def test_survives_a_copy_and_a_pickle(self, round_trip):
+        # A simulation forks with deepcopy and reaches a worker process by pickle.
+        sensor = GaussianObservation(np.eye(1), observation_noise=np.eye(1))
+        graph = CouplingGraph(
+            0, (1, 1), (Coupling(0, 1, self._w(1, 1), 1.0),), {1: sensor}
+        )
+        copied = round_trip(graph)
+        assert sorted(copied.observations) == [1]
+        with pytest.raises(TypeError):
+            copied.observations[7] = sensor
 
 
 # --- CouplingGraph.infer vs the normal backend on the hand-flattened joint ---
