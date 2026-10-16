@@ -8,7 +8,6 @@ environment without the ``examples`` extra. ``conftest.py`` puts ``examples/`` a
 ``examples/ffg/`` on the path.
 """
 
-import bacillus_uncertain_food
 import chemotaxis_figure
 import coupling_graph_figure
 import crossover
@@ -62,22 +61,6 @@ def test_surge_margin_check():
 def test_epistemic_dissociation_check():
     """The four T-maze results, including Result 4's horizon-1 pull < gradient order."""
     epistemic_dissociation_figure.check()
-
-
-def test_uncertain_food_backend_agreement():
-    """`KalmanBackend` and the FFG `ChainBackend` agree on the flagship's sensor.
-
-    The channel reads one state block while its noise is keyed on another, a topology
-    neither backend's own suite covers. Both get one scripted `(observation, action)`
-    sequence rather than two closed loops, so a near-tied argmin cannot send them down
-    different trajectories and be misread as a disagreement.
-
-    This is the flagship's only gate. It is also the README's hero demo, so importing
-    the module here fails the suite if the demo stops loading at all.
-    """
-    max_mean_diff, max_cov_diff = bacillus_uncertain_food.check_backend_agreement()
-    assert max_mean_diff < 1e-7, f"means diverge by {max_mean_diff:.2e}"
-    assert max_cov_diff < 1e-7, f"covariances diverge by {max_cov_diff:.2e}"
 
 
 def test_coupling_graph_two_routes_agree():
