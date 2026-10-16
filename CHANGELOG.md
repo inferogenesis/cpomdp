@@ -360,7 +360,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
 - No page said which public names survive `jit`, `vmap` and `grad`, and
   `KalmanBackend.infer_states` called itself an eager orchestrator while it traces. The
   backends page now carries one row per public name, and
-  `tests/test_transform_table.py` runs every row. The README and `InferenceBackend`
+  `tests/test_transform_table.py` checks every row but RxInfer's under `jit`, `vmap` and `grad`. The README and `InferenceBackend`
   point at it.
 - `KalmanBackend`, its API page and the README called the filter exact for any
   linear-Gaussian model, and said `RxInferBackend` re-derives the same answers. Under a
