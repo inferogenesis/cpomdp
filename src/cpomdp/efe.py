@@ -524,7 +524,7 @@ def _policy_efe_ffg(
     preference: "Preference",
     info_block: tuple[int, ...],
 ) -> EFEResult:
-    """``policy_efe_ffg`` on an ``info_block`` already checked, for the searches.
+    """``policy_efe_ffg`` on an ``info_block`` already resolved, for the searches.
 
     A search checks its target once at construction and then scores every policy in
     the set, so the per-policy call skips the host-side check.
