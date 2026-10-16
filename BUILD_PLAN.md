@@ -285,9 +285,9 @@ Do this first. Everything downstream self-labels off it, and a registered number
 on the audit half.
 
 - [x] Promote `SearchWarrant` to a shared `Warrant` enum (now in `warrantlib`) and add
-      **`CERTIFIED`** for Prover 3 · validated. Keep `SearchWarrant` as an alias so
-      `EFESelector.warrant` and `EnumeratedEfeSearch.warrant` keep their labels
-      unchanged. Without `CERTIFIED`, every reference-filter number either borrows
+      **`CERTIFIED`** for Prover 3 · validated. `SearchWarrant` stayed as an alias
+      until v0.5.0 removed it (ADR-071), so `EFESelector.warrant` and
+      `EnumeratedEfeSearch.warrant` kept their labels. Without `CERTIFIED`, every reference-filter number either borrows
       `PROVED`, which overclaims, or reads `CORROBORATED`, which throws away the bound
       GATE-D4 exists to buy.
 - [x] Carry `(warrant, outcome, tier)` on **checks**, not only on selectors.

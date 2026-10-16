@@ -4644,6 +4644,8 @@ versions break before 1.0, as cpomdp's do.
 front-loaded path and accepts its ceiling", for the ceiling. The front-loaded path now
 refuses a set past a budget instead. ADR-030's "emits a `CompletenessCertificate` at
 construction", for where the certificate is read. The check still runs at construction.
+ADR-035's decision that `SearchWarrant` stays as an alias of `Warrant`. The alias is
+removed, so the type has one name.
 **Extends:** ADR-031 (the search family), ADR-034 (the injected scorer), ADR-036 (the
 chunked path).
 **Phase:** v0.5.0, the public API review before release

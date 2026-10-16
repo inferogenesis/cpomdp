@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING, Any, NamedTuple, Protocol
 import jax
 import jax.numpy as jnp
 import numpy as np
+from jax.errors import ConcretizationTypeError, TracerArrayConversionError
 from jaxtyping import Array, Float64, Int
 from numpy.typing import ArrayLike
 
@@ -122,7 +123,12 @@ class FiniteActionSet:
                 f"a FiniteActionSet needs at least 2 actions to search, got "
                 f"{self.actions.shape[0]}"
             )
-        finite = np.all(np.isfinite(np.asarray(self.actions)), axis=1)
+        values = concrete(self.actions)
+        finite = (
+            np.ones(len(self.actions), dtype=bool)
+            if values is None
+            else np.all(np.isfinite(values), axis=1)
+        )
         if not finite.all():
             rows = ", ".join(str(row) for row in np.flatnonzero(~finite))
             raise ValueError(
@@ -854,11 +860,12 @@ class ChunkedEfeSearch(ExhaustiveEfeSearch):
         the expected count, and a callback checks the loop's count against it in the
         run, so a miscount fails the run rather than certifying it.
         """
-        count = concrete(visited)
-        if count is None:
+        try:
+            count = int(np.asarray(visited))
+        except (TracerArrayConversionError, ConcretizationTypeError):
             jax.debug.callback(self._check_count, visited)
             return _certify(self._action_set, self._horizon, self._n_policies)
-        return _certify(self._action_set, self._horizon, int(count))
+        return _certify(self._action_set, self._horizon, count)
 
     def _check_count(self, visited: Array) -> None:
         """Raise from inside a compiled run if the loop's count is short."""

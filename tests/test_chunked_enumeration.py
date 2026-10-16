@@ -594,3 +594,16 @@ class TestCostAndWarrant:
         # size is a residency choice and carries no evidential weight.
         search = ChunkedEfeSearch(_model(), _finite_set([-1.0, 1.0]), horizon=2)
         assert search.warrant is Warrant.PROVED
+
+
+class TestCountIsReadExactly:
+    def test_a_count_past_float_precision_certifies(self):
+        # 3^34 is odd and above 2^53, so a float read rounds it and the certificate
+        # would refuse a complete run.
+        search = ChunkedEfeSearch(_model(), _finite_set([-1.0, 0.0, 1.0]), horizon=34)
+        visited = jnp.asarray(3**34, dtype=jnp.int64)
+        assert search._certify_count(visited).visited == 3**34
+
+    def test_an_action_set_builds_under_jit(self):
+        size = jax.jit(lambda actions: FiniteActionSet(actions, version="v1").size)
+        assert size(jnp.array([[0.0], [1.0]])) == 2
