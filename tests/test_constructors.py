@@ -4,7 +4,7 @@ import pytest
 from numpy.typing import ArrayLike
 
 from cpomdp._lab.constructors import CORRECT, ConstructorSet, ModelSpec, Perturbation
-from cpomdp.dynamics import CallableProcessNoise
+from cpomdp.dynamics import CallableDynamicsNoise
 from cpomdp.observation import CallableSensor, FixedSensor
 from cpomdp.types import LinearGaussianModel
 
@@ -228,7 +228,7 @@ def _process_at(x, params):
 
 
 class _FixedProcessNoise:
-    """A DynamicsNoise that does not vary; nothing shipped implements the fixed case."""
+    """A DynamicsNoiseModel that does not vary. Nothing shipped implements one."""
 
     is_fixed = True
 
@@ -265,7 +265,7 @@ class _FixedProcessNoise:
         ),
         (
             "dynamics_noise",
-            {"dynamics_noise_model": CallableProcessNoise(_process_at, ())},
+            {"dynamics_noise_model": CallableDynamicsNoise(_process_at, ())},
         ),
         ("dynamics_noise", {"dynamics_noise_model": _FixedProcessNoise()}),
     ],
@@ -342,8 +342,8 @@ def test_a_spec_may_leave_the_observation_noise_to_its_sensor():
 
 
 def test_a_spec_may_leave_the_dynamics_noise_to_its_process_noise():
-    process = CallableProcessNoise(_process_at, ())
-    spec = _spec_leaving("dynamics_noise", dynamics_noise_model=process)
+    dynamics_noise_model = CallableDynamicsNoise(_process_at, ())
+    spec = _spec_leaving("dynamics_noise", dynamics_noise_model=dynamics_noise_model)
     assert spec.dynamics_noise is None
     np.testing.assert_allclose(spec.build().dynamics_noise, np.eye(2) * 2e-4)
 
@@ -372,7 +372,7 @@ def test_a_spec_leaving_a_noise_with_no_object_fails_at_its_first_build(field):
         ),
         (
             "dynamics_noise",
-            {"dynamics_noise_model": CallableProcessNoise(_process_at, ())},
+            {"dynamics_noise_model": CallableDynamicsNoise(_process_at, ())},
         ),
         ("dynamics_noise", {"dynamics_noise_model": _FixedProcessNoise()}),
     ],

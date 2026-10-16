@@ -14,7 +14,7 @@ from numpy.typing import ArrayLike
 from cpomdp.backends.base import InferenceBackend
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.backends.rxinfer import RxInferBackend, _rxinfer_chemotaxis_tree_root
-from cpomdp.dynamics import CallableProcessNoise
+from cpomdp.dynamics import CallableDynamicsNoise
 from cpomdp.ffg.factors.linear_gaussian import GaussianCoupling, GaussianObservation
 from cpomdp.ffg.graph import Coupling, CouplingGraph
 from cpomdp.observation import CallableSensor
@@ -129,7 +129,7 @@ def _rising_noise(x, params):
     ("slot", "noise_model"),
     [
         ("observation_model", CallableSensor([[1.0]], _rising_noise, ())),
-        ("dynamics_noise_model", CallableProcessNoise(_rising_noise, ())),
+        ("dynamics_noise_model", CallableDynamicsNoise(_rising_noise, ())),
     ],
 )
 def test_refuses_state_dependent_noise(slot, noise_model):

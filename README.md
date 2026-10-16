@@ -164,7 +164,7 @@ agent.sample_action()                 # ValueError: this Agent has no objective 
 | ...over an H-step horizon | `cpomdp.efe.policy_efe`, `policy_efe_trace` |
 | ...searched exhaustively, with a certificate | `cpomdp.enumeration`, `EnumeratedEfeSearch`, `RecedingHorizonSelector`, `OpenLoopSelector` |
 | sense more sharply in some places than others | `CallableSensor`, state-dependent `R(x)` |
-| diffuse more in some states than others | `CallableProcessNoise`, state-dependent `Q(x)` |
+| diffuse more in some states than others | `CallableDynamicsNoise`, state-dependent `Q(x)` |
 | declare a branching model | `CouplingGraph`, `Coupling`, `CouplingGraphBackend` |
 | ask whether a state-dependent sensor earns its keep | `probe_model` → `SensorReport` |
 | check a rollout stayed well conditioned | `cpomdp.diagnostics.rollout_conditioning` |

@@ -560,6 +560,21 @@ certainty equivalence is optimal, and no use of the readings beats it.
   share a name on two classes: the field holds the declaration, the method returns the
   `(C, R)` it resolves to. The `.A`/`.B`/`.C`/`.Q`/`.R` aliases are unchanged, and no
   numerical behaviour moved.
+- **Breaking:** the dynamics-noise classes take the observation side's names.
+  `DynamicsNoise` is `DynamicsNoiseModel`, the protocol the `dynamics_noise_model` field
+  holds, as `observation_model` holds an `ObservationModel`. `CallableProcessNoise` is
+  `CallableDynamicsNoise`, and takes `noise_fn` and `noise_params` (were `q_fn` and
+  `q_params`), as `CallableSensor` does. A user who had written `R(x)` could not write
+  `Q(x)` by analogy, and "process" and "dynamics" named one channel. A noise object
+  passed for a matrix field now raises a `TypeError` naming the slot it belongs in. It
+  used to fail inside `float()`. The API page is "Dynamics noise", and no longer says a
+  plain matrix satisfies the protocol. A constant `Q` goes in `dynamics_noise`.
+- **Breaking:** `ObservationModel.linearize(state, /)`, `ObservationModel.gaussianize(mean,
+  cov, /)` and `DynamicsNoiseModel.noise_at(state, /)` take their arguments by position,
+  so an implementation may name them as it likes. `FixedSensor`, `CallableSensor` and
+  `CallableDynamicsNoise` name them that way. The flat sensors called the state `x`, and
+  `linearize(state=...)` worked on the graph factors and failed on them.
+  `CallableDynamicsNoise.noise_at` reads a list as an array, as the sensors do.
 - **Breaking:** the epistemic term's aim is named `info_node` and `info_block`, not
   `target`. `target` carried two unrelated types on exported API: a desired value
   (`Float64[Array, "n"]`) on `StateGoal` and `ObservationGoal`, and the joint-state

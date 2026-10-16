@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from cpomdp._validation import equilibrium_drift, require_fixed_noise, state_dependent
-from cpomdp.dynamics import CallableProcessNoise
+from cpomdp.dynamics import CallableDynamicsNoise
 from cpomdp.observation import CallableSensor, FixedSensor
 from cpomdp.types import Belief, LinearGaussianModel
 
@@ -39,7 +39,7 @@ def test_a_fixed_noise_object_passes():
     ("slot", "noise_model"),
     [
         ("observation_model", CallableSensor([[1.0]], _rising_noise, ())),
-        ("dynamics_noise_model", CallableProcessNoise(_rising_noise, ())),
+        ("dynamics_noise_model", CallableDynamicsNoise(_rising_noise, ())),
     ],
 )
 def test_a_state_dependent_slot_is_named_beside_the_reason(slot, noise_model):
@@ -52,7 +52,7 @@ def test_a_state_dependent_slot_is_named_beside_the_reason(slot, noise_model):
 def test_the_sensor_is_named_first_when_both_vary():
     model = _model(
         observation_model=CallableSensor([[1.0]], _rising_noise, ()),
-        dynamics_noise_model=CallableProcessNoise(_rising_noise, ()),
+        dynamics_noise_model=CallableDynamicsNoise(_rising_noise, ()),
     )
     with pytest.raises(ValueError, match="observation_model"):
         require_fixed_noise(model, "the reason")
@@ -67,7 +67,7 @@ def test_an_absent_or_fixed_noise_object_is_not_state_dependent():
     "noise_model",
     [
         CallableSensor([[1.0]], _rising_noise, ()),
-        CallableProcessNoise(_rising_noise, ()),
+        CallableDynamicsNoise(_rising_noise, ()),
     ],
 )
 def test_a_state_dependent_noise_object_comes_back(noise_model):

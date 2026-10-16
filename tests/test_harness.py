@@ -10,7 +10,7 @@ import pytest
 from cpomdp._lab.degraded import WrongFixedRBackend
 from cpomdp._lab.harness import ScoredAgent, World
 from cpomdp.backends.kalman import KalmanBackend
-from cpomdp.dynamics import CallableProcessNoise
+from cpomdp.dynamics import CallableDynamicsNoise
 from cpomdp.observation import CallableSensor, FixedSensor
 from cpomdp.types import Belief, LinearGaussianModel
 
@@ -360,7 +360,7 @@ def _sensed_model(*, sensor=True, process=False) -> LinearGaussianModel:
             CallableSensor(SENSOR, _sensor_noise_at, ()) if sensor else None
         ),
         dynamics_noise_model=(
-            CallableProcessNoise(_process_noise_at, ()) if process else None
+            CallableDynamicsNoise(_process_noise_at, ()) if process else None
         ),
     )
 
@@ -523,7 +523,7 @@ def test_a_process_noise_that_goes_indefinite_is_refused_not_drawn():
         observation_noise=[[1e-2]],
         prior=Belief(mean=[0.0, 0.0], cov=np.eye(2)),
         control_matrix=CONTROL,
-        dynamics_noise_model=CallableProcessNoise(loses_a_direction, ()),
+        dynamics_noise_model=CallableDynamicsNoise(loses_a_direction, ()),
     )
     # It probes positive-semi-definite at the origin, so it constructs.
     world = World(model, initial_state=[2.0, 0.0])
@@ -544,7 +544,7 @@ def test_a_noiseless_dynamics_direction_is_still_legal():
         observation_noise=[[1e-2]],
         prior=Belief(mean=[0.0, 0.0], cov=np.eye(2)),
         control_matrix=CONTROL,
-        dynamics_noise_model=CallableProcessNoise(noiseless_second_direction, ()),
+        dynamics_noise_model=CallableDynamicsNoise(noiseless_second_direction, ()),
     )
     world = World(model, initial_state=[1.0, 1.0])
 

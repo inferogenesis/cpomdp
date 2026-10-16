@@ -25,7 +25,7 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 
-from cpomdp.dynamics import CallableProcessNoise
+from cpomdp.dynamics import CallableDynamicsNoise
 from cpomdp.selection import Preference
 from cpomdp.types import Belief, LinearGaussianModel
 
@@ -91,8 +91,8 @@ def _panel(ax, prag, epi, g, title, note):
 
 def main():
     """Render the two-panel internal-noise figure to docs/assets/."""
-    prag_f, epi_f, g_f = _sweep(_model())  # fixed Q (process_noise=None)
-    q_well = CallableProcessNoise(
+    prag_f, epi_f, g_f = _sweep(_model())  # fixed Q, no dynamics_noise_model
+    q_well = CallableDynamicsNoise(
         _bump_q,
         {
             "bump": BUMP,
