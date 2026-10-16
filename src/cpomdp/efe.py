@@ -26,7 +26,7 @@ and an OBSERVATION-space preference ``(g, Λ)`` (goal observation ``g``, precisi
 ``Λ``):
 
     predict:    μ⁺ = A·μ + B·a            Σ⁺ = A·Σ·Aᵀ + Q
-    sense:      (C, R) = observation.linearize(μ⁺)
+    sense:      (C, R) = observation_model.linearize(μ⁺)
                 o⁺ = C·μ⁺                  S = C·Σ⁺·Cᵀ + R          # predicted-obs cov
     pragmatic:  ½·(o⁺ − g)ᵀ·Λ·(o⁺ − g)  +  ½·tr(Λ·S)
     epistemic:  ½·(ln det S − ln det R)            # = I(state; obs) ≥ 0, info gain
