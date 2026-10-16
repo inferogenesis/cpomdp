@@ -504,6 +504,17 @@ class TestCoupling:
         with pytest.raises(TypeError, match=named):
             Coupling(parent, child, self._FACTOR)
 
+    def test_takes_an_integral_float_index_and_a_numpy_bool(self):
+        # 1.0 from a JSON config and np.True_ from a comparison are exact values.
+        edge = Coupling(
+            0.0,  # ty: ignore[invalid-argument-type]
+            1.0,  # ty: ignore[invalid-argument-type]
+            self._FACTOR,
+            efe_relevant=np.True_,  # ty: ignore[invalid-argument-type]
+        )
+        assert (edge.parent, edge.child, edge.efe_relevant) == (0, 1, True)
+        assert type(edge.efe_relevant) is bool
+
     def test_refuses_a_factor_that_is_not_a_gaussian_coupling(self):
         # A bare matrix used to construct and fail later on a missing attribute.
         with pytest.raises(TypeError, match="GaussianCoupling"):
@@ -612,6 +623,15 @@ class TestCouplingGraphValidation:
         # int() used to truncate 1.5 to 1 and build a graph nobody declared.
         with pytest.raises(TypeError, match=named):
             CouplingGraph(root, dims, (Coupling(0, 1, self._w(1, 1)),), {})
+
+    def test_takes_an_integral_float_root_and_dimension(self):
+        graph = CouplingGraph(
+            0.0,  # ty: ignore[invalid-argument-type]
+            (1.0, 1.0),  # ty: ignore[invalid-argument-type]
+            (Coupling(0, 1, self._w(1, 1)),),
+            {},
+        )
+        assert (graph.root, graph.dims) == (0, (1, 1))
 
     def test_rejects_a_coupling_that_is_not_a_coupling(self):
         # A bare (parent, child, factor) tuple used to fail on a missing attribute.

@@ -68,10 +68,7 @@ class Coupling:
             raise TypeError(
                 f"factor must be a GaussianCoupling, got {type(self.factor).__name__}"
             )
-        if not isinstance(self.efe_relevant, bool):
-            raise TypeError(
-                f"efe_relevant must be a bool, got {type(self.efe_relevant).__name__}"
-            )
+        object.__setattr__(self, "efe_relevant", _as_bool(self.efe_relevant))
 
 
 class CouplingGraph:
@@ -395,8 +392,17 @@ def _combine(
     return acc[key] + msg if key in acc else msg
 
 
+def _as_bool(value: object) -> bool:
+    """``efe_relevant`` as a ``bool``. A NumPy bool is stored as one."""
+    if not isinstance(value, bool | np.bool_):
+        raise TypeError(f"efe_relevant must be a bool, got {type(value).__name__}")
+    return bool(value)
+
+
 def _as_int(value: object, name: str) -> int:
-    """``value`` as an ``int``. A bool and a non-integer are refused."""
+    """``value`` as an ``int``. A bool and a non-integral number are refused."""
+    if isinstance(value, float | np.floating) and float(value).is_integer():
+        return int(value)
     if isinstance(value, bool) or not isinstance(value, SupportsIndex):
         raise TypeError(f"{name} must be an int, got {type(value).__name__}")
     return operator.index(value)
