@@ -20,7 +20,11 @@ import numpy as np
 
 from _support import unit_prior
 from cpomdp.backends.coupling import CouplingGraphBackend
-from cpomdp.enumeration import EnumeratedEfeSearch, FiniteActionSet
+from cpomdp.enumeration import (
+    EnumeratedEfeSearch,
+    FiniteActionSet,
+    PolicyBudgetError,
+)
 from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
 from cpomdp.ffg.graph import Coupling, CouplingGraph
 from cpomdp.observation import CallableSensor, FixedSensor
@@ -129,6 +133,13 @@ class TestOverBackendSharedAccounting:
         assert ffg.evaluate(_single_belief(), _pref()).certificate.complete
         assert ffg.n_policies == 9  # 3^2
         assert ffg.cost_per_plan == 18  # |A|^H * H = 9 * 2
+
+    def test_takes_the_same_policy_budget(self):
+        backend, _ = _single_node_pair(state_dependent=False)
+        with np.testing.assert_raises(PolicyBudgetError):
+            EnumeratedEfeSearch.over_backend(
+                backend, _action_set(), info_block=range(2), horizon=2, max_policies=8
+            )
 
     def test_rejects_an_action_set_of_other_n_controls(self):
         backend, _ = _single_node_pair(state_dependent=False)  # p = 1

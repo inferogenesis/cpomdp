@@ -5306,3 +5306,94 @@ which reaches it by hand.
 
 - Claiming #56 later lifts the refusal and edits nothing else.
 - A sensor whose `R(x)` varies is unaffected. Its surface above horizon 1 is claimed.
+
+## ADR-083 — the exhaustive searches are one kind of thing, bounded and compiled once
+
+**Date:** 2026-10-15
+**Status:** Accepted
+**Supersedes:** ADR-036's consequence that a caller wanting the score vector "uses the
+front-loaded path and accepts its ceiling", for the ceiling. The front-loaded path now
+refuses a set past a budget instead. ADR-030's "emits a `CompletenessCertificate` at
+construction", for where the certificate is read. The check still runs at construction.
+**Extends:** ADR-031 (the search family), ADR-034 (the injected scorer), ADR-036 (the
+chunked path).
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+ADR-036 called the two searches interchangeable and asserted it for the answer. The
+calls around the answer diverged. The front-loaded search answered `evaluate` with the
+argmin and the score vector, and held its certificate on itself. The chunked one
+answered `reduce` with the argmin, its score, its index, a visited count and the
+certificate. Both drivers took only the front-loaded search, so a chunked one
+constructed and then failed at the first agent step. `cost_per_cycle` meant the cost of
+one plan on a search and of one agent step on a driver. Every plan re-traced and
+recompiled the rollout, a cost per plan that the cost attributes did not count.
+
+The front-loaded search also had no ceiling of its own. It holds every policy and every
+score at once. `warrant_numbers.md` records that a front-loaded attempt at `9^8` on the
+capped host takes the session down without raising `MemoryError`, and labels it
+`VOID (budget)`. A user who raises the horizon on a small task meets the same wall with
+no error, no estimate and no pointer to the chunked path.
+
+### Decision
+
+**A default policy budget of `2^21`.** `EnumeratedEfeSearch` and its `over_backend`
+take `max_policies`, `2^21 = 2,097,152` unless set. `|A|^H` is exact before anything is
+allocated. A set past the budget raises `PolicyBudgetError`, a `ValueError`. The message
+gives the count, the step evaluations of one plan, a floor on the memory and the route
+that works, `ChunkedEfeSearch`, which both drivers take. `None` lifts the budget.
+
+The value admits every front-loaded run the repository makes. The largest is the `9^6`
+cross-path cell at 531,441 policies, about a quarter of the budget. It refuses `9^7`,
+whose front-loaded run the warrant ledger records at 5.4 GiB and six minutes, and every
+larger cell. A registered run above the default passes `max_policies=None` itself, as
+the `9^7` cross-path comparison will if it is re-run.
+
+A budget in bytes would follow the footprint more closely. It needs the footprint per
+policy, and that depends on what XLA keeps alive, which is known only as a floor. The
+count is exact and a caller can reason about it. The floor goes in the message. It is
+`8 · |A|^H · (H·p + 1 + n + n²)` bytes, for the policies, their scores and the belief the
+rollout carries for each policy.
+
+**The two searches are interchangeable.** Both searches answer
+`evaluate(belief, preference)`. Both results carry `best_policy`, `best_g`,
+`best_index` and `certificate` under those names, and the front-loaded result adds the
+score vector `g`. The certificate is read off the result on both paths. On the chunked
+path its count is what the loop produces, so a certificate cannot exist before a run.
+The front-loaded search still checks completeness at construction and attaches that
+certificate to every result. `ChunkedSearchResult` drops `visited`, which repeated
+`certificate.visited`. Both drivers take either search and refuse anything else with a
+`TypeError`. A driver's `certificate` is its last plan's, `None` before the first.
+
+**`cost_per_plan` on a search, `cost_per_cycle` on a selector.** A search reports the
+step evaluations of one `evaluate` as `cost_per_plan`, the name the drivers already
+used. `cost_per_cycle` is the cost of one agent step and only selectors report it:
+`EFESelector`, and each driver as its plan spread over its replan interval.
+
+**Compiled once.** Each search builds its jitted scorer at construction and takes the
+belief and the preference as arguments, so a later plan reuses the first plan's program.
+The policy array is an argument too, never a constant baked into the program.
+`tests/test_search_compilation.py` counts traces across two plans and holds the compiled
+scores equal to the eager path's under `==`, because the published numbers came from the
+eager path.
+
+**No winner when no policy scores.** A NaN score is masked to `+inf` before the argmin,
+so when every score was NaN the argmin fell on index 0 and the search returned the first
+declared sequence. The result now carries a NaN `best_policy` and `best_g` and a
+`best_index` of -1, and a driver returns a NaN action, which the agent can refuse. The
+certificate is unchanged. It certifies coverage (ADR-030), and every policy was scored.
+
+### Consequences
+
+- A v0.4.4 front-loaded call above `2^21` policies now raises. It used to run, or take
+  the host down.
+- The front-loaded grid is decoded from its indices by the chunked path's decoder rather
+  than materialised through `itertools.product` on the host. The order is unchanged, and
+  a test still compares the set with an independent product.
+- A driver over the chunked search pays one host read per plan, the loop's count, which
+  the certificate needs. A driver over the front-loaded search pays none.
+- Compilation no longer lands on every plan, so RFC-001 measures the search rather than
+  the compiler. `EFESelector` at a horizon above 1 is outside this decision.
+- `ChunkedEfeSearch.policies_at` refuses an index outside the enumeration, -1 included,
+  because a base-`|A|` decode wraps it to a real policy.

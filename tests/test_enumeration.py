@@ -24,11 +24,14 @@ The locks:
   `CORROBORATED` — in distinct vocabulary (standing rule 6).
 - `TestCostAndTransforms`: `cost_per_plan == |A|^H * H`; the search survives `jit` and
   handles a multi-dimensional (p>1) action set the grid selector rejects.
+- `TestPolicyBudget`: a set larger than `max_policies` is refused before anything is
+  allocated, with the count, the cost, a footprint floor and the chunked route named.
 
 Imports the enumeration symbols directly, so until they land this module is
 collection-red — the `ImportError` naming `EnumeratedEfeSearch` is the build cue.
 """
 
+import inspect
 import itertools
 
 import jax
@@ -42,6 +45,7 @@ from cpomdp.enumeration import (
     EnumeratedEfeSearch,
     FiniteActionSet,
     IncompleteEnumerationError,
+    PolicyBudgetError,
 )
 from cpomdp.observation import CallableSensor
 from cpomdp.selection import EFESelector, Preference
@@ -347,3 +351,54 @@ class TestValidation:
     def test_rejects_horizon_below_one(self):
         with pytest.raises(ValueError, match="horizon"):
             EnumeratedEfeSearch(_model(), _finite_set([-1.0, 1.0]), horizon=0)
+
+
+# --- the policy budget -------------------------------------------------------------
+def _nine_actions():
+    return _finite_set([-2.0 + 0.5 * k for k in range(9)], version="refine-0.5")
+
+
+class TestPolicyBudget:
+    def test_the_default_is_two_to_the_twenty_first(self):
+        # ADR-083 declares this number. Moving it is a decision, so it moves here too.
+        default = inspect.signature(EnumeratedEfeSearch).parameters["max_policies"]
+        assert default.default == 2**21
+
+    def test_an_oversized_set_is_refused_before_anything_is_built(self):
+        # 9^7 = 4,782,969 policies. Built front-loaded it costs gigabytes, so the
+        # refusal has to come from the count alone, which is exact before allocation.
+        with pytest.raises(PolicyBudgetError) as raised:
+            EnumeratedEfeSearch(_model(), _nine_actions(), horizon=7)
+        message = str(raised.value)
+        assert "9^7 = 4,782,969 policies" in message
+        assert "max_policies = 2,097,152" in message
+        assert "33,480,783 step evaluations" in message  # N * H
+        # 8 bytes x N x (H*p policy + 1 score + n mean + n^2 covariance), n = 2.
+        assert "0.50 GiB" in message
+        assert "ChunkedEfeSearch" in message
+        assert "max_policies=None" in message
+
+    def test_the_refusal_is_a_value_error(self):
+        assert issubclass(PolicyBudgetError, ValueError)
+
+    def test_the_budget_is_inclusive(self):
+        actions = _finite_set([-1.0, 0.0, 1.0])  # 3^2 = 9 policies
+        with pytest.raises(PolicyBudgetError):
+            EnumeratedEfeSearch(_model(), actions, horizon=2, max_policies=8)
+        assert (
+            EnumeratedEfeSearch(_model(), actions, horizon=2, max_policies=9).n_policies
+            == 9
+        )
+
+    def test_none_lifts_the_budget(self):
+        search = EnumeratedEfeSearch(
+            _model(), _finite_set([-1.0, 1.0]), horizon=2, max_policies=None
+        )
+        assert search.n_policies == 4
+
+    @pytest.mark.parametrize("budget", [0, -5])
+    def test_a_budget_below_one_is_rejected(self, budget):
+        with pytest.raises(ValueError, match="max_policies must be >= 1"):
+            EnumeratedEfeSearch(
+                _model(), _finite_set([-1.0, 1.0]), horizon=2, max_policies=budget
+            )
