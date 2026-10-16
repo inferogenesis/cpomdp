@@ -122,7 +122,7 @@ class ModelSpec:
 
     ``observation_matrix`` and either noise may be left as ``None`` beside its object.
     The spec holds the ``None`` and the model reads the value at each build
-    (DECISIONS.md ADR-066, ADR-071).
+    (DECISIONS.md ADR-066, ADR-072).
 
     Args:
         dynamics_matrix: State to next state — A, shape ``(n, n)``.

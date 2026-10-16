@@ -4636,7 +4636,7 @@ versions break before 1.0, as cpomdp's do.
 - A warrantlib 0.4 reaches cpomdp users only through a cpomdp release that lifts the
   cap.
 
-## ADR-071 — a model field beside its noise object holds that object's value
+## ADR-072 — a model field beside its noise object holds that object's value
 
 **Date:** 2026-10-16
 **Status:** Accepted
@@ -4712,7 +4712,7 @@ a state-dependent one, since a fixed object's `Q` is the field.
 - The comparison is exact. A value recomputed by hand that differs in the last bit is
   refused, and omitting it is the fix.
 
-## ADR-072 — the two noises are named alike, and each name means one thing
+## ADR-073 — the two noises are named alike, and each name means one thing
 
 **Date:** 2026-10-16
 **Status:** Accepted

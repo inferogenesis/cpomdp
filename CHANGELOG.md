@@ -489,10 +489,10 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `dataclasses.replace(model, prior=...)` on such a model raises instead of keeping the
   noise of the old prior. Pass the noises an object supplies as `None` to read them
   again. `WrongFixedRBackend` takes the constant it scales as its own
-  `observation_noise=` (ADR-071).
+  `observation_noise=` (ADR-072).
 - `observation_matrix` is optional beside an `observation_model`, read from the sensor's
   `C` on the same rule. A model with `R(x)` used to need `C` typed twice, once for the
-  sensor and once for the model (ADR-071).
+  sensor and once for the model (ADR-072).
 - `LinearGaussianModel`'s `observation_noise` is optional when an `observation_model` is
   given. Omitted, it is the sensor's `R` at `prior.mean`, read once at construction
   (ADR-064). A state-dependent sensor used to need a positive-definite `R` beside it that
@@ -518,7 +518,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
   an absent `control_matrix` already was. `observation_matrix` may be `None` beside a
   sensor too. A perturbation of a field the spec's object supplies is refused with one
   message, fixed object or not, since the model refuses the scaled field either way
-  (ADR-071).
+  (ADR-072).
 - The `symbolic` CI job reconciles the three symbolic suites against
   `research/registered_checks.toml` instead of comparing three hand-typed strings. The
   strings said `23 registered, 23 tested here, none fired` and two more like it. They
