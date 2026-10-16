@@ -7,9 +7,9 @@ from cpomdp._lab.harness import ScoredAgent
 from cpomdp.agent import Agent
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.control import LQRController
-from cpomdp.dynamics import CallableProcessNoise
+from cpomdp.dynamics import CallableDynamicsNoise
 from cpomdp.efe import expected_free_energy
-from cpomdp.ffg.chain import ChainBackend
+from cpomdp.ffg._chain import ChainBackend
 from cpomdp.observation import CallableSensor
 from cpomdp.selection import (
     EFESelector,
@@ -289,9 +289,9 @@ def _corridor_model(*, fixed, control_matrix=True):
     )
     return LinearGaussianModel(
         dynamics_matrix=[[1.0]],
-        observation_matrix=[[1.0]],
+        observation_matrix=[[1.0]] if fixed else None,
         dynamics_noise=[[0.05]],
-        observation_noise=[[0.3]],
+        observation_noise=[[0.3]] if fixed else None,
         prior=Belief(mean=[0.0], cov=[[0.5]]),
         control_matrix=[[1.0]] if control_matrix else None,
         observation_model=sensor,
@@ -434,7 +434,7 @@ class TestRegimeDispatch:
         model = LinearGaussianModel(
             dynamics_matrix=[[1.0]],
             observation_matrix=[[1.0]],
-            dynamics_noise_model=CallableProcessNoise(_still_near_beacon, None),
+            dynamics_noise_model=CallableDynamicsNoise(_still_near_beacon, None),
             observation_noise=[[0.3]],
             prior=Belief(mean=[0.0], cov=[[0.5]]),
             control_matrix=[[1.0]],
@@ -443,10 +443,10 @@ class TestRegimeDispatch:
         assert isinstance(agent.selector, EFESelector)
 
         def epistemic(action):
-            _, parts = expected_free_energy(
+            result = expected_free_energy(
                 model, model.prior, jnp.array([action]), _OBS_PREFERENCE
             )
-            return float(parts["epistemic"])
+            return float(result.epistemic)
 
         assert epistemic(1.5) != pytest.approx(epistemic(-1.5))
 
@@ -520,7 +520,6 @@ def _sharp_at_rest(x, params):
 def _double_integrator(noise_fn, dynamics=DYNAMICS):
     return LinearGaussianModel(
         dynamics_matrix=dynamics,
-        observation_matrix=SENSOR_MODEL,
         dynamics_noise=np.eye(2) * 1e-6,
         prior=Belief(mean=[0.0, 0.0], cov=np.eye(2)),
         control_matrix=CONTROL,
@@ -535,6 +534,13 @@ def _horizon(agent):
     """The horizon of the EFE selector the Agent built."""
     assert isinstance(agent.selector, EFESelector)
     return agent.selector.horizon
+
+
+class TestTheGoalsPreference:
+    def test_the_agent_scores_against_the_preference_the_goal_hands_over(self):
+        agent = Agent(_double_integrator(_sharp_near_one), _REACH_ONE)
+        # white-box: one place turns a goal into a Preference, the goal itself
+        assert agent._preference is _REACH_ONE.preference
 
 
 class TestDerivedHorizon:

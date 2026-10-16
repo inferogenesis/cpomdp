@@ -15,9 +15,10 @@ Two independent oracles guard the claim:
   shares no code with either backend, so a transpose/gain/order bug that happened to
   afflict both matrix paths still gets caught.
 
-RED until ``cpomdp.ffg.chain.ChainBackend`` is implemented.
+``ChainBackend`` is private (ADR-076): it exists to be held to this gate.
 """
 
+import bacillus_uncertain_food
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -25,8 +26,8 @@ import pytest
 
 from cpomdp.backends.base import InferenceBackend
 from cpomdp.backends.kalman import KalmanBackend
-from cpomdp.dynamics import CallableProcessNoise
-from cpomdp.ffg.chain import ChainBackend
+from cpomdp.dynamics import CallableDynamicsNoise
+from cpomdp.ffg._chain import ChainBackend
 from cpomdp.observation import CallableSensor
 from cpomdp.types import Belief, LinearGaussianModel
 
@@ -201,9 +202,7 @@ _QPROC = {"base": jnp.array([[0.05]]), "scale": jnp.array(0.4)}
 def _callable_sensor_scalar_model(*, control_matrix=None):
     return LinearGaussianModel(
         dynamics_matrix=[[A]],
-        observation_matrix=[[C]],
         dynamics_noise=[[Q]],
-        observation_noise=[[R]],
         prior=Belief(mean=[PRIOR_MEAN], cov=[[PRIOR_VAR]]),
         control_matrix=control_matrix,
         observation_model=CallableSensor(
@@ -216,11 +215,10 @@ def _callable_process_scalar_model(*, control_matrix=None):
     return LinearGaussianModel(
         dynamics_matrix=[[A]],
         observation_matrix=[[C]],
-        dynamics_noise=[[Q]],
         observation_noise=[[R]],
         prior=Belief(mean=[PRIOR_MEAN], cov=[[PRIOR_VAR]]),
         control_matrix=control_matrix,
-        dynamics_noise_model=CallableProcessNoise(_quad_process, _QPROC),
+        dynamics_noise_model=CallableDynamicsNoise(_quad_process, _QPROC),
     )
 
 
@@ -233,9 +231,7 @@ class TestChainCallableSensorParity:
         fixed = _scalar_model()
         callable_model = LinearGaussianModel(
             dynamics_matrix=[[A]],
-            observation_matrix=[[C]],
             dynamics_noise=[[Q]],
-            observation_noise=r0,
             prior=Belief(mean=[PRIOR_MEAN], cov=[[PRIOR_VAR]]),
             observation_model=CallableSensor(
                 observation_matrix=[[C]],
@@ -266,9 +262,7 @@ class TestChainCallableSensorParity:
         # can't, with R varying through the position component.
         model = LinearGaussianModel(
             dynamics_matrix=[[1.0, 1.0], [0.0, 1.0]],
-            observation_matrix=[[1.0, 0.0]],
             dynamics_noise=[[1e-3, 0.0], [0.0, 1e-3]],
-            observation_noise=[[1.0]],
             prior=Belief(mean=[0.0, 0.0], cov=[[1.0, 0.0], [0.0, 1.0]]),
             observation_model=CallableSensor(
                 observation_matrix=[[1.0, 0.0]],
@@ -296,17 +290,18 @@ class TestChainCallableSensorParity:
         np.testing.assert_allclose(chain_belief.cov, kalman_belief.cov, atol=1e-7)
 
 
-class TestChainCallableProcessNoiseParity:
+class TestChainCallableDynamicsNoiseParity:
     def test_constant_callable_reduces_to_fixed_chain(self):
         q0 = [[Q]]
         fixed = _scalar_model()
         callable_model = LinearGaussianModel(
             dynamics_matrix=[[A]],
             observation_matrix=[[C]],
-            dynamics_noise=q0,
             observation_noise=[[R]],
             prior=Belief(mean=[PRIOR_MEAN], cov=[[PRIOR_VAR]]),
-            dynamics_noise_model=CallableProcessNoise(lambda x, p: jnp.array(q0), None),
+            dynamics_noise_model=CallableDynamicsNoise(
+                lambda x, p: jnp.array(q0), None
+            ),
         )
         cf_fixed, cf_call = ChainBackend(fixed), ChainBackend(callable_model)
         b_fixed, b_call = fixed.prior, callable_model.prior
@@ -332,10 +327,9 @@ class TestChainCallableProcessNoiseParity:
         model = LinearGaussianModel(
             dynamics_matrix=[[1.0, 1.0], [0.0, 1.0]],
             observation_matrix=[[1.0, 0.0]],
-            dynamics_noise=[[1e-3, 0.0], [0.0, 1e-3]],
             observation_noise=[[1.0]],
             prior=Belief(mean=[0.0, 0.0], cov=[[1.0, 0.0], [0.0, 1.0]]),
-            dynamics_noise_model=CallableProcessNoise(_quad_process, q2d),
+            dynamics_noise_model=CallableDynamicsNoise(_quad_process, q2d),
         )
         kalman, chain = KalmanBackend(model), ChainBackend(model)
         k_belief = c_belief = model.prior
@@ -384,15 +378,30 @@ def _cross_block_model(*, control_matrix=None):
     return LinearGaussianModel(
         dynamics_matrix=jnp.eye(4),
         control_matrix=control_matrix,
-        observation_matrix=c_disp,
         dynamics_noise=jnp.diag(jnp.array([0.5, 0.5, 1e-3, 1e-3])),
-        observation_noise=jnp.eye(2),
         prior=Belief(mean=jnp.array([0.0, 0.0, 1.0, 1.0]), cov=jnp.eye(4)),
         observation_model=sensor,
     )
 
 
 class TestChainCrossBlockSensorParity:
+    def test_matches_kalman_on_the_flagship_model(self):
+        # The README's flagship demo senses through this shape. Both backends get one
+        # scripted (observation, action) sequence rather than two closed loops, so a
+        # near-tied argmin cannot send them down different trajectories and be misread
+        # as a disagreement. The check lived in the demo until ChainBackend went
+        # private.
+        model = bacillus_uncertain_food.build_model()
+        kalman, chain = KalmanBackend(model), ChainBackend(model)
+        rng = np.random.default_rng(11)
+        k_belief = c_belief = model.prior
+        for _ in range(30):
+            observation, action = rng.standard_normal(4), rng.standard_normal(2)
+            k_belief = kalman.infer_states(observation, k_belief, action)
+            c_belief = chain.infer_states(observation, c_belief, action)
+            np.testing.assert_allclose(c_belief.mean, k_belief.mean, atol=1e-7)
+            np.testing.assert_allclose(c_belief.cov, k_belief.cov, atol=1e-7)
+
     def test_matches_kalman_sequence(self):
         model = _cross_block_model()
         kalman, chain = KalmanBackend(model), ChainBackend(model)
