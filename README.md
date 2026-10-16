@@ -128,11 +128,11 @@ Run that and the belief lands on `[1, 0]`. The agent worked out it was at positi
 
 ## The pymdp parallel
 
-If you've used pymdp, the loop is the same. Four names carry over verbatim:
+If you've used pymdp, the loop is the same. Three names carry over verbatim:
 
-> `Agent` · `qs` · `infer_states` · `sample_action`
+> `Agent` · `infer_states` · `sample_action`
 
-(`qs` is a read-only alias for `belief`, cpomdp's canonical name, so `agent.qs` and `agent.belief` are the same posterior. Use whichever your fingers reach for.)
+pymdp's `qs` is `agent.belief` here, a Gaussian rather than a categorical posterior.
 
 The model's parts and the policy step are spelled differently:
 
