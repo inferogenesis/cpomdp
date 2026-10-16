@@ -490,7 +490,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
   step and exists to show that the message algebra is the Kalman filter on a chain,
   which `tests/test_ffg_chain.py` holds it to. Filter with `KalmanBackend`. The
   flagship example's agreement check between the two moves into that test file, on the
-  same model and the same scripted inputs (ADR-069).
+  same model and the same scripted inputs (ADR-071).
 - **Breaking:** a *fixed* `observation_model` or `dynamics_noise_model` must now restate
   the model's `observation_noise` / `dynamics_noise` exactly, and a sensor's linearized
   observation matrix must equal `observation_matrix`. `LinearGaussianModel` previously
@@ -653,8 +653,8 @@ certainty equivalence is optimal, and no use of the readings beats it.
   literature that gives R its name, so the two halves of the measurement equation now
   read from one vocabulary. C is not `observation_model`: that name means the whole
   channel, the model field the entry above renames. The 2026-06-13 sketch wanted plain
-  `observation` for C, which the state-dependent sensor field later claimed. The `.C` alias is unchanged, and no numerical
-  behaviour moved.
+  `observation` for C, which the state-dependent sensor field later claimed. The `.C`
+  alias is unchanged, and no numerical behaviour moved.
 - **Breaking:** `sensor_noise` is now `observation_noise`, on `LinearGaussianModel`,
   `FixedSensor`, `CallableSensor`, the FFG observation factors and `epistemic_value`.
   R is the *observation noise covariance* in the state-space literature this library

@@ -1334,7 +1334,7 @@ silence, per standing rule 5.
 
 The `μ`/`Σ` predict/update superscript convention is inconsistent across the codebase.
 Three variants coexist. `efe.py` and its neighbours use `μ⁺`/`Σ⁺` for the predicted
-moment with `Σ_post` after observation. `kalman.py`, `ffg/chain.py` and `diagnostics.py`
+moment with `Σ_post` after observation. `kalman.py`, `ffg/_chain.py` and `diagnostics.py`
 use standard Kalman `μ⁻`/`Σ⁻` with `post`. `coupling.py` uses both symbols for
 pre-coupling against coupling-resolved *predicted* means (ADR-019), a distinction
 orthogonal to predict/update.
