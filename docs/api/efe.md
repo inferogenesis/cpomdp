@@ -16,13 +16,13 @@ The scalar each candidate action is scored by, `G = pragmatic − epistemic`. Th
     by being informative.
 
     The goal is a reading. The agent says what it wants to observe, and that is a state
-    only when the sensor reads the state directly. Build the goal as an
-    `ObservationGoal` and pass `goal.preference`.
+    only when the sensor reads the state directly. Pass that reading as a `Preference`.
+    An `ObservationGoal` you already hold hands over its own as `goal.preference`.
 
     Fix the sensor's noise and the dynamics' noise, and every action sharpens the belief
     by the same amount. The epistemic term is then a constant. The best action is the
-    one a classic regulator picks, and `LQRController` computes it once instead of
-    scoring every candidate. The information term matters only when the noise depends on
+    one a classic regulator picks, and that regulator is worked out once, with no
+    candidates to score. The information term matters only when the noise depends on
     where the action takes the state.
 
 ::: cpomdp.expected_free_energy
