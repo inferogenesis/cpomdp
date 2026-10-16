@@ -369,8 +369,8 @@ certainty equivalence is optimal, and no use of the readings beats it.
   filter is exact under fixed noise, and the oracle agrees only there.
 - The `LQRController` docstring and the backends page said the Agent's filter is solved
   once at construction, as ADR-002 and ADR-003 planned. Every release has filtered per
-  step. Both now say so, and ADR-072 records the per-step filter as the default and the
-  steady-state one as the opt-in. The README points at ADR-072 beside ADR-003. It said
+  step. Both now say so, and ADR-086 records the per-step filter as the default and the
+  steady-state one as the opt-in. The README points at ADR-086 beside ADR-003. It said
   all inference runs as message passing over a factor graph, and now says that of
   branching models, which is where `CouplingGraphBackend` does it.
 - Public docstrings cited build-plan labels a pip user cannot look up, "Phase 1A",
@@ -438,7 +438,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
   Python in the environment. The next `import juliacall` by anything there, cpomdp
   imported or not, added RxInfer to that environment's Julia project and precompiled it.
   The wheel ships no such file now. The first `RxInferBackend` declares RxInfer to
-  juliapkg where the environment does not already, then starts Julia (ADR-071).
+  juliapkg where the environment does not already, then starts Julia (ADR-085).
 - RxInfer is declared as the range `5.4`, where it was pinned to exactly `5.4.0`.
   `cpomdp[rxinfer]` takes RxInfer's releases within 5.x and can share an environment
   that needs one of them. CI pins 5.4.0.

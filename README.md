@@ -146,7 +146,7 @@ The model's parts and the policy step are spelled differently:
 
 The model also answers to `.A`, `.B`, `.C`, `.Q` and `.R`. Those are control-theory letters. `model.A` is the dynamics matrix, pymdp's `B`, and `model.C` is the observation matrix, pymdp's `A`.
 
-One honest difference in behaviour. `sample_action` here is deterministic, not a sample from a policy posterior. For a linear-Gaussian model with fixed noise the action that minimises expected free energy turns out to be exactly the LQR optimum ([Koudahl, Kouw and de Vries 2021](https://doi.org/10.3390/e23121565)), so there's a single best action and that's what comes back. Same loop, exact answer. The reasoning is in [DECISIONS.md](https://github.com/inferogenesis/cpomdp/blob/main/DECISIONS.md) (ADR-003) if you want it. ADR-072 corrects its account of the filter. The `Agent` recomputes the Kalman gain every step.
+One honest difference in behaviour. `sample_action` here is deterministic, not a sample from a policy posterior. For a linear-Gaussian model with fixed noise the action that minimises expected free energy turns out to be exactly the LQR optimum ([Koudahl, Kouw and de Vries 2021](https://doi.org/10.3390/e23121565)), so there's a single best action and that's what comes back. Same loop, exact answer. The reasoning is in [DECISIONS.md](https://github.com/inferogenesis/cpomdp/blob/main/DECISIONS.md) (ADR-003) if you want it. ADR-086 corrects its account of the filter. The `Agent` recomputes the Kalman gain every step.
 
 ## Just want to track, not act?
 

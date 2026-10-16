@@ -4636,7 +4636,7 @@ versions break before 1.0, as cpomdp's do.
 - A warrantlib 0.4 reaches cpomdp users only through a cpomdp release that lifts the
   cap.
 
-## ADR-071 — RxInfer is declared to juliapkg when the backend first starts Julia
+## ADR-085 — RxInfer is declared to juliapkg when the backend first starts Julia
 
 **Date:** 2026-10-15
 **Status:** Accepted
@@ -4695,7 +4695,7 @@ leaves that entry alone. The job's depot cache is keyed on the pin.
   has carried since 0.1.8 and does not list in its `__all__`. A juliapkg release that
   moves it fails at the first `RxInferBackend`, and CI's oracle job meets it first.
 
-## ADR-072 — the Agent filters per step by default, and the steady-state filter is an opt-in
+## ADR-086 — the Agent filters per step by default, and the steady-state filter is an opt-in
 
 **Date:** 2026-10-15
 **Status:** Accepted

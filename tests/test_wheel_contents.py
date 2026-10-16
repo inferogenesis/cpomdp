@@ -3,7 +3,7 @@
 juliapkg reads a ``juliapkg.json`` at the top of every ``sys.path`` entry and in each
 directory directly under one, whether or not that package is imported. A wheel that
 put one there would declare its Julia packages to every juliacall user in the
-environment (ADR-071).
+environment (ADR-085).
 """
 
 import shutil
