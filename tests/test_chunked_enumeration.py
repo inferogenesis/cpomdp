@@ -31,6 +31,7 @@ numbers, bit for bit.
 import subprocess
 import sys
 import textwrap
+from dataclasses import fields
 
 import jax.numpy as jnp
 import numpy as np
@@ -38,10 +39,10 @@ import pytest
 
 from cpomdp.enumeration import (
     ChunkedEfeSearch,
-    ChunkedSearchResult,
     EnumeratedEfeSearch,
     EnumeratedSearchResult,
     FiniteActionSet,
+    SearchResult,
 )
 from cpomdp.observation import CallableSensor
 from cpomdp.selection import Preference
@@ -377,11 +378,29 @@ class TestInterchangeable:
         assert int(a.best_index) == int(b.best_index)
         assert a.certificate == b.certificate
 
-    def test_the_chunked_fields_are_a_subset_of_the_front_loaded_ones(self):
-        # The front-loaded result adds the whole score vector `g` and nothing else.
-        shared = set(ChunkedSearchResult._fields)
-        assert shared == {"best_policy", "best_g", "best_index", "certificate"}
-        assert set(EnumeratedSearchResult._fields) == shared | {"g"}
+    def test_the_front_loaded_result_is_a_search_result_plus_the_score_vector(self):
+        shared = ("best_policy", "best_g", "best_index", "certificate")
+        assert tuple(field.name for field in fields(SearchResult)) == shared
+        assert issubclass(EnumeratedSearchResult, SearchResult)
+        front_loaded_fields = tuple(
+            field.name for field in fields(EnumeratedSearchResult)
+        )
+        assert front_loaded_fields == (*shared, "g")
+
+    def test_each_search_returns_its_own_result_type(self):
+        front, chunked = self._both()
+        assert type(front.evaluate(_beacon_belief(), _pref())) is EnumeratedSearchResult
+        assert type(chunked.evaluate(_beacon_belief(), _pref())) is SearchResult
+
+    @pytest.mark.parametrize("which", [0, 1])
+    def test_a_result_is_read_by_name_alone(self, which):
+        # A position that named one field on one search and another field on the other
+        # would make the swap silently wrong. No position names anything.
+        result = self._both()[which].evaluate(_beacon_belief(), _pref())
+        with pytest.raises(TypeError):
+            iter(result)
+        with pytest.raises(TypeError):
+            result[1]
 
     def test_the_front_loaded_best_is_read_off_its_own_vector(self):
         front, _ = self._both()

@@ -266,11 +266,12 @@ certainty equivalence is optimal, and no use of the readings beats it.
 - `cpomdp.enumeration.ChunkedEfeSearch` — the exhaustive search run in blocks, at a
   footprint the block sets rather than `|A|^H`. It enumerates the same set as
   `EnumeratedEfeSearch`, earns the same `PROVED` certificate and takes the same model,
-  set and horizon, with `chunk` in place of a policy budget. `evaluate` returns a `ChunkedSearchResult` with the argmin,
-  its `G`, its index and the certificate. The front-loaded result has those fields under
-  the same names and adds only the score vector. The two paths agree under `==`, ties
-  included (ADR-036). Both drivers take it, and the refinement cells of the fourth
-  falsifier ran on it. The searches and their drivers have an API page.
+  set and horizon, with `chunk` in place of a policy budget. `evaluate` returns a
+  `SearchResult` with the argmin, its `G`, its index and the certificate. The
+  front-loaded search returns `EnumeratedSearchResult`, a `SearchResult` that adds the
+  score vector. The two paths agree under `==`, ties included (ADR-036). Both drivers
+  take it, and the refinement cells of the fourth falsifier ran on it. The searches and
+  their drivers have an API page.
 - `Provenance` (warrantlib 0.2.0) — which ref registered a claim and which one measured
   it, plus one line saying what a reviewer will find at the first. A `PROVED` report
   requires one, on the same terms as it requires evidence, and carries them as a tuple
@@ -654,10 +655,11 @@ certainty equivalence is optimal, and no use of the readings beats it.
   search's figure overstated the open-loop driver by a factor of H, and the README did
   exactly that.
 - **Breaking:** the certificate travels with the decision. `EnumeratedEfeSearch` loses
-  its `certificate` property, and `evaluate` returns the certificate on the result,
-  which gains `best_g`, `best_index` and `certificate` after `g`. Unpacking the result
-  into two names no longer works. A driver's `certificate` is the last plan's, `None`
-  before its first, because the chunked search earns one per run.
+  its `certificate` property, and `evaluate` returns the certificate on the result.
+  `EnumeratedSearchResult` is a frozen dataclass read by name. It no longer unpacks or
+  indexes. It subclasses `SearchResult`, the chunked search's result, and gains
+  `best_g`, `best_index` and `certificate`. A driver's `certificate` is the last plan's,
+  `None` before its first, because the chunked search earns one per run.
 - **Breaking:** `EnumeratedEfeSearch` and its `over_backend` refuse a set of more than
   `max_policies` policies, `2^21` unless set, with a `PolicyBudgetError`. `|A|^H` is
   exact before anything is allocated, and an oversized set used to take a

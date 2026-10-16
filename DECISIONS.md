@@ -4686,14 +4686,18 @@ count is exact and a caller can reason about it. The floor goes in the message. 
 rollout carries for each policy.
 
 **The two searches are interchangeable.** Both searches answer
-`evaluate(belief, preference)`. Both results carry `best_policy`, `best_g`,
-`best_index` and `certificate` under those names, and the front-loaded result adds the
-score vector `g`. The certificate is read off the result on both paths. On the chunked
-path its count is what the loop produces, so a certificate cannot exist before a run.
-The front-loaded search still checks completeness at construction and attaches that
-certificate to every result. `ChunkedSearchResult` drops `visited`, which repeated
-`certificate.visited`. Both drivers take either search and refuse anything else with a
-`TypeError`. A driver's `certificate` is its last plan's, `None` before the first.
+`evaluate(belief, preference)`. The chunked search returns a `SearchResult` carrying
+`best_policy`, `best_g`, `best_index` and `certificate`. The front-loaded one returns
+`EnumeratedSearchResult`, a subclass that adds the score vector `g`. Both are frozen
+dataclasses read by name. A tuple would let one position name `g` on one search and
+`best_g` on the other. Each is a pytree with the certificate as static data, so
+`evaluate` composes with `jit` and `vmap`. The certificate is read off the result on
+both paths. On the chunked path its count is what the loop produces, so a certificate
+cannot exist before a run. The front-loaded search still checks completeness at
+construction and attaches that certificate to every result. The chunked result has no
+`visited`, which repeated `certificate.visited`. Both drivers take either search and
+refuse anything else with a `TypeError`. A driver's `certificate` is its last plan's,
+`None` before the first.
 
 **`cost_per_plan` on a search, `cost_per_cycle` on a selector.** A search reports the
 step evaluations of one `evaluate` as `cost_per_plan`, the name the drivers already

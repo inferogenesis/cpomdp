@@ -27,13 +27,13 @@ The two searches take the same model, set and horizon, and answer the same `eval
     What an agent step costs depends on how often the agent plans, so only the
     selectors below report `cost_per_cycle`.
 
+::: cpomdp.enumeration.SearchResult
+
 ::: cpomdp.enumeration.EnumeratedEfeSearch
 
 ::: cpomdp.enumeration.EnumeratedSearchResult
 
 ::: cpomdp.enumeration.ChunkedEfeSearch
-
-::: cpomdp.enumeration.ChunkedSearchResult
 
 ::: cpomdp.enumeration.PolicyBudgetError
 
