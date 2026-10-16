@@ -28,7 +28,7 @@ raises ``IncompatibleLinearizationError`` (ADR-019, ADR-020). The
 
 Whether a state-dependent sensor earns its keep is a question about the states an
 action can actually reach: ``probe_model`` samples that reachable set and
-reports back a ``SensorReport``.
+reports back a ``ProbeReport``.
 """
 
 import jax as _jax
@@ -41,8 +41,8 @@ from cpomdp.backends.coupling import (
 )
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.control import LQRController
-from cpomdp.diagnostics import SensorReport, probe_model
-from cpomdp.dynamics import CallableProcessNoise, DynamicsNoise
+from cpomdp.diagnostics import ProbeReport, probe_model
+from cpomdp.dynamics import CallableDynamicsNoise, DynamicsNoiseModel
 from cpomdp.efe import expected_free_energy
 from cpomdp.ffg.factors.linear_gaussian import (
     CallableGaussianObservation,
@@ -75,13 +75,13 @@ __all__ = [
     "ActionSelector",
     "Agent",
     "Belief",
+    "CallableDynamicsNoise",
     "CallableGaussianObservation",
-    "CallableProcessNoise",
     "CallableSensor",
     "Coupling",
     "CouplingGraph",
     "CouplingGraphBackend",
-    "DynamicsNoise",
+    "DynamicsNoiseModel",
     "EFESelector",
     "FfgEfeSelector",
     "FixedSensor",
@@ -99,7 +99,7 @@ __all__ = [
     "ObservationGoal",
     "ObservationModel",
     "Preference",
-    "SensorReport",
+    "ProbeReport",
     "StateGoal",
     "Warrant",
     "expected_free_energy",

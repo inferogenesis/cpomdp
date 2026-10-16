@@ -48,7 +48,7 @@ def _agents(*names: str) -> dict[str, ScoredAgent]:
 def test_a_sequence_reports_its_length_and_action_dimension():
     sequence = _sequence()
     assert sequence.horizon == 5
-    assert sequence.action_dim == 1
+    assert sequence.n_controls == 1
 
 
 def test_a_sequence_needs_a_version():

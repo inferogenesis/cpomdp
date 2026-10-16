@@ -85,11 +85,12 @@ def _precision_well_noise(x, params):
 
 
 def _model(observation_model=None):
+    fixed = observation_model is None  # a sensor carries C and R itself
     return LinearGaussianModel(
         dynamics_matrix=DYNAMICS_MATRIX,
-        observation_matrix=OBSERVATION_MATRIX,
+        observation_matrix=OBSERVATION_MATRIX if fixed else None,
         dynamics_noise=DYNAMICS_NOISE,
-        observation_noise=OBSERVATION_NOISE,
+        observation_noise=OBSERVATION_NOISE if fixed else None,
         prior=BELIEF,
         control_matrix=CONTROL_MATRIX,
         observation_model=observation_model,
