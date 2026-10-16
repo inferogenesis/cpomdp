@@ -63,12 +63,11 @@ function cpomdp_run_step(y, A, C, Q, R, prior_mean, prior_cov, control_term)
     return (mean(posterior), cov(posterior))
 end
 
-# A small branching graph hardcoded to one topology based on E. coli chemotaxis (the
-# CouplingGraph difference demo): a hidden hub `CheA` feeding a fast sub-branch
-# `CheY` -> {motorA, motorB} and a slow branch `CheB`, each leaf observed.
-# The posterior over `CheA` is the marginal a `CouplingGraph.infer_root` collects up the
-# same tree. Same MvNormal idiom as the chain step, so a node of degree > 2 (CheY)
-# is the only new thing under test.
+# A small branching graph hardcoded to one topology: a hidden hub feeding a fast
+# sub-branch with two leaves and a slow branch, each leaf observed. The posterior over
+# the hub is the marginal a `CouplingGraph.infer_root` collects up the same tree. Same
+# MvNormal idiom as the chain step, so a node of degree > 2 is the only new thing under
+# test.
 @model function cpomdp_chemotaxis_tree(
     y_motorA, y_motorB, y_cheB,
     W_chey, W_cheb, W_motorA, W_motorB,

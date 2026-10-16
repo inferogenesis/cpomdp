@@ -6,8 +6,8 @@ clock via ``GaussianTransition.from_ou`` (ADR-017); the structural couplings are
 within-slice signal transduction ``child = W * parent + noise``. Topology matches the
 RxInfer oracle ``cpomdp_chemotaxis_tree``.
 
-This is a model built on the toolbox, not part of it: the Phase-3 acceptance tests and
-the end-to-end demo (#27) import ``chemotaxis_ffg`` from here.
+This is a model built on the toolbox, not part of it: the acceptance tests and the
+end-to-end demo (#27) import ``chemotaxis_ffg`` from here.
 """
 
 from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
