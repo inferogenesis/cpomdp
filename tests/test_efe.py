@@ -144,6 +144,22 @@ class TestTheResultRecord:
     def test_the_trace_leads_with_the_same_fields(self):
         assert PolicyEfeTrace._fields[:3] == EfeResult._fields
 
+    def test_a_gradient_is_taken_of_g_with_the_record_as_its_aux(self):
+        model, belief, preference = _model(), _belief(), _obs_preference()
+        action = jnp.array([0.4])
+
+        def scored(candidate):
+            result = expected_free_energy(model, belief, candidate, preference)
+            return result.g, result
+
+        (value, record), gradient = jax.value_and_grad(scored, has_aux=True)(action)
+        assert isinstance(record, EfeResult)
+        assert value is record.g
+        np.testing.assert_array_equal(
+            gradient,
+            jax.grad(lambda candidate: scored(candidate)[0])(action),
+        )
+
     def test_a_vmap_batches_every_field(self):
         model, belief, pref = _model(), _belief(), _obs_preference()
         actions = jnp.array([[-1.0], [0.0], [0.5], [2.0]])

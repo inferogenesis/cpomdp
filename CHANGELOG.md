@@ -566,7 +566,11 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `NamedTuple`, so one family answered in two forms, and a misspelt key failed only when
   it ran. `g` comes first, so `result[0]` still reads `G`. Code that unpacked
   `G, parts = ...` reads `result.g` and `result.pragmatic` instead. A `vmap` over
-  candidate actions returns one `EfeResult` with every field batched.
+  candidate actions returns one `EfeResult` with every field batched, and the batch is
+  ranked by `batch.g`. NumPy's `argmin` on the record itself flattens all three fields
+  and returns an index past the candidates. The old pair fitted
+  `jax.value_and_grad(..., has_aux=True)` as it stood. A function differentiated that
+  way now returns `(result.g, result)`, and `jax.grad` takes one returning `result.g`.
 - **Breaking:** `PolicyEfeTrace`'s moment fields are `predicted_mean`, `predicted_cov`,
   `posterior_cov` and `predicted_observation_cov`, renamed from `mu_pred`, `sigma_pred`,
   `sigma_post` and `s`. `RolloutConditioning`'s fields follow them, so `cond_s` is

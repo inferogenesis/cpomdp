@@ -4714,6 +4714,11 @@ its attributes. It also turned a fault inside a real `Preference` into a refusal
 
 - `G, parts = expected_free_energy(...)` raises at the unpack. The fix is `result.g` and
   `result.pragmatic`. The changelog lists both renames under **Breaking**.
+- The old pair was the `(value, aux)` shape `jax.value_and_grad(..., has_aux=True)`
+  takes, and a record of three fields is not. A function differentiated that way
+  returns `(result.g, result)`. NumPy's `argmin` over a batched record flattens all
+  three fields and returns an index past the candidates without an error. The pair
+  raised. The `EfeResult` docstring says to rank and differentiate by `g`.
 - The per-cycle cost does not move. The record is built from scalars the scan already
   returns. The type check runs once per trace under `jit` and `vmap`, which is how the
   selectors and searches score.
