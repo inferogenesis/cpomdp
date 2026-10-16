@@ -326,9 +326,7 @@ class TestStateDependentSelection:
         rx, A, Q, C, B = _single_node_rx_backend(params)
         model = LinearGaussianModel(
             dynamics_matrix=A,
-            observation_matrix=C,
             dynamics_noise=Q,
-            observation_noise=params["R0"],  # placeholder; overridden by observation
             prior=Belief(mean=np.zeros(2), cov=np.eye(2)),
             control_matrix=B,
             observation_model=CallableSensor(C, _rx_noise, params),

@@ -225,12 +225,9 @@ def build_model() -> LinearGaussianModel:
     return LinearGaussianModel(
         dynamics_matrix=dynamics_matrix,
         control_matrix=control_matrix,
-        observation_matrix=observation_matrix,
         dynamics_noise=dynamics_noise,
-        observation_noise=R_SELF
-        * jnp.eye(4),  # nominal; the live R comes from `sensor`
         prior=Belief(mean=prior_mean, cov=prior_cov),
-        observation_model=sensor,
+        observation_model=sensor,  # carries C and R(x), so neither is passed again
     )
 
 
