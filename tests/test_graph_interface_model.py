@@ -334,3 +334,26 @@ def test_a_driver_over_a_graph_with_another_efe_flag_is_refused():
             Preference(jnp.zeros(2)),
             selector=_driver_over(flagged(True)),
         )
+
+
+def test_a_scored_agent_refuses_a_coupled_graph_backend():
+    from cpomdp._lab.harness import ScoredAgent
+
+    with pytest.raises(TypeError, match="couplings"):
+        ScoredAgent.from_backend(_backend(coupled=True))
+
+
+@pytest.mark.parametrize("rule_name", ["exact", "frozen_gain", "wrong_r", "diagonal"])
+def test_every_inference_cell_refuses_a_coupled_graphs_model(rule_name):
+    from cpomdp._lab.constructors import InferenceKind, InferenceRule
+
+    kind = {
+        "exact": InferenceKind.EXACT,
+        "frozen_gain": InferenceKind.FROZEN_GAIN,
+        "wrong_r": InferenceKind.WRONG_FIXED_R,
+        "diagonal": InferenceKind.DIAGONAL_COVARIANCE_ONLY,
+    }[rule_name]
+    magnitude = 0.1 if kind is InferenceKind.WRONG_FIXED_R else 0.0
+    rule = InferenceRule(name=rule_name, kind=kind, magnitude=magnitude)
+    with pytest.raises(TypeError, match="couplings"):
+        rule.build(_backend(coupled=True).model)

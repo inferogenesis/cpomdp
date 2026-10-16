@@ -27,7 +27,7 @@ from numpy.typing import ArrayLike
 from cpomdp._validation import state_dependent, validate_covariance
 from cpomdp.backends.base import InferenceBackend
 from cpomdp.backends.kalman import KalmanBackend
-from cpomdp.types import Belief, LinearGaussianModel, refuse_graph_interface
+from cpomdp.types import Belief, LinearGaussianModel, _refuse_graph_interface
 
 __all__ = [
     "SEVERED_CONTROL_LOOP",
@@ -75,7 +75,7 @@ class World:
         Raises:
             ValueError: If ``initial_state`` is not a 1-D vector of length ``n``.
         """
-        refuse_graph_interface(model, "World")
+        _refuse_graph_interface(model, "World")
         self._model = model
         if initial_state is None:
             state = model.prior.mean
@@ -227,6 +227,10 @@ class ScoredAgent:
 
         Returns:
             The agent.
+
+        Raises:
+            TypeError: If ``backend`` is a coupled graph backend, whose model leaves
+                out the couplings the agent would be scored without.
         """
         agent = cls.__new__(cls)
         agent._setup(backend)
@@ -234,6 +238,7 @@ class ScoredAgent:
 
     def _setup(self, backend: InferenceBackend) -> None:
         """Hold the backend and start from its model's prior."""
+        _refuse_graph_interface(backend.model, "ScoredAgent")
         self._backend = backend
         self.belief = backend.model.prior
 

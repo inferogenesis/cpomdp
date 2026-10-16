@@ -35,7 +35,7 @@ from numpy.typing import ArrayLike
 
 from cpomdp._validation import concrete
 from cpomdp.efe import _info_block_of, _policy_efe_ffg, policy_efe
-from cpomdp.types import Belief, LinearGaussianModel, refuse_graph_interface
+from cpomdp.types import Belief, LinearGaussianModel, _refuse_graph_interface
 
 # `CompletenessCertificate` is an evidence kind of the warrant vocabulary, so it is
 # defined in `warrantlib` beside `SymbolicReduction`. It is re-exported below, because
@@ -454,7 +454,7 @@ class ExhaustiveEFESearch(ABC):
     @classmethod
     def _flat_scorer(cls, model: LinearGaussianModel) -> _FlatScorer:
         """The flat constructor's scorer, refusing a model no action can move."""
-        refuse_graph_interface(model, cls.__name__)
+        _refuse_graph_interface(model, cls.__name__)
         if model.control_matrix is None:
             raise ValueError(
                 f"{cls.__name__} needs a model with a control matrix; an action has no "
@@ -617,12 +617,15 @@ class EnumeratedEFESearch(ExhaustiveEFESearch):
         constructor cannot express. The policy budget is the flat constructor's.
 
         Raises:
+            TypeError: If ``info_node`` is not a node index, or a list, tuple,
+                range or 1-D array of them.
             InadmissiblePartitionError: If the backend's carry partition severs an
                 EFE-load-bearing edge.
             PolicyBudgetError: If ``|A|^H`` exceeds ``max_policies``.
             ValueError: If the backend has no control matrix, if ``info_node`` is
-                not a node of the graph, if the action set's dimension or the horizon
-                does not fit, or if ``max_policies`` is below 1.
+                empty, repeats a node or names one outside the graph, if the action
+                set's dimension or the horizon does not fit, or if ``max_policies`` is
+                below 1.
         """
         search = cls.__new__(cls)
         scorer = cls._graph_scorer(backend, info_node)
@@ -803,11 +806,13 @@ class ChunkedEFESearch(ExhaustiveEFESearch):
         """Chunked search that scores on an FFG ``backend`` via ``policy_efe_ffg``.
 
         Raises:
+            TypeError: If ``info_node`` is not a node index, or a list, tuple,
+                range or 1-D array of them.
             InadmissiblePartitionError: If the backend's carry partition severs an
                 EFE-load-bearing edge.
             ValueError: If the backend has no control matrix, if ``info_node`` is
-                not a node of the graph, if the action set's dimension or the horizon
-                does not fit, or if ``chunk`` is below 1.
+                empty, repeats a node or names one outside the graph, if the action
+                set's dimension or the horizon does not fit, or if ``chunk`` is below 1.
         """
         search = cls.__new__(cls)
         search._setup(cls._graph_scorer(backend, info_node), action_set, horizon, chunk)

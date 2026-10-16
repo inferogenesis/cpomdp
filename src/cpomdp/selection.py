@@ -24,7 +24,7 @@ from cpomdp.efe import (
     expected_free_energy,
     policy_efe,
 )
-from cpomdp.types import Belief, LinearGaussianModel, refuse_graph_interface
+from cpomdp.types import Belief, LinearGaussianModel, _refuse_graph_interface
 from warrantlib import Warrant
 
 __all__ = [
@@ -96,12 +96,19 @@ def _checked_horizon(horizon: int) -> int:
 def _stored_info_node(
     info_node: SupportsIndex | Sequence[SupportsIndex] | None,
 ) -> int | tuple[int, ...] | None:
-    """``info_node`` as an ``ObservationGoal`` keeps it: an int, a tuple, or None."""
+    """``info_node`` as an ``ObservationGoal`` keeps it: an int, a tuple, or None.
+
+    One node is an int however it was written, so ``2`` and ``[2]`` compare equal.
+
+    Raises:
+        ValueError: If a node list is empty.
+    """
     if info_node is None:
         return None
     nodes = _info_nodes(info_node)
-    single = not isinstance(info_node, Sequence) or isinstance(info_node, str)
-    return nodes[0] if single else nodes
+    if not nodes:
+        raise ValueError("info_node names no node. Pass None for the whole state.")
+    return nodes[0] if len(nodes) == 1 else nodes
 
 
 def _candidate_grid(
@@ -323,7 +330,7 @@ class EFESelector:
                 dimension, if ``action_bounds`` is not two finite scalars in order, if
                 ``n_candidates`` is below 2, or if ``horizon`` is below 1.
         """
-        refuse_graph_interface(model, "EFESelector")
+        _refuse_graph_interface(model, "EFESelector")
         _require_scalar_control(
             model.control_matrix, "EFESelector", "EnumeratedEFESearch"
         )
@@ -448,12 +455,14 @@ class FFGEFESelector:
                 [`ObservationGoal`][cpomdp.ObservationGoal].
 
         Raises:
+            TypeError: If ``info_node`` is not a node index, or a list, tuple,
+                range or 1-D array of them.
             InadmissiblePartitionError: If the backend's carry partition severs an
                 EFE-load-bearing edge.
             ValueError: If the backend has no control matrix or more than one action
                 dimension, if ``action_bounds`` is not two finite scalars in order,
-                if ``n_candidates`` is below 2, or if ``info_node`` is not a node of
-                the graph.
+                if ``n_candidates`` is below 2, or if ``info_node`` is empty, repeats a
+                node or names one outside the graph.
             TypeError: If ``n_candidates`` is not an integer.
         """
         _require_scalar_control(

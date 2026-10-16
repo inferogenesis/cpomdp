@@ -532,8 +532,8 @@ certainty equivalence is optimal, and no use of the readings beats it.
   joint-state indices they were aimed at. JAX clamps an out-of-range gather, so index 99
   on a 3-state joint scored as index 2. An empty block gave a zero epistemic and a
   repeated one gave NaN. All of them now refuse a severing partition, a node outside the
-  graph and an empty or repeated node list through one check. A search makes it once at construction, so
-  scoring each policy costs nothing extra.
+  graph and an empty or repeated node list through one check. A search makes it once at
+  construction, so scoring each policy costs nothing extra.
 - `FiniteActionSet` refuses a non-finite action and names its row. A NaN action scored
   NaN on every policy that took it, and a search over the set still certified it
   `PROVED`. A repeated action is still accepted and counts toward `|A|`.
@@ -574,8 +574,10 @@ certainty equivalence is optimal, and no use of the readings beats it.
 
 - **Breaking:** a coupled `CouplingGraphBackend`'s `model` is refused where a plant is
   taken: by `KalmanBackend`, `RxInferBackend`, the private `ChainBackend`, `Agent`,
-  `EFESelector`, the flat searches, `LQRController`, `lqr_schedule`, `kalman_schedule`,
-  `probe_model`, `expected_free_energy`, `policy_efe` and `policy_efe_trace`. The model
+  `EFESelector`, `EnumeratedEFESearch`, `ChunkedEFESearch`, `LQRController`,
+  `lqr_schedule`, `kalman_schedule`, `probe_model`, `expected_free_energy`, `policy_efe`
+  and `policy_efe_trace`. The private research harness refuses it too, in `World`,
+  `ScoredAgent`, `WrongFixedRBackend` and every `InferenceRule` cell. The model
   leaves out the couplings, so each of them computed on a different plant with nothing
   raised. A copy made with `dataclasses.replace`, `jax.tree.map` or through a `jit`
   boundary is refused too. `Agent.from_backend(graph, StateGoal(...))` ran LQR that
@@ -586,6 +588,9 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `EnumeratedEfeSearch` and `ChunkedEfeSearch` are `EnumeratedEFESearch` and
   `ChunkedEFESearch`, and `PolicyEfeTrace` is `PolicyEFETrace`. The classes new in
   this release take the same casing: `EFEResult` and `ExhaustiveEFESearch` (ADR-088).
+- **Breaking:** `Agent.qs` is gone. It was a read-only alias of `Agent.belief`, so one
+  posterior had two names and the README told users to pick either. pymdp's `qs` is
+  `agent.belief`.
 - **Breaking:** `Agent` takes a model or a backend, never both. `Agent(model, objective)`
   filters with the default per-step `KalmanBackend`, and
   `Agent.from_backend(backend, objective)` takes any other engine, a
@@ -834,13 +839,13 @@ certainty equivalence is optimal, and no use of the readings beats it.
 - **Breaking:** the epistemic term's aim is `info_node` on every graph entry point:
   `ObservationGoal`, `FFGEFESelector`, `policy_efe_ffg`, `policy_efe_ffg_trace`, both
   `over_backend` class methods and the crossover functions. `None`, the default, is the
-  whole joint state, and a sequence of nodes aims at their joint marginal. The graph APIs took `target`, a name the goals use for a desired
-  value, so a goal vector passed there gave `G = nan` and a different action with no
-  raise. They then took `info_block`, the joint-state indices, while the goal took a node,
-  with a different default on each. A caller converted with `backend.block(node)` and
-  passed the backend twice, and on scalar nodes `info_block=(0,)` read as node 0 until a
-  node grew (ADR-090).
-  `ObservationGoal.info_target` becomes `info_node`. `StateGoal.target` and
+  whole joint state, and a sequence of nodes aims at their joint marginal. The graph
+  APIs took `target`, a name the goals use for a desired value, so a goal vector passed
+  there gave `G = nan` and a different action with no raise. They then took
+  `info_block`, the joint-state indices, while the goal took a node, with a different
+  default on each. A caller converted with `backend.block(node)` and passed the backend
+  twice, and on scalar nodes `info_block=(0,)` read as node 0 until a node grew
+  (ADR-090). `ObservationGoal.info_target` becomes `info_node`. `StateGoal.target` and
   `ObservationGoal.target` keep the name, which now has one meaning.
 - **Breaking:** `expected_free_energy`, `policy_efe` and `policy_efe_ffg` return an
   `EFEResult` with fields `g`, `pragmatic` and `epistemic`. They returned

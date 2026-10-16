@@ -28,8 +28,8 @@ from cpomdp.selection import (
 from cpomdp.types import (
     Belief,
     LinearGaussianModel,
-    is_graph_interface,
-    refuse_graph_interface,
+    _is_graph_interface,
+    _refuse_graph_interface,
 )
 
 __all__ = ["Agent"]
@@ -161,7 +161,7 @@ def _scores_another_plant(selector: ActionSelector, backend: InferenceBackend) -
     graph = selector.backend if isinstance(selector, _GRAPH_SCORED_SELECTORS) else None
     if graph is None:
         # A flat score on a coupled graph leaves out the couplings the agent filters by.
-        if is_graph_interface(backend.model):
+        if _is_graph_interface(backend.model):
             return True
         return not _same_model(selector.model, backend.model)
     if graph is backend:
@@ -170,7 +170,7 @@ def _scores_another_plant(selector: ActionSelector, backend: InferenceBackend) -
         isinstance(graph, CouplingGraphBackend)
         and isinstance(backend, CouplingGraphBackend)
     ):
-        if is_graph_interface(graph.model) or is_graph_interface(backend.model):
+        if _is_graph_interface(graph.model) or _is_graph_interface(backend.model):
             return True  # its couplings cannot be read, so only identity passes
         return not _same_model(graph.model, backend.model)
     return not (
@@ -470,7 +470,7 @@ class Agent:
                 for a coupled ``CouplingGraphBackend``'s model, which leaves out the
                 couplings.
         """
-        refuse_graph_interface(model, "Agent")
+        _refuse_graph_interface(model, "Agent")
         self._setup(KalmanBackend(model), objective, selector)
 
     @classmethod
@@ -531,7 +531,7 @@ class Agent:
         elif objective is None:
             return  # a perceive-only tracker: nothing to act toward
         elif isinstance(objective, StateGoal):
-            if is_graph_interface(model):
+            if _is_graph_interface(model):
                 raise TypeError(
                     "a StateGoal on a coupled CouplingGraphBackend would regulate with "
                     "LQR on a model that leaves out the couplings. Pass a Preference "
@@ -584,15 +584,6 @@ class Agent:
                 f"{belief.mean.shape}"
             )
         self._belief = belief
-
-    @property
-    def qs(self) -> Belief:
-        """Alias for ``belief`` (read-only) — pymdp muscle-memory ``agent.qs``.
-
-        The name is pymdp's, carried over for familiarity; the object is a Gaussian
-        [`Belief`][cpomdp.Belief], not a categorical posterior. Prefer ``belief``.
-        """
-        return self.belief
 
     @property
     def selector(self) -> ActionSelector | None:

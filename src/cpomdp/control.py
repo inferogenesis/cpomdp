@@ -17,7 +17,7 @@ from numpy.typing import ArrayLike
 
 from cpomdp._validation import require_fixed_noise
 from cpomdp.backends.kalman import _gain_and_posterior_cov
-from cpomdp.types import Belief, LinearGaussianModel, refuse_graph_interface
+from cpomdp.types import Belief, LinearGaussianModel, _refuse_graph_interface
 
 __all__ = [
     "KalmanSchedule",
@@ -224,7 +224,7 @@ def lqr_schedule(
         ValueError: If ``horizon`` is below one, or on any of the cost and model
             conditions ``LQRController`` refuses.
     """
-    refuse_graph_interface(model, "lqr_schedule")
+    _refuse_graph_interface(model, "lqr_schedule")
     if horizon < 1:
         raise ValueError(f"horizon must be at least 1, got {horizon}")
     precision, effort = _validated_costs(
@@ -310,7 +310,7 @@ def kalman_schedule(
         ValueError: If ``horizon`` is below one, if either noise depends on the state,
             or if ``prior`` is not over the model's state.
     """
-    refuse_graph_interface(model, "kalman_schedule")
+    _refuse_graph_interface(model, "kalman_schedule")
     if horizon < 1:
         raise ValueError(f"horizon must be at least 1, got {horizon}")
     require_fixed_noise(model, _PRICES_FIXED_NOISE)
@@ -389,7 +389,7 @@ class LQRController:
         tol: float = 1e-12,
         max_iter: int = 1000,
     ) -> None:
-        refuse_graph_interface(model, "LQRController")
+        _refuse_graph_interface(model, "LQRController")
         self._model = model
         self._precision, self._effort = _validated_costs(
             model, precision, effort, names=("precision", "effort")

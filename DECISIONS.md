@@ -5663,9 +5663,12 @@ units coincide, so `info_block=(0,)` read as node 0 and broke once a node grew.
 
 Every graph entry point takes `info_node: int | Sequence[int] | None = None`, as the
 goal does. `None` is the whole joint state, a node is its block, and several nodes are
-their joint marginal, as NumPy's `axis` takes one axis or several. Each resolves the node to its indices once, at construction or
-trace time, through one check that also refuses a severing partition and a node outside
-the graph. The private kernels keep the indices.
+their joint marginal, as NumPy's `axis` takes one axis or several. A list, a tuple or a
+1-D integer array names several. `ObservationGoal.info_node` keeps one node as an `int`
+however it was written and several as a tuple, so `2` and `[2]` compare equal. Each
+resolves the node to its indices once, at construction or trace time, through one check
+that also refuses a severing partition and a node outside the graph. The private kernels
+keep the indices.
 
 ### Consequences
 
