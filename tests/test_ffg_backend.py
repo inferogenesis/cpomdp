@@ -516,6 +516,61 @@ class TestCarryPartition:
                 np.asarray(covs[step]), np.asarray(belief.cov), atol=1e-10
             )
 
+    def test_filter_sequence_matches_infer_states_from_a_correlated_prior(self):
+        # A singleton cut sends infer_states down the node-by-node pass and the scan
+        # through the dense solve. Both must factor a correlated prior the same way.
+        cut = _build(
+            _CHEMOTAXIS_DIMS,
+            _CHEMOTAXIS_EDGES,
+            _CHEMOTAXIS_OBS,
+            _CHEMOTAXIS_DYN,
+            partition=[[node] for node in range(len(_CHEMOTAXIS_DIMS))],
+        )
+        rng = np.random.default_rng(5)
+        prior = Belief(mean=rng.standard_normal(5), cov=_spd(rng, 5))
+        observations = np.stack([rng.standard_normal(3) for _ in range(3)])
+
+        means, covs, _severed = cut.filter_sequence(observations, prior)
+
+        belief = prior
+        for step, observation in enumerate(observations):
+            belief = cut.infer_states(observation, belief)
+            np.testing.assert_allclose(
+                np.asarray(means[step]), np.asarray(belief.mean), atol=1e-10
+            )
+            np.testing.assert_allclose(
+                np.asarray(covs[step]), np.asarray(belief.cov), atol=1e-10
+            )
+
+    def test_predicted_belief_factors_the_prior_as_the_filter_does(self):
+        # The EFE reads predicted_belief, so it predicts from the belief the filter
+        # carries and not from correlation the cut drops on ingest.
+        cut = _build(
+            _CHEMOTAXIS_DIMS,
+            _CHEMOTAXIS_EDGES,
+            _CHEMOTAXIS_OBS,
+            _CHEMOTAXIS_DYN,
+            partition=[[0, 1, 3, 4], [2]],
+        )
+        rng = np.random.default_rng(6)
+        correlated_cov = _spd(rng, 5)
+        factored_cov = correlated_cov.copy()
+        factored_cov[2, [0, 1, 3, 4]] = 0.0
+        factored_cov[[0, 1, 3, 4], 2] = 0.0
+        prior_mean = rng.standard_normal(5)
+
+        from_correlated = cut.predicted_belief(
+            Belief(mean=prior_mean, cov=correlated_cov)
+        )
+        from_factored = cut.predicted_belief(Belief(mean=prior_mean, cov=factored_cov))
+
+        np.testing.assert_allclose(
+            np.asarray(from_correlated.mean), np.asarray(from_factored.mean), atol=1e-12
+        )
+        np.testing.assert_allclose(
+            np.asarray(from_correlated.cov), np.asarray(from_factored.cov), atol=1e-12
+        )
+
     def test_filter_sequence_returns_moments_not_a_belief(self):
         # A Belief with a leading time axis broke Belief's invariant, and the backend's
         # own `marginal` refused it.
