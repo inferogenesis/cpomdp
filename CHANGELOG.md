@@ -443,7 +443,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
   with a selector reading the other space cannot be written:
   `Agent(model, StateGoal(target), selector=EFESelector(...))` pursued `C · x = target`
   and settled away from the target whenever `C` is not the identity. A custom selector
-  is not checked (ADR-071).
+  is not checked (ADR-080).
 - **Breaking:** on the LQR path `Agent` refuses a `StateGoal` target the dynamics do not
   hold at zero action, where `A · target ≠ target`. LQR regulates the offset from the
   target and charges for effort, so it settled short. With `A = 0.9` and a target of 1
