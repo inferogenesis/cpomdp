@@ -502,9 +502,9 @@ certainty equivalence is optimal, and no use of the readings beats it.
   nodes raised a bare `IndexError`.
 - `CouplingGraphBackend` cuts a prior by its partition before it filters from it, on
   every surface. Under an all-singleton partition `infer_states` kept only each node's
-  own block of a correlated prior. `filter_sequence`, `severed_mass` and
-  `predicted_belief` used all of it. So the run profile measured a filter `infer_states`
-  never ran, and the EFE predicted from correlation the filter dropped. The full-joint
+  own block of a correlated prior. `severed_mass` and `predicted_belief` used all of
+  it. So the severed mass counted correlation the filter had already dropped, and the
+  EFE predicted from it. The full-joint
   partition is unchanged. A mixed partition such as `[[0, 1, 3, 4], [2]]` over a
   correlated prior also returns a different posterior now, since the dense path inverts
   the cut prior (ADR-077).
@@ -960,13 +960,13 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `observation_model`, which the entries above retire. Like `EfeBackend` before it, it
   carries no promise (ADR-069).
 - **Breaking:** `CouplingGraphBackend.partition_error` is `severed_mass`, the name its
-  docstring and its second output already used. `rollout` is `filter_sequence`. Elsewhere
-  a rollout is the H-step policy rollout the EFE scores, and this one filters. It takes
-  `(observations, prior, actions)`, the order `infer_states` takes, where it put the
-  prior first. It returns `(means, covs, severed_mass)` as arrays. The `Belief` it
-  returned had a time axis on its mean, which broke `Belief`'s invariant, and the
-  backend's own `marginal` refused it. It now checks the prior and the width of each
-  stack before it scans.
+  docstring already used, and it returns a 0-d JAX array where it returned a host
+  `float`. It composes under `jit` and `lax.scan`, and `float(...)` reads one value.
+  `rollout` is gone. It was a second compiled filter beside `infer_states`, returned a
+  `Belief` with a time axis that broke `Belief`'s invariant, and always paid the dense
+  solve, even on the partition chosen for its cheap pass. A per-run profile is a
+  `lax.scan` over `infer_states` and `severed_mass`, and the diagnostic's solve is a
+  separate call (ADR-089).
 - **Breaking:** `CouplingGraphBackend.readout` and its `readout_node` argument are
   removed. `readout(belief)` was `marginal(readout_node, belief)`, and the argument did
   nothing else. Read any node, the root included, with `marginal(node, belief)`.
