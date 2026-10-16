@@ -5583,3 +5583,32 @@ module names stay lower case.
 - `FFGEFESelector` runs two acronyms together. It is read once at an import, and an
   exception to the rule would be the thing to remember.
 - Earlier ADRs keep the spellings they were written in (ADR-038).
+
+## ADR-088 — the severed mass traces, and a run is profiled with a scan
+
+**Date:** 2026-10-16
+**Status:** Accepted
+**Supersedes:** ADR-016's choice that the partition's error is an eager host `float`.
+ADR-076's `filter_sequence` as the compiled per-run profile.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+`CouplingGraphBackend` had two surfaces for one quantity. `severed_mass` returned a host
+`float`, so it refused a trace. `filter_sequence` ran a second compiled filter to get the
+same number inside one, and returned arrays where `infer_states` returns a `Belief`. It
+always took the dense joint solve, so a run on the all-singleton partition, chosen for
+its cheap node-by-node pass, paid the dense cost for a profile it might not want.
+
+### Decision
+
+`severed_mass` returns a 0-d array and composes under `jit`, `vmap` and `lax.scan`.
+`filter_sequence` is removed. A per-run profile is a scan over `infer_states` and
+`severed_mass`.
+
+### Consequences
+
+- One filter per backend. The profile's dense solve is a separate call, so its cost is
+  attributable and a run that does not profile does not pay it.
+- ADR-016's argument against storing per-step state on the backend still holds. The
+  profile lives in the scan's output, never on `self`.

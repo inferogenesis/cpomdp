@@ -471,72 +471,63 @@ class TestCarryPartition:
                 np.asarray(got.cov), np.asarray(want.cov), atol=1e-7
             )
 
-    def test_filter_sequence_profiles_severed_mass_over_a_run(self):
-        # The per-run severed-mass profile (ADR-016): one traced pass over a sequence
-        # returns the stacked posterior moments and a length-T severed-mass profile.
-        # The full-joint run severs nothing at every step; a singleton cut severs at
-        # each.
+    def test_a_run_is_profiled_by_scanning_infer_states_and_severed_mass(self):
+        # The per-run severed-mass profile (ADR-016) is one jitted scan over the two
+        # eager surfaces. The full joint severs nothing and a singleton cut severs at
+        # every step. The scan computes nothing the step-by-step loop does not.
         full = _build(
             _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
         )
-        singletons = [[n] for n in range(len(_CHEMOTAXIS_DIMS))]
         cut = _build(
             _CHEMOTAXIS_DIMS,
             _CHEMOTAXIS_EDGES,
             _CHEMOTAXIS_OBS,
             _CHEMOTAXIS_DYN,
-            partition=singletons,
+            partition=[[n] for n in range(len(_CHEMOTAXIS_DIMS))],
         )
         rng = np.random.default_rng(2)
         prior = Belief(mean=np.zeros(5), cov=np.eye(5))
-        obs_seq = np.stack([rng.standard_normal(3) for _ in range(4)])  # (T=4, 3)
+        observations = jnp.asarray(np.stack([rng.standard_normal(3) for _ in range(4)]))
 
-        means, covs, severed = cut.filter_sequence(obs_seq, prior)
-        assert np.asarray(severed).shape == (4,)
-        assert np.asarray(means).shape == (4, 5)
-        assert np.asarray(covs).shape == (4, 5, 5)
+        def profile(backend):
+            def step(belief, observation):
+                severed = backend.severed_mass(observation, belief)
+                return backend.infer_states(observation, belief), severed
+
+            return jax.jit(lambda ys: jax.lax.scan(step, prior, ys))(observations)
+
+        _final, severed = profile(cut)
+        assert severed.shape == (4,)
         assert np.all(np.asarray(severed) > 0.0)
+        np.testing.assert_allclose(np.asarray(profile(full)[1]), 0.0, atol=1e-12)
 
-        _means, _covs, severed_full = full.filter_sequence(obs_seq, prior)
-        np.testing.assert_allclose(np.asarray(severed_full), 0.0, atol=1e-12)
-
-        # The trajectory must equal iterating infer_states by hand — the sequence can't
-        # compute anything the single-step path doesn't.
         belief = prior
-        for step, y in enumerate(obs_seq):
-            belief = cut.infer_states(y, belief)
-            np.testing.assert_allclose(
-                np.asarray(means[step]), np.asarray(belief.mean), atol=1e-10
+        for step, observation in enumerate(observations):
+            assert float(cut.severed_mass(observation, belief)) == pytest.approx(
+                float(severed[step]), abs=1e-10
             )
-            np.testing.assert_allclose(
-                np.asarray(covs[step]), np.asarray(belief.cov), atol=1e-10
-            )
+            belief = cut.infer_states(observation, belief)
 
-    def test_filter_sequence_matches_infer_states_from_a_correlated_prior(self):
-        # A singleton cut sends infer_states down the node-by-node pass and the scan
-        # through the dense solve. Both must factor a correlated prior the same way.
+    def test_severed_mass_is_a_scalar_that_traces(self):
         cut = _build(
             _CHEMOTAXIS_DIMS,
             _CHEMOTAXIS_EDGES,
             _CHEMOTAXIS_OBS,
             _CHEMOTAXIS_DYN,
-            partition=[[node] for node in range(len(_CHEMOTAXIS_DIMS))],
+            partition=[[0, 1, 3, 4], [2]],
         )
-        rng = np.random.default_rng(5)
-        prior = Belief(mean=rng.standard_normal(5), cov=_spd(rng, 5))
-        observations = np.stack([rng.standard_normal(3) for _ in range(3)])
+        prior = Belief(mean=np.zeros(5), cov=np.eye(5))
+        observation = jnp.ones(3)
+        eager = cut.severed_mass(observation, prior)
+        assert eager.shape == ()
+        np.testing.assert_allclose(
+            jax.jit(cut.severed_mass)(observation, prior), eager, atol=1e-12
+        )
 
-        means, covs, _severed = cut.filter_sequence(observations, prior)
-
-        belief = prior
-        for step, observation in enumerate(observations):
-            belief = cut.infer_states(observation, belief)
-            np.testing.assert_allclose(
-                np.asarray(means[step]), np.asarray(belief.mean), atol=1e-10
-            )
-            np.testing.assert_allclose(
-                np.asarray(covs[step]), np.asarray(belief.cov), atol=1e-10
-            )
+    def test_a_run_has_one_filter(self):
+        # A second compiled-run filter returned arrays where infer_states returns a
+        # Belief, and always paid the dense solve.
+        assert not hasattr(CouplingGraphBackend, "filter_sequence")
 
     def test_predicted_belief_factors_the_prior_as_the_filter_does(self):
         # The EFE reads predicted_belief, so it predicts from the belief the filter
@@ -565,73 +556,6 @@ class TestCarryPartition:
         )
         np.testing.assert_allclose(
             np.asarray(from_correlated.cov), np.asarray(from_factored.cov), atol=1e-12
-        )
-
-    def test_filter_sequence_returns_moments_not_a_belief(self):
-        # A Belief with a leading time axis broke Belief's invariant, and the backend's
-        # own `marginal` refused it.
-        backend = _build(
-            _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
-        )
-        prior = Belief(mean=np.zeros(5), cov=np.eye(5))
-        outputs = backend.filter_sequence(np.zeros((2, 3)), prior)
-        assert not any(isinstance(output, Belief) for output in outputs)
-
-    def test_filter_sequence_refuses_a_prior_over_the_wrong_state(self):
-        backend = _build(
-            _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
-        )
-        with pytest.raises(ValueError, match="5-D state"):
-            backend.filter_sequence(
-                np.zeros((2, 3)), Belief(mean=np.zeros(2), cov=np.eye(2))
-            )
-
-    def test_filter_sequence_refuses_an_action_of_the_wrong_width(self):
-        backend = _build(
-            _CHEMOTAXIS_DIMS,
-            _CHEMOTAXIS_EDGES,
-            _CHEMOTAXIS_OBS,
-            _CHEMOTAXIS_DYN,
-            control_matrix=np.array([[1.0], [0.0], [0.0], [0.0], [0.0]]),
-        )
-        prior = Belief(mean=np.zeros(5), cov=np.eye(5))
-        with pytest.raises(
-            ValueError, match=r"actions must be a \(2, 1\) stack.*got shape \(2, 2\)"
-        ):
-            backend.filter_sequence(np.zeros((2, 3)), prior, np.zeros((2, 2)))
-
-    def test_filter_sequence_refuses_readings_of_the_wrong_width(self):
-        backend = _build(
-            _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
-        )
-        prior = Belief(mean=np.zeros(5), cov=np.eye(5))
-        with pytest.raises(
-            ValueError,
-            match=r"observations must be a \(T, 3\) stack.*got shape \(4, 2\)",
-        ):
-            backend.filter_sequence(np.zeros((4, 2)), prior)
-
-    def test_filter_sequence_refuses_an_empty_run(self):
-        backend = _build(
-            _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
-        )
-        prior = Belief(mean=np.zeros(5), cov=np.eye(5))
-        with pytest.raises(ValueError, match="at least one step"):
-            backend.filter_sequence(np.zeros((0, 3)), prior)
-
-    def test_filter_sequence_takes_its_arguments_in_infer_states_order(self):
-        # Readings first, then the belief, then the actions, on both methods.
-        backend = _build(
-            _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
-        )
-        prior = Belief(mean=np.zeros(5), cov=np.eye(5))
-        means, _covs, _severed = backend.filter_sequence(
-            observations=np.ones((1, 3)), prior=prior, actions=None
-        )
-        np.testing.assert_allclose(
-            np.asarray(means[0]),
-            np.asarray(backend.infer_states(observation=np.ones(3), prior=prior).mean),
-            atol=1e-10,
         )
 
 
@@ -975,9 +899,9 @@ class TestTransforms:
             np.asarray(batched), np.asarray(expected), atol=1e-10
         )
 
-    def test_jit_grad_through_filter_sequence_scan(self):
-        # The traced scan path: the severed-mass profile is produced *inside* the trace
-        # (no host syncs), so filter_sequence must jit and differentiate (ADR-012 gate).
+    def test_jit_grad_through_the_profiling_scan(self):
+        # The per-run profile is one lax.scan over infer_states and severed_mass, with
+        # no host syncs, so it must jit and differentiate (ADR-012 gate).
         cut = _build(
             _CHEMOTAXIS_DIMS,
             _CHEMOTAXIS_EDGES,
@@ -989,7 +913,11 @@ class TestTransforms:
         obs_seq = jnp.array([[1.25, 1.15, 0.95], [0.1, -0.2, 0.3], [0.0, 0.0, 0.0]])
 
         def total_severed(ys):
-            _means, _covs, severed = cut.filter_sequence(ys, prior)
+            def step(belief, observation):
+                severed = cut.severed_mass(observation, belief)
+                return cut.infer_states(observation, belief), severed
+
+            _final, severed = jax.lax.scan(step, prior, ys)
             return severed.sum()
 
         np.testing.assert_allclose(
