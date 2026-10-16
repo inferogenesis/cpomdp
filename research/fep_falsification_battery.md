@@ -580,7 +580,7 @@ declared so neither can be quoted alone.
 it reads 14.11 GiB for `9^8` and 131.46 GiB for `17^7`. The measured correction is 1.6x,
 giving 22.6 GiB and 210.3 GiB. Both exceed the ceiling, and the WSL cap is configured
 rather than physical, so a front-loaded attempt takes the session down rather than raising
-`MemoryError`. Both cells run under `ChunkedEfeSearch`, whose peak is block-determined and
+`MemoryError`. Both cells run under `ChunkedEFESearch`, whose peak is block-determined and
 flat in `|A|^H` (ADR-036). A front-loaded run of either is **VOID (budget)**, not a result.
 
 **Outcome vocabulary.** Each axis reports `PASS`, `FAIL` or `VOID` against the above. Budget

@@ -168,7 +168,7 @@ now. A driver's `cost_per_cycle` is per agent step, `|A|^H` for the open-loop dr
 the old name overstated open-loop cost by a factor of H. The value and the bar did not
 move.
 
-Added 2026-10-15. `EnumeratedEfeSearch`'s `max_policies` defaults to `2^21 = 2,097,152`,
+Added 2026-10-15. `EnumeratedEFESearch`'s `max_policies` defaults to `2^21 = 2,097,152`,
 an exact count, so eps never enters it either. It admits the largest front-loaded run in
 the repository, the `9^6 = 531,441` cross-path cell, and refuses `9^7`, which the warrant
 ledger records at 5.4 GiB front-loaded. ADR-083 gives the reasoning.
@@ -293,7 +293,7 @@ actually flips. `examples/ffg/crossover.py` pins these; the horizon is the free 
 the statistic, not a tuned parameter.
 
 **Every number in this section is open-loop.** The `H*` rows come from
-`EnumeratedEfeSearch.over_backend(...).evaluate(...)`, which scores whole length-H action
+`EnumeratedEFESearch.over_backend(...).evaluate(...)`, which scores whole length-H action
 sequences and never re-plans between steps. `ΔG(7)` comes from `_numpy_score` and the
 pragmatic-only crossing from `epistemic_counterfactual`, neither of which goes through
 that call, and both of which are open-loop by the same construction. Nothing here drives
@@ -350,7 +350,7 @@ earlier version of this table budgeted `7^7 = 823,543` at `H = 7`, a cell no run
 Two lines to read carefully. The step-`0.5` cell at `H = 7` costs 33.5M scored steps
 against the `H_max = 9` budget of 17.6M, so it is inside one declared unit and double the
 other. And the last two rows exceed the 19 GiB free on the reference machine, so both run
-under `ChunkedEfeSearch`, whose peak is block-determined and flat in `|A|^H` (ADR-036). The
+under `ChunkedEFESearch`, whose peak is block-determined and flat in `|A|^H` (ADR-036). The
 memory column is `cue_maze.enumeration_cost` times its measured 1.6x correction, and it
 describes the front-loaded path only. A front-loaded attempt at either is `VOID (budget)`:
 the WSL cap is configured rather than physical, so it takes the session down instead of

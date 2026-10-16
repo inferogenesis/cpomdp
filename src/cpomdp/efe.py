@@ -96,7 +96,7 @@ THE DATA FLOW  (top → bottom: what goes in → what comes out)
 import operator
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, SupportsIndex
+from typing import TYPE_CHECKING, NoReturn, SupportsIndex
 
 import jax
 import jax.numpy as jnp
@@ -125,6 +125,13 @@ __all__ = [
     "policy_efe_ffg_trace",
     "policy_efe_trace",
 ]
+
+
+_NOT_AN_ARRAY = (
+    "a {name} is a record of named fields, not one array. NumPy would stack them or "
+    "hold the record as one object, so an argmin over it names no candidate. Read a "
+    "field, as jnp.argmin(batch.g)."
+)
 
 
 @jax.tree_util.register_dataclass
@@ -156,6 +163,10 @@ class EFEResult:
     g: Float64[Array, ""]
     pragmatic: Float64[Array, ""]
     epistemic: Float64[Array, ""]
+
+    def __array__(self, *args: object, **kwargs: object) -> NoReturn:
+        """Refuse to be read as one array. Rank a batch by its ``g``."""
+        raise TypeError(_NOT_AN_ARRAY.format(name=type(self).__name__))
 
 
 @jax.tree_util.register_dataclass
@@ -195,6 +206,10 @@ class PolicyEFETrace:
     predicted_cov: Float64[Array, "H n n"]  # Σ⁺
     posterior_cov: Float64[Array, "H n n"]  # Σ_post
     predicted_observation_cov: Float64[Array, "H m m"]  # S
+
+    def __array__(self, *args: object, **kwargs: object) -> NoReturn:
+        """Refuse to be read as one array. Read the field you mean."""
+        raise TypeError(_NOT_AN_ARRAY.format(name=type(self).__name__))
 
 
 @dataclass(frozen=True)
