@@ -81,11 +81,11 @@ class GraphBackend(InferenceBackend, Protocol):
     """An ``InferenceBackend`` over a graph of nodes, whose joint state stacks them.
 
     Beyond ``infer_states`` a graph backend exposes the joint predicted before an
-    observation (``predicted_belief`` → μ⁺, Σ⁺), the observation noise at a predicted
-    mean (``observation_noise_at`` → R), the joint-state block a node occupies
+    observation (``predicted_belief`` → μ⁺, Σ⁺), the joint-state block a node occupies
     (``block``) and the EFE-load-bearing edges its carry partition cuts
-    (``severed_efe_edges``). The sensor C is ``model.observation_matrix`` and the joint
-    width ``model.n_states``, as on every backend.
+    (``severed_efe_edges``). The sensor C is ``model.observation_matrix``, R at a
+    predicted mean is ``model.observation_noise_at`` and the joint width is
+    ``model.n_states``, as on every backend.
 
     The graph EFE paths, ``probe_model`` and the Agent's dispatch read a backend
     through this protocol, never the concrete class (Dependency Inversion).
@@ -101,10 +101,6 @@ class GraphBackend(InferenceBackend, Protocol):
 
     def block(self, node: int) -> range:
         """The joint-state indices node ``node`` occupies (``info_node`` → block)."""
-        ...
-
-    def observation_noise_at(self, mean: ArrayLike) -> Float64[Array, "m m"]:
-        """The stacked observation noise R at a predicted mean (fixed → constant)."""
         ...
 
     def severed_efe_edges(self) -> tuple[Coupling, ...]:

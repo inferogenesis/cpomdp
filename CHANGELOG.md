@@ -61,6 +61,10 @@ certainty equivalence is optimal, and no use of the readings beats it.
   refuses a missing node, a node with no sensor and a reading of the wrong width. The
   vector's ascending node order lived in a private layout, so readings of one width
   stacked in a dict's insertion order filtered each node against another's reading.
+- `LinearGaussianModel.observation_noise_at(state)` reads R at a state on any model. A
+  model with no sensor or a fixed one returns `observation_noise`. A state-dependent
+  sensor is linearized at `state`. The graph EFE paths and `probe_model` read R through
+  it (ADR-071).
 - `cpomdp._lab.harness` — a world and an agent held apart, so what an agent's model gets
   wrong about the process is a measurable quantity rather than zero by construction.
   `World` runs the process and hands out observations, exposing no accessor that returns
@@ -620,9 +624,14 @@ certainty equivalence is optimal, and no use of the readings beats it.
   with R linearized at zero, so under a state-dependent sensor it handed out `R(0)` as the
   noise the EFE reads. On the same object `backend.model.observation_model` was a sensor.
   Read C as `backend.model.observation_matrix`, as on every backend, and R at a mean as
-  `backend.observation_noise_at(mean)`. Under a state-dependent sensor
+  `backend.model.observation_noise_at(mean)`. Under a state-dependent sensor
   `backend.model.observation_noise` is now R at the prior mean, the rule every flat model
   follows (ADR-064). It was R at zero.
+- **Breaking:** `CouplingGraphBackend.observation_noise_at(mean)` is
+  `backend.model.observation_noise_at(mean)`, an accessor every `LinearGaussianModel`
+  now has. C was read off the model and R off the backend, so code reading R at a mean
+  over a flat and a graph backend branched on which it held. A fixed graph's model
+  returns the R built at construction, so nothing is rebuilt per call (ADR-071).
 - **Breaking:** one protocol describes a graph backend, `GraphBackend` in
   `cpomdp.backends.base`. It was `EfeBackend`, a name that suggested `KalmanBackend`
   cannot score EFE, and `cpomdp.diagnostics.ProbeBackend` restated part of it for

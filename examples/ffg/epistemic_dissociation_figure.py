@@ -260,8 +260,8 @@ def _boundary_scan(alive: bool, cue_x: float = CUE_X) -> dict:
     ``G = pragmatic - epistemic``), ``epistemic`` (the EFE epistemic value),
     ``pragmatic`` (the EFE pragmatic cost -- the term Result 4 reads its gradient off),
     ``r_info_mu_plus`` (``R_info(mu+(a))``), and ``mu_plus_x`` (the position component
-    of node 1's *local* predictive mean -- the vector ``observation_noise_at`` hands to
-    ``cue_noise``, which reads ``x = state[0]``).
+    of node 1's *local* predictive mean -- the vector ``model.observation_noise_at``
+    hands to ``cue_noise``, which reads ``x = state[0]``).
     """
     from cpomdp.efe import _ffg_efe_step
 
@@ -275,7 +275,7 @@ def _boundary_scan(alive: bool, cue_x: float = CUE_X) -> dict:
     total, epistemic, pragmatic, r_info_mu_plus, mu_plus_x = [], [], [], [], []
     for action in grid:
         predicted = backend.predicted_belief(start_belief(), jnp.array([action]))
-        noise = backend.observation_noise_at(predicted.mean)  # R(mu+)
+        noise = backend.model.observation_noise_at(predicted.mean)  # R(mu+)
         efe, parts = _ffg_efe_step(
             predicted.mean,
             predicted.cov,

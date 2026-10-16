@@ -106,7 +106,7 @@ def test_the_whole_rx_surface_agrees(pair):
     )
     for position in PROBE_POSITIONS:
         np.testing.assert_allclose(
-            maze.observation_noise_at(_joint_mean(position)),
-            registered.observation_noise_at(_joint_mean(position)),
+            maze.model.observation_noise_at(_joint_mean(position)),
+            registered.model.observation_noise_at(_joint_mean(position)),
             err_msg=f"R(x) differs at position {position}",
         )

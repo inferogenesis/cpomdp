@@ -313,10 +313,11 @@ class FfgEfeSelector:
         target = _checked_info_block(backend, info_block)
         # Front-load (ADR-002): the candidate grid, the info block, the constant C.
         # R is *not* front-loaded — it may be state-dependent, so it is read per
-        # candidate at μ⁺ via ``observation_noise_at`` (issue #27); a fixed sensor
-        # returns the same constant each time.
+        # candidate at μ⁺ via ``model.observation_noise_at`` (issue #27). A fixed
+        # sensor returns the same constant each time.
         self._backend = backend
         self._target = target
+        self._model = backend.model
         self._observation_matrix = backend.model.observation_matrix  # C (constant)
         self._candidates = jnp.linspace(lo, hi, n_candidates)[:, None]
 
@@ -336,7 +337,7 @@ class FfgEfeSelector:
 
         def g_of(action: Float64[Array, "p"]) -> Float64[Array, ""]:
             predicted = self._backend.predicted_belief(belief, action)  # μ⁺, Σ⁺
-            observation_noise = self._backend.observation_noise_at(
+            observation_noise = self._model.observation_noise_at(
                 predicted.mean
             )  # R(μ⁺)
             g, _ = _ffg_efe_step(
