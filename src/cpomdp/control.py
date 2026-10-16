@@ -1,10 +1,12 @@
 """Quadratic regulation: the action-side dual of the Kalman filter.
 
 ``LQRController`` solves the control Riccati equation to its fixed point once and
-applies the steady-state gain forever after. ``finite_horizon_lqr`` runs the same
-backward recursion a declared number of steps and keeps every gain it produces, which
-is the schedule an ``H``-step plan applies and the gain a receding-horizon planner at
-horizon ``H`` applies at every step. The two agree in the limit and at no finite ``H``.
+applies the steady-state gain forever after. ``lqr_schedule`` runs the same backward
+recursion a declared number of steps and keeps every gain it produces, which is the
+schedule an ``H``-step plan applies and the gain a receding-horizon planner at horizon
+``H`` applies at every step. The two agree in the limit and at no finite ``H``.
+``kalman_schedule`` is the filter's side of the pair, called and read the same way.
+Every stack in either schedule is indexed by step of the plan.
 """
 
 from dataclasses import dataclass
@@ -18,11 +20,11 @@ from cpomdp.backends.kalman import _gain_and_posterior_cov
 from cpomdp.types import Belief, LinearGaussianModel
 
 __all__ = [
-    "FiniteHorizonLQR",
     "KalmanSchedule",
     "LQRController",
-    "finite_horizon_lqr",
+    "LQRSchedule",
     "kalman_schedule",
+    "lqr_schedule",
 ]
 
 # Every closed form here prices one fixed noise, so R(x) and Q(x) are refused.
@@ -34,22 +36,22 @@ def _validate_cost(
 ) -> None:
     """Symmetry + (semi)definiteness check for a preference cost matrix.
 
-    ``goal_precision`` and ``effort_penalty`` are user input handed in once at
+    The state and action costs are user input handed in once at
     construction — the trust boundary — so unlike a per-step belief covariance
     they're checked in full here. (``types._validate_covariance`` skips
     definiteness on purpose because it runs on every filter step; this runs once,
     so it doesn't have to.) Both failure modes this catches are the
     silently-wrong-in-a-loop kind that are hardest to trace downstream: a
     non-symmetric matrix (an off-diagonal typo) quietly yields a non-symmetric
-    cost-to-go and a wrong gain, and a singular or indefinite ``effort_penalty``
+    cost-to-go and a wrong gain, and a singular or indefinite action cost
     — which the gain solve inverts against — blows up or returns garbage.
 
     Args:
         matrix: The already-shape-checked cost matrix.
         name: Field name for error messages.
-        require_definite: ``True`` for ``effort_penalty`` (must be positive-
-            *definite*, since it is inverted against); ``False`` for
-            ``goal_precision`` (positive-*semi*-definite is enough).
+        require_definite: ``True`` for the action cost (must be positive-
+            *definite*, since it is inverted against); ``False`` for the state
+            cost (positive-*semi*-definite is enough).
     """
     if not jnp.allclose(matrix, matrix.T):
         raise ValueError(f"{name} must be symmetric.")
@@ -87,8 +89,7 @@ def _validated_costs(
     Raises:
         ValueError: If the model has no ``control_matrix``, or a cost matrix does
             not match the state/action dimensions, is not symmetric, or fails its
-            definiteness requirement (``goal_precision`` PSD, ``effort_penalty``
-            PD).
+            definiteness requirement (the state cost PSD, the action cost PD).
     """
     if model.control_matrix is None:
         raise ValueError(
@@ -130,10 +131,10 @@ def _riccati_step(
         P = Aᵀ W A − (Aᵀ W B) L
 
     ``(R + Bᵀ W B)`` is solved against rather than inverted, for the same reason the
-    filter solves against its innovation covariance.
+    filter solves against its predicted observation covariance.
     """
     cross = dynamics_matrix.T @ remaining @ control_matrix  # Aᵀ W B  (n×p)
-    # curvature of the action cost, the dual of the Kalman innovation covariance (p×p)
+    # curvature of the action cost, dual of the filter's predicted observation cov (p×p)
     inner = effort_penalty + control_matrix.T @ remaining @ control_matrix
     gain = jnp.linalg.solve(inner, cross.T)  # L  (p×n)
     cost_to_go = dynamics_matrix.T @ remaining @ dynamics_matrix - cross @ gain  # P
@@ -141,7 +142,7 @@ def _riccati_step(
 
 
 @dataclass(frozen=True)
-class FiniteHorizonLQR:
+class LQRSchedule:
     """The gain schedule and cost-to-go of an ``H``-step regulator.
 
     The stage cost is charged on the state each action arrives at, and nothing is
@@ -153,25 +154,27 @@ class FiniteHorizonLQR:
     when the horizons are not matched.
 
     The schedule carries the model and the two costs it was built from, so anything
-    priced against it reads the same ``Q``, ``R`` and noise the recursion did.
+    priced against it reads the same costs and noise the recursion did.
 
     Args:
         model: The model the schedule regulates.
-        goal_precision: The stage cost on the state it was built with, ``Q``.
-        effort_penalty: The stage cost on the action it was built with, ``R``.
+        precision: The stage cost on the state it was built with. (LQR's ``Q``.)
+        effort: The stage cost on the action it was built with. (LQR's ``R``.)
         gains: ``gains[k]`` is the gain applied at step ``k`` of the plan, with
             ``H − k`` steps remaining, shape ``(H, p, n)``. The action is
             ``−gains[k] · state``.
-        cost_to_go: ``cost_to_go[j]`` is ``P_j``, the matrix of the optimal cost
-            ``stateᵀ · P_j · state`` with ``j`` steps remaining, before acting, shape
-            ``(H + 1, n, n)``. ``cost_to_go[0]`` is zero.
+        costs_to_go: ``costs_to_go[k]`` is the matrix of the optimal cost
+            ``stateᵀ · costs_to_go[k] · state`` still to pay before acting at step
+            ``k``, shape ``(H + 1, n, n)``. It is ``P_{H−k}`` in the recursion's
+            count of steps remaining. ``costs_to_go[0]`` prices the whole plan, and
+            ``costs_to_go[H]`` is zero.
     """
 
     model: LinearGaussianModel
-    goal_precision: Float64[Array, "n n"]
-    effort_penalty: Float64[Array, "p p"]
+    precision: Float64[Array, "n n"]
+    effort: Float64[Array, "p p"]
     gains: Float64[Array, "H p n"]
-    cost_to_go: Float64[Array, "H+1 n n"]
+    costs_to_go: Float64[Array, "H+1 n n"]
 
     @property
     def horizon(self) -> int:
@@ -184,37 +187,36 @@ class FiniteHorizonLQR:
         return self.gains[0]
 
 
-def finite_horizon_lqr(
+def lqr_schedule(
     model: LinearGaussianModel,
     *,
-    goal_precision: ArrayLike,
-    effort_penalty: ArrayLike,
     horizon: int,
-) -> FiniteHorizonLQR:
+    precision: ArrayLike,
+    effort: ArrayLike,
+) -> LQRSchedule:
     """Run the control Riccati recursion backward over ``horizon`` steps.
 
     The same Bellman step ``LQRController`` iterates to a fixed point, run a declared
     number of times from a zero terminal cost and with every gain kept. With ``j``
-    steps remaining and ``W = goal_precision + P_{j−1}`` the cost of what remains::
+    steps remaining and ``W = precision + P_{j−1}`` the cost of what remains::
 
-        L_j = (effort_penalty + Bᵀ W B)⁻¹ (Bᵀ W A)
+        L_j = (effort + Bᵀ W B)⁻¹ (Bᵀ W A)
         P_j = Aᵀ W A − (Aᵀ W B) L_j
 
-    starting from ``P_0 = 0``. At ``horizon = 1`` the gain is the one-step regulator
-    ``(effort_penalty + Bᵀ Q B)⁻¹ Bᵀ Q A``. The Control page of the API reference
-    opens the same account in plain terms.
+    starting from ``P_0 = 0``. At ``horizon = 1``, ``W`` is ``precision`` and the
+    gain is the one-step regulator. The Control page of the API reference opens the
+    same account in plain terms.
 
     Args:
         model: The linear-Gaussian model to act in. Must carry a ``control_matrix``.
-        goal_precision: The stage cost on the state, an ``(n, n)`` matrix. (LQR's
-            ``Q``.)
-        effort_penalty: The stage cost on the action, a ``(p, p)`` matrix. (LQR's
-            ``R``.)
         horizon: ``H``, how many steps the plan covers. At least one.
+        precision: The stage cost on the state, an ``(n, n)`` matrix, as a
+            [`StateGoal`][cpomdp.StateGoal] carries it. (LQR's ``Q``.)
+        effort: The stage cost on the action, a ``(p, p)`` matrix. (LQR's ``R``.)
 
     Returns:
         The schedule, with ``gains[k]`` the gain at step ``k`` of the plan and
-        ``cost_to_go[j]`` the cost matrix with ``j`` steps remaining.
+        ``costs_to_go[k]`` the cost still to pay before it, ``P_{H−k}``.
 
     Raises:
         ValueError: If ``horizon`` is below one, or on any of the cost and model
@@ -222,32 +224,28 @@ def finite_horizon_lqr(
     """
     if horizon < 1:
         raise ValueError(f"horizon must be at least 1, got {horizon}")
-    goal_precision, effort_penalty = _validated_costs(
-        model,
-        goal_precision,
-        effort_penalty,
-        names=("goal_precision", "effort_penalty"),
+    precision, effort = _validated_costs(
+        model, precision, effort, names=("precision", "effort")
     )
     dynamics_matrix = model.dynamics_matrix  # A
     assert model.control_matrix is not None  # refused by _validated_costs
     control_matrix = model.control_matrix  # B
 
-    costs = [jnp.zeros_like(goal_precision)]
+    costs = [jnp.zeros_like(precision)]
     gains = []
     for _ in range(horizon):
         cost_to_go, gain = _riccati_step(
-            goal_precision + costs[-1], dynamics_matrix, control_matrix, effort_penalty
+            precision + costs[-1], dynamics_matrix, control_matrix, effort
         )
         costs.append(cost_to_go)
         gains.append(gain)
-    # Built with the fewest steps remaining first; the plan applies them the other
-    # way round.
-    return FiniteHorizonLQR(
+    # Built with the fewest steps remaining first. The plan reads both the other way.
+    return LQRSchedule(
         model=model,
-        goal_precision=goal_precision,
-        effort_penalty=effort_penalty,
+        precision=precision,
+        effort=effort,
         gains=jnp.stack(gains[::-1]),
-        cost_to_go=jnp.stack(costs),
+        costs_to_go=jnp.stack(costs[::-1]),
     )
 
 
@@ -281,9 +279,14 @@ class KalmanSchedule:
     gains: Float64[Array, "H n m"]
     covariances: Float64[Array, "H+1 n n"]
 
+    @property
+    def horizon(self) -> int:
+        """``H``, the number of readings scheduled."""
+        return int(self.gains.shape[0])
+
 
 def kalman_schedule(
-    model: LinearGaussianModel, horizon: int, prior: Belief | None = None
+    model: LinearGaussianModel, *, horizon: int, prior: Belief | None = None
 ) -> KalmanSchedule:
     """The exact filter's gain and covariance at each of ``horizon`` readings.
 
@@ -330,12 +333,12 @@ class LQRController:
     computed at construction, and together they are LQG.
 
     The load-bearing claim (ADR-003) is that LQR *is* active inference here, not a
-    substitute for it. For a fixed linear-Gaussian sensor and fixed process noise the
+    substitute for it. For a fixed linear-Gaussian sensor and fixed dynamics noise the
     covariance recursion is control-independent, so Expected Free Energy's epistemic
     term is identical for every action and drops out of the argmin; EFE-minimising
     selection reduces to its pragmatic term, and the pragmatic term under a Gaussian
     preference is a quadratic cost whose optimum is exactly LQR. The epistemic term
-    re-enters once the sensor noise or the process noise depends on the state
+    re-enters once the sensor noise or the dynamics noise depends on the state
     (ADR-006).
 
     The two cost matrices are named for the preference they encode, not by LQR's
@@ -451,7 +454,8 @@ class LQRController:
 
         (A=dynamics, B=control.) The ``(effort + Bᵀ P B)`` term is solved
         against with ``jnp.linalg.solve`` rather than inverted explicitly, for the
-        same numerical reason the filter solves against its innovation covariance.
+        same numerical reason the filter solves against its predicted observation
+        covariance.
 
         Returns:
             The steady-state gain ``L∞``, shape ``(p, n)``.

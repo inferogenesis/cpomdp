@@ -196,11 +196,11 @@ class TestStructureIsInertArithmetic:
         structured = _model(control_matrix=[[1.0], [0.0]], structure=self._STRUCT)
         pref = Preference(target=[0.5], precision=[[2.0]])
         action = jnp.array([0.3])
-        g0, parts0 = expected_free_energy(plain, plain.prior, action, pref)
-        g1, parts1 = expected_free_energy(structured, structured.prior, action, pref)
-        np.testing.assert_array_equal(g0, g1)
-        np.testing.assert_array_equal(parts0["pragmatic"], parts1["pragmatic"])
-        np.testing.assert_array_equal(parts0["epistemic"], parts1["epistemic"])
+        efe0 = expected_free_energy(plain, plain.prior, action, pref)
+        efe1 = expected_free_energy(structured, structured.prior, action, pref)
+        np.testing.assert_array_equal(efe0.g, efe1.g)
+        np.testing.assert_array_equal(efe0.pragmatic, efe1.pragmatic)
+        np.testing.assert_array_equal(efe0.epistemic, efe1.epistemic)
 
     def test_kalman_step_is_byte_identical(self):
         plain = _model(control_matrix=[[1.0], [0.0]])
@@ -320,6 +320,32 @@ class TestValidateSparsity:
         assert s is not None
         with pytest.raises(ValueError, match="dynamics_noise"):
             s.validate(bad)
+
+    def test_off_block_noise_from_a_fixed_dynamics_noise_model_fails(self):
+        # A fixed object's Q is the model's dynamics_noise, so there is a single matrix
+        # to check, and an off-block coupling in it is refused as the plain field is.
+        coupled_noise = jnp.array(
+            [
+                [0.1, 0.0, 0.05, 0.0],
+                [0.0, 0.1, 0.0, 0.0],
+                [0.05, 0.0, 0.1, 0.0],
+                [0.0, 0.0, 0.0, 0.1],
+            ]
+        )
+
+        class _FixedDynamicsNoise:
+            is_fixed = True
+
+            def noise_at(self, state):
+                return coupled_noise
+
+        coupled = _block_model(
+            dynamics_noise=None, dynamics_noise_model=_FixedDynamicsNoise()
+        )
+        structure = coupled.structure
+        assert structure is not None
+        with pytest.raises(ValueError, match="dynamics_noise"):
+            structure.validate(coupled)
 
     def test_nan_cross_block_is_not_certified_independent(self):
         # A NaN in an off-block must not silently pass: NaN > atol is False, so the

@@ -10,12 +10,9 @@ This is a model built on the toolbox, not part of it: the Phase-3 acceptance tes
 the end-to-end demo (#27) import ``chemotaxis_ffg`` from here.
 """
 
-from cpomdp.ffg.factors.linear_gaussian import (
-    GaussianCoupling,
-    GaussianObservation,
-    GaussianTransition,
-)
+from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
 from cpomdp.ffg.graph import Coupling, CouplingGraph
+from cpomdp.observation import FixedSensor
 
 CHEA = 0  # receptor kinase hub — the root
 CHEY = 1  # fast response regulator, drives the motors
@@ -45,7 +42,7 @@ def chemotaxis_ffg(dt):
     """Build the chemotaxis network for a timestep ``dt`` (seconds).
 
     Returns ``(graph, transitions)``: the structural ``CouplingGraph`` (couplings +
-    observations) and the node-indexed per-node OU ``GaussianTransition``s, to hand
+    sensors) and the node-indexed per-node OU ``GaussianTransition``s, to hand
     to ``CouplingGraphBackend(graph, transitions, prior=...)``.
     """
     transitions = tuple(
@@ -59,20 +56,19 @@ def chemotaxis_ffg(dt):
         Coupling(
             parent,
             child,
-            GaussianCoupling([[gain]], coupling_noise=[[noise]]),
-            tau=TAU[child],
+            [[gain]],
+            coupling_noise=[[noise]],
         )
         for parent, child, gain, noise in _EDGES
     )
 
-    observations = {
-        node: GaussianObservation([[1.0]], observation_noise=[[_OBS_NOISE]])
+    observation_models = {
+        node: FixedSensor([[1.0]], observation_noise=[[_OBS_NOISE]])
         for node in _OBSERVED
     }
     graph = CouplingGraph(
-        root=CHEA,
         dims=(1,) * _NODES,  # every node is scalar (1-D)
         couplings=couplings,
-        observations=observations,
+        observation_models=observation_models,
     )
     return graph, transitions

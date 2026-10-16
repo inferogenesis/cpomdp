@@ -11,14 +11,23 @@ pragmatic form is correct — that is rfcs/004's job; the fixed-sensor collapse 
 is satisfied by all three candidate forms.
 """
 
+from types import SimpleNamespace
+
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pytest
 
-from cpomdp.dynamics import CallableProcessNoise
-from cpomdp.efe import expected_free_energy
+from cpomdp.dynamics import CallableDynamicsNoise
+from cpomdp.efe import (
+    EfeResult,
+    PolicyEfeTrace,
+    expected_free_energy,
+    policy_efe,
+    policy_efe_trace,
+)
 from cpomdp.observation import CallableSensor, FixedSensor
-from cpomdp.selection import Preference
+from cpomdp.selection import ObservationGoal, Preference, StateGoal
 from cpomdp.types import Belief, LinearGaussianModel
 
 
@@ -26,9 +35,9 @@ def _model(observation_model=None):
     # 2-state, 1-observation, 1-action, controllable.
     return LinearGaussianModel(
         dynamics_matrix=[[1.0, 0.1], [0.0, 1.0]],
-        observation_matrix=[[1.0, 0.0]],
+        observation_matrix=[[1.0, 0.0]] if observation_model is None else None,
         dynamics_noise=[[0.1, 0.0], [0.0, 0.1]],
-        observation_noise=[[0.5]],
+        observation_noise=[[0.5]] if observation_model is None else None,
         prior=Belief(mean=[0.0, 0.0], cov=[[1.0, 0.0], [0.0, 1.0]]),
         control_matrix=[[0.0], [1.0]],
         observation_model=observation_model,
@@ -77,22 +86,22 @@ class TestAgainstNumpyOracle:
         model, belief, pref = _model(), _belief(), _obs_preference()
         action = jnp.array([0.4])
 
-        g, parts = expected_free_energy(model, belief, action, pref)
+        efe = expected_free_energy(model, belief, action, pref)
         g_ref, prag_ref, epi_ref = _numpy_efe(
             model, belief, action, pref.target, pref.precision
         )
 
-        np.testing.assert_allclose(g, g_ref, atol=1e-10)
-        np.testing.assert_allclose(parts["pragmatic"], prag_ref, atol=1e-10)
-        np.testing.assert_allclose(parts["epistemic"], epi_ref, atol=1e-10)
+        np.testing.assert_allclose(efe.g, g_ref, atol=1e-10)
+        np.testing.assert_allclose(efe.pragmatic, prag_ref, atol=1e-10)
+        np.testing.assert_allclose(efe.epistemic, epi_ref, atol=1e-10)
 
     def test_components_are_nonnegative(self):
         # epistemic = ½ ln(det S / det R) ≥ 0 (S ⪰ R); pragmatic ≥ 0 (Λ ⪰ 0).
-        _, parts = expected_free_energy(
+        efe = expected_free_energy(
             _model(), _belief(), jnp.array([0.4]), _obs_preference()
         )
-        assert parts["epistemic"] >= 0.0
-        assert parts["pragmatic"] >= 0.0
+        assert efe.epistemic >= 0.0
+        assert efe.pragmatic >= 0.0
 
     def test_raises_without_control(self):
         control_free = LinearGaussianModel(
@@ -109,6 +118,126 @@ class TestAgainstNumpyOracle:
             )
 
 
+class TestTheResultRecord:
+    """Every EFE function returns one record, with G first so ``[0]`` still reads it."""
+
+    def test_the_one_step_result_names_its_terms(self):
+        result = expected_free_energy(
+            _model(), _belief(), jnp.array([0.4]), _obs_preference()
+        )
+        assert isinstance(result, EfeResult)
+        assert result[0] is result.g
+        np.testing.assert_allclose(
+            result.g, result.pragmatic - result.epistemic, atol=1e-12
+        )
+
+    def test_the_rollout_returns_the_same_record(self):
+        model, belief, pref = _model(), _belief(), _obs_preference()
+        one_step = expected_free_energy(model, belief, jnp.array([0.4]), pref)
+        rollout = policy_efe(model, belief, jnp.array([[0.4]]), pref)
+        assert isinstance(rollout, EfeResult)
+        for field in EfeResult._fields:
+            np.testing.assert_allclose(
+                getattr(rollout, field), getattr(one_step, field), atol=1e-12
+            )
+
+    def test_the_trace_leads_with_the_same_fields(self):
+        assert PolicyEfeTrace._fields[:3] == EfeResult._fields
+
+    def test_a_gradient_is_taken_of_g_with_the_record_as_its_aux(self):
+        model, belief, preference = _model(), _belief(), _obs_preference()
+        action = jnp.array([0.4])
+
+        def scored(candidate):
+            result = expected_free_energy(model, belief, candidate, preference)
+            return result.g, result
+
+        (value, record), gradient = jax.value_and_grad(scored, has_aux=True)(action)
+        assert isinstance(record, EfeResult)
+        assert value is record.g
+        np.testing.assert_array_equal(
+            gradient,
+            jax.grad(lambda candidate: scored(candidate)[0])(action),
+        )
+
+    def test_a_vmap_batches_every_field(self):
+        model, belief, pref = _model(), _belief(), _obs_preference()
+        actions = jnp.array([[-1.0], [0.0], [0.5], [2.0]])
+        batched = jax.vmap(lambda a: expected_free_energy(model, belief, a, pref))(
+            actions
+        )
+        assert isinstance(batched, EfeResult)
+        assert batched.pragmatic.shape == batched.epistemic.shape == (4,)
+
+
+class TestTheGoalAUserHolds:
+    """An ``ObservationGoal`` hands the scoring functions its preference by name."""
+
+    def test_the_goal_carries_the_preference_it_is_scored_against(self):
+        goal = ObservationGoal([1.0], action_bounds=(-1.0, 1.0), precision=[[2.0]])
+        assert isinstance(goal.preference, Preference)
+        np.testing.assert_array_equal(goal.preference.target, goal.target)
+        np.testing.assert_array_equal(goal.preference.precision, goal.precision)
+        model, belief, action = _model(), _belief(), jnp.array([0.4])
+        np.testing.assert_array_equal(
+            expected_free_energy(model, belief, action, goal.preference).g,
+            expected_free_energy(model, belief, action, _obs_preference()).g,
+        )
+
+    @pytest.mark.parametrize(
+        ("score", "action"),
+        [
+            (expected_free_energy, jnp.array([0.4])),
+            (policy_efe, jnp.array([[0.4], [0.1]])),
+            (policy_efe_trace, jnp.array([[0.4], [0.1]])),
+        ],
+    )
+    def test_a_whole_goal_is_refused_naming_its_preference(self, score, action):
+        goal = ObservationGoal([1.0], action_bounds=(-1.0, 1.0))
+        with pytest.raises(TypeError, match=r"Pass its \.preference") as refusal:
+            score(_model(), _belief(), action, goal)
+        # The selectors and searches reach the same check, so it names no caller.
+        assert score.__name__ not in str(refusal.value)
+
+
+class TestWhatIsNotAPreference:
+    """Anything but a ``Preference`` is refused with how to build one."""
+
+    def _score(self, preference):
+        return expected_free_energy(_model(), _belief(), jnp.array([0.4]), preference)
+
+    def test_a_state_goal_is_refused_with_a_preference_over_readings(self):
+        with pytest.raises(TypeError, match=r"Preference\(C @ target\)") as refusal:
+            self._score(StateGoal([1.0, 0.0]))
+        assert "target is a state" in str(refusal.value)
+        assert ".preference" not in str(refusal.value)  # a StateGoal has none
+
+    @pytest.mark.parametrize(
+        "bare",
+        [jnp.array([1.0]), np.array([1.0]), [1.0], ([1.0], [[2.0]])],
+        ids=["jax-array", "numpy-array", "list", "goal-precision-pair"],
+    )
+    def test_a_bare_goal_vector_is_refused_with_how_to_wrap_it(self, bare):
+        with pytest.raises(
+            TypeError, match=r"Preference\(reading, precision\)"
+        ) as refusal:
+            self._score(bare)
+        assert "ArrayImpl" not in str(refusal.value)
+
+    def test_anything_else_is_refused_by_its_type(self):
+        with pytest.raises(TypeError, match="a value of type NoneType"):
+            self._score(None)
+        look_alike = SimpleNamespace(goal=jnp.array([1.0]), precision=jnp.eye(1))
+        with pytest.raises(TypeError, match="a value of type SimpleNamespace"):
+            self._score(look_alike)
+
+    def test_a_fault_inside_a_preference_surfaces_as_itself(self):
+        missing_its_goal = object.__new__(Preference)
+        object.__setattr__(missing_its_goal, "precision", jnp.eye(1))
+        with pytest.raises(AttributeError):
+            self._score(missing_its_goal)
+
+
 class TestCollapseUnderFixedSensor:
     # Under a fixed sensor, Σ⁺/S/R don't depend on the action, so the epistemic
     # term is constant across actions and G's argmin is driven entirely by the
@@ -119,10 +248,7 @@ class TestCollapseUnderFixedSensor:
         actions = jnp.array([[-1.0], [0.0], [0.5], [2.0]])
 
         epistemics = jnp.array(
-            [
-                expected_free_energy(model, belief, a, pref)[1]["epistemic"]
-                for a in actions
-            ]
+            [expected_free_energy(model, belief, a, pref).epistemic for a in actions]
         )
         np.testing.assert_allclose(epistemics, epistemics[0], atol=1e-12)
 
@@ -132,9 +258,9 @@ class TestCollapseUnderFixedSensor:
 
         gs, prags = [], []
         for a in actions:
-            g, parts = expected_free_energy(model, belief, a, pref)
-            gs.append(g)
-            prags.append(parts["pragmatic"])
+            efe = expected_free_energy(model, belief, a, pref)
+            gs.append(efe.g)
+            prags.append(efe.pragmatic)
         assert int(jnp.argmin(jnp.array(gs))) == int(jnp.argmin(jnp.array(prags)))
 
 
@@ -143,7 +269,7 @@ class TestTransforms:
         model, belief, pref = _model(), _belief(), _obs_preference()
         action = jnp.array([0.4])
 
-        eager, _ = expected_free_energy(model, belief, action, pref)
+        eager = expected_free_energy(model, belief, action, pref).g
         jitted = jax.jit(lambda a: expected_free_energy(model, belief, a, pref)[0])(
             action
         )
@@ -194,10 +320,7 @@ class TestCallableSensorBreaksCollapse:
         model, belief, pref = _callable_model(), _belief(), _obs_preference()
         actions = jnp.array([[-1.0], [0.0], [0.5], [2.0]])
         epis = jnp.array(
-            [
-                expected_free_energy(model, belief, a, pref)[1]["epistemic"]
-                for a in actions
-            ]
+            [expected_free_energy(model, belief, a, pref).epistemic for a in actions]
         )
         assert float(jnp.max(epis) - jnp.min(epis)) > 1e-6
 
@@ -229,7 +352,7 @@ class TestCallableSensorBreaksCollapse:
         model = _model(observation_model=CallableSensor([[1.0, 0.0]], neg_noise, {}))
         epi = expected_free_energy(
             model, _belief(), jnp.array([0.4]), _obs_preference()
-        )[1]["epistemic"]
+        ).epistemic
         assert bool(jnp.isnan(epi))
 
 
@@ -249,9 +372,7 @@ class TestPrecisionControlsBalance:
         model = LinearGaussianModel(
             dynamics_matrix=[[1.0]],
             control_matrix=[[1.0]],
-            observation_matrix=[[1.0]],
             dynamics_noise=[[0.05]],
-            observation_noise=[[0.3]],
             prior=Belief(mean=[0.0], cov=[[0.5]]),
             observation_model=CallableSensor([[1.0]], beacon_noise, {}),
         )
@@ -317,9 +438,7 @@ def _ramp_model():
     )
     return LinearGaussianModel(
         dynamics_matrix=[[1.0]],
-        observation_matrix=[[1.0]],
         dynamics_noise=[[0.1]],
-        observation_noise=[[0.5]],
         prior=Belief(mean=[0.0], cov=[[0.4]]),
         control_matrix=[[1.0]],
         observation_model=sensor,
@@ -371,12 +490,8 @@ class TestFormProof:
         c1 = _form_components(model, _RAMP_BELIEF, a1)
         c2 = _form_components(model, _RAMP_BELIEF, a2)
         np.testing.assert_allclose(c1["mean_term"], c2["mean_term"], atol=1e-9)  # tied
-        p1 = float(
-            expected_free_energy(model, _RAMP_BELIEF, a1, _RAMP_PREF)[1]["pragmatic"]
-        )
-        p2 = float(
-            expected_free_energy(model, _RAMP_BELIEF, a2, _RAMP_PREF)[1]["pragmatic"]
-        )
+        p1 = float(expected_free_energy(model, _RAMP_BELIEF, a1, _RAMP_PREF).pragmatic)
+        p2 = float(expected_free_energy(model, _RAMP_BELIEF, a2, _RAMP_PREF).pragmatic)
         assert abs(p1 - p2) > 1e-3  # NOT tied -> not mean-only
 
     def test_pragmatic_matches_monte_carlo_cross_entropy(self):
@@ -385,9 +500,7 @@ class TestFormProof:
         # FORMULA; the analytic NumPy oracle (above) proves the implementation.
         model, action = _ramp_model(), jnp.array([0.6])
         p_kernel = float(
-            expected_free_energy(model, _RAMP_BELIEF, action, _RAMP_PREF)[1][
-                "pragmatic"
-            ]
+            expected_free_energy(model, _RAMP_BELIEF, action, _RAMP_PREF).pragmatic
         )
         c = _form_components(model, _RAMP_BELIEF, action)
         o, s = c["o"], c["s"]
@@ -426,17 +539,17 @@ def _q_well(x, params):
 
 
 def _internal_q_model():
-    pn = CallableProcessNoise(
-        q_fn=_q_well, q_params={"base": jnp.array(0.05), "slope": jnp.array(0.4)}
+    dynamics_noise_model = CallableDynamicsNoise(
+        noise_fn=_q_well,
+        noise_params={"base": jnp.array(0.05), "slope": jnp.array(0.4)},
     )
     return LinearGaussianModel(
         dynamics_matrix=[[1.0]],
         observation_matrix=[[1.0]],
-        dynamics_noise=[[0.1]],
         observation_noise=[[0.3]],  # R is FIXED (observation=None)
         prior=Belief(mean=[0.0], cov=[[0.2]]),
         control_matrix=[[1.0]],
-        dynamics_noise_model=pn,
+        dynamics_noise_model=dynamics_noise_model,
     )
 
 
@@ -452,9 +565,9 @@ class TestInternalProcessNoise:
         actions = jnp.array([[-1.0], [0.0], [0.5], [2.0]])
         epis = jnp.array(
             [
-                expected_free_energy(model, _INTERNAL_BELIEF, a, _INTERNAL_PREF)[1][
-                    "epistemic"
-                ]
+                expected_free_energy(
+                    model, _INTERNAL_BELIEF, a, _INTERNAL_PREF
+                ).epistemic
                 for a in actions
             ]
         )
@@ -466,9 +579,9 @@ class TestInternalProcessNoise:
         model = _internal_q_model()
         action = jnp.array([1.3])
         epi = float(
-            expected_free_energy(model, _INTERNAL_BELIEF, action, _INTERNAL_PREF)[1][
-                "epistemic"
-            ]
+            expected_free_energy(
+                model, _INTERNAL_BELIEF, action, _INTERNAL_PREF
+            ).epistemic
         )
         a_mat, b_mat = np.array([[1.0]]), np.array([[1.0]])
         c_mat, r_mat = np.array([[1.0]]), np.array([[0.3]])
@@ -511,15 +624,14 @@ class TestInternalProcessNoise:
         action = jnp.array([0.6])
 
         def efe_of_params(params):
-            pn = CallableProcessNoise(_q_well, params)
+            dynamics_noise_model = CallableDynamicsNoise(_q_well, params)
             model = LinearGaussianModel(
                 dynamics_matrix=[[1.0]],
                 observation_matrix=[[1.0]],
-                dynamics_noise=[[0.1]],
                 observation_noise=[[0.3]],
                 prior=Belief(mean=[0.0], cov=[[0.2]]),
                 control_matrix=[[1.0]],
-                dynamics_noise_model=pn,
+                dynamics_noise_model=dynamics_noise_model,
             )
             return expected_free_energy(
                 model, _INTERNAL_BELIEF, action, _INTERNAL_PREF
@@ -540,17 +652,16 @@ def _q_ramp(x, params):
 
 
 def _flip_model():
-    pn = CallableProcessNoise(
+    dynamics_noise_model = CallableDynamicsNoise(
         _q_ramp, {"base": jnp.array(1.2), "slope": jnp.array(-0.5)}
     )
     return LinearGaussianModel(
         dynamics_matrix=[[1.0]],
         observation_matrix=[[1.0]],
-        dynamics_noise=[[0.1]],
         observation_noise=[[0.2]],
         prior=Belief(mean=[0.0], cov=[[0.1]]),
         control_matrix=[[1.0]],
-        dynamics_noise_model=pn,
+        dynamics_noise_model=dynamics_noise_model,
     )
 
 

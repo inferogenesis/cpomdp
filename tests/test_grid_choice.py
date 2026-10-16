@@ -15,13 +15,9 @@ import pytest
 from _support import unit_prior
 from cpomdp.agent import Agent
 from cpomdp.backends.coupling import CouplingGraphBackend
-from cpomdp.ffg.factors.linear_gaussian import (
-    CallableGaussianObservation,
-    GaussianObservation,
-    GaussianTransition,
-)
+from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
 from cpomdp.ffg.graph import CouplingGraph
-from cpomdp.observation import CallableSensor
+from cpomdp.observation import CallableSensor, FixedSensor
 from cpomdp.selection import EFESelector, FfgEfeSelector, Preference
 from cpomdp.types import Belief, LinearGaussianModel
 
@@ -54,9 +50,7 @@ def _double_integrator(noise_fn=_sharp_near_one):
 
 
 def _graph_double_integrator(observation):
-    graph = CouplingGraph(
-        root=0, dims=(2,), couplings=(), observations={0: observation}
-    )
+    graph = CouplingGraph(dims=(2,), couplings=(), observation_models={0: observation})
     return CouplingGraphBackend(
         graph,
         (GaussianTransition(DOUBLE_INTEGRATOR, dynamics_noise=np.eye(2) * 1e-6),),
@@ -83,7 +77,7 @@ class TestATieGoesToTheCandidateNearestZero:
 
     def test_the_graph_selector_rests_too(self):
         backend = _graph_double_integrator(
-            GaussianObservation(READ_POSITION, observation_noise=[[0.1]])
+            FixedSensor(READ_POSITION, observation_noise=[[0.1]])
         )
         selector = FfgEfeSelector(backend, action_bounds=(-2.0, 2.0))
         np.testing.assert_allclose(
@@ -121,7 +115,7 @@ class TestNoFiniteScoreGivesNoAction:
 
     def test_the_graph_selector_returns_nan(self):
         backend = _graph_double_integrator(
-            CallableGaussianObservation(READ_POSITION, _goes_negative, None)
+            CallableSensor(READ_POSITION, _goes_negative, None)
         )
         selector = FfgEfeSelector(backend, action_bounds=(-1.0, 1.0), n_candidates=3)
         assert bool(jnp.isnan(selector.select(_PAST_THE_EDGE, Preference([0.0]))).all())

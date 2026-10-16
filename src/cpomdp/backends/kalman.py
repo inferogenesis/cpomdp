@@ -5,7 +5,7 @@ import jax.numpy as jnp
 from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
-from cpomdp._validation import require_fixed_noise
+from cpomdp._validation import require_fixed_noise, state_dependent
 from cpomdp.backends.base import _validate_step_inputs
 from cpomdp.types import Belief, LinearGaussianModel
 
@@ -26,7 +26,7 @@ def _gain_and_posterior_cov(
     the *uncertainty* rather than the mean::
 
         cov_pred = A · prior_cov · Aᵀ + Q       # predict: dynamics inflate it
-        S        = C · cov_pred · Cᵀ + R        # prediction-error covariance
+        S        = C · cov_pred · Cᵀ + R        # predicted observation covariance
         gain     = cov_pred · Cᵀ · S⁻¹          # how far to trust the reading
         cov_post = (I − gain · C) · cov_pred    # update: the reading shrinks it
 
@@ -41,7 +41,7 @@ def _gain_and_posterior_cov(
     Args:
         dynamics_matrix: The state-transition matrix A, shape ``(n, n)``.
         observation_matrix: The observation matrix C, shape ``(m, n)``.
-        dynamics_noise: The process-noise covariance Q, shape ``(n, n)``.
+        dynamics_noise: The dynamics-noise covariance Q, shape ``(n, n)``.
         observation_noise: The observation-noise covariance R, shape ``(m, m)``.
         prior_cov: The incoming belief's covariance, shape ``(n, n)``.
 
@@ -50,10 +50,10 @@ def _gain_and_posterior_cov(
         covariance, shape ``(n, n)``, for this step.
     """
     cov_pred = dynamics_matrix @ prior_cov @ dynamics_matrix.T + dynamics_noise
-    prediction_error_cov = (
+    predicted_observation_cov = (
         observation_matrix @ cov_pred @ observation_matrix.T + observation_noise
-    )
-    gain = jnp.linalg.solve(prediction_error_cov, observation_matrix @ cov_pred).T
+    )  # S
+    gain = jnp.linalg.solve(predicted_observation_cov, observation_matrix @ cov_pred).T
     cov_post = (
         jnp.eye(dynamics_matrix.shape[0]) - gain @ observation_matrix
     ) @ cov_pred
@@ -183,22 +183,18 @@ class KalmanBackend:
             assert action is not None
             control_term = control_matrix @ action
 
-        sensor_is_fixed = (
-            model.observation_model is None or model.observation_model.is_fixed
-        )
-        process_is_fixed = (
-            model.dynamics_noise_model is None or model.dynamics_noise_model.is_fixed
-        )
+        sensor = state_dependent(model.observation_model)
+        process = state_dependent(model.dynamics_noise_model)
 
         # μ⁻ is needed only to linearize a state-dependent sensor and/or process
         # noise; the fully-fixed hot path computes no extra matvec.
         mean_pred = (
             model.dynamics_matrix @ prior.mean + control_term
-            if not (sensor_is_fixed and process_is_fixed)
+            if sensor is not None or process is not None
             else prior.mean  # placeholder, unused on the fixed path
         )
 
-        if sensor_is_fixed:
+        if sensor is None:
             # fixed sensor: direct reads, byte-identical hot path (no linearize).
             observation_matrix, observation_noise = (
                 model.observation_matrix,
@@ -206,15 +202,13 @@ class KalmanBackend:
             )
         else:
             # state-dependent R(x), linearized at μ⁻ (the EFE kernel's point).
-            observation_matrix, observation_noise = model.observation_model.linearize(
-                mean_pred
-            )
+            observation_matrix, observation_noise = sensor.linearize(mean_pred)
 
-        if process_is_fixed:
+        if process is None:
             dynamics_noise = model.dynamics_noise
         else:
             # state-dependent Q(x), evaluated at μ⁻ — the dual of the R(x) gate.
-            dynamics_noise = model.dynamics_noise_model.noise_at(mean_pred)
+            dynamics_noise = process.noise_at(mean_pred)
 
         if self.steady_state:
             gain, cov_post = self._steady_gain, self._steady_cov  # frozen
