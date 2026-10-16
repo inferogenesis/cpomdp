@@ -512,6 +512,61 @@ class TestCarryPartition:
                 np.asarray(covs[step]), np.asarray(belief.cov), atol=1e-10
             )
 
+    def test_filter_sequence_matches_infer_states_from_a_correlated_prior(self):
+        # A singleton cut sends infer_states down the node-by-node pass and the scan
+        # through the dense solve. Both must factor a correlated prior the same way.
+        cut = _build(
+            _CHEMOTAXIS_DIMS,
+            _CHEMOTAXIS_EDGES,
+            _CHEMOTAXIS_OBS,
+            _CHEMOTAXIS_DYN,
+            partition=[[node] for node in range(len(_CHEMOTAXIS_DIMS))],
+        )
+        rng = np.random.default_rng(5)
+        prior = Belief(mean=rng.standard_normal(5), cov=_spd(rng, 5))
+        observations = np.stack([rng.standard_normal(3) for _ in range(3)])
+
+        means, covs, _severed = cut.filter_sequence(observations, prior)
+
+        belief = prior
+        for step, observation in enumerate(observations):
+            belief = cut.infer_states(observation, belief)
+            np.testing.assert_allclose(
+                np.asarray(means[step]), np.asarray(belief.mean), atol=1e-10
+            )
+            np.testing.assert_allclose(
+                np.asarray(covs[step]), np.asarray(belief.cov), atol=1e-10
+            )
+
+    def test_predicted_belief_factors_the_prior_as_the_filter_does(self):
+        # The EFE reads predicted_belief, so it predicts from the belief the filter
+        # carries and not from correlation the cut drops on ingest.
+        cut = _build(
+            _CHEMOTAXIS_DIMS,
+            _CHEMOTAXIS_EDGES,
+            _CHEMOTAXIS_OBS,
+            _CHEMOTAXIS_DYN,
+            partition=[[0, 1, 3, 4], [2]],
+        )
+        rng = np.random.default_rng(6)
+        correlated_cov = _spd(rng, 5)
+        factored_cov = correlated_cov.copy()
+        factored_cov[2, [0, 1, 3, 4]] = 0.0
+        factored_cov[[0, 1, 3, 4], 2] = 0.0
+        prior_mean = rng.standard_normal(5)
+
+        from_correlated = cut.predicted_belief(
+            Belief(mean=prior_mean, cov=correlated_cov)
+        )
+        from_factored = cut.predicted_belief(Belief(mean=prior_mean, cov=factored_cov))
+
+        np.testing.assert_allclose(
+            np.asarray(from_correlated.mean), np.asarray(from_factored.mean), atol=1e-12
+        )
+        np.testing.assert_allclose(
+            np.asarray(from_correlated.cov), np.asarray(from_factored.cov), atol=1e-12
+        )
+
     def test_filter_sequence_returns_moments_not_a_belief(self):
         # A Belief with a leading time axis broke Belief's invariant, and the backend's
         # own `marginal` refused it.
@@ -540,8 +595,21 @@ class TestCarryPartition:
             control_matrix=np.array([[1.0], [0.0], [0.0], [0.0], [0.0]]),
         )
         prior = Belief(mean=np.zeros(5), cov=np.eye(5))
-        with pytest.raises(ValueError, match="action must be a 1-D vector of length 1"):
+        with pytest.raises(
+            ValueError, match=r"actions must be a \(2, 1\) stack.*got shape \(2, 2\)"
+        ):
             backend.filter_sequence(np.zeros((2, 3)), prior, np.zeros((2, 2)))
+
+    def test_filter_sequence_refuses_readings_of_the_wrong_width(self):
+        backend = _build(
+            _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
+        )
+        prior = Belief(mean=np.zeros(5), cov=np.eye(5))
+        with pytest.raises(
+            ValueError,
+            match=r"observations must be a \(T, 3\) stack.*got shape \(4, 2\)",
+        ):
+            backend.filter_sequence(np.zeros((4, 2)), prior)
 
     def test_filter_sequence_refuses_an_empty_run(self):
         backend = _build(
@@ -753,8 +821,16 @@ class TestObservationChannel:
             [(np.eye(2), np.eye(2) * 0.1)],
         )
         np.testing.assert_allclose(
-            np.asarray(backend.observation_noise_at([3.0, 3.0])), [[9.5]]
+            np.asarray(backend.model.observation_noise_at([3.0, 3.0])), [[9.5]]
         )
+
+    def test_r_at_a_mean_is_read_off_the_model_alone(self):
+        # A backend member returned what `model.observation_noise_at` gives, so C was
+        # read off the model and R off the backend.
+        backend = _build(
+            _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
+        )
+        assert not hasattr(backend, "observation_noise_at")
 
     def test_no_tuple_freezes_r_at_zero(self):
         backend = _build_rx(
@@ -830,7 +906,10 @@ class TestDefiniteNoise:
     def test_a_semi_definite_node_noise_names_the_inversion(self):
         with pytest.raises(
             ValueError,
-            match="dynamics_noise must be positive-definite because it is inverted",
+            match=(
+                "dynamics_noise must be positive-definite because the information "
+                "form inverts it"
+            ),
         ) as refusal:
             GaussianTransition(np.eye(2), dynamics_noise=np.diag([1e-4, 0.0]))
         assert "sensor" not in str(refusal.value)
@@ -838,7 +917,10 @@ class TestDefiniteNoise:
     def test_a_semi_definite_edge_noise_names_the_inversion(self):
         with pytest.raises(
             ValueError,
-            match="coupling_noise must be positive-definite because it is inverted",
+            match=(
+                "coupling_noise must be positive-definite because the information "
+                "form inverts it"
+            ),
         ) as refusal:
             Coupling(0, 1, [[1.0]], coupling_noise=[[0.0]])
         assert "sensor" not in str(refusal.value)
@@ -1439,6 +1521,29 @@ class TestStateDependentSensing:
         prior = Belief(mean=np.zeros(5), cov=np.eye(5))
         with pytest.raises(ValueError, match="observation"):
             rx.infer_states(np.zeros(2), prior, np.array([0.0]))  # need 3 readings
+
+
+class TestPartitionNodes:
+    def test_a_fractional_node_is_refused(self):
+        # int() used to read node 2.5 as 2 and build a partition nobody declared.
+        with pytest.raises(TypeError, match=r"partition node 2\.5"):
+            _build(
+                _CHEMOTAXIS_DIMS,
+                _CHEMOTAXIS_EDGES,
+                _CHEMOTAXIS_OBS,
+                _CHEMOTAXIS_DYN,
+                partition=[[0, 1, 3, 4], [2.5]],
+            )
+
+    def test_an_integral_float_node_is_taken(self):
+        backend = _build(
+            _CHEMOTAXIS_DIMS,
+            _CHEMOTAXIS_EDGES,
+            _CHEMOTAXIS_OBS,
+            _CHEMOTAXIS_DYN,
+            partition=[[0.0, 1, 3, 4], [2.0]],
+        )
+        assert backend._partition == ((0, 1, 3, 4), (2,))
 
 
 # --- one sensor family: a graph node takes the flat model's sensor (ADR-073) -------

@@ -137,7 +137,7 @@ def test_epistemic_can_target_the_hidden_hub():
     prior = Belief(mean=np.zeros(5), cov=np.eye(5))
     predicted = backend.predicted_belief(prior)
     sigma_pred = predicted.cov  # Σ⁺
-    observation_noise = backend.observation_noise_at(predicted.mean)  # R(μ⁺)
+    observation_noise = backend.model.observation_noise_at(predicted.mean)  # R(μ⁺)
 
     def info_gain(info_block):
         return float(

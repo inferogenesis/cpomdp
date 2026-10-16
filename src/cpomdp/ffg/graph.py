@@ -24,7 +24,7 @@ from jax import Array
 from jaxtyping import Float64
 from numpy.typing import ArrayLike, NDArray
 
-from cpomdp._validation import validate_covariance
+from cpomdp._validation import INFORMATION_FORM_INVERTS, validate_covariance
 from cpomdp.ffg._message import CanonicalGaussian, likelihood_message
 from cpomdp.observation import ObservationModel
 from cpomdp.types import Belief
@@ -98,7 +98,12 @@ class Coupling:
                 f"coupling_matrix must be 2-D (c, p), got shape {coupling_matrix.shape}"
             )
         # Q is inverted in the message, so it must be positive-definite.
-        validate_covariance(coupling_noise, "coupling_noise", require_definite=True)
+        validate_covariance(
+            coupling_noise,
+            "coupling_noise",
+            require_definite=True,
+            reason=INFORMATION_FORM_INVERTS,
+        )
         child_dim = coupling_matrix.shape[0]
         if coupling_noise.shape != (child_dim, child_dim):
             raise ValueError(
@@ -376,6 +381,7 @@ class CouplingGraph:
                     observation_noise,
                     f"node {node}'s observation_noise",
                     require_definite=True,
+                    reason=INFORMATION_FORM_INVERTS,
                 )
             at_zero[node] = (observation_matrix, observation_noise)
         return at_zero
@@ -412,6 +418,7 @@ class CouplingGraph:
                 observation_noise,
                 f"node {node}'s observation_noise at its predicted mean",
                 require_definite=True,
+                reason=INFORMATION_FORM_INVERTS,
             )
         return likelihood_message(observation_matrix, observation_noise, reading)
 

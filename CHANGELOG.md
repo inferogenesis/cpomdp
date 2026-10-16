@@ -61,6 +61,10 @@ certainty equivalence is optimal, and no use of the readings beats it.
   refuses a missing node, a node with no sensor and a reading of the wrong width. The
   vector's ascending node order lived in a private layout, so readings of one width
   stacked in a dict's insertion order filtered each node against another's reading.
+- `LinearGaussianModel.observation_noise_at(state)` reads R at a state on any model. A
+  model with no sensor or a fixed one returns `observation_noise`. A state-dependent
+  sensor is linearized at `state`. The graph EFE paths and `probe_model` read R through
+  it (ADR-076).
 - `cpomdp._lab.harness` — a world and an agent held apart, so what an agent's model gets
   wrong about the process is a measurable quantity rather than zero by construction.
   `World` runs the process and hands out observations, exposing no accessor that returns
@@ -414,13 +418,23 @@ certainty equivalence is optimal, and no use of the readings beats it.
   the valid range. `block(-1)` returned an empty range, so an epistemic term aimed at it
   scored zero. `marginal(-1, belief)` failed inside a reduction, and `block(5)` on five
   nodes raised a bare `IndexError`.
+- `CouplingGraphBackend` cuts a prior by its partition before it filters from it, on
+  every surface. Under an all-singleton partition `infer_states` kept only each node's
+  own block of a correlated prior. `filter_sequence`, `severed_mass` and
+  `predicted_belief` used all of it. So the run profile measured a filter `infer_states`
+  never ran, and the EFE predicted from correlation the filter dropped. The full-joint
+  partition is unchanged. A mixed partition such as `[[0, 1, 3, 4], [2]]` over a
+  correlated prior also returns a different posterior now, since the dense path inverts
+  the cut prior (ADR-077).
 - Every refusal of a covariance that is not positive-definite gave one reason, "a
   noiseless or degenerate sensor sends the information gain to infinity". A
   semi-definite `dynamics_noise` on a `GaussianTransition` or `coupling_noise` on a
-  `Coupling` was blamed on a sensor the caller never passed. The refusal now
-  says the matrix is inverted. The graph path still needs a definite Q where the flat
-  model accepts a semi-definite one, because its transition factor inverts Q, and
-  `CouplingGraphBackend` says so.
+  `Coupling` was blamed on a sensor the caller never passed. Each refusal now
+  gives its own caller's reason. An FFG factor's says its information form inverts the
+  matrix. A sensor's R keeps the information-gain reason, and the harness says it draws
+  the reading through a Cholesky factor. The graph path still needs a definite Q where
+  the flat model accepts a semi-definite one, because its transition factor inverts Q,
+  and `CouplingGraphBackend` says so.
 - Malformed graph inputs raise an error that names the argument. A reading on a node
   with no sensor raised a bare `KeyError: 1` from `CouplingGraph.infer`, now
   `infer_root`, and a prior over the wrong dimension raised
@@ -729,9 +743,14 @@ certainty equivalence is optimal, and no use of the readings beats it.
   with R linearized at zero, so under a state-dependent sensor it handed out `R(0)` as the
   noise the EFE reads. On the same object `backend.model.observation_model` was a sensor.
   Read C as `backend.model.observation_matrix`, as on every backend, and R at a mean as
-  `backend.observation_noise_at(mean)`. Under a state-dependent sensor
+  `backend.model.observation_noise_at(mean)`. Under a state-dependent sensor
   `backend.model.observation_noise` is now R at the prior mean, the rule every flat model
   follows (ADR-064). It was R at zero.
+- **Breaking:** `CouplingGraphBackend.observation_noise_at(mean)` is
+  `backend.model.observation_noise_at(mean)`, an accessor every `LinearGaussianModel`
+  now has. C was read off the model and R off the backend, so code reading R at a mean
+  over a flat and a graph backend branched on which it held. A fixed graph's model
+  returns the R built at construction, so nothing is rebuilt per call (ADR-076).
 - **Breaking:** one protocol describes a graph backend, `GraphBackend` in
   `cpomdp.backends.base`. It was `EfeBackend`, a name that suggested `KalmanBackend`
   cannot score EFE, and `cpomdp.diagnostics.ProbeBackend` restated part of it for
@@ -745,8 +764,8 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `(observations, prior, actions)`, the order `infer_states` takes, where it put the
   prior first. It returns `(means, covs, severed_mass)` as arrays. The `Belief` it
   returned had a time axis on its mean, which broke `Belief`'s invariant, and the
-  backend's own `marginal` refused it. It now checks the prior and the first step
-  before it scans.
+  backend's own `marginal` refused it. It now checks the prior and the width of each
+  stack before it scans.
 - **Breaking:** `CouplingGraphBackend.readout` and its `readout_node` argument are
   removed. `readout(belief)` was `marginal(readout_node, belief)`, and the argument did
   nothing else. Read any node, the root included, with `marginal(node, belief)`.

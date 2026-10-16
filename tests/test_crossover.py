@@ -178,7 +178,7 @@ class TestReachWalkDeclaredMembers:
         eps, gees = [], []
         for action in np.asarray(CROSSOVER_ACTION_SET.actions):
             predicted = backend.predicted_belief(belief, jnp.asarray(action))
-            noise = backend.observation_noise_at(predicted.mean)
+            noise = backend.model.observation_noise_at(predicted.mean)
             g, parts = _ffg_efe_step(
                 predicted.mean,
                 predicted.cov,

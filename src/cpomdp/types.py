@@ -8,7 +8,13 @@ import numpy as np
 from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
-from cpomdp._validation import concrete, validate_covariance, validate_finite
+from cpomdp._validation import (
+    NOISELESS_SENSOR,
+    concrete,
+    state_dependent,
+    validate_covariance,
+    validate_finite,
+)
 from cpomdp.dynamics import DynamicsNoiseModel
 from cpomdp.observation import ObservationModel
 from cpomdp.structure import ModelStructure
@@ -367,7 +373,10 @@ class LinearGaussianModel:
 
         # observation_noise: covariance of the observation noise, (m, m), symmetric.
         validate_covariance(
-            self.observation_noise, "observation_noise", require_definite=True
+            self.observation_noise,
+            "observation_noise",
+            require_definite=True,
+            reason=NOISELESS_SENSOR,
         )
         if self.observation_noise.shape != (m, m):
             raise ValueError(
@@ -426,6 +435,25 @@ class LinearGaussianModel:
     def n_controls(self) -> int:
         """Dimension of an action (p); 0 if the model has no control."""
         return 0 if self.control_matrix is None else self.control_matrix.shape[1]
+
+    def observation_noise_at(self, state: ArrayLike) -> Float64[Array, "m m"]:
+        """The observation noise R at ``state``, whatever sensor the model carries.
+
+        A model with no ``observation_model``, or a fixed one, returns
+        ``observation_noise`` itself and reads no state. A state-dependent sensor is
+        linearized at ``state``. A consumer that needs R where a belief sits reads it
+        here and does not branch on the sensor.
+
+        Args:
+            state: the state to read R at, shape ``(n,)``.
+
+        Returns:
+            R at ``state``, shape ``(m, m)``.
+        """
+        sensor = state_dependent(self.observation_model)
+        if sensor is None:
+            return self.observation_noise
+        return sensor.linearize(state)[1]
 
     def tree_flatten(self) -> tuple[tuple[_ModelLeaf, ...], ModelStructure | None]:
         """Leaves for JAX: every matrix plus the ``prior`` belief; ``structure`` is aux.

@@ -40,6 +40,7 @@ def test_a_renamed_name_is_gone_from_the_top_level(name):
 
 def test_the_chain_backend_is_private():
     # It gives KalmanBackend's numbers at two extra inversions per step, and exists to
-    # show the message algebra is the Kalman filter on a chain (ADR-012).
+    # show the message algebra is the Kalman filter on a chain (ADR-012). ADR-076 made
+    # it private.
     with pytest.raises(ModuleNotFoundError):
         importlib.import_module("cpomdp.ffg.chain")

@@ -13,7 +13,9 @@ it makes the recursion exact. A chosen node's belief is then a pure slice of tha
 (``marginal``).
 """
 
+import operator
 from collections.abc import Mapping, Sequence
+from typing import SupportsIndex
 
 import jax
 import jax.numpy as jnp
@@ -137,7 +139,8 @@ class CouplingGraphBackend:
             filter carries the correlation within a cluster to the next step and
             drops the correlation between clusters (ADR-016). ``None`` is one cluster
             of every node, the exact filter. All singletons take a cheaper
-            node-by-node pass. ``severed_mass`` measures what a cut drops.
+            node-by-node pass. A prior passed in is cut the same way before it is
+            used. ``severed_mass`` measures what a cut drops.
 
     An ``observation`` passed to ``infer_states`` is the readings of the observed nodes
     stacked in **ascending node-index order**, each node contributing its sensor's rows.
@@ -178,6 +181,7 @@ class CouplingGraphBackend:
         # block-diagonal, so the within-slice solve is a tree and cheap two-pass BP
         # (``_infer_all``) replaces the dense joint solve (ADR-016 energy lever).
         self._is_factored = all(len(cluster) == 1 for cluster in self._partition)
+        self._is_exact = len(self._partition) == 1  # one cluster severs nothing
 
         # Front-loaded factor tier — built once, reused every step (ADR-002).
         self._transition = self._build_transition()
@@ -235,7 +239,9 @@ class CouplingGraphBackend:
         node_count = len(self._graph.dims)
         if partition is None:
             return (tuple(range(node_count)),)
-        clusters = tuple(tuple(int(node) for node in cluster) for cluster in partition)
+        clusters = tuple(
+            tuple(_partition_node(node) for node in cluster) for cluster in partition
+        )
         seen: set[int] = set()
         for node in (n for cluster in clusters for n in cluster):
             if not 0 <= node < node_count:
@@ -484,19 +490,6 @@ class CouplingGraphBackend:
             potential = potential.at[block].add(message.potential)
         return precision, potential
 
-    def observation_noise_at(self, mean: ArrayLike) -> Float64[jax.Array, "m m"]:
-        """The stacked observation noise R at a predicted mean.
-
-        Each observed node's R is linearized at ``mean[node_block]``, and the
-        block-diagonal stack is the action-dependent ``R(μ⁺)`` the EFE selector folds
-        per candidate (issue #27). A graph whose sensors are all fixed returns the
-        constant R it front-loaded and reads no mean.
-        """
-        joint_observation = self._model.observation_model
-        if joint_observation is None:  # every sensor fixed
-            return self._model.observation_noise
-        return joint_observation.linearize(mean)[1]
-
     def _build_partition_mask(self) -> jax.Array:
         """The carry mask: 1 on within-cluster precision blocks, 0 between clusters.
 
@@ -525,10 +518,11 @@ class CouplingGraphBackend:
         """Advance the joint belief by one filter step over the tree.
 
         Validate the inputs, form the control shift ``b = control @ action``, then run
-        the driven-relaxation pipeline: lift the joint prior into canonical form,
-        ``_predict`` through the block-diagonal per-node dynamics (the temporal edges),
-        add the structural coupling precision and the per-node observation messages (the
-        within-slice update), and ``to_moment`` the joint posterior back.
+        the driven-relaxation pipeline: cut the prior by the partition, lift it into
+        canonical form, ``_predict`` through the block-diagonal per-node dynamics (the
+        temporal edges), add the structural coupling precision and the per-node
+        observation messages (the within-slice update), and ``to_moment`` the joint
+        posterior back.
 
         Args:
             observation: the observed nodes' readings, stacked in ascending node-index
@@ -564,8 +558,8 @@ class CouplingGraphBackend:
         within-slice problem is a tree: each node is seeded per-node (its own predicted
         block + observation) and ``CouplingGraph._infer_all`` returns every node's exact
         marginal in O(tree) small solves, never forming or inverting the dense joint
-        (ADR-016). Only each node's own diagonal block of the prior is used, so a
-        non-block-diagonal prior is factored on ingest — consistent with the partition.
+        (ADR-016). Only each node's own diagonal block of the prior is used. That is
+        the cut ``_factor`` makes on the dense path, read without forming it.
 
         A factor whose linearization point is a coupling-resolved marginal — a
         state-dependent ``R(x)`` today, a nonlinear sensor ``C(x)`` later — needs it
@@ -658,6 +652,10 @@ class CouplingGraphBackend:
         The prior and the first step are checked as ``infer_states`` checks them,
         before the scan starts.
 
+        The severed mass needs the dense joint, so every step takes the dense solve.
+        An all-singleton partition returns the numbers its node-by-node pass gives,
+        at the dense cost.
+
         Args:
             observations: the stacked readings per step, shape
                 ``(T, model.n_observations)`` with ``T >= 1``.
@@ -673,13 +671,18 @@ class CouplingGraphBackend:
         Raises:
             ValueError: If ``observations`` is not a ``(T, m)`` stack with at least one
                 step, if ``prior`` is not over the joint state, or if ``actions`` is
-                missing, unexpected or not one ``(p,)`` action per step.
+                missing, unexpected or not a ``(T, p)`` stack.
         """
         observations = jnp.asarray(observations, dtype=float)
-        if observations.ndim != 2 or observations.shape[0] == 0:
+        observation_width = self._model.n_observations  # m
+        if (
+            observations.ndim != 2
+            or observations.shape[0] == 0
+            or observations.shape[1] != observation_width
+        ):
             raise ValueError(
-                "observations must be a (T, m) stack of readings with at least one "
-                f"step, got shape {observations.shape}"
+                f"observations must be a (T, {observation_width}) stack of readings "
+                f"with at least one step, got shape {observations.shape}"
             )
         steps = observations.shape[0]
         if self._control is None:
@@ -693,12 +696,13 @@ class CouplingGraphBackend:
                     "this model has a control matrix, so actions are required"
                 )
             actions = jnp.asarray(actions, dtype=float)
-            if actions.ndim != 2 or actions.shape[0] != steps:
+            if actions.shape != (steps, self._model.n_controls):
                 raise ValueError(
-                    f"actions must be a ({steps}, p) stack, one action per reading, "
-                    f"got shape {actions.shape}"
+                    f"actions must be a ({steps}, {self._model.n_controls}) stack, one "
+                    f"action per reading, got shape {actions.shape}"
                 )
             first_action = actions[0]
+        # The widths are checked above, so this checks the prior.
         _validate_step_inputs(self._model, observations[0], prior, first_action)
 
         def step(
@@ -736,11 +740,12 @@ class CouplingGraphBackend:
         """The within-slice joint posterior (Λ, h) without input validation.
 
         The pure numerical core, so ``filter_sequence`` can call it inside a
-        ``lax.scan`` body where the host-side ``_validate_step_inputs`` cannot run. Lift
-        the joint prior to canonical, ``_predict`` through the block-diagonal per-node
-        dynamics (the temporal edges), then add the structural coupling precision and
-        the per-node observation messages (the within-slice update). ChainBackend sums
-        two terms; the tree's within-slice couplings are the third.
+        ``lax.scan`` body where the host-side ``_validate_step_inputs`` cannot run. Cut
+        the prior by the partition and lift it to canonical, ``_predict`` through the
+        block-diagonal per-node dynamics (the temporal edges), then add the structural
+        coupling precision and the per-node observation messages (the within-slice
+        update). ChainBackend sums two terms; the tree's within-slice couplings are the
+        third.
         """
         if self._sensor_is_fixed:
             precision, potential = self._predicted_precision(prior, action)
@@ -761,15 +766,16 @@ class CouplingGraphBackend:
     ) -> tuple[jax.Array, jax.Array]:
         """The joint (Λ, h) after dynamics + structural couplings, *before* observing.
 
-        The predict side of a step: lift the joint prior to canonical, ``_predict``
-        through the block-diagonal per-node dynamics under ``action`` (the temporal
-        edges), then add the structural coupling precision — but no observation.
+        The predict side of a step: cut the joint prior as the partition carries it,
+        lift it to canonical, ``_predict`` through the block-diagonal per-node dynamics
+        under ``action`` (the temporal edges), then add the structural coupling
+        precision — but no observation.
         ``_assemble_unchecked`` folds the observation on top; ``predicted_belief``
         moment-forms it as Σ⁺ (the EFE reads the info gain as the drop from this to the
         post-observation covariance).
         """
         control_term = self._control_shift(action)
-        prior_precision = jnp.linalg.inv(prior.cov)  # Λ₀ = Σ⁻¹
+        prior_precision = jnp.linalg.inv(self._factor(prior.cov))  # Λ₀ = Σ⁻¹
         prior_msg = CanonicalGaussian._unchecked(
             prior_precision,
             prior_precision @ prior.mean,  # h₀ = Λ₀μ
@@ -777,21 +783,32 @@ class CouplingGraphBackend:
         predicted = self._transition._predict(prior_msg, control_term)  # → Λ⁻, h⁻
         return predicted.precision + self._structural_precision, predicted.potential
 
+    def _factor(self, cov: jax.Array) -> jax.Array:
+        """``cov`` with its between-cluster blocks zeroed, as the partition cuts it.
+
+        The one cut both ends of a step make (ADR-016). ``_predicted_precision``
+        applies it to the prior coming in and ``_carry`` to the posterior going out,
+        so every surface filters from the belief the node-by-node pass sees. The
+        within-cluster blocks are untouched. The full-joint ``[[all]]`` partition
+        returns ``cov`` itself and costs nothing per step.
+        """
+        if self._is_exact:
+            return cov
+        return cov * self._partition_mask
+
     def _carry(self, cov: jax.Array) -> tuple[jax.Array, jax.Array]:
         """Factor the carried joint *covariance* and measure what it severs (ADR-016).
 
-        The pure primitive behind both surfaces: zero the between-cluster covariance
-        blocks (keep the mask's within-cluster ones) at the time boundary, and return
-        the factored covariance alongside the severed mass as a jnp scalar (jit / grad /
-        vmap / scan safe — no host sync here). Factoring the covariance leaves the
+        The pure primitive behind both surfaces: ``_factor`` the posterior at the time
+        boundary, and return it alongside the severed mass as a jnp scalar (jit / grad /
+        vmap / scan safe, no host sync here). Factoring the covariance leaves the
         per-cluster diagonal blocks untouched, so every node's marginal this slice stays
-        exact (ADR-017); only the cross-cluster correlation carried forward is dropped.
-        The full-joint ``[[all]]`` mask keeps every block, so the carry is a no-op and
-        the severed mass is exactly zero (the exact endpoint stays byte-identical).
+        exact (ADR-017). Only the cross-cluster correlation carried forward is dropped.
+        The full-joint ``[[all]]`` partition keeps every block, so the severed mass is
+        exactly zero and the exact endpoint stays byte-identical.
         """
-        severed = cov * (1.0 - self._partition_mask)
-        factored = cov - severed
-        return factored, jnp.linalg.norm(severed)
+        factored = self._factor(cov)
+        return factored, jnp.linalg.norm(cov - factored)
 
     def _control_shift(self, action: jax.Array | None) -> jax.Array:
         """The control shift ``b = B·action`` (zero when the model has no control)."""
@@ -876,7 +893,10 @@ class CouplingGraphBackend:
         state as one linear-Gaussian model, with the sizes an [`Agent`][cpomdp.Agent]
         reads. The ``Agent`` takes its own ``model`` from this, so passing the backend
         is enough (issue #26). Read the stacked sensor C as
-        ``model.observation_matrix`` and R at a mean with ``observation_noise_at``.
+        ``model.observation_matrix`` and R at a mean as
+        ``model.observation_noise_at(mean)``. A fixed graph's model returns the R it
+        front-loaded. A state-dependent graph's model reads each node's R at that
+        node's block of the mean, the point the filter uses.
 
         It omits the structural couplings, so it is not a filter for the graph.
         ``to_flat_model()`` adds them as pseudo-observations for the oracle
@@ -889,12 +909,12 @@ class CouplingGraphBackend:
     ) -> Belief:
         """The joint belief after dynamics + structural couplings, before observing.
 
-        The predict side of one step (Σ⁺, μ⁺): push the joint ``prior`` through the
-        per-node dynamics under ``action`` and fold in the structural couplings, but add
-        no observation. This is the covariance the EFE reads — a candidate action's
-        epistemic value is the info gain from this Σ⁺ to the post-observation covariance
-        (issue #26). Pure (no host-side validation), so it rides ``jit`` / ``vmap`` over
-        a grid of candidate actions.
+        The predict side of one step (Σ⁺, μ⁺): cut the joint ``prior`` as the partition
+        carries it, push it through the per-node dynamics under ``action`` and fold in
+        the structural couplings, but add no observation. This is the covariance the
+        EFE reads — a candidate action's epistemic value is the info gain from this Σ⁺
+        to the post-observation covariance (issue #26). Pure (no host-side
+        validation), so it rides ``jit`` / ``vmap`` over a grid of candidate actions.
         """
         coerced = None if action is None else jnp.asarray(action, dtype=float)
         precision, potential = self._predicted_precision(prior, coerced)
@@ -968,3 +988,12 @@ class CouplingGraphBackend:
             edge.coupling_matrix.shape[0] for edge in self._graph.couplings
         )
         return jnp.concatenate([observation, jnp.zeros(n_structural)])
+
+
+def _partition_node(node: object) -> int:
+    """A partition's node index as an ``int``. A bool and a fraction are refused."""
+    if isinstance(node, float | np.floating) and float(node).is_integer():
+        return int(node)
+    if isinstance(node, bool) or not isinstance(node, SupportsIndex):
+        raise TypeError(f"partition node {node!r} must be an int")
+    return operator.index(node)

@@ -12,9 +12,9 @@ fixes them.
 
 ---
 
-## Where this stands — v0.5.0, released 2026-10-15
+## Where this stands — v0.5.0, prepared 2026-10-15, tag pending
 
-**Shipped in v0.5.0.** PR-1, PR-1b, PR-2, PR-3, PR-4, PR-7a and PR-7, cut from `main`
+**In v0.5.0, which is untagged.** PR-1, PR-1b, PR-2, PR-3, PR-4, PR-7a and PR-7, cut from `main`
 ahead of the gate so the November workshop installs the optional noises (ADR-067). Their
 sections below stay until the reset after the gate. The open PRs build on them.
 

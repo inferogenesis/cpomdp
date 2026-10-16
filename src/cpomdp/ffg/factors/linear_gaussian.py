@@ -24,7 +24,7 @@ from jax import Array
 from jaxtyping import Float64
 from numpy.typing import ArrayLike
 
-from cpomdp._validation import concrete, validate_covariance
+from cpomdp._validation import INFORMATION_FORM_INVERTS, concrete, validate_covariance
 from cpomdp.ffg._message import CanonicalGaussian
 
 __all__ = ["GaussianTransition"]
@@ -70,7 +70,12 @@ class GaussianTransition:
                 f"{dynamics_matrix.shape}"
             )
         # Q is inverted in the joint, so it must be positive-definite.
-        validate_covariance(dynamics_noise, "dynamics_noise", require_definite=True)
+        validate_covariance(
+            dynamics_noise,
+            "dynamics_noise",
+            require_definite=True,
+            reason=INFORMATION_FORM_INVERTS,
+        )
         n = dynamics_matrix.shape[0]
         if dynamics_noise.shape != (n, n):
             raise ValueError(

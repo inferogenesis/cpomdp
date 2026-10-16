@@ -238,15 +238,6 @@ class ProbeReport:
         return self.summary()
 
 
-def _linearizations(
-    observation, observation_matrix: np.ndarray, means: np.ndarray
-) -> list[np.ndarray]:
-    """Each mean's noise covariance, read through whatever the caller supplied."""
-    if observation is None:  # a fixed sensor carries no per-state noise
-        return []
-    return [np.asarray(observation.linearize(mu)[1], dtype=float) for mu in means]
-
-
 def _dynamics_noises(
     process, dynamics_noise: ArrayLike, means: np.ndarray
 ) -> list[np.ndarray]:
@@ -298,7 +289,7 @@ def probe_model(
 
     Args:
         model: a [`LinearGaussianModel`][cpomdp.LinearGaussianModel], or a backend
-            exposing ``model`` / ``predicted_belief`` / ``observation_noise_at``
+            exposing ``model`` and ``predicted_belief``
             ([`CouplingGraphBackend`][cpomdp.CouplingGraphBackend] does).
         belief: the belief to predict from — the shared prior every action starts at.
         actions: the candidate actions to sample.
@@ -316,16 +307,13 @@ def probe_model(
 
     if hasattr(model, "predicted_belief"):  # a graph backend
         backend = cast("GraphBackend", model)
-        observation_matrix = np.asarray(backend.model.observation_matrix, dtype=float)
+        sensor_model = backend.model
         predicted = [backend.predicted_belief(belief, np.asarray(a)) for a in actions]
         means = np.asarray([np.asarray(p.mean, dtype=float) for p in predicted])
         covs = [np.asarray(p.cov, dtype=float) for p in predicted]
-        noises = [
-            np.asarray(backend.observation_noise_at(mu), dtype=float) for mu in means
-        ]
         dynamics_spread = 0.0  # the graph's transitions carry a fixed Q
     else:  # a flat LinearGaussianModel
-        observation_matrix = np.asarray(model.observation_matrix, dtype=float)
+        sensor_model = model
         dynamics_matrix = np.asarray(model.dynamics_matrix, dtype=float)
         prior_mean = np.asarray(belief.mean, dtype=float)
         prior_cov = np.asarray(belief.cov, dtype=float)
@@ -348,10 +336,10 @@ def probe_model(
         )
         covs = [propagated + q for q in dynamics_noises]
         dynamics_spread = _spread(dynamics_noises)
-        fixed = np.asarray(model.observation_noise, dtype=float)
-        noises = _linearizations(
-            model.observation_model, observation_matrix, means
-        ) or [fixed] * len(actions)
+    observation_matrix = np.asarray(sensor_model.observation_matrix, dtype=float)
+    noises = [
+        np.asarray(sensor_model.observation_noise_at(mu), dtype=float) for mu in means
+    ]
 
     rank = int(np.linalg.matrix_rank(observation_matrix))
     n_obs = int(observation_matrix.shape[0])
