@@ -113,8 +113,8 @@ class FiniteActionSet:
         return int(self.actions.shape[0])
 
     @property
-    def action_dim(self) -> int:
-        """The action dimension ``p``."""
+    def n_controls(self) -> int:
+        """The action dimension ``p``, named as the model names it."""
         return int(self.actions.shape[1])
 
 
@@ -122,10 +122,10 @@ def _validate_spec(
     scorer: "_PolicyScorer", action_set: FiniteActionSet, horizon: int
 ) -> None:
     """The preconditions both enumeration paths share."""
-    if action_set.action_dim != scorer.action_dim:
+    if action_set.n_controls != scorer.n_controls:
         raise ValueError(
-            f"the action set is p={action_set.action_dim} but the control is "
-            f"p={scorer.action_dim}; the declared actions must match the action "
+            f"the action set is p={action_set.n_controls} but the control is "
+            f"p={scorer.n_controls}; the declared actions must match the action "
             "dimension."
         )
     if horizon < 1:
@@ -175,11 +175,11 @@ class _PolicyScorer(Protocol):
     """Scores one policy to its summed EFE ``G`` — the seam that swaps flat for FFG.
 
     The enumerated search owns the enumeration, the certificate, and the argmin; *how* a
-    policy is scored is injected here (ADR-034). ``action_dim`` lets the search validate
+    policy is scored is injected here (ADR-034). ``n_controls`` lets the search validate
     the declared action set against the scorer's control dimension.
     """
 
-    action_dim: int
+    n_controls: int
 
     def score(
         self, belief: Belief, policy: Float64[Array, "H p"], preference: "Preference"
@@ -193,7 +193,7 @@ class _FlatScorer:
     model: LinearGaussianModel
 
     @property
-    def action_dim(self) -> int:
+    def n_controls(self) -> int:
         return self.model.n_controls
 
     def score(
@@ -213,7 +213,7 @@ class _FfgScorer:
     info_block: tuple[int, ...]
 
     @property
-    def action_dim(self) -> int:
+    def n_controls(self) -> int:
         return self.backend.model.n_controls
 
     def score(

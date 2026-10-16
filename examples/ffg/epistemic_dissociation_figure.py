@@ -57,12 +57,11 @@ import numpy as np
 from cpomdp import (
     Agent,
     Belief,
-    CallableGaussianObservation,
+    CallableSensor,
     Coupling,
     CouplingGraph,
     CouplingGraphBackend,
-    GaussianCoupling,
-    GaussianObservation,
+    FixedSensor,
     GaussianTransition,
     IncompatibleLinearizationError,
     ObservationGoal,
@@ -140,28 +139,24 @@ def build_backend(
     """
     observation_matrix = [[-1.0, 1.0], [-1.0, 1.0]]  # C: both channels read o = f - x
     cue = (
-        CallableGaussianObservation(observation_matrix, cue_noise, _cue_params(cue_x))
+        CallableSensor(observation_matrix, cue_noise, _cue_params(cue_x))
         if epistemic_alive
-        else GaussianObservation(
+        else FixedSensor(
             observation_matrix, observation_noise=_fixed_noise_at_prior(cue_x)
         )
     )
     context_to_arm = Coupling(
         parent=CONTEXT,
         child=ARM_NODE,
-        factor=GaussianCoupling(
-            # W: the context drives the perceived arm f only
-            coupling_matrix=[[0.0], [1.0]],
-            coupling_noise=[[COUPLE_Q_POSITION, 0.0], [0.0, COUPLE_Q_ARM]],
-        ),
-        tau=1.0,
+        # W: the context drives the perceived arm f only
+        coupling_matrix=[[0.0], [1.0]],
+        coupling_noise=[[COUPLE_Q_POSITION, 0.0], [0.0, COUPLE_Q_ARM]],
         efe_relevant=True,  # the covariance path the instrumental epistemic rides
     )
     graph = CouplingGraph(
-        root=CONTEXT,
         dims=(1, 2),
         couplings=(context_to_arm,),
-        observations={ARM_NODE: cue},
+        observation_models={ARM_NODE: cue},
     )
     transitions = (
         GaussianTransition(

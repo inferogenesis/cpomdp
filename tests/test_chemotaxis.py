@@ -36,7 +36,7 @@ def test_topology_matches_the_chemotaxis_tree():
     assert graph.root == CHEA
     edges = {(c.parent, c.child) for c in graph.couplings}
     assert edges == {(CHEA, CHEY), (CHEA, CHEB), (CHEY, MOTOR_A), (CHEY, MOTOR_B)}
-    assert set(graph.observations) == {CHEB, MOTOR_A, MOTOR_B}
+    assert set(graph.observation_models) == {CHEB, MOTOR_A, MOTOR_B}
 
 
 def test_timescale_separation_is_present():
@@ -146,7 +146,7 @@ def test_epistemic_can_target_the_hidden_hub():
             )
         )
 
-    assert CHEA not in backend.graph.observations  # the hub is a hidden latent
+    assert CHEA not in backend.graph.observation_models  # the hub is a hidden latent
     chea = info_gain(backend.block(CHEA))
     whole = info_gain(range(5))
     assert chea > 0.0  # learnable through the couplings, though never observed directly
