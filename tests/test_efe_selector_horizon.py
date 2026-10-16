@@ -134,17 +134,17 @@ class TestObservationGoalHorizon:
 
 
 class TestObservationGoalInfoTarget:
-    def test_default_info_target_is_none(self):
+    def test_default_info_node_is_none(self):
         # None = whole-state info gain, the unchanged default (issue #26).
         assert ObservationGoal([0.0], action_bounds=(-2.0, 2.0)).info_node is None
 
-    def test_carries_info_target_node_index(self):
+    def test_carries_the_info_node_index(self):
         assert (
             ObservationGoal([0.0], action_bounds=(-2.0, 2.0), info_node=2).info_node
             == 2
         )
 
-    def test_negative_info_target_raises(self):
+    def test_a_negative_info_node_raises(self):
         with np.testing.assert_raises(ValueError):
             ObservationGoal([0.0], action_bounds=(-2.0, 2.0), info_node=-1)
 

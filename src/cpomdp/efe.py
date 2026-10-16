@@ -446,7 +446,7 @@ def policy_efe_ffg(
     policy: Float64[Array, "H p"],
     preference: "Preference",
     *,
-    info_node: int | None = None,
+    info_node: int | Sequence[int] | None = None,
 ) -> EFEResult:
     """Summed EFE of a horizon-H ``policy`` over a branching FFG backend.
 
@@ -533,7 +533,7 @@ def policy_efe_ffg_trace(
     policy: Float64[Array, "H p"],
     preference: "Preference",
     *,
-    info_node: int | None = None,
+    info_node: int | Sequence[int] | None = None,
 ) -> PolicyEFETrace:
     """Per-step trace of the FFG rollout, the diagnostic sibling of ``policy_efe_ffg``.
 
@@ -622,10 +622,13 @@ def _not_a_preference(given: object) -> str:
     return f"{_SCORED_AGAINST} This is a value of type {type(given).__name__}."
 
 
-def _info_block_of(backend: "GraphBackend", info_node: int | None) -> tuple[int, ...]:
+def _info_block_of(
+    backend: "GraphBackend", info_node: int | Sequence[int] | None
+) -> tuple[int, ...]:
     """The joint-state indices ``info_node`` names, refused unless an EFE can aim there.
 
-    ``None`` is the whole joint state, and a node is its block, ``backend.block``. The
+    ``None`` is the whole joint state. A node is its block, ``backend.block``, and a
+    sequence of nodes is their blocks together, the joint marginal of those nodes. The
     carry partition must keep every EFE-load-bearing edge whole (ADR-018), or the
     epistemic about the targeted latent degrades while the drift may still look right.
     """
@@ -640,8 +643,13 @@ def _info_block_of(backend: "GraphBackend", info_node: int | None) -> tuple[int,
         )
     if info_node is None:
         return tuple(range(backend.model.n_states))
+    nodes = (info_node,) if isinstance(info_node, int) else tuple(info_node)
+    if not nodes:
+        raise ValueError("info_node names no node. Pass None for the whole state.")
+    if len(set(nodes)) != len(nodes):
+        raise ValueError(f"info_node {list(nodes)} repeats a node")
     try:
-        return tuple(backend.block(info_node))
+        return tuple(index for node in nodes for index in backend.block(node))
     except ValueError as error:
         raise ValueError(f"info_node {info_node}: {error}") from error
 

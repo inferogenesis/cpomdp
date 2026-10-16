@@ -21,6 +21,7 @@ Imported from ``cpomdp.enumeration``. None of it is re-exported at the top level
 """
 
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from functools import partial
 from typing import TYPE_CHECKING, Any, NamedTuple, Protocol
@@ -451,7 +452,7 @@ class ExhaustiveEFESearch(ABC):
 
     @classmethod
     def _graph_scorer(
-        cls, backend: "GraphBackend", info_node: int | None
+        cls, backend: "GraphBackend", info_node: int | Sequence[int] | None
     ) -> _FFGScorer:
         """``over_backend``'s scorer, its target resolved once, not per policy."""
         if backend.model.control_matrix is None:
@@ -573,7 +574,7 @@ class EnumeratedEFESearch(ExhaustiveEFESearch):
         backend: "GraphBackend",
         action_set: FiniteActionSet,
         *,
-        info_node: int | None = None,
+        info_node: int | Sequence[int] | None = None,
         horizon: int,
         max_policies: int | None = _DEFAULT_MAX_POLICIES,
     ) -> "EnumeratedEFESearch":
@@ -763,7 +764,7 @@ class ChunkedEFESearch(ExhaustiveEFESearch):
         backend: "GraphBackend",
         action_set: FiniteActionSet,
         *,
-        info_node: int | None = None,
+        info_node: int | Sequence[int] | None = None,
         horizon: int,
         chunk: int = _DEFAULT_CHUNK,
     ) -> "ChunkedEFESearch":
