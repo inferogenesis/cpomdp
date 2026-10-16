@@ -101,7 +101,7 @@ def _field_value(
 
     With no object the field is what was passed, and must be passed. Beside an object
     the field is the object's value at the prior mean, so a passed value must be that
-    value exactly (DECISIONS.md ADR-071). Under a trace the values cannot be compared.
+    value exactly (DECISIONS.md ADR-072). Under a trace the values cannot be compared.
     The check is skipped like every other construction check, and the field still
     holds the object's value.
 
@@ -191,7 +191,7 @@ class LinearGaussianModel:
     ``observation_model`` is given. Omitted, they are the sensor's ``C`` and its ``R``
     at ``prior.mean``, read once at construction. Passed, they must be those values
     exactly, so a sensor's channel is never described twice and each field means one
-    thing (DECISIONS.md ADR-064, ADR-071). ``dynamics_noise`` follows the same rule
+    thing (DECISIONS.md ADR-064, ADR-072). ``dynamics_noise`` follows the same rule
     beside a ``dynamics_noise_model``, and is its ``Q`` at ``prior.mean`` (ADR-065).
     A consumer that understands a state-dependent object reads ``R(x)`` or ``Q(x)``
     from it. One that needs a constant refuses the model. To move the prior with

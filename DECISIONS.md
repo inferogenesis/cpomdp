@@ -4636,7 +4636,7 @@ versions break before 1.0, as cpomdp's do.
 - A warrantlib 0.4 reaches cpomdp users only through a cpomdp release that lifts the
   cap.
 
-## ADR-071 — a model field beside its noise object holds that object's value
+## ADR-072 — a model field beside its noise object holds that object's value
 
 **Date:** 2026-10-16
 **Status:** Accepted
