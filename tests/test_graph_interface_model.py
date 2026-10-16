@@ -160,3 +160,15 @@ def test_the_chain_backend_refuses_a_coupled_graphs_model():
 
     with pytest.raises(TypeError, match="couplings"):
         ChainBackend(_backend(coupled=True).model)
+
+
+def test_the_research_wrappers_refuse_a_coupled_graphs_model():
+    # Each rebuilds the model field by field, which would drop the mark.
+    from cpomdp._lab.degraded import WrongFixedRBackend
+    from cpomdp._lab.harness import World
+
+    model = _backend(coupled=True).model
+    with pytest.raises(TypeError, match="couplings"):
+        WrongFixedRBackend(model, magnitude=0.1)
+    with pytest.raises(TypeError, match="couplings"):
+        World(model)

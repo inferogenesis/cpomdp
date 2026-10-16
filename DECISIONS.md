@@ -5706,8 +5706,11 @@ mark.
   with `dataclasses.replace` builds through the object's class, and a rebuild through
   `jax.tree.map`, `device_put` or a `jit` boundary through `tree_unflatten`'s class, so
   neither loses it. The jit cache keys on the type.
-- The constructors check once. The EFE functions check one attribute per eager call
-  and once per trace under `jit`, which leaves the fixed-noise hot path a matrix
+- The constructors check once. The EFE functions make one `isinstance` check per eager
+  call and one per trace under `jit`, which leaves the fixed-noise hot path a matrix
   product.
+- A model rebuilt field by field through the public constructor is a plain model and
+  carries no mark. The research harness's wrappers that take a model refuse a marked
+  one before they rebuild it.
 - The `InferenceBackend.model` docstring now promises the sizes, prior, sensor and
   control a backend reads, not a model it filters exactly.

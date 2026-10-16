@@ -27,7 +27,7 @@ from numpy.typing import ArrayLike
 from cpomdp._validation import state_dependent, validate_covariance
 from cpomdp.backends.base import InferenceBackend
 from cpomdp.backends.kalman import KalmanBackend
-from cpomdp.types import Belief, LinearGaussianModel
+from cpomdp.types import Belief, LinearGaussianModel, refuse_graph_interface
 
 __all__ = [
     "SEVERED_CONTROL_LOOP",
@@ -75,6 +75,7 @@ class World:
         Raises:
             ValueError: If ``initial_state`` is not a 1-D vector of length ``n``.
         """
+        refuse_graph_interface(model, "World")
         self._model = model
         if initial_state is None:
             state = model.prior.mean

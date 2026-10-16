@@ -15,7 +15,7 @@ from numpy.typing import ArrayLike
 
 from cpomdp.backends.base import InferenceBackend
 from cpomdp.backends.kalman import KalmanBackend
-from cpomdp.types import Belief, LinearGaussianModel
+from cpomdp.types import Belief, LinearGaussianModel, refuse_graph_interface
 
 __all__ = ["DiagonalCovarianceBackend", "WrongFixedRBackend"]
 
@@ -56,6 +56,7 @@ class WrongFixedRBackend:
             ValueError: If the scaled noise is not a valid covariance, as it is not at
                 a magnitude of ``-1`` or below.
         """
+        refuse_graph_interface(model, "WrongFixedRBackend")
         fixed_noise = (
             model.observation_noise
             if observation_noise is None
