@@ -35,7 +35,7 @@ from numpy.typing import ArrayLike
 
 from cpomdp._validation import concrete
 from cpomdp.efe import _info_block_of, _policy_efe_ffg, policy_efe
-from cpomdp.types import Belief, LinearGaussianModel, refuse_graph_interface
+from cpomdp.types import Belief, LinearGaussianModel, _refuse_graph_interface
 
 # `CompletenessCertificate` is an evidence kind of the warrant vocabulary, so it is
 # defined in `warrantlib` beside `SymbolicReduction`. It is re-exported below, because
@@ -444,7 +444,7 @@ class ExhaustiveEFESearch(ABC):
     @classmethod
     def _flat_scorer(cls, model: LinearGaussianModel) -> _FlatScorer:
         """The flat constructor's scorer, refusing a model no action can move."""
-        refuse_graph_interface(model, cls.__name__)
+        _refuse_graph_interface(model, cls.__name__)
         if model.control_matrix is None:
             raise ValueError(
                 f"{cls.__name__} needs a model with a control matrix; an action has no "

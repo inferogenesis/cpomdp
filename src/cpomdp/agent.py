@@ -27,8 +27,8 @@ from cpomdp.selection import (
 from cpomdp.types import (
     Belief,
     LinearGaussianModel,
-    is_graph_interface,
-    refuse_graph_interface,
+    _is_graph_interface,
+    _refuse_graph_interface,
 )
 
 __all__ = ["Agent"]
@@ -424,7 +424,7 @@ class Agent:
                 for a coupled ``CouplingGraphBackend``'s model, which leaves out the
                 couplings.
         """
-        refuse_graph_interface(model, "Agent")
+        _refuse_graph_interface(model, "Agent")
         self._setup(KalmanBackend(model), objective, selector)
 
     @classmethod
@@ -485,7 +485,7 @@ class Agent:
         elif objective is None:
             return  # a perceive-only tracker: nothing to act toward
         elif isinstance(objective, StateGoal):
-            if is_graph_interface(model):
+            if _is_graph_interface(model):
                 raise TypeError(
                     "a StateGoal on a coupled CouplingGraphBackend would regulate with "
                     "LQR on a model that leaves out the couplings. Pass a Preference "

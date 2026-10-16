@@ -24,7 +24,7 @@ from cpomdp.efe import (
     expected_free_energy,
     policy_efe,
 )
-from cpomdp.types import Belief, LinearGaussianModel, refuse_graph_interface
+from cpomdp.types import Belief, LinearGaussianModel, _refuse_graph_interface
 from warrantlib import Warrant
 
 __all__ = [
@@ -325,7 +325,7 @@ class EFESelector:
                 dimension, if ``action_bounds`` is not two finite scalars in order, if
                 ``n_candidates`` is below 2, or if ``horizon`` is below 1.
         """
-        refuse_graph_interface(model, "EFESelector")
+        _refuse_graph_interface(model, "EFESelector")
         _require_scalar_control(
             model.control_matrix, "EFESelector", "EnumeratedEFESearch"
         )

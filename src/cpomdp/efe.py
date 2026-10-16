@@ -105,7 +105,7 @@ from jax import lax
 from jaxtyping import Array, Float64
 
 from cpomdp.backends.base import InadmissiblePartitionError
-from cpomdp.types import Belief, LinearGaussianModel, refuse_graph_interface
+from cpomdp.types import Belief, LinearGaussianModel, _refuse_graph_interface
 
 if TYPE_CHECKING:
     # Type-only imports. The kernel reads the backend's predict/observation methods by
@@ -285,7 +285,7 @@ def expected_free_energy(
             couplings.
         ValueError: If the model has no control matrix.
     """
-    refuse_graph_interface(model, "expected_free_energy")
+    _refuse_graph_interface(model, "expected_free_energy")
     if model.control_matrix is None:
         raise ValueError(
             "expected_free_energy needs a model with a control matrix; an action "
@@ -341,7 +341,7 @@ def policy_efe(
             couplings.
         ValueError: If the model has no control matrix.
     """
-    refuse_graph_interface(model, "policy_efe")
+    _refuse_graph_interface(model, "policy_efe")
     if model.control_matrix is None:
         raise ValueError(
             "policy_efe needs a model with a control matrix; an action has no "
@@ -407,7 +407,7 @@ def policy_efe_trace(
             couplings.
         ValueError: If the model has no control matrix.
     """
-    refuse_graph_interface(model, "policy_efe_trace")
+    _refuse_graph_interface(model, "policy_efe_trace")
     if model.control_matrix is None:
         raise ValueError(
             "policy_efe_trace needs a model with a control matrix; an action has no "

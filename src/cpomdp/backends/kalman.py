@@ -10,7 +10,7 @@ from cpomdp._validation import (
     state_dependent,
 )
 from cpomdp.backends.base import _validate_step_inputs
-from cpomdp.types import Belief, LinearGaussianModel, refuse_graph_interface
+from cpomdp.types import Belief, LinearGaussianModel, _refuse_graph_interface
 
 __all__ = ["KalmanBackend"]
 
@@ -129,7 +129,7 @@ class KalmanBackend:
         tol: float = 1e-12,
         max_iter: int = 1000,
     ) -> None:
-        refuse_graph_interface(model, "KalmanBackend")
+        _refuse_graph_interface(model, "KalmanBackend")
         self._model = model
         self._steady_state = steady_state
         if steady_state:

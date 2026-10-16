@@ -515,22 +515,22 @@ class _GraphInterfaceModel(LinearGaussianModel):
     The sizes, prior, sensors and control the backend reads, with the couplings left
     out (ADR-091). The type is the mark. ``dataclasses.replace`` builds through
     ``obj.__class__`` and a pytree rebuild through ``tree_unflatten``'s ``cls``, so
-    neither loses it, and a flat consumer refuses it with ``refuse_graph_interface``.
+    neither loses it, and a flat consumer refuses it with ``_refuse_graph_interface``.
     """
 
 
-def is_graph_interface(model: object) -> bool:
+def _is_graph_interface(model: object) -> bool:
     """Whether ``model`` is a coupled graph backend's interface model."""
     return isinstance(model, _GraphInterfaceModel)
 
 
-def refuse_graph_interface(model: object, consumer: str) -> None:
+def _refuse_graph_interface(model: object, consumer: str) -> None:
     """Refuse a coupled graph backend's model, which leaves out the couplings.
 
     Raises:
         TypeError: If ``model`` is a coupled ``CouplingGraphBackend``'s ``model``.
     """
-    if is_graph_interface(model):
+    if _is_graph_interface(model):
         raise TypeError(
             f"{consumer} was given a CouplingGraphBackend's model, which leaves out "
             "the graph's couplings, so it would compute on a plant without them. "
