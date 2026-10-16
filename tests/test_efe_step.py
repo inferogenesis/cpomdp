@@ -3,7 +3,7 @@
 efe.py's one-step kernel is being split (Fowler "Extract Function") into a private
 `_efe_step` that the H-step rollout (`policy_efe`, B2) will `lax.scan` over. B1's whole
 job is to make that split **arithmetically inert**: the public `expected_free_energy`
-keeps returning a byte-identical `(G, parts)`, and `_efe_step` additionally surfaces the
+keeps returning a byte-identical `EfeResult`, and `_efe_step` additionally surfaces the
 three intermediates the rollout consumes — `(μ⁺, Σ⁺, S)` — with **no `C`** (the rollout
 fetches its own `C` only where it propagates; see the build plan Phase 3 / B1).
 
@@ -19,7 +19,7 @@ Two locks live here:
   XLA drift: both sides move together, so only a real arithmetic change trips it. Covers
   all three branches the extraction moves: fixed (`None`), `R(x)`, `Q(x)`.
 - `TestEfeStepContract` pins the signature, the `_EfeStep` fields, the byte-identical
-  `(G, parts)` the wrapper exposes, and the three intermediates' values (vs independent
+  `EfeResult` the wrapper exposes, and the three intermediates' values (vs independent
   NumPy) — including a shape check that `.s` is `S` (m×m), not `C` (m×n).
 
 This module imports `_efe_step` directly, so until B1 lands it is **collection-red** —
@@ -191,16 +191,18 @@ class TestExtractionInert:
 
     def test_wrapper_is_byte_identical_to_frozen_kernel(self):
         for name, model, belief, pref, action in _cases():
-            g, parts = expected_free_energy(model, belief, action, pref)
+            efe = expected_free_energy(model, belief, action, pref)
             g_frozen, parts_frozen = _frozen_efe(model, belief, action, pref)
-            np.testing.assert_array_equal(g, g_frozen, err_msg=f"G non-inert: {name}")
             np.testing.assert_array_equal(
-                parts["pragmatic"],
+                efe.g, g_frozen, err_msg=f"G non-inert: {name}"
+            )
+            np.testing.assert_array_equal(
+                efe.pragmatic,
                 parts_frozen["pragmatic"],
                 err_msg=f"pragmatic non-inert: {name}",
             )
             np.testing.assert_array_equal(
-                parts["epistemic"],
+                efe.epistemic,
                 parts_frozen["epistemic"],
                 err_msg=f"epistemic non-inert: {name}",
             )
@@ -223,11 +225,11 @@ class TestEfeStepContract:
             pref.precision,
         )
 
-        # the (G, parts) the wrapper exposes must be exactly these — bit-for-bit.
-        g_ref, parts_ref = expected_free_energy(model, belief, action, pref)
-        np.testing.assert_array_equal(step.g, g_ref)
-        np.testing.assert_array_equal(step.pragmatic, parts_ref["pragmatic"])
-        np.testing.assert_array_equal(step.epistemic, parts_ref["epistemic"])
+        # the result the wrapper exposes must be exactly these, bit for bit.
+        efe_ref = expected_free_energy(model, belief, action, pref)
+        np.testing.assert_array_equal(step.g, efe_ref.g)
+        np.testing.assert_array_equal(step.pragmatic, efe_ref.pragmatic)
+        np.testing.assert_array_equal(step.epistemic, efe_ref.epistemic)
 
         # shapes pin the contract — and prove `.s` is S (m×m), NOT C (m×n):
         # for this model n=2, m=1, so C would be (1, 2) and S is (1, 1).
@@ -265,6 +267,6 @@ class TestEfeStepContract:
             pref.goal,
             pref.precision,
         )
-        g_ref, _ = expected_free_energy(model, belief, action, pref)
+        g_ref = expected_free_energy(model, belief, action, pref).g
         np.testing.assert_array_equal(step.g, g_ref)
         assert step.s.shape == (1, 1)

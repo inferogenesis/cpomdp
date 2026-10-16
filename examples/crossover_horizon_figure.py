@@ -333,10 +333,10 @@ def margin(horizon: int, *, frozen_noise: float | None = None) -> CrossoverStati
     """
     model = build_model(frozen_noise=frozen_noise)
     goal, belief = preference(), start_belief()
-    _, detour = policy_efe(model, belief, jnp.asarray(detour_policy(horizon)), goal)
-    _, direct = policy_efe(model, belief, jnp.asarray(direct_policy(horizon)), goal)
-    delta_epsilon = detour["epistemic"] - direct["epistemic"]
-    delta_c = detour["pragmatic"] - direct["pragmatic"]
+    detour = policy_efe(model, belief, jnp.asarray(detour_policy(horizon)), goal)
+    direct = policy_efe(model, belief, jnp.asarray(direct_policy(horizon)), goal)
+    delta_epsilon = detour.epistemic - direct.epistemic
+    delta_c = detour.pragmatic - direct.pragmatic
     return CrossoverStatistic(horizon, delta_epsilon, delta_c, delta_c - delta_epsilon)
 
 
@@ -422,7 +422,7 @@ def simulate(horizon: int, *, seed: int, n_steps: int = 12) -> dict:
     goal, truth = preference(), true_goal()
 
     def score(policy):
-        return float(policy_efe(model, belief, jnp.asarray(policy), goal)[0])
+        return float(policy_efe(model, belief, jnp.asarray(policy), goal).g)
 
     detours = score(detour_policy(horizon)) < score(direct_policy(horizon))
 

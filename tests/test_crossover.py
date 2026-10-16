@@ -179,7 +179,7 @@ class TestReachWalkDeclaredMembers:
         for action in np.asarray(CROSSOVER_ACTION_SET.actions):
             predicted = backend.predicted_belief(belief, jnp.asarray(action))
             noise = backend.model.observation_noise_at(predicted.mean)
-            g, parts = _ffg_efe_step(
+            efe = _ffg_efe_step(
                 predicted.mean,
                 predicted.cov,
                 observation_matrix,
@@ -188,8 +188,8 @@ class TestReachWalkDeclaredMembers:
                 pref.precision,
                 info_block,
             )
-            eps.append(float(parts["epistemic"]))
-            gees.append(float(g))
+            eps.append(float(efe.epistemic))
+            gees.append(float(efe.g))
         members = [float(a[0]) for a in np.asarray(CROSSOVER_ACTION_SET.actions)]
         assert members[int(np.argmax(eps))] == a_sense
         assert members[int(np.argmin(gees))] == a_myopic

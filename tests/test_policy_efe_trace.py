@@ -185,17 +185,19 @@ class TestTraceSumsEqualScalars:
             for values in ([0.4], [0.4, -0.2], [0.4, -0.2, 0.1]):  # H = 1, 2, 3
                 policy = _policy(values)
                 trace = policy_efe_trace(model, belief, policy, pref)
-                g, parts = policy_efe(model, belief, policy, pref)
+                efe = policy_efe(model, belief, policy, pref)
                 tag = f"{name} H{len(values)}"
-                np.testing.assert_array_equal(jnp.sum(trace.g), g, err_msg=f"G {tag}")
+                np.testing.assert_array_equal(
+                    jnp.sum(trace.g), efe.g, err_msg=f"G {tag}"
+                )
                 np.testing.assert_array_equal(
                     jnp.sum(trace.pragmatic),
-                    parts["pragmatic"],
+                    efe.pragmatic,
                     err_msg=f"pragmatic {tag}",
                 )
                 np.testing.assert_array_equal(
                     jnp.sum(trace.epistemic),
-                    parts["epistemic"],
+                    efe.epistemic,
                     err_msg=f"epistemic {tag}",
                 )
 

@@ -16,7 +16,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from cpomdp.dynamics import CallableDynamicsNoise
-from cpomdp.efe import expected_free_energy
+from cpomdp.efe import EfeResult, PolicyEfeTrace, expected_free_energy, policy_efe
 from cpomdp.observation import CallableSensor, FixedSensor
 from cpomdp.selection import Preference
 from cpomdp.types import Belief, LinearGaussianModel
@@ -77,22 +77,22 @@ class TestAgainstNumpyOracle:
         model, belief, pref = _model(), _belief(), _obs_preference()
         action = jnp.array([0.4])
 
-        g, parts = expected_free_energy(model, belief, action, pref)
+        efe = expected_free_energy(model, belief, action, pref)
         g_ref, prag_ref, epi_ref = _numpy_efe(
             model, belief, action, pref.goal, pref.precision
         )
 
-        np.testing.assert_allclose(g, g_ref, atol=1e-10)
-        np.testing.assert_allclose(parts["pragmatic"], prag_ref, atol=1e-10)
-        np.testing.assert_allclose(parts["epistemic"], epi_ref, atol=1e-10)
+        np.testing.assert_allclose(efe.g, g_ref, atol=1e-10)
+        np.testing.assert_allclose(efe.pragmatic, prag_ref, atol=1e-10)
+        np.testing.assert_allclose(efe.epistemic, epi_ref, atol=1e-10)
 
     def test_components_are_nonnegative(self):
         # epistemic = ½ ln(det S / det R) ≥ 0 (S ⪰ R); pragmatic ≥ 0 (Λ ⪰ 0).
-        _, parts = expected_free_energy(
+        efe = expected_free_energy(
             _model(), _belief(), jnp.array([0.4]), _obs_preference()
         )
-        assert parts["epistemic"] >= 0.0
-        assert parts["pragmatic"] >= 0.0
+        assert efe.epistemic >= 0.0
+        assert efe.pragmatic >= 0.0
 
     def test_raises_without_control(self):
         control_free = LinearGaussianModel(
@@ -109,6 +109,42 @@ class TestAgainstNumpyOracle:
             )
 
 
+class TestTheResultRecord:
+    """Every EFE function returns one record, with G first so ``[0]`` still reads it."""
+
+    def test_the_one_step_result_names_its_terms(self):
+        result = expected_free_energy(
+            _model(), _belief(), jnp.array([0.4]), _obs_preference()
+        )
+        assert isinstance(result, EfeResult)
+        assert result[0] is result.g
+        np.testing.assert_allclose(
+            result.g, result.pragmatic - result.epistemic, atol=1e-12
+        )
+
+    def test_the_rollout_returns_the_same_record(self):
+        model, belief, pref = _model(), _belief(), _obs_preference()
+        one_step = expected_free_energy(model, belief, jnp.array([0.4]), pref)
+        rollout = policy_efe(model, belief, jnp.array([[0.4]]), pref)
+        assert isinstance(rollout, EfeResult)
+        for field in EfeResult._fields:
+            np.testing.assert_allclose(
+                getattr(rollout, field), getattr(one_step, field), atol=1e-12
+            )
+
+    def test_the_trace_leads_with_the_same_fields(self):
+        assert PolicyEfeTrace._fields[:3] == EfeResult._fields
+
+    def test_a_vmap_batches_every_field(self):
+        model, belief, pref = _model(), _belief(), _obs_preference()
+        actions = jnp.array([[-1.0], [0.0], [0.5], [2.0]])
+        batched = jax.vmap(lambda a: expected_free_energy(model, belief, a, pref))(
+            actions
+        )
+        assert isinstance(batched, EfeResult)
+        assert batched.pragmatic.shape == batched.epistemic.shape == (4,)
+
+
 class TestCollapseUnderFixedSensor:
     # Under a fixed sensor, Σ⁺/S/R don't depend on the action, so the epistemic
     # term is constant across actions and G's argmin is driven entirely by the
@@ -119,10 +155,7 @@ class TestCollapseUnderFixedSensor:
         actions = jnp.array([[-1.0], [0.0], [0.5], [2.0]])
 
         epistemics = jnp.array(
-            [
-                expected_free_energy(model, belief, a, pref)[1]["epistemic"]
-                for a in actions
-            ]
+            [expected_free_energy(model, belief, a, pref).epistemic for a in actions]
         )
         np.testing.assert_allclose(epistemics, epistemics[0], atol=1e-12)
 
@@ -132,9 +165,9 @@ class TestCollapseUnderFixedSensor:
 
         gs, prags = [], []
         for a in actions:
-            g, parts = expected_free_energy(model, belief, a, pref)
-            gs.append(g)
-            prags.append(parts["pragmatic"])
+            efe = expected_free_energy(model, belief, a, pref)
+            gs.append(efe.g)
+            prags.append(efe.pragmatic)
         assert int(jnp.argmin(jnp.array(gs))) == int(jnp.argmin(jnp.array(prags)))
 
 
@@ -143,7 +176,7 @@ class TestTransforms:
         model, belief, pref = _model(), _belief(), _obs_preference()
         action = jnp.array([0.4])
 
-        eager, _ = expected_free_energy(model, belief, action, pref)
+        eager = expected_free_energy(model, belief, action, pref).g
         jitted = jax.jit(lambda a: expected_free_energy(model, belief, a, pref)[0])(
             action
         )
@@ -194,10 +227,7 @@ class TestCallableSensorBreaksCollapse:
         model, belief, pref = _callable_model(), _belief(), _obs_preference()
         actions = jnp.array([[-1.0], [0.0], [0.5], [2.0]])
         epis = jnp.array(
-            [
-                expected_free_energy(model, belief, a, pref)[1]["epistemic"]
-                for a in actions
-            ]
+            [expected_free_energy(model, belief, a, pref).epistemic for a in actions]
         )
         assert float(jnp.max(epis) - jnp.min(epis)) > 1e-6
 
@@ -229,7 +259,7 @@ class TestCallableSensorBreaksCollapse:
         model = _model(observation_model=CallableSensor([[1.0, 0.0]], neg_noise, {}))
         epi = expected_free_energy(
             model, _belief(), jnp.array([0.4]), _obs_preference()
-        )[1]["epistemic"]
+        ).epistemic
         assert bool(jnp.isnan(epi))
 
 
@@ -367,12 +397,8 @@ class TestFormProof:
         c1 = _form_components(model, _RAMP_BELIEF, a1)
         c2 = _form_components(model, _RAMP_BELIEF, a2)
         np.testing.assert_allclose(c1["mean_term"], c2["mean_term"], atol=1e-9)  # tied
-        p1 = float(
-            expected_free_energy(model, _RAMP_BELIEF, a1, _RAMP_PREF)[1]["pragmatic"]
-        )
-        p2 = float(
-            expected_free_energy(model, _RAMP_BELIEF, a2, _RAMP_PREF)[1]["pragmatic"]
-        )
+        p1 = float(expected_free_energy(model, _RAMP_BELIEF, a1, _RAMP_PREF).pragmatic)
+        p2 = float(expected_free_energy(model, _RAMP_BELIEF, a2, _RAMP_PREF).pragmatic)
         assert abs(p1 - p2) > 1e-3  # NOT tied -> not mean-only
 
     def test_pragmatic_matches_monte_carlo_cross_entropy(self):
@@ -381,9 +407,7 @@ class TestFormProof:
         # FORMULA; the analytic NumPy oracle (above) proves the implementation.
         model, action = _ramp_model(), jnp.array([0.6])
         p_kernel = float(
-            expected_free_energy(model, _RAMP_BELIEF, action, _RAMP_PREF)[1][
-                "pragmatic"
-            ]
+            expected_free_energy(model, _RAMP_BELIEF, action, _RAMP_PREF).pragmatic
         )
         c = _form_components(model, _RAMP_BELIEF, action)
         o, s = c["o"], c["s"]
@@ -448,9 +472,9 @@ class TestInternalProcessNoise:
         actions = jnp.array([[-1.0], [0.0], [0.5], [2.0]])
         epis = jnp.array(
             [
-                expected_free_energy(model, _INTERNAL_BELIEF, a, _INTERNAL_PREF)[1][
-                    "epistemic"
-                ]
+                expected_free_energy(
+                    model, _INTERNAL_BELIEF, a, _INTERNAL_PREF
+                ).epistemic
                 for a in actions
             ]
         )
@@ -462,9 +486,9 @@ class TestInternalProcessNoise:
         model = _internal_q_model()
         action = jnp.array([1.3])
         epi = float(
-            expected_free_energy(model, _INTERNAL_BELIEF, action, _INTERNAL_PREF)[1][
-                "epistemic"
-            ]
+            expected_free_energy(
+                model, _INTERNAL_BELIEF, action, _INTERNAL_PREF
+            ).epistemic
         )
         a_mat, b_mat = np.array([[1.0]]), np.array([[1.0]])
         c_mat, r_mat = np.array([[1.0]]), np.array([[0.3]])

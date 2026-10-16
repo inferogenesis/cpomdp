@@ -138,19 +138,19 @@ class TestWorkedExample:
         )
         assert float(k[0, 0]) == pytest.approx(gain)
 
-        _, parts = expected_free_energy(
+        efe = expected_free_energy(
             model, belief, jnp.array([action]), Preference([0.0], [[1.0]])
         )
-        assert float(parts["epistemic"]) == pytest.approx(info)
+        assert float(efe.epistemic) == pytest.approx(info)
 
     def test_staying_put_buys_about_three_times_the_information(self):
         model, belief = scalar_chain()
         pref = Preference([0.0], [[1.0]])
         stay = float(
-            expected_free_energy(model, belief, jnp.array([0.0]), pref)[1]["epistemic"]
+            expected_free_energy(model, belief, jnp.array([0.0]), pref).epistemic
         )
         move = float(
-            expected_free_energy(model, belief, jnp.array([2.0]), pref)[1]["epistemic"]
+            expected_free_energy(model, belief, jnp.array([2.0]), pref).epistemic
         )
         assert stay / move == pytest.approx(3.266, abs=1e-3)
 
@@ -170,11 +170,7 @@ class TestCollapse:
         belief = Belief([0.0], [[1.0]])
         pref = Preference([0.0], [[1.0]])
         values = [
-            float(
-                expected_free_energy(model, belief, jnp.array([u]), pref)[1][
-                    "epistemic"
-                ]
-            )
+            float(expected_free_energy(model, belief, jnp.array([u]), pref).epistemic)
             for u in np.linspace(-5.0, 5.0, 21)
         ]
         assert np.ptp(values) == pytest.approx(0.0, abs=1e-12)
@@ -284,11 +280,7 @@ class TestDualEffect:
         pref = Preference([0.0], [[1.0]])
         grid = np.linspace(-3.0, 3.0, 13)
         values = [
-            float(
-                expected_free_energy(model, belief, jnp.array([u]), pref)[1][
-                    "epistemic"
-                ]
-            )
+            float(expected_free_energy(model, belief, jnp.array([u]), pref).epistemic)
             for u in grid
         ]
         assert np.ptp(values) > 1e-6

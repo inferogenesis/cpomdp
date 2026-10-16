@@ -320,13 +320,13 @@ def _cached_sweep(
     """
     model = _model(e_ref, live=live, meter=meter)
     belief, goal = _belief(), _goal(precision)
-    g, parts = jax.vmap(
+    efe = jax.vmap(
         lambda action: expected_free_energy(model, belief, action[None], goal)
     )(ACTIONS)
     return (
-        np.asarray(parts["pragmatic"]),
-        np.asarray(parts["epistemic"]),
-        np.asarray(g),
+        np.asarray(efe.pragmatic),
+        np.asarray(efe.epistemic),
+        np.asarray(efe.g),
     )
 
 

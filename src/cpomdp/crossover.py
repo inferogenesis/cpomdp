@@ -84,15 +84,13 @@ def crossover_statistic(
             f"{walk.shape[0]} and {reach.shape[0]}"
         )
 
-    _, walk_parts = policy_efe_ffg(
-        backend, belief, walk, preference, info_block=info_block
-    )
-    _, reach_parts = policy_efe_ffg(
+    walk_efe = policy_efe_ffg(backend, belief, walk, preference, info_block=info_block)
+    reach_efe = policy_efe_ffg(
         backend, belief, reach, preference, info_block=info_block
     )
 
-    delta_epsilon = walk_parts["epistemic"] - reach_parts["epistemic"]
-    delta_c = walk_parts["pragmatic"] - reach_parts["pragmatic"]
+    delta_epsilon = walk_efe.epistemic - reach_efe.epistemic
+    delta_c = walk_efe.pragmatic - reach_efe.pragmatic
     delta_g = delta_c - delta_epsilon
 
     return CrossoverStatistic(int(walk.shape[0]), delta_epsilon, delta_c, delta_g)

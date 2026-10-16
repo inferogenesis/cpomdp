@@ -340,7 +340,7 @@ class FfgEfeSelector:
             observation_noise = self._model.observation_noise_at(
                 predicted.mean
             )  # R(μ⁺)
-            g, _ = _ffg_efe_step(
+            return _ffg_efe_step(
                 predicted.mean,
                 predicted.cov,
                 self._observation_matrix,
@@ -348,8 +348,7 @@ class FfgEfeSelector:
                 preference.goal,
                 preference.precision,
                 self._target,
-            )
-            return g
+            ).g
 
         g = jax.vmap(g_of)(self._candidates)
         return self._candidates[self._argmin(g)]

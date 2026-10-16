@@ -89,7 +89,7 @@ THE DATA FLOW  (top → bottom: what goes in → what comes out)
       │
       ▼    G = pragmatic − epistemic
       │
-      ▼    OUT        return (G, {"pragmatic": …, "epistemic": …})
+      ▼    OUT        return EfeResult(g=G, pragmatic=…, epistemic=…)
 
 """
 
@@ -114,6 +114,7 @@ if TYPE_CHECKING:
     from cpomdp.selection import Preference
 
 __all__ = [
+    "EfeResult",
     "PolicyEfeTrace",
     "expected_free_energy",
     "policy_efe",
@@ -121,6 +122,24 @@ __all__ = [
     "policy_efe_ffg_trace",
     "policy_efe_trace",
 ]
+
+
+class EfeResult(NamedTuple):
+    """Expected free energy and the two terms it is made of.
+
+    Every scoring function in this module returns one. ``g`` comes first, so
+    ``result[0]`` is ``G``. A ``NamedTuple`` is a JAX pytree with no registration, so
+    a ``vmap`` over candidate actions returns one record with every field batched.
+
+    Attributes:
+        g: The expected free energy ``G = pragmatic − epistemic``. Lower is preferred.
+        pragmatic: The goal term, a cost.
+        epistemic: The information the observation carries about the state, a value.
+    """
+
+    g: Float64[Array, ""]
+    pragmatic: Float64[Array, ""]
+    epistemic: Float64[Array, ""]
 
 
 class PolicyEfeTrace(NamedTuple):
@@ -186,7 +205,7 @@ def expected_free_energy(
     belief: Belief,
     action: Float64[Array, "p"],
     preference: "Preference",
-) -> tuple[Float64[Array, ""], dict[str, Float64[Array, ""]]]:
+) -> EfeResult:
     """Expected Free Energy of taking ``action`` from ``belief``, and its split.
 
     Computes ``G = pragmatic − epistemic`` for the locked linear-Gaussian
@@ -207,8 +226,8 @@ def expected_free_energy(
             (shape ``(m, m)``). See FRAGILE(lit) #1 in the module docstring.
 
     Returns:
-        ``(G, {"pragmatic": ..., "epistemic": ...})`` — the scalar EFE and its two
-        non-negative components. Lower ``G`` is preferred.
+        The scalar EFE ``g`` and its two non-negative terms, ``pragmatic`` and
+        ``epistemic``. Lower ``g`` is preferred.
 
     Raises:
         ValueError: If the model has no control matrix.
@@ -229,7 +248,7 @@ def expected_free_energy(
         preference.goal,
         preference.precision,
     )
-    return step.g, {"pragmatic": step.pragmatic, "epistemic": step.epistemic}
+    return EfeResult(g=step.g, pragmatic=step.pragmatic, epistemic=step.epistemic)
 
 
 def policy_efe(
@@ -237,7 +256,7 @@ def policy_efe(
     belief: Belief,
     policy: Float64[Array, "H p"],
     preference: "Preference",
-) -> tuple[Float64[Array, ""], dict[str, Float64[Array, ""]]]:
+) -> EfeResult:
     """Summed EFE of a horizon-H ``policy`` from ``belief`` (the rollout seam).
 
     Internal — ``EFESelector`` searches over it. A ``lax.scan`` over the ``policy``
@@ -248,8 +267,7 @@ def policy_efe(
     ``jit`` / ``vmap`` / ``grad``.
 
     Returns:
-        ``(G, {"pragmatic": ..., "epistemic": ...})`` — the summed EFE and its
-        summed components over the horizon.
+        The EFE and its two terms, each summed over the horizon.
     """
     if model.control_matrix is None:
         raise ValueError(
@@ -268,7 +286,7 @@ def policy_efe(
         return new_carry, (tr.g, tr.pragmatic, tr.epistemic)
 
     _, (gs, prags, epis) = lax.scan(scalars_only, (belief.mean, belief.cov), policy)
-    return jnp.sum(gs), {"pragmatic": jnp.sum(prags), "epistemic": jnp.sum(epis)}
+    return EfeResult(g=jnp.sum(gs), pragmatic=jnp.sum(prags), epistemic=jnp.sum(epis))
 
 
 # The rollout's scan carry: the propagated belief moments (mean μ, cov Σ) threaded
@@ -365,7 +383,7 @@ def policy_efe_ffg(
     preference: "Preference",
     *,
     info_block: Sequence[int],
-) -> tuple[Float64[Array, ""], dict[str, Float64[Array, ""]]]:
+) -> EfeResult:
     """Summed EFE of a horizon-H ``policy`` over a branching FFG backend.
 
     The FFG counterpart of ``policy_efe``: instead of ``_efe_step`` on a flat model it
@@ -393,8 +411,7 @@ def policy_efe_ffg(
             value.
 
     Returns:
-        ``(G, {"pragmatic": ..., "epistemic": ...})`` — the summed EFE and its summed
-        components over the horizon.
+        The EFE and its two terms, each summed over the horizon.
 
     Raises:
         InadmissiblePartitionError: If the backend's carry partition severs an
@@ -413,7 +430,7 @@ def _policy_efe_ffg(
     policy: Float64[Array, "H p"],
     preference: "Preference",
     info_block: tuple[int, ...],
-) -> tuple[Float64[Array, ""], dict[str, Float64[Array, ""]]]:
+) -> EfeResult:
     """``policy_efe_ffg`` on an ``info_block`` already checked, for the searches.
 
     A search checks its target once at construction and then scores every policy in
@@ -431,7 +448,7 @@ def _policy_efe_ffg(
         return new_carry, (tr.g, tr.pragmatic, tr.epistemic)
 
     _, (gs, prags, epis) = lax.scan(scalars_only, belief, policy)
-    return jnp.sum(gs), {"pragmatic": jnp.sum(prags), "epistemic": jnp.sum(epis)}
+    return EfeResult(g=jnp.sum(gs), pragmatic=jnp.sum(prags), epistemic=jnp.sum(epis))
 
 
 # One FFG rollout scan step: (joint belief, action) -> (next joint belief, trace).
@@ -539,7 +556,7 @@ def _ffg_rollout_body(
     def step(belief, action):
         predicted = backend.predicted_belief(belief, action)  # μ⁺, Σ⁺
         observation_noise = model.observation_noise_at(predicted.mean)  # R(μ⁺)
-        g, parts = _ffg_efe_step(
+        scored = _ffg_efe_step(
             predicted.mean,
             predicted.cov,
             observation_matrix,
@@ -560,9 +577,9 @@ def _ffg_rollout_body(
         sigma_post = predicted.cov - p_xo @ jnp.linalg.solve(s, p_xo.T)
         sigma_post = 0.5 * (sigma_post + sigma_post.T)
         return Belief(mean=predicted.mean, cov=sigma_post), PolicyEfeTrace(
-            g=g,
-            pragmatic=parts["pragmatic"],
-            epistemic=parts["epistemic"],
+            g=scored.g,
+            pragmatic=scored.pragmatic,
+            epistemic=scored.epistemic,
             mu_pred=predicted.mean,
             sigma_pred=predicted.cov,
             sigma_post=sigma_post,
@@ -652,7 +669,7 @@ def _ffg_efe_step(
     goal: Float64[Array, "m"],
     precision: Float64[Array, "m m"],
     info_block: Sequence[int],
-) -> tuple[Float64[Array, ""], dict[str, Float64[Array, ""]]]:
+) -> EfeResult:
     """One EFE step over the FFG's predicted joint, with a node-targeted epistemic.
 
     The FFG counterpart of ``_efe_step`` (issue #26). It takes the predicted joint
@@ -683,8 +700,7 @@ def _ffg_efe_step(
             block, or the whole state).
 
     Returns:
-        ``(G, {"pragmatic": ..., "epistemic": ...})`` — the scalar EFE ``G = pragmatic −
-        epistemic`` (minimised) and its two parts.
+        The scalar EFE ``G = pragmatic − epistemic`` (minimised) and its two terms.
     """
     o_pred = observation_matrix @ mu_plus  # o⁺ = C·μ⁺
     s = (
@@ -698,7 +714,7 @@ def _ffg_efe_step(
         sigma_plus, observation_matrix, observation_noise, info_block
     )
 
-    return pragmatic - epistemic, {"pragmatic": pragmatic, "epistemic": epistemic}
+    return EfeResult(g=pragmatic - epistemic, pragmatic=pragmatic, epistemic=epistemic)
 
 
 def _efe_step(

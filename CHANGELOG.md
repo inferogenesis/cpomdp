@@ -125,15 +125,17 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `BELOW`, `ABOVE` or `NOT_RESOLVED`, the measured tie that is neither confirmation nor
   refutation. The module imports nothing first-party, asserted in the boundary test, so
   the seam and the reference filter reach it without reaching the evaluator.
-- `cpomdp.control` — the finite-horizon schedule. `finite_horizon_lqr` runs the control
+- `cpomdp.control` — the finite-horizon schedule. `lqr_schedule` runs the control
   Riccati recursion backward a declared number of steps from a zero terminal cost and
   keeps every gain, where `LQRController` iterates to a fixed point and keeps one.
-  `FiniteHorizonLQR.first_gain` is the gain a receding-horizon planner at horizon `H`
+  `LQRSchedule.first_gain` is the gain a receding-horizon planner at horizon `H`
   applies at every step; the steady-state gain is its limit and differs from it at every
   finite `H`, by an amount that shrinks with `H` and reads as an error when the horizons
   are not matched. `kalman_schedule` writes the exact filter's gains and covariances
-  down before a reading exists, since under fixed noise they never see one. The Control
-  page of the API reference opens the schedule in plain terms.
+  down before a reading exists, since under fixed noise they never see one. The two are
+  the dual pair and are called alike: `lqr_schedule(model, horizon=...)` and
+  `kalman_schedule(model, horizon=...)`, each returning a schedule that reports its
+  `horizon`. The Control page of the API reference opens the schedule in plain terms.
 - `cpomdp._lab.bracket` — the control bracket, private until its leg under
   state-dependent noise lands. `full_information_cost` is `J_lower`, the plan priced
   with the state observed. `CertaintyEquivalentController` acts on the estimate as if it
@@ -671,6 +673,13 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `node` and `block` are the words the rest of the tree already uses for those two kinds.
   `ObservationGoal.info_target` becomes `info_node`. `StateGoal.target` and
   `ObservationGoal.target` keep the name, which now has one meaning.
+- **Breaking:** `expected_free_energy`, `policy_efe` and `policy_efe_ffg` return an
+  `EfeResult`, a `NamedTuple` of `g`, `pragmatic` and `epistemic`. They returned
+  `(G, {"pragmatic": ..., "epistemic": ...})`. Their trace siblings returned a
+  `NamedTuple`, so one family answered in two forms, and a misspelt key failed only when
+  it ran. `g` comes first, so `result[0]` still reads `G`. Code that unpacked
+  `G, parts = ...` reads `result.g` and `result.pragmatic` instead. A `vmap` over
+  candidate actions returns one `EfeResult` with every field batched.
 - **Breaking:** `ObservationGoal` takes `action_bounds` by keyword. `StateGoal` already
   takes everything after its first argument by keyword, so this was the odd one out in a
   public pair a reader meets together. The two positional slots also transposed without

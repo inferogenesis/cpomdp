@@ -35,7 +35,7 @@ from cpomdp._lab.resolution import Bar, Bounded
 from cpomdp._validation import equilibrium_drift, require_fixed_noise
 from cpomdp.control import (
     _PRICES_FIXED_NOISE,
-    FiniteHorizonLQR,
+    LQRSchedule,
     _prior_over,
     kalman_schedule,
 )
@@ -76,7 +76,7 @@ def _held_goal(model: LinearGaussianModel, goal: ArrayLike) -> Float64[Array, "n
 
 
 def closed_loop_cost(
-    schedule: FiniteHorizonLQR,
+    schedule: LQRSchedule,
     filter_gains: ArrayLike,
     *,
     goal: ArrayLike,
@@ -205,10 +205,10 @@ class CertaintyEquivalentController:
         ValueError: If ``goal`` is not a vector of length ``n`` the dynamics hold.
     """
 
-    schedule: FiniteHorizonLQR
+    schedule: LQRSchedule
     goal: Float64[Array, "n"]
 
-    def __init__(self, schedule: FiniteHorizonLQR, *, goal: ArrayLike) -> None:
+    def __init__(self, schedule: LQRSchedule, *, goal: ArrayLike) -> None:
         object.__setattr__(self, "schedule", schedule)
         object.__setattr__(self, "goal", _held_goal(schedule.model, goal))
 
@@ -232,13 +232,13 @@ class CertaintyEquivalentController:
                 to the model's prior.
         """
         gains = kalman_schedule(
-            self.schedule.model, self.schedule.horizon, prior=prior
+            self.schedule.model, horizon=self.schedule.horizon, prior=prior
         ).gains
         return closed_loop_cost(self.schedule, gains, goal=self.goal, prior=prior)
 
 
 def full_information_cost(
-    schedule: FiniteHorizonLQR, *, goal: ArrayLike, prior: Belief | None = None
+    schedule: LQRSchedule, *, goal: ArrayLike, prior: Belief | None = None
 ) -> float:
     """``J_lower``: the expected cost of the plan when the state is observed exactly.
 
@@ -285,7 +285,7 @@ def full_information_cost(
 
 
 def optimal_cost(
-    schedule: FiniteHorizonLQR, *, goal: ArrayLike, prior: Belief | None = None
+    schedule: LQRSchedule, *, goal: ArrayLike, prior: Belief | None = None
 ) -> float:
     """``J*``: the least any controller that infers the state from readings can pay.
 
@@ -319,7 +319,9 @@ def optimal_cost(
     """
     model = schedule.model
     floor = full_information_cost(schedule, goal=goal, prior=prior)
-    covariances = kalman_schedule(model, schedule.horizon, prior=prior).covariances
+    covariances = kalman_schedule(
+        model, horizon=schedule.horizon, prior=prior
+    ).covariances
     assert model.control_matrix is not None  # the schedule was built on it
     control_matrix, effort_penalty = model.control_matrix, schedule.effort_penalty
     # W_k = Q + P_{H−k−1}: what remains after step k, read in step order
@@ -359,7 +361,7 @@ class ControlBracket:
 
 
 def control_bracket(
-    schedule: FiniteHorizonLQR, *, goal: ArrayLike, prior: Belief | None = None
+    schedule: LQRSchedule, *, goal: ArrayLike, prior: Belief | None = None
 ) -> ControlBracket:
     """The floor and ceiling of a plan, both in closed form.
 
@@ -373,7 +375,7 @@ def control_bracket(
         ValueError: Whatever ``full_information_cost`` and ``closed_loop_cost`` refuse.
     """
     floor = full_information_cost(schedule, goal=goal, prior=prior)
-    gains = kalman_schedule(schedule.model, schedule.horizon, prior=prior).gains
+    gains = kalman_schedule(schedule.model, horizon=schedule.horizon, prior=prior).gains
     ceiling = closed_loop_cost(schedule, gains, goal=goal, prior=prior)
     return ControlBracket(floor=floor, ceiling=ceiling)
 

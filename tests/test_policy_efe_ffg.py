@@ -29,6 +29,7 @@ import numpy as np
 from _support import unit_prior
 from cpomdp.backends.coupling import CouplingGraphBackend
 from cpomdp.efe import (
+    EfeResult,
     PolicyEfeTrace,
     _ffg_efe_step,
     policy_efe,
@@ -128,15 +129,14 @@ class TestFfgSumsEqualScalars:
         info_block = tuple(backend.block(0))
         for h in (1, 2, 3):
             policy = _policy([0.4, -0.3, 0.1][:h])
-            g, parts = policy_efe_ffg(
-                backend, belief, policy, pref, info_block=info_block
-            )
+            efe = policy_efe_ffg(backend, belief, policy, pref, info_block=info_block)
+            assert isinstance(efe, EfeResult)
             trace = policy_efe_ffg_trace(
                 backend, belief, policy, pref, info_block=info_block
             )
-            np.testing.assert_array_equal(g, jnp.sum(trace.g))
-            np.testing.assert_array_equal(parts["pragmatic"], jnp.sum(trace.pragmatic))
-            np.testing.assert_array_equal(parts["epistemic"], jnp.sum(trace.epistemic))
+            np.testing.assert_array_equal(efe.g, jnp.sum(trace.g))
+            np.testing.assert_array_equal(efe.pragmatic, jnp.sum(trace.pragmatic))
+            np.testing.assert_array_equal(efe.epistemic, jnp.sum(trace.epistemic))
 
 
 # --- oracle 1: H=1 is one _ffg_efe_step (holds with couplings) ---------------------
@@ -145,12 +145,12 @@ class TestFfgH1ReducesToFfgEfeStep:
         backend, belief, pref = _coupled_backend(), _coupled_belief(), _pref()
         info_block = tuple(backend.block(0))
         policy = _policy([0.6])
-        g, parts = policy_efe_ffg(backend, belief, policy, pref, info_block=info_block)
+        efe = policy_efe_ffg(backend, belief, policy, pref, info_block=info_block)
 
         predicted = backend.predicted_belief(belief, policy[0])
         observation_noise = backend.model.observation_noise_at(predicted.mean)
         observation_matrix = backend.model.observation_matrix
-        g_ref, parts_ref = _ffg_efe_step(
+        efe_ref = _ffg_efe_step(
             predicted.mean,
             predicted.cov,
             observation_matrix,
@@ -159,9 +159,9 @@ class TestFfgH1ReducesToFfgEfeStep:
             pref.precision,
             info_block,
         )
-        np.testing.assert_array_equal(g, g_ref)
-        np.testing.assert_array_equal(parts["pragmatic"], parts_ref["pragmatic"])
-        np.testing.assert_array_equal(parts["epistemic"], parts_ref["epistemic"])
+        np.testing.assert_array_equal(efe.g, efe_ref.g)
+        np.testing.assert_array_equal(efe.pragmatic, efe_ref.pragmatic)
+        np.testing.assert_array_equal(efe.epistemic, efe_ref.epistemic)
 
     def test_trace_moments_match_predicted_belief(self):
         backend, belief, pref = _coupled_backend(), _coupled_belief(), _pref()
@@ -183,16 +183,14 @@ class TestFfgNoCouplingReducesToPolicyEfe:
         pref = Preference(goal=[1.0], precision=[[2.0]])
         for h in (2, 3):
             policy = _policy([0.5, -0.4, 0.2][:h])
-            g, parts = policy_efe_ffg(
-                backend, belief, policy, pref, info_block=info_block
-            )
-            g_ref, parts_ref = policy_efe(model, belief, policy, pref)
-            np.testing.assert_allclose(float(g), float(g_ref), atol=1e-9)
+            efe = policy_efe_ffg(backend, belief, policy, pref, info_block=info_block)
+            efe_ref = policy_efe(model, belief, policy, pref)
+            np.testing.assert_allclose(float(efe.g), float(efe_ref.g), atol=1e-9)
             np.testing.assert_allclose(
-                float(parts["pragmatic"]), float(parts_ref["pragmatic"]), atol=1e-9
+                float(efe.pragmatic), float(efe_ref.pragmatic), atol=1e-9
             )
             np.testing.assert_allclose(
-                float(parts["epistemic"]), float(parts_ref["epistemic"]), atol=1e-9
+                float(efe.epistemic), float(efe_ref.epistemic), atol=1e-9
             )
 
     def test_fixed_sensor(self):

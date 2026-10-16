@@ -167,17 +167,19 @@ class TestH1ReducesToOneStepExact:
     def test_h1_is_bit_identical_to_expected_free_energy(self):
         action = jnp.array([0.4])  # p = 1 for every fixture
         for name, model, belief, pref in _cases():
-            g_roll, parts_roll = policy_efe(model, belief, action[None, :], pref)
-            g_one, parts_one = expected_free_energy(model, belief, action, pref)
-            np.testing.assert_array_equal(g_roll, g_one, err_msg=f"G H1: {name}")
+            efe_roll = policy_efe(model, belief, action[None, :], pref)
+            efe_one = expected_free_energy(model, belief, action, pref)
             np.testing.assert_array_equal(
-                parts_roll["pragmatic"],
-                parts_one["pragmatic"],
+                efe_roll.g, efe_one.g, err_msg=f"G H1: {name}"
+            )
+            np.testing.assert_array_equal(
+                efe_roll.pragmatic,
+                efe_one.pragmatic,
                 err_msg=f"pragmatic H1: {name}",
             )
             np.testing.assert_array_equal(
-                parts_roll["epistemic"],
-                parts_one["epistemic"],
+                efe_roll.epistemic,
+                efe_one.epistemic,
                 err_msg=f"epistemic H1: {name}",
             )
 
