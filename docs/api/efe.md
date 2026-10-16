@@ -43,8 +43,8 @@ The scalar each candidate action is scored by, `G = pragmatic − epistemic`. Th
     Gaussian model that shrinkage does not depend on what the reading says, so it can be
     worked out before any reading exists.
 
-    The selectors and the searches call it once per candidate sequence. That is the work
-    each decision costs. `policy_efe_trace` runs the same steps and keeps every step's
+    `EFESelector` above horizon 1 and the flat exhaustive searches call it once per
+    candidate sequence. That is the work each of their decisions costs. `policy_efe_trace` runs the same steps and keeps every step's
     numbers, for inspecting one sequence rather than ranking many.
 
 ::: cpomdp.efe.policy_efe
