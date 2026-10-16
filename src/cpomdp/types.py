@@ -388,10 +388,10 @@ class LinearGaussianModel:
         # _validate_noise_sources checked its kind.
         if self.dynamics_noise_model is not None:
             q_probe = jnp.asarray(self.dynamics_noise_model.noise_at(jnp.zeros(n)))
-            validate_covariance(q_probe, "dynamics_noise_model.noise_at(x)")
+            validate_covariance(q_probe, "dynamics_noise_model.noise_at(state)")
             if q_probe.shape != (n, n):
                 raise ValueError(
-                    f"dynamics_noise_model.noise_at(x) must return an {n}x{n} "
+                    f"dynamics_noise_model.noise_at(state) must return an {n}x{n} "
                     f"covariance to match the {n}-D state, got shape {q_probe.shape}"
                 )
 

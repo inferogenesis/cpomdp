@@ -508,7 +508,7 @@ def _callable_q_scalar_model(noise_fn, noise_params, *, control_matrix=None):
     )
 
 
-class TestKalmanCallableProcessNoise:
+class TestKalmanCallableDynamicsNoise:
     def test_constant_callable_process_reduces_to_fixed_filter(self):
         # Safety net — green BEFORE and AFTER. A CallableDynamicsNoise whose Q ignores
         # x and equals the model's fixed dynamics_noise must filter exactly like the
@@ -579,7 +579,7 @@ class TestKalmanCallableProcessNoise:
         np.testing.assert_allclose(belief.cov, at_pred[1], rtol=1e-10)  # Q(μ⁻)
         assert not np.allclose(belief.cov, at_prior[1])  # ... NOT Q(prior.mean)
 
-    def test_steady_state_with_callable_process_noise_raises(self):
+    def test_steady_state_with_callable_dynamics_noise_raises(self):
         # Q(x) breaks the constant-recursion fixed point just like R(x) does.
         model = _callable_q_scalar_model(_quad_process, _QPROC)
         with pytest.raises(ValueError, match="steady"):

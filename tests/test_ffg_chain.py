@@ -289,7 +289,7 @@ class TestChainCallableSensorParity:
         np.testing.assert_allclose(chain_belief.cov, kalman_belief.cov, atol=1e-7)
 
 
-class TestChainCallableProcessNoiseParity:
+class TestChainCallableDynamicsNoiseParity:
     def test_constant_callable_reduces_to_fixed_chain(self):
         q0 = [[Q]]
         fixed = _scalar_model()

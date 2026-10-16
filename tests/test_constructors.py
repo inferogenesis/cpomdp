@@ -345,7 +345,7 @@ def test_a_spec_may_leave_the_observation_noise_to_its_sensor():
     np.testing.assert_allclose(spec.build().observation_noise, [[2e-2]])
 
 
-def test_a_spec_may_leave_the_dynamics_noise_to_its_process_noise():
+def test_a_spec_may_leave_the_dynamics_noise_to_its_noise_model():
     dynamics_noise_model = CallableDynamicsNoise(_process_at, ())
     spec = _spec_leaving("dynamics_noise", dynamics_noise_model=dynamics_noise_model)
     assert spec.dynamics_noise is None
