@@ -57,4 +57,4 @@ CLAUDE.md
 rfcs/
 
 # JAX
-.jax_cache/
+.jax-cache/
