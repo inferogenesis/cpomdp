@@ -247,6 +247,35 @@ class TestActionGrid:
             build((-1.0, 1.0), n_candidates)
 
 
+# The horizon was checked twice with a bare `< 1`. A float passed, and failed later
+# inside `range` or `jnp.repeat`, far from the argument that caused it.
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda horizon: ObservationGoal(
+            [0.5], action_bounds=(-1.0, 1.0), horizon=horizon
+        ),
+        lambda horizon: EFESelector(
+            _MODEL_1D, action_bounds=(-1.0, 1.0), horizon=horizon
+        ),
+    ],
+    ids=["ObservationGoal", "EFESelector"],
+)
+class TestHorizon:
+    def test_a_horizon_below_one_is_refused(self, build):
+        with pytest.raises(ValueError, match="horizon must be at least 1"):
+            build(0)
+
+    def test_a_fractional_horizon_is_refused(self, build):
+        with pytest.raises(TypeError, match="horizon must be an integer"):
+            build(2.5)
+
+    def test_an_integer_of_any_kind_is_held_as_an_int(self, build):
+        assert type(build(np.int64(2)).horizon) is int
+
+
 def test_the_goal_stores_its_bounds_as_two_floats():
     bounds = _goal((np.float32(-1), 2)).action_bounds
     assert bounds == (-1.0, 2.0)

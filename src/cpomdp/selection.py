@@ -79,6 +79,17 @@ def _checked_n_candidates(n_candidates: int) -> int:
     return count
 
 
+def _checked_horizon(horizon: int) -> int:
+    """``horizon`` as an int of at least 1, the steps each candidate is held for."""
+    try:
+        steps = operator.index(horizon)
+    except TypeError:
+        raise TypeError(f"horizon must be an integer, got {horizon!r}") from None
+    if steps < 1:
+        raise ValueError(f"horizon must be at least 1, got {steps}")
+    return steps
+
+
 def _candidate_grid(
     action_bounds: tuple[float, float], n_candidates: int
 ) -> Float64[Array, "k 1"]:
@@ -278,14 +289,13 @@ class EFESelector:
             ValueError: If the model has no control matrix or more than one action
                 dimension, if ``action_bounds`` is not two finite scalars in order, if
                 ``n_candidates`` is below 2, or if ``horizon`` is below 1.
-            TypeError: If ``n_candidates`` is not an integer.
+            TypeError: If ``n_candidates`` or ``horizon`` is not an integer.
         """
         _require_scalar_control(
             model.control_matrix, "EFESelector", "EnumeratedEfeSearch"
         )
         candidates = _candidate_grid(action_bounds, n_candidates)
-        if horizon < 1:
-            raise ValueError(f"horizon must be >= 1, got {horizon}")
+        horizon = _checked_horizon(horizon)
         self._model = model
         self._horizon = horizon
         self._candidates = candidates
@@ -338,7 +348,7 @@ class EFESelector:
 
     @property
     def horizon(self) -> int:
-        """The lookahead depth — constant-action steps scored per candidate."""
+        """How many steps each candidate's one action is held and scored over."""
         return self._horizon
 
     @property
@@ -613,7 +623,9 @@ class ObservationGoal:
         )
         object.__setattr__(self, "action_bounds", _checked_action_bounds(action_bounds))
         object.__setattr__(self, "n_candidates", _checked_n_candidates(n_candidates))
-        object.__setattr__(self, "horizon", horizon)
+        object.__setattr__(
+            self, "horizon", None if horizon is None else _checked_horizon(horizon)
+        )
         object.__setattr__(
             self, "info_node", None if info_node is None else int(info_node)
         )
@@ -631,8 +643,6 @@ class ObservationGoal:
                 f"precision must be {m}x{m} to match the {m}-D observation goal, "
                 f"got shape {self.precision.shape}"
             )
-        if self.horizon is not None and self.horizon < 1:
-            raise ValueError(f"horizon must be >= 1, got {self.horizon}")
         if self.info_node is not None and self.info_node < 0:
             raise ValueError(
                 f"info_node must be a non-negative node index or None, "
