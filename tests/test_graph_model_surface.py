@@ -3,7 +3,7 @@
 The factor classes and `CouplingGraph` are construction API. The message passing behind
 them is typed on a private payload and is the hot path the energy work will change, so
 none of it is public (ADR-069). A graph node takes the same sensor a flat model does, so
-there is no graph twin of `FixedSensor` or `CallableSensor` to learn (ADR-071).
+there is no graph twin of `FixedSensor` or `CallableSensor` to learn (ADR-073).
 """
 
 import importlib.util

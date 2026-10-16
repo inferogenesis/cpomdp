@@ -494,7 +494,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
   published them on the top-level construction classes, typed on a `CanonicalGaussian`
   no page documents. They are the hot path the energy work will change. A user builds
   the graph and runs it through `CouplingGraphBackend` or `CouplingGraph.infer`, and
-  neither needs them (ADR-069, ADR-071).
+  neither needs them (ADR-069, ADR-073).
 - **Breaking:** a *fixed* `observation_model` or `dynamics_noise_model` must now restate
   the model's `observation_noise` / `dynamics_noise` exactly, and a sensor's linearized
   observation matrix must equal `observation_matrix`. `LinearGaussianModel` previously
@@ -598,7 +598,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `LinearGaussianModel` refused the graph classes, and a `FixedSensor` on a graph node
   constructed and then raised at the first filter step. A node now takes any
   `ObservationModel`, and the graph reads `C` and `R` through `linearize` as the flat
-  model does (ADR-071).
+  model does (ADR-073).
 - **Breaking:** `GaussianTransition` takes `dynamics_noise` by keyword, and
   `GaussianTransition.from_ou` takes `stationary_var` and `dt` by keyword. Both follow
   `LinearGaussianModel` for the same reason, and the transition factor is the worse of
@@ -615,7 +615,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
   there. It is `coupling_matrix` now, after the `_matrix` suffix every other linear map
   carries. `coupling_noise` is keyword-only. A scalar edge's gain and noise are both
   (1, 1), and only the noise is content-checked, so `GaussianCoupling([[0.05]], [[0.9]])`
-  built an edge with the two swapped (ADR-073).
+  built an edge with the two swapped (ADR-075).
 - **Breaking:** `Coupling` takes no `tau`. The edge's time-constant was required and read
   by nothing. In the chemotaxis example it restated the timescale the child's
   `GaussianTransition.from_ou` already took, and other callers made one up. A node's
@@ -624,7 +624,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
   never set. `Coupling` checks its fields at construction. A node index that is not an
   int and an `efe_relevant` that is not a bool raise `TypeError`, and a NumPy bool is
   stored as a `bool`. A `coupling_matrix` that is not 2-D and a `coupling_noise` that is
-  not positive-definite raise `ValueError` (ADR-073).
+  not positive-definite raise `ValueError` (ADR-075).
 - **Breaking:** `CouplingGraphBackend` takes a required keyword `prior`, the belief over
   the joint state before any reading. Its `model.prior` was an N(0, I) placeholder, so
   an `Agent` built on the backend planned and filtered from a belief the caller never
