@@ -62,7 +62,7 @@ OBSERVATION_MATRIX = [[1.0]]
 DYNAMICS_NOISE = [[0.01]]
 OBSERVATION_NOISE = [[0.3]]
 BELIEF = Belief(mean=[0.0], cov=[[2.0]])
-GOAL = Preference(goal=[0.0], precision=[[0.4]])  # prefer to observe position 0
+GOAL = Preference(target=[0.0], precision=[[0.4]])  # prefer to observe position 0
 ACTIONS = jnp.linspace(-2.0, 4.0, 400)
 BEACON = 1.5  # the sensor is sharpest here — away from the goal at 0
 # The R(x) well the figure plots and --check asserts on — one source, so the gate and
@@ -85,11 +85,12 @@ def _precision_well_noise(x, params):
 
 
 def _model(observation_model=None):
+    fixed = observation_model is None  # a sensor carries C and R itself
     return LinearGaussianModel(
         dynamics_matrix=DYNAMICS_MATRIX,
-        observation_matrix=OBSERVATION_MATRIX,
+        observation_matrix=OBSERVATION_MATRIX if fixed else None,
         dynamics_noise=DYNAMICS_NOISE,
-        observation_noise=OBSERVATION_NOISE,
+        observation_noise=OBSERVATION_NOISE if fixed else None,
         prior=BELIEF,
         control_matrix=CONTROL_MATRIX,
         observation_model=observation_model,
@@ -159,10 +160,10 @@ def check() -> None:
     mu = np.asarray(BELIEF.mean)
     epi_live, epi_frozen, r_curve, post_vars, gains = [], [], [], [], []
     for a in np.asarray(ACTIONS):
-        _, live_parts = expected_free_energy(live, BELIEF, jnp.array([a]), GOAL)
-        _, frozen_parts = expected_free_energy(frozen, BELIEF, jnp.array([a]), GOAL)
-        epi_live.append(float(live_parts["epistemic"]))
-        epi_frozen.append(float(frozen_parts["epistemic"]))
+        live_efe = expected_free_energy(live, BELIEF, jnp.array([a]), GOAL)
+        frozen_efe = expected_free_energy(frozen, BELIEF, jnp.array([a]), GOAL)
+        epi_live.append(float(live_efe.epistemic))
+        epi_frozen.append(float(frozen_efe.epistemic))
         mu_minus = a_mat @ mu + b_mat @ np.array([a])  # μ⁻(a) = A·μ + B·a
         r_here = _precision_well_noise(jnp.asarray(mu_minus), WELL_PARAMS)
         r_curve.append(float(r_here[0, 0]))

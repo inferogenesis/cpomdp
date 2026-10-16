@@ -495,7 +495,7 @@ def efe_over_grid(model, belief, preference, candidates):
     `preference.precision` (Λ), so this is the real public path rather than a
     hand-weighted recombination of the pragmatic and epistemic parts.
     """
-    return jax.vmap(lambda a: expected_free_energy(model, belief, a, preference)[0])(
+    return jax.vmap(lambda a: expected_free_energy(model, belief, a, preference).g)(
         candidates
     )
 
@@ -511,10 +511,10 @@ def efe_sweep(model, belief, goal, actions):
     """
     pragmatic, epistemic, g = [], [], []
     for action in actions:
-        g_a, parts = expected_free_energy(model, belief, jnp.array([action]), goal)
-        g.append(float(g_a))
-        pragmatic.append(float(parts["pragmatic"]))
-        epistemic.append(float(parts["epistemic"]))
+        efe = expected_free_energy(model, belief, jnp.array([action]), goal)
+        g.append(float(efe.g))
+        pragmatic.append(float(efe.pragmatic))
+        epistemic.append(float(efe.epistemic))
     return np.array(pragmatic), np.array(epistemic), np.array(g)
 
 
@@ -544,14 +544,14 @@ def check_two_route_agreement(
     agrees = gap < tolerance
     print(headline)
     print(
-        f"  CouplingGraph.infer    : {mean_symbol}={float(native.mean[0]):.6f}  "
+        f"  CouplingGraph.infer_root: {mean_symbol}={float(native.mean[0]):.6f}  "
         f"var={float(native.cov[0, 0]):.6f}"
     )
     print(
-        f"  flattened KalmanBackend: {mean_symbol}={float(flattened.mean[0]):.6f}  "
+        f"  flattened KalmanBackend : {mean_symbol}={float(flattened.mean[0]):.6f}  "
         f"var={float(flattened.cov[0, 0]):.6f}"
     )
-    print(f"  max |difference|       : {gap:.2e}  ->  {'PASS' if agrees else 'FAIL'}")
+    print(f"  max |difference|        : {gap:.2e}  ->  {'PASS' if agrees else 'FAIL'}")
     if not agrees:
         raise AssertionError(
             f"{headline} routes differ by {gap:.2e}, tolerance {tolerance:.0e}"

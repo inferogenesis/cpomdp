@@ -4636,6 +4636,824 @@ versions break before 1.0, as cpomdp's do.
 - A warrantlib 0.4 reaches cpomdp users only through a cpomdp release that lifts the
   cap.
 
+## ADR-071 — a model field beside its noise object holds that object's value
+
+**Date:** 2026-10-16
+**Status:** Accepted
+**Supersedes:** ADR-064's decision that a value passed beside a state-dependent sensor
+is kept and not warned on, and the same sentence in ADR-065 for `Q`.
+**Extends:** ADR-064 and ADR-065 to `observation_matrix`, and ADR-066 to the spec's
+`observation_matrix`.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+A model with a state-dependent sensor took any positive-definite `observation_noise`
+beside it and read none of it. With `observation_noise=[[123.0]]` beside a
+`CallableSensor`, `model.observation_noise` returned 123. The Kalman filter and the EFE
+kernel gave what the derived model gives. Setting the field to tune the sensor changed
+nothing and said nothing. `dataclasses.replace(model, prior=...)` passed the old field
+back, so the model kept `R` at the old prior mean. `dynamics_noise` beside a `Q(x)` did
+the same. A third-party backend reading either field computed against a constant no
+filter in the library uses.
+
+ADR-064 kept the passed value for one consumer. `WrongFixedRBackend` scales a nominal
+`R` on purpose, and a nominal taken at another operating point is legitimate there.
+That consumer can take its constant as an argument of its own.
+
+`observation_matrix` had the converse problem. The model required it beside a sensor
+that already carries `C`, and refused the pair unless they were the same array. Every
+`R(x)` model typed `C` twice.
+
+### Decision
+
+One rule covers `observation_matrix`, `observation_noise` and `dynamics_noise`. Beside
+its object each field is the object's value at `prior.mean`: the sensor's `C`, the
+sensor's `R` there, and the dynamics noise model's `Q` there. Omitted, the field is read
+once at construction. Passed, it must equal that value exactly, or the model raises a
+`ValueError` saying to omit it. With no object the field is required, as before.
+
+Fixed and state-dependent objects follow the same rule. A fixed object returns the same
+value at every state, so the guard that already refused a fixed sensor disagreeing with
+the field is now one case of it.
+
+A passed value is compared rather than refused outright. `dataclasses.replace` passes
+every field back to the constructor, and refusing any value would break it. Replacing
+the prior or the sensor now raises where it used to keep a stale value. Passing the
+fields the object supplies as `None` reads them again. Under a trace the values cannot
+be compared. The check is skipped, as every construction check is, and the field holds
+the object's value.
+
+`WrongFixedRBackend` takes the constant it scales as `observation_noise=`, defaulting
+to the model's field. `ModelSpec` accepts `observation_matrix=None` beside a sensor, as
+ADR-066 made it accept the noises.
+
+I kept the field names. `nominal_observation_noise` would mislabel the fixed case,
+where the field is the true `R`. I added no public predicate either. The test every
+consumer with a fixed path makes is now the private `state_dependent`. It replaced
+eight copies of `x is None or x.is_fixed` across five modules. `ModelStructure.validate`
+skipped the `Q` check whenever a `dynamics_noise_model` was present. It now skips only
+a state-dependent one, since a fixed object's `Q` is the field.
+
+### Consequences
+
+- The field means one value whichever object is carried. A consumer that needs `R(x)`
+  or `Q(x)` reads the object. One that needs a constant refuses the model, as
+  `require_fixed_noise` already does.
+- Construction compares at most three arrays. Nothing in the loop changes, and the
+  fixed-sensor filter reads the fields as before.
+- `CouplingGraphBackend` built its flat model with a representative `R(0)` beside its
+  joint sensor. With a prior away from the origin that model stopped constructing, so
+  the backend now leaves the field to the sensor.
+- `ModelSpec` refuses a perturbation of any field its object supplies, with one message.
+  The scaled cell could never build, fixed object or not.
+- Five examples passed a value nothing read, or restated one that happened to agree,
+  and so did the test fixtures. They now leave it out.
+- The comparison is exact. A value recomputed by hand that differs in the last bit is
+  refused, and omitting it is the fix.
+
+## ADR-072 — the two noises are named alike, and each name means one thing
+
+**Date:** 2026-10-16
+**Status:** Accepted
+**Supersedes:** ADR-006's note "On changing the matrices names", that the letters survive
+as aliases. ADR-065's report fields `process_non_constant` and `process_noise_spread`,
+which never shipped.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+The two noises used different schemes. The sensor protocol was `ObservationModel`,
+held in the field `observation_model`, and `CallableSensor` took `noise_fn` and
+`noise_params`. The dynamics protocol was `DynamicsNoise`, the CamelCase of the matrix
+field `dynamics_noise`, held in `dynamics_noise_model`. Its callable was
+`CallableProcessNoise(q_fn, q_params)`. A user who had written `R(x)` could not write
+`Q(x)` by analogy, and "process" and "dynamics" named one channel. A noise object passed
+for a matrix field failed inside `float()`.
+
+The same argument had four names. The flat sensors called the state `x`, the graph
+factors `state`, the graph backend `mean`. `linearize(state=...)` worked on one family
+and failed on the other.
+
+`SensorReport` reported on `Q` too. Its `R` fields were unprefixed, so
+`report.noise_spread` read as covering both noises and covered only `R`. Its `Q` fields
+sat under the retired "process" root. `Belief.ndim` was the state count, where NumPy's
+`ndim` is an array's rank, and `FiniteActionSet.action_dim` named the dimension the
+model calls `n_controls`. Every model field had a second public name, a letter, and in
+pymdp `A` is the likelihood and `C` the preferences.
+
+### Decision
+
+Each object has one name for each thing, and the two noises use the same scheme.
+
+- `DynamicsNoise` is `DynamicsNoiseModel`. `CallableProcessNoise` is
+  `CallableDynamicsNoise`, and takes `noise_fn` and `noise_params` as `CallableSensor`
+  does. The grouped-prefix rule would give `dynamics_noise_fn`. I took the sensor's names
+  instead, because the class name already scopes the group and the two callables then
+  read the same.
+- No fixed dynamics-noise class ships. A constant `Q` goes in `dynamics_noise`, and the
+  protocol exists for `Q(x)`. `is_fixed` stays, since the filter's fixed path reads it.
+- A noise object passed for a matrix field raises a `TypeError` naming the slot it
+  belongs in.
+- The protocols take their arguments by position: `linearize(state, /)`,
+  `gaussianize(mean, cov, /)` and `noise_at(state, /)`. An implementation may then name
+  them as it likes, and the built-in ones use those names. `gaussianize` takes a belief,
+  so its arguments are the belief's field names. I did not add `noise_at` to the sensor
+  protocol. Every sensor written outside the library would then fail the runtime check.
+- `SensorReport` is `ProbeReport`, named for `probe_model`, which returns it. Each field
+  is prefixed with the object it describes: `observation_matrix_`, `observation_noise_`,
+  `dynamics_noise_` or `epistemic_`. "Varies" replaces "non-constant".
+- `Belief.ndim` is `n_states`, and `action_dim` is `n_controls` on `FiniteActionSet` and
+  the harness's action sequence.
+- The `.A`, `.B`, `.C`, `.Q` and `.R` properties go.
+
+None keeps a deprecated alias. v0.5.0 already breaks every model call site (ADR-067
+counts the breaks), so these ride the migration v0.4 users face anyway. An alias kept
+through 0.5.x would keep two names alive, which is the defect being removed.
+
+### Consequences
+
+- Each old name a release shipped is a break, listed in the changelog with its
+  replacement. The report's `Q` fields never shipped and are renamed in place.
+- Nothing per cycle changes. `CallableDynamicsNoise.noise_at` reads its argument as a
+  float array, as the sensors already did, and that is free on an array already of that
+  type.
+- `EfeBackend.n_total` and `observation_noise_at(mean)` belong to the graph backend's
+  surface and are left to that change. The graph backend's private joint sensor names its
+  arguments `x` and `sigma`, and the positional protocol accepts it as it is.
+
+## ADR-073 — a graph node takes the flat model's sensor, and the message passing is private
+
+**Date:** 2026-10-15
+**Status:** Accepted
+**Supersedes:** ADR-019's `CallableGaussianObservation`, "the FFG twin of the flat
+`CallableSensor`", and ADR-021's export of `GaussianObservation` and
+`CallableGaussianObservation`.
+**Extends:** ADR-069, whose rule makes the factor message methods private.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+A graph node and a flat model described one sensor with two classes. `FixedSensor` and
+`GaussianObservation` took the same arguments and held the same fields, and so did
+`CallableSensor` and `CallableGaussianObservation`. Neither pair worked in the other's
+place. `LinearGaussianModel` refused a graph class for lacking `gaussianize`. A
+`FixedSensor` on a graph node constructed, and the first filter step raised because it
+had no `message`. Moving a model onto a graph meant renaming every sensor, and a wrong
+pick failed late. The flat seam was the open `ObservationModel` protocol. The graph seam
+was a closed union of two classes.
+
+The review parked the unification for v0.6 as additive work, with a `TypeError` naming
+the twin before the tag. v0.5.0 already breaks the graph constructors. Unifying now
+costs graph users one rename, and later it would cost a deprecation cycle.
+
+### Decision
+
+A `CouplingGraph` node takes any `ObservationModel`, the protocol `LinearGaussianModel`
+takes. `GaussianObservation`, `CallableGaussianObservation` and their union
+`ObservationFactor` are removed. Anything else in `observations` is refused with a
+`TypeError` naming `FixedSensor` and `CallableSensor`.
+
+The graph reads a sensor only through `linearize`, as the flat model does. At
+construction it linearizes each sensor at its node's zero state, checks the width of
+`C`, and keeps the pair. For a fixed sensor that pair is its own `(C, R)`, which the
+fixed filter path reuses every step. For a state-dependent sensor it is `R(0)`, which
+only sizes the backend's validation model. Each step a state-dependent sensor is
+linearized at its node's block of `μ⁺`, the point ADR-019 fixed. One private function of
+`(C, R, y)` builds the message `Λ = CᵀR⁻¹C`, `h = CᵀR⁻¹y` for every caller.
+
+The message passing is private: `GaussianTransition._predict`,
+`GaussianCoupling._message_to_parent` and `_message_to_child`,
+`CouplingGraph._infer_all`, and the `CanonicalGaussian` payload in `cpomdp.ffg._message`.
+A user builds the graph and runs it through `CouplingGraphBackend` or
+`CouplingGraph.infer`. Neither needs them. They are typed on a payload no page
+documents, and they are the hot path the energy work is most likely to change (RFC-001).
+
+### Consequences
+
+- One sensor object serves a flat model and a graph node. A test filters one
+  `FixedSensor`, one `CallableSensor` and one protocol-only sensor through both and gets
+  the same belief.
+- The fixed filter path computes the same message from the same arrays as before. Its
+  numbers are unchanged and its per-step work does not grow.
+- `ChainBackend` checks a state-dependent `R(μ⁻)` for positive-definiteness each step,
+  as building a `GaussianObservation` did.
+- `CouplingGraph.infer` refuses a reading on a node with a state-dependent sensor and
+  names the node. It used to raise from inside the factor.
+- A custom factor needs a published factor protocol and a page for the payload. Neither
+  exists. As ADR-069 has it, the first user who writes one is who would promote them.
+- ADR-019 and ADR-021 keep their wording. Their `CallableGaussianObservation` is this
+  ADR's `CallableSensor` on a graph node.
+
+## ADR-074 — an edge carries no timescale
+
+**Date:** 2026-10-15
+**Status:** Accepted
+**Supersedes:** ADR-015's decision to ship τ stored on edges. The rest of ADR-015
+stands, the deferral of `levels()` included.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+`Coupling` required a `tau`, and nothing read it. ADR-015 kept τ on edges so that a later
+`levels()` could project the tree into fast and slow strata. It deferred the projection
+because its semantics were undecided, so the field stayed metadata. Callers had to make
+up a value. The shipped examples pass 1.0 and 0.0, a zero timescale. The chemotaxis model
+passes the child's τ, the number its `GaussianTransition.from_ou` already took.
+
+### Decision
+
+`Coupling` drops `tau`. In the driven-relaxation model (ADR-017) a coupling acts within a
+slice, so the only timescale the filter has is each node's transition. `from_ou` turns τ
+into the `A` and `Q` the filter reads. A `levels()` that needs τ can read it where the
+dynamics live, or add an optional field once its semantics are settled. A defaulted field
+added then breaks no caller. A required field removed after uptake breaks every
+`Coupling` call.
+
+`Coupling` checks its fields at construction. A node index that is not an int, a factor
+that is not a `GaussianCoupling` and an `efe_relevant` that is not a bool raise
+`TypeError`. A NumPy integer index is stored as an `int`.
+
+### Consequences
+
+- Every `Coupling` call loses its fourth argument. The review recommended keeping the
+  field with a default of `None`. That leaves an argument nothing reads on a public
+  constructor, which is what made it a question at every call site.
+- `GaussianTransition` stores `A` and `Q`, not τ. Recovering τ from a transition needs
+  `dt`, which nothing stores either. `levels()` settles where τ and `dt` live when it
+  lands.
+- The coupling-graph figure's code panel drops `tau=0.0`.
+
+## ADR-075 — an edge is one class
+
+**Date:** 2026-10-16
+**Status:** Accepted
+**Supersedes:** ADR-021's export of `GaussianCoupling`. ADR-074's field check that a
+factor is a `GaussianCoupling`, since the factor is no longer a separate object.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+An edge took two public classes. `Coupling` held the endpoints and wrapped a
+`GaussianCoupling`, which held `W` and `Q`. Both docstrings called themselves a graph
+edge and gave the same equation. Once its message methods went private (ADR-073),
+`GaussianCoupling` had no public behaviour and one consumer, `Coupling.factor`. A user
+wrote `Coupling(0, 1, GaussianCoupling([[0.9]], coupling_noise=[[0.05]]))` and had to
+learn which class went inside which.
+
+### Decision
+
+`Coupling` is the edge factor. It takes `coupling_matrix` (W) and a keyword-only
+`coupling_noise` (Q) itself, validates them as `GaussianCoupling` did, and carries the
+message algebra as private methods. `GaussianCoupling` is removed. No tier-2 factor
+exists, so folding the class in closes no live seam. A second factor kind would bring
+its own protocol, which ADR-073 leaves to the first user who writes one.
+
+`efe_relevant` is keyword-only. Dropping `tau` (ADR-074) moved it into the fourth
+positional slot, where a stale v0.4.4 call put its τ. Keyword-only, that call fails on
+arity.
+
+`Coupling` checks its fields at construction. A node index that is not an int and an
+`efe_relevant` that is not a bool raise `TypeError`. A NumPy integer index is stored as
+an `int`, and a NumPy bool as a `bool`.
+
+### Consequences
+
+- Every `Coupling` call changes again. The `GaussianCoupling` wrapper goes and its two
+  arguments move up. ADR-074's removal of `tau` lands in the same release, so a v0.4.4
+  caller migrates once.
+- A `Coupling` is not a pytree. Nothing traces through an edge. The graph's couplings
+  are constants of any traced function, and the readings are what a test differentiates.
+
+## ADR-076 — the graph backend reads like the flat model
+
+**Date:** 2026-10-15
+**Status:** Accepted
+**Extends:** ADR-069, which left the graph-backend protocol without a promise under the
+name `EfeBackend`. ADR-064, whose rule for an omitted observation noise the graph backend's
+model now follows.
+**Supersedes:** ADR-016's names `partition_error` and `rollout` for the two surfaces of
+the severed-mass diagnostic, and `rollout`'s stacked `Belief`. The two surfaces stand.
+ADR-013's validation strategy, for where the flagship's check of `KalmanBackend` against
+`ChainBackend` runs. ADR-069's listing of `cpomdp.ffg.chain` among the implementation
+modules that stay importable: the module is now private. The protocol name `EfeBackend`
+in ADR-032 and ADR-069, now `GraphBackend`. ADR-064's reader-table row for
+`CouplingGraphBackend`, whose `(C, R)` tuple and representative R(0) are gone.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+`CouplingGraphBackend` described one joint state twice. `n_total` was `model.n_states`,
+`dims` was `graph.dims` and `n_observations` was `model.n_observations`. Its
+`observation_model` returned `(C, R)` with R linearized at zero, beside a
+`model.observation_model` that is a sensor object, and every reader in the tree threw the
+R away. Under a state-dependent sensor the tuple handed out `R(0)` as the noise the EFE
+reads. `readout(belief)` was `marginal(readout_node, belief)`. Two protocols described
+the backend: `EfeBackend`, named for one consumer although `KalmanBackend` scores EFE too,
+and `ProbeBackend`, which restated part of it for `probe_model`. `rollout` filtered a
+sequence under a name the EFE code uses for a policy rollout, took its arguments in an
+order `infer_states` does not, and returned a `Belief` whose mean had a time axis. The
+severed mass had a second name, `partition_error`. A reading had to be stacked by hand in
+an order that lived in a private layout.
+
+### Decision
+
+Every quantity has one home, and it is the home it has on a flat backend.
+
+- The joint width is `model.n_states` and the stacked sensor C is
+  `model.observation_matrix`, on this backend as on `KalmanBackend`. R at a mean is
+  `observation_noise_at`. I added no `observation_matrix` property, which the review
+  proposed, because it would be a second way to read what `model` already gives. The
+  node dimensions are `graph.dims`.
+- Under a state-dependent sensor the model's nominal `observation_noise` is R at the prior
+  mean, the rule every flat model follows, where it was R at zero.
+- One protocol, `GraphBackend`, describes a backend over a graph of nodes, and
+  `probe_model` reads it too. It declares `predicted_belief`, `observation_noise_at`,
+  `block` and `severed_efe_edges` beside `InferenceBackend`'s two members. It carries no
+  promise, as ADR-069 left `EfeBackend`.
+- `marginal(node, belief)` is the one way to read a node. `block` and `marginal` refuse a
+  node outside the graph.
+- A user writes readings keyed by node, the form `CouplingGraph.infer` takes, and
+  `stack_observations` builds the vector `infer_states` takes. The stacked vector stays
+  the backend's input. The `InferenceBackend` protocol, an `ObservationGoal`'s target,
+  C and R all live in that space, so a mapping on `infer_states` would break the
+  protocol for every generic caller and leave the goal in a second format.
+- `severed_mass` and `filter_sequence` replace `partition_error` and `rollout`.
+  `filter_sequence` takes `infer_states`' argument order, returns plain arrays and checks
+  the prior and the first step before it scans.
+- `ChainBackend` goes to `cpomdp.ffg._chain`. It returns `KalmanBackend`'s numbers at two
+  extra inversions per step, and no user needs it to filter. Its tests are what it is
+  for, so the flagship's agreement check moves beside them, on the flagship's model and
+  inputs.
+- The graph path keeps its positive-definite Q. Its transition factor builds the joint
+  over the current and next state in information form, and that joint contains Q's
+  inverse. The refusal now says the matrix is inverted, where it blamed a sensor.
+
+### Consequences
+
+- The backend's surface is `model`, `graph`, `transitions`, `infer_states`,
+  `predicted_belief`, `observation_noise_at`, `stack_observations`, `marginal`, `block`,
+  `severed_efe_edges`, `severed_mass`, `filter_sequence`, `to_flat_model` and
+  `flat_observation`. `graph` and `transitions` are read-only, as `model` was.
+- A fixed graph returns a front-loaded R from `observation_noise_at` and no longer builds
+  it per candidate. A state-dependent graph reads R through the joint sensor its model
+  carries, so the two accessors cannot drift.
+- `CouplingGraph` still stores its observations in the order given.
+  `stack_observations` makes that order harmless. Sorting them would make iteration
+  match the stacking order, and it belongs with the graph.
+- Accepting a semi-definite Q on the graph path needs a moment-form predict in the
+  transition factor: add Q to the propagated covariance, then invert once. That is fewer
+  inversions per step than the information-form joint. It changes the factor, which
+  this decision does not touch.
+
+## ADR-077 — R at a mean is read off the model, and the partition cuts every surface
+
+**Date:** 2026-10-16
+**Status:** Accepted
+**Supersedes:** ADR-076's "R at a mean is `observation_noise_at`" on the backend, its
+listing of `observation_noise_at` among `GraphBackend`'s members, and its single refusal
+reason for a matrix that is not definite. ADR-032's `backend.observation_noise_at(μ⁺)`
+as the place R(μ⁺) is read.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+ADR-076 left `observation_noise_at` on the graph backend while every other quantity moved
+onto `backend.model`. A flat backend has no such accessor, so code reading R at a mean
+needed one call for a graph and another for a flat model. The prior was also cut by the
+partition in `infer_states` and not in the other surfaces, so `filter_sequence` and
+`infer_states` disagreed on a correlated prior.
+
+### Decision
+
+`observation_noise_at(mean)` is a method of `LinearGaussianModel`. A model with no sensor
+or a fixed one returns `observation_noise`, and a state-dependent sensor is linearized at
+the state. The graph backend's model reads R through the joint sensor it carries, and a
+fixed graph returns the R built at construction, so no candidate rebuilds it.
+`GraphBackend` declares `predicted_belief`, `block` and `severed_efe_edges` beside
+`InferenceBackend`'s two members.
+
+Every graph-backend surface cuts the prior by its partition, as `infer_states` does, so
+`filter_sequence` is `infer_states` run over a sequence. The full-joint partition is
+unchanged. A mixed partition, such as `[[0, 1, 3, 4], [2]]`, given a correlated prior
+returns a different posterior than before, because the dense path now inverts the cut
+prior.
+
+Each refusal of a matrix that is not definite gives its caller's reason. The factor's
+says the information form inverts it. The one shared reason blamed a sensor for every
+matrix.
+
+### Consequences
+
+- Code reading R at a mean reads it off `backend.model`, on a flat backend and a graph
+  one alike.
+- A caller relying on a mixed partition's old posterior over a correlated prior sees a
+  different number. The old one filtered a prior the partition said to ignore.
+
+## ADR-078 — the EFE functions answer in one record and take one preference
+
+**Date:** 2026-10-15
+**Status:** Accepted
+**Extends:** ADR-005, ADR-009 and ADR-032, whose functions keep their arithmetic and
+change what they return. ADR-069, which made `cpomdp.efe` a documented module.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+The expected free energy functions answered in two forms. `expected_free_energy`,
+`policy_efe` and `policy_efe_ffg` returned `(G, {"pragmatic": ..., "epistemic": ...})`,
+and their trace siblings returned a `NamedTuple`. About seventy call sites indexed the
+dict by string. The trace named its moments by maths letters, `mu_pred`, `sigma_pred`,
+`sigma_post` and `s`. S had four names across the docstrings. The functions also
+refused the goal a user had just built. An `ObservationGoal` failed with
+`'ObservationGoal' object has no attribute 'goal'`.
+
+The finite-horizon pair in `cpomdp.control` did not read as a pair. `finite_horizon_lqr`
+took `horizon` by keyword and `kalman_schedule` took it by position. Only the filter's
+result was a schedule.
+
+### Decision
+
+- Every EFE scoring function returns an `EfeResult`, a `NamedTuple` of `g`, `pragmatic`
+  and `epistemic`. `g` is first, so `result[0]` reads G and the scorers that index it
+  are unchanged. `PolicyEfeTrace` leads with the same three fields. `g` keeps its
+  letter, because `EnumeratedSearchResult.g` and the rest of the library call G that.
+- The trace's moments are `predicted_mean`, `predicted_cov`, `posterior_cov` and
+  `predicted_observation_cov`, the words `Belief.cov` and `epistemic_value` already
+  use. `RolloutConditioning` names each condition number after the field it measures.
+  S is the predicted observation covariance in every docstring.
+- The functions take one type, a `Preference`. `ObservationGoal.preference` returns the
+  goal's target and precision as one, built once. Passing a goal raises a `TypeError`
+  that names `goal.preference`. A `StateGoal` is refused as aiming at a state.
+- `lqr_schedule` and `kalman_schedule` are the dual pair. Each takes `horizon` by
+  keyword and returns a schedule, `LQRSchedule` or `KalmanSchedule`, that reports its
+  `horizon`. Both names were new in 0.5.0, so the rename breaks no release.
+
+### Alternatives
+
+Accepting an `ObservationGoal` directly was the other way to let the functions take what
+a user holds. I did not take it. A goal carries search settings: the action box, the
+grid, the horizon and the node the epistemic term aims at. None is read by a function
+that scores an action or a sequence it is handed. `policy_efe_ffg` would then hold its
+aim twice, as the goal's `info_node` and as its required `info_block`, and ignore one of
+them. A goal is also not a pytree, so `jax.jit` could not take one as an argument. The
+property keeps one input type and puts the conversion on the goal, which knows its own
+fields.
+
+The review suggested keeping the two-tuple and making the parts a record with a
+string-key shim. That keeps `G, parts = ...` working. It also leaves a second shape
+beside the trace's. v0.5.0 already breaks, and before 1.0 a minor version is where a
+break lands.
+
+No deprecation shim was added. One for the dict keys or the letter fields would be a
+second way to read the same number.
+
+### Consequences
+
+- `G, parts = expected_free_energy(...)` raises at the unpack. The fix is `result.g` and
+  `result.pragmatic`. The changelog lists both renames under **Breaking**.
+- The per-cycle cost does not move. The record is built from scalars the scan already
+  returns. The preference is read by attribute, so a call that succeeds pays nothing for
+  the refusal.
+- A preference of another shape that has a `goal` and a `precision`, such as the mixture
+  RFC-002 defers, still scores.
+- `StateGoal` has no `preference` property. Its target is a state, and a `Preference`
+  does not record its space, so one built from a `StateGoal` would score as a reading
+  without complaint.
+- The Agent still builds its `Preference` from the goal's fields. Reading
+  `objective.preference` there would leave one place that converts a goal.
+
+## ADR-079 — the EFE functions check a Preference by type, and the LQR schedule takes the goal's names
+
+**Date:** 2026-10-16
+**Status:** Accepted
+**Supersedes:** ADR-078's attribute-read check of a preference, its "every docstring" for
+the name of S, and its silence on ADR-009. ADR-009's scope that `policy_efe` stays
+internal, which ADR-069's public-module rule had already overridden without naming it.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+ADR-078 read a preference's two fields by attribute and refused one that lacked them. A
+goal carries a target and a precision too, so once the field names agreed nothing told a
+goal from a preference by its attributes. The read also turned a fault inside a real
+`Preference` into a refusal of it. Separately, `lqr_schedule` took `goal_precision` and
+`effort_penalty` while `StateGoal` and `LQRController` say `precision` and `effort`, and
+it stored its costs in steps-remaining order while `kalman_schedule` stores plan order.
+
+### Decision
+
+The EFE functions refuse anything but a `Preference` by type. The refusal names no
+function, since the selectors and searches reach it through the same kernel, and the
+check runs once per trace under `jit` and `vmap`. `ObservationGoal.preference` returns
+the goal's target and precision as one, built once.
+
+`lqr_schedule` takes `precision` and `effort` and keeps them under those names.
+`costs_to_go[k]` is the cost that remains to pay before acting at step `k`, beside
+`gains[k]` and the filter's `covariances[k]`. Before, `cost_to_go[0]` was the zero
+terminal cost, and a caller zipping the two schedules got the wrong step with no error.
+
+S is the predicted observation covariance in every public docstring. Private research
+docstrings keep their own names. `EfeResult`'s docstring says to rank and differentiate
+by `g`, because NumPy's `argmin` over a batched record flattens all three fields and can
+return an index past the candidates without an error.
+
+### Consequences
+
+- An object with a target and a precision that is not a `Preference` is refused, where
+  it used to be scored.
+- Code that reversed `cost_to_go` by hand reads `costs_to_go` as it is.
+
+## ADR-080 — a goal configures the selector the Agent builds, and `selector=` takes a `Preference`
+
+**Date:** 2026-10-15
+**Status:** Accepted
+**Supersedes:** ADR-007's `selector=` override beside a typed goal. The goal types, their
+dispatch and the bundling of each regime's settings into its goal stand.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+ADR-007 put each regime's settings into its goal. `StateGoal` carries the LQR weights.
+`ObservationGoal` carries the action box, the grid size, the horizon and the node the
+information term aims at. ADR-007 also kept `selector=` beside the goal as the escape
+hatch. A selector carries its own settings, so an agent given both held two descriptions
+of one search. The selector's won and the goal's went unread. In the review's case a goal
+declared the action box (-0.1, 0.1) and the agent returned 1.5. Nothing warned.
+
+The hatch leaked elsewhere too. A selector passed with no goal was dropped, and the agent
+became a tracker. Beside a `StateGoal`, the Agent first solved the control Riccati
+equation for a controller it then threw away. On a plant with no stabilising gain that
+solve raised before the selector was read.
+
+### Decision
+
+The objective's type says where the search is configured.
+
+- `Agent(model, goal)`, with a `StateGoal` or an `ObservationGoal`. The goal configures
+  the selector and the Agent builds it.
+- `Agent(model, preference, selector=...)`. The selector configures itself. The
+  `Preference` carries what every selector reads, the target and its precision.
+
+A goal beside `selector=` is refused. So are a `Preference` without a selector and a
+selector without a `Preference`. `Agent.from_backend` takes the same two forms.
+
+I weighed two other shapes.
+
+1. Optional search fields on the goal, refused beside a selector. The review recommended
+   it. Each field then needs a `None` that means "the Agent's default", and whether a
+   goal's fields are read depends on another argument.
+2. The search fields as keywords on `Agent`. Then
+   `Agent(model, StateGoal(target), action_bounds=...)` can be written and needs a guard.
+   ADR-007 removed states like that by typing.
+
+The chosen form extends ADR-007's argument to the override. Each objective type says
+whether a selector comes with it, so the pairing is a type check at construction.
+
+### Consequences
+
+- `Agent(model, ObservationGoal(target, action_bounds=...))` and
+  `Agent(model, StateGoal(target))` are unchanged.
+- Beside `selector=` the Agent builds nothing. No Riccati solve and no horizon probe
+  runs, and the sensor does not choose the regime. The Agent checks that the model can
+  act, and that a built-in selector gets a target of the length it reads: `n` for
+  `LQRSelector`, `m` for the EFE selectors and the search drivers. `LQRSelector` still
+  refuses a target the dynamics do not hold. A custom selector is not checked.
+- The space check this replaces refused a built-in selector paired with a goal in the
+  other space. That pairing can no longer be written.
+- ADR-068's horizon probe runs only for a selector the Agent builds. A hand-built
+  `EFESelector` keeps the horizon it was given.
+- `LQRSelector` reads both weights from its controller. A `Preference`'s precision does
+  not reach it.
+- A fixed-noise twin for an ablation takes a `Preference` and a hand-built selector over
+  the curious agent's grid. `examples/surge_margin.py` builds its twin that way.
+- The override form is assembled from the parts a `jax.lax.scan` loop uses: a backend, a
+  selector and a `Preference`.
+
+## ADR-081 — an `ObservationGoal` is curious wherever a noise depends on the state
+
+**Date:** 2026-10-15
+**Status:** Accepted
+**Supersedes:** ADR-007's rule that the sensor type decides which regime is legal, for an
+`ObservationGoal`. The `StateGoal` side stands.
+**Extends:** ADR-006, which named the process noise as the second route to epistemic value.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+ADR-007 let the sensor decide which goal was legal. A fixed sensor took a `StateGoal`, and
+an `ObservationGoal` there was output regulation, deferred. ADR-006 had already named
+`Q(x)` as a second way for an action to reach the posterior covariance. The dispatch never
+read it. A model whose only state dependence was `Q(x)` was refused as a fixed sensor and
+pointed at the LQR path. Its information term moves with the action.
+
+The graph path read the backend's type instead. A `CouplingGraphBackend` with fixed
+sensors got an `FfgEfeSelector`. A flat model with the same sensors was refused. One goal
+on one kind of sensor was legal on one backend and refused on the other, and nothing
+recorded why. The flagship's ablation agent was its one caller.
+
+### Decision
+
+An `ObservationGoal` goes to EFE when the information term can move, which is when the
+sensor noise `R(x)` or the process noise `Q(x)` depends on the state. With both fixed it
+is refused, on a flat model and on a graph alike. The refusal names the selector to build
+by hand for EFE with a flat information term.
+
+The test is structural. It reads each noise object's `is_fixed` flag and evaluates no
+noise.
+
+The review recommended relaxing the `Q(x)` half only and keeping the graph exception,
+since three tests and the flagship relied on it. I made the rule one. Since ADR-080 the
+ablation has a hand-built form, and a rule keyed on the backend's type cannot be read off
+the model.
+
+### Consequences
+
+- A `Q(x)`-only model with an `ObservationGoal` gets an `EFESelector` at the horizon
+  ADR-068 reads off the model.
+- A graph with fixed sensors and an `ObservationGoal` is refused.
+  `examples/ffg/epistemic_dissociation_figure.py` hands both of its agents the same
+  `FfgEfeSelector`, so the ablation differs from the curious agent in the cue alone. Three
+  graph tests moved to a sensor sharpest near zero.
+- A `StateGoal` still refuses `R(x)` alone. Under `Q(x)` its target stays a state the
+  filter can read, and LQR stays blind to the information term.
+- The flags are fixed at construction, so the check adds nothing per cycle.
+
+## ADR-082 — a goal on Q(x) alone stops at horizon 1
+
+**Date:** 2026-10-16
+**Status:** Accepted
+**Supersedes:** ADR-081's consequence that a `Q(x)`-only model with an `ObservationGoal`
+gets an `EFESelector` at the horizon ADR-068 reads off the model, for horizons past 1.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+ADR-081 sent a model whose only state dependence is `Q(x)` to the EFE path, and ADR-068's
+probe then picks the shortest horizon at which the target moves the scores. On a double
+integrator observed in position that horizon is 2. The `Q(x)` surface above horizon 1
+is registered as unclaimed (#56), and the Agent page says `Q(x)` is claimed at horizon 1
+only. So the default path built a selector the project does not claim.
+
+### Decision
+
+A `Q(x)`-only model with an `ObservationGoal` gets an `EFESelector` when the probe reads
+horizon 1. Past horizon 1 the Agent refuses it, names the horizon the probe found, and
+points to `Agent(model, Preference(...), selector=EFESelector(model, ..., horizon=H))`,
+which reaches it by hand.
+
+### Consequences
+
+- Claiming #56 later lifts the refusal and edits nothing else.
+- A sensor whose `R(x)` varies is unaffected. Its surface above horizon 1 is claimed.
+
+## ADR-083 — the exhaustive searches are one kind of thing, bounded and compiled once
+
+**Date:** 2026-10-15
+**Status:** Accepted
+**Supersedes:** ADR-036's consequence that a caller wanting the score vector "uses the
+front-loaded path and accepts its ceiling", for the ceiling. The front-loaded path now
+refuses a set past a budget instead. ADR-030's "emits a `CompletenessCertificate` at
+construction", for where the certificate is read. The check still runs at construction.
+**Extends:** ADR-031 (the search family), ADR-034 (the injected scorer), ADR-036 (the
+chunked path).
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+ADR-036 called the two searches interchangeable and asserted it for the answer. The
+calls around the answer diverged. The front-loaded search answered `evaluate` with the
+argmin and the score vector, and held its certificate on itself. The chunked one
+answered `reduce` with the argmin, its score, its index, a visited count and the
+certificate. Both drivers took only the front-loaded search, so a chunked one
+constructed and then failed at the first agent step. `cost_per_cycle` meant the cost of
+one plan on a search and of one agent step on a driver. Every plan re-traced and
+recompiled the rollout, a cost per plan that the cost attributes did not count.
+
+The front-loaded search also had no ceiling of its own. It holds every policy and every
+score at once. `warrant_numbers.md` records that a front-loaded attempt at `9^8` on the
+capped host takes the session down without raising `MemoryError`, and labels it
+`VOID (budget)`. A user who raises the horizon on a small task meets the same wall with
+no error, no estimate and no pointer to the chunked path.
+
+### Decision
+
+**A default policy budget of `2^21`.** `EnumeratedEfeSearch` and its `over_backend`
+take `max_policies`, `2^21 = 2,097,152` unless set. `|A|^H` is exact before anything is
+allocated. A set past the budget raises `PolicyBudgetError`, a `ValueError`. The message
+gives the count, the step evaluations of one plan, a floor on the memory and the route
+that works, `ChunkedEfeSearch`, which both drivers take. `None` lifts the budget.
+
+The value admits every front-loaded run the repository makes. The largest is the `9^6`
+cross-path cell at 531,441 policies, about a quarter of the budget. It refuses `9^7`,
+whose front-loaded run the warrant ledger records at 5.4 GiB and six minutes, and every
+larger cell. A registered run above the default passes `max_policies=None` itself, as
+the `9^7` cross-path comparison will if it is re-run.
+
+A budget in bytes would follow the footprint more closely. It needs the footprint per
+policy, and that depends on what XLA keeps alive, which is known only as a floor. The
+count is exact and a caller can reason about it. The floor goes in the message. It is
+`8 · |A|^H · (H·p + 1 + n + n²)` bytes, for the policies, their scores and the belief the
+rollout carries for each policy.
+
+**The two searches are interchangeable.** Both searches answer
+`evaluate(belief, preference)`. Both results carry `best_policy`, `best_g`,
+`best_index` and `certificate` under those names, and the front-loaded result adds the
+score vector `g`. The certificate is read off the result on both paths. On the chunked
+path its count is what the loop produces, so a certificate cannot exist before a run.
+The front-loaded search still checks completeness at construction and attaches that
+certificate to every result. `ChunkedSearchResult` drops `visited`, which repeated
+`certificate.visited`. Both drivers take either search and refuse anything else with a
+`TypeError`. A driver's `certificate` is its last plan's, `None` before the first.
+
+**`cost_per_plan` on a search, `cost_per_cycle` on a selector.** A search reports the
+step evaluations of one `evaluate` as `cost_per_plan`, the name the drivers already
+used. `cost_per_cycle` is the cost of one agent step and only selectors report it:
+`EFESelector`, and each driver as its plan spread over its replan interval.
+
+**Compiled once.** Each search builds its jitted scorer at construction and takes the
+belief and the preference as arguments, so a later plan reuses the first plan's program.
+The policy array is an argument too, never a constant baked into the program.
+`tests/test_search_compilation.py` counts traces across two plans and holds the compiled
+scores equal to the eager path's under `==`, because the published numbers came from the
+eager path.
+
+**No winner when no policy scores.** A NaN score is masked to `+inf` before the argmin,
+so when every score was NaN the argmin fell on index 0 and the search returned the first
+declared sequence. The result now carries a NaN `best_policy` and `best_g` and a
+`best_index` of -1, and a driver returns a NaN action, which the agent can refuse. The
+certificate is unchanged. It certifies coverage (ADR-030), and every policy was scored.
+
+### Consequences
+
+- A v0.4.4 front-loaded call above `2^21` policies now raises. It used to run, or take
+  the host down.
+- The front-loaded grid is decoded from its indices by the chunked path's decoder rather
+  than materialised through `itertools.product` on the host. The order is unchanged, and
+  a test still compares the set with an independent product.
+- A driver over the chunked search pays one host read per plan, the loop's count, which
+  the certificate needs. A driver over the front-loaded search pays none.
+- Compilation no longer lands on every plan, so RFC-001 measures the search rather than
+  the compiler. `EFESelector` at a horizon above 1 is outside this decision.
+- `ChunkedEfeSearch.policies_at` refuses an index outside the enumeration, -1 included,
+  because a base-`|A|` decode wraps it to a real policy.
+
+## ADR-084 — one base names the exhaustive searches, and both trace
+
+**Date:** 2026-10-16
+**Status:** Accepted
+**Supersedes:** ADR-083's result shapes and its rule that the drivers take either of the
+two named classes. ADR-035's decision that `SearchWarrant` stays as an alias of
+`Warrant`, so the type has one name.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+ADR-083 made the two searches answer one `evaluate`. Their results still differed by
+position, so a tuple index could read `g` on one search and `best_g` on the other, and
+the drivers took a union of two classes that a third search would have had to join. The
+chunked search also ran eagerly only, so a compiled agent loop could drive the
+front-loaded search and not the chunked one.
+
+### Decision
+
+**Results are read by name.** The chunked search returns a `SearchResult` carrying
+`best_policy`, `best_g`, `best_index` and `certificate`. The front-loaded one returns
+`EnumeratedSearchResult`, a subclass that adds the score vector `g`. Both are frozen
+dataclasses and pytrees, with the certificate as static data. The chunked result has no
+`visited`, which repeated `certificate.visited`.
+
+**One base names the kind.** `ExhaustiveEfeSearch` is an abstract base both searches
+subclass. It owns the validation, the scorer each constructor builds, `policies_at`,
+`n_policies`, `horizon` and `warrant`, and declares `evaluate` and `cost_per_plan`. Both
+drivers take any `ExhaustiveEfeSearch` and refuse anything else with a `TypeError`. The
+check is nominal, so the `PROVED` a driver reports still comes from a search that
+declared itself exhaustive. The base is public as a type and not as an extension point:
+a subclass records its enumeration through the private `_enumerate`, so subclassing
+outside cpomdp is unsupported until a user needs it (ADR-069).
+
+**Both searches trace.** `evaluate` composes with `jit`, `vmap` and `lax.scan` on either
+search. The chunked certificate rests on a count the loop produces, which a trace cannot
+read on the host. Inside a transformation the certificate states the expected count and
+a `jax.debug.callback` checks the loop's count in the run, so a miscount fails the run.
+The count is read as an exact integer. A driver keeps a certificate only from a run that
+read a real count, so a trace leaves none. A `FiniteActionSet` is refused under a trace,
+where its actions cannot be checked for NaN. The result dataclasses register with JAX
+through `register_dataclass` and field metadata, which needs JAX 0.4.36, so that is the
+floor.
+
+### Consequences
+
+- A driver over the chunked search pays one host read per plan, the loop's count. Inside
+  `jit` or `scan` that read is a callback in the run.
+- `policies_at` is on both searches and refuses an index outside the enumeration, -1
+  included, because a base-`|A|` decode wraps it to a real policy. Under `jit` or `vmap`
+  it decodes such an index to a NaN policy.
+- A driver raises `ValueError` on a concrete run where no policy scored finitely. This
+  supersedes ADR-083's NaN action for the agent to refuse. Nothing downstream refused it,
+  so the NaN reached the plant and the belief. Under a trace the driver still returns
+  the NaN policy, since it cannot raise there.
+
 ## ADR-085 — RxInfer is declared to juliapkg when the backend first starts Julia
 
 **Date:** 2026-10-15

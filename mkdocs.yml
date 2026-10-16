@@ -84,12 +84,13 @@ nav:
       - Agent: api/agent.md
       - Model & belief: api/model.md
       - Observation models: api/observation.md
-      - Process noise: api/dynamics.md
+      - Dynamics noise: api/dynamics.md
       - Model structure: api/structure.md
       - Backends: api/backends.md
       - Factor graph models: api/ffg.md
       - Action selection & goals: api/selection.md
       - Expected free energy: api/efe.md
+      - Exhaustive search: api/search.md
       - Diagnostics: api/diagnostics.md
       - Warrant: api/warrant.md
       - Control: api/control.md

@@ -8,7 +8,23 @@ The inference engine is swappable behind the `InferenceBackend` protocol. `Kalma
 
 ::: cpomdp.backends.rxinfer.RxInferBackend
 
-`CouplingGraphBackend` is the branching peer: message passing on a [`CouplingGraph`][cpomdp.CouplingGraph] rather than a chain. A state-dependent `R(x)` on a coupled node cannot be flattened to a fixed linear-Gaussian model, and asking it to raises `IncompatibleLinearizationError`.
+`CouplingGraphBackend` filters a [`CouplingGraph`][cpomdp.CouplingGraph] whose nodes each carry their own dynamics. It reads like a flat backend. Its `model` holds the stacked sensor as `observation_matrix` and the joint width as `n_states`. `stack_observations` turns readings keyed by node into the vector `infer_states` takes, and `marginal` reads one node back out of the joint belief. A state-dependent `R(x)` on a coupled node cannot be flattened to a fixed linear-Gaussian model, and asking it to raises `IncompatibleLinearizationError`.
+
+??? note "In plain terms"
+    Some systems are a web of parts that run at their own pace and push on one another.
+    A cell's signalling chain is one. `CouplingGraphBackend` keeps a single belief over
+    every part at once, and each step updates all of it from whichever parts were
+    measured. A part nobody measures still grows more certain when a part it pushes on
+    is measured.
+
+    One convention to know. The backend takes each step's readings as one vector, the
+    measured parts in ascending node order. Hand `stack_observations` a dictionary from
+    node to reading and it builds that vector, so the order never has to be typed by
+    hand.
+
+    `partition` trades accuracy for speed. Grouping the parts tells the filter which
+    links between groups it may forget from one step to the next. The default keeps one
+    group and forgets nothing. `severed_mass` reports how much a grouping forgets.
 
 ::: cpomdp.CouplingGraphBackend
 
@@ -37,7 +53,8 @@ closures.
 | `expected_free_energy`, `cpomdp.efe.policy_efe` | Traces |
 | `LQRSelector.select` | Traces, with a gradient through the gain |
 | `EFESelector.select`, `FfgEfeSelector.select`, `cpomdp.enumeration.RecedingHorizonSelector.select` | Traces. The action is an argmin over fixed candidates, so its gradient is zero |
-| `Agent.infer_states`, `Agent.sample_action`, `cpomdp.enumeration.OpenLoopSelector.select` | Does not. Each keeps state between calls. A traced call restarts from the state it was traced with and leaves a tracer behind |
+| `Agent.infer_states`, `cpomdp.enumeration.OpenLoopSelector.select` | Does not. Each keeps state between calls. A traced call restarts from the state it was traced with and leaves a tracer behind |
+| `Agent.sample_action` | Does not. It reads the action on the host to refuse a NaN, so a traced call raises before it keeps anything |
 | `KalmanBackend(model, steady_state=True)`, `LQRController(...)`, `Agent(model, goal)` | Does not. Each solves once on the host at construction |
 | `RxInferBackend.infer_states` | Does not. It calls Julia |
 | `probe_model` | Does not. It runs in NumPy on the host |

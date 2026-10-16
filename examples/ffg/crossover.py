@@ -111,7 +111,7 @@ def _setup():
     backend = demo.build_backend(epistemic_alive=True, cue_x=demo.CUE_DETOUR_X)
     belief = demo.start_belief()
     preference = Preference(
-        goal=[0.0, 0.0],
+        target=[0.0, 0.0],
         precision=[[demo.GOAL_PRECISION, 0.0], [0.0, demo.INFO_PRECISION]],
     )
     info_block = tuple(backend.block(demo.CONTEXT))
@@ -250,7 +250,7 @@ def measure_refinement(action_set, horizon: int) -> RefinementRow:
     search = ChunkedEfeSearch.over_backend(
         backend, action_set, info_block=info_block, horizon=horizon
     )
-    result = search.reduce(belief, preference)
+    result = search.evaluate(belief, preference)
     policy = np.asarray(result.best_policy).ravel()
     return RefinementRow(
         horizon=horizon,
@@ -415,35 +415,32 @@ def measure_extension(max_horizon: int = EXT_BAR) -> ExtensionMeasurement:
     # set that cannot reach the cue returns "no crossover" for a reason that has nothing
     # to do with the objective, and the outcome for that is NOT APPLICABLE.
     sensed = demo_maze.best_reachable_noise(EXT_SET, 1, max_horizon) <= demo_maze.R_LO
-    # One enumeration per horizon, and the certificate comes off that same search. Going
-    # back for it through a second `over_backend` would enumerate the set twice.
+    # One enumeration per horizon, and the certificate comes off that same run.
     backend, belief, preference, info_block = _setup()
     policy = ()
     for horizon in range(1, max_horizon + 1):
-        search = EnumeratedEfeSearch.over_backend(
+        result = EnumeratedEfeSearch.over_backend(
             backend, EXT_SET, info_block=info_block, horizon=horizon
-        )
-        policy = np.asarray(search.evaluate(belief, preference).best_policy).ravel()
+        ).evaluate(belief, preference)
+        policy = np.asarray(result.best_policy).ravel()
         if _cue_ward(policy):
-            return ExtensionMeasurement(horizon, search.certificate, policy, sensed)
-    return ExtensionMeasurement(None, search.certificate, policy, sensed)
+            return ExtensionMeasurement(horizon, result.certificate, policy, sensed)
+    return ExtensionMeasurement(None, result.certificate, policy, sensed)
 
 
 def measure_flip(horizon: int) -> FlipMeasurement:
     """Enumerate at ``horizon`` and read off everything the falsifiers need."""
-    n_policies, _, _, cue_ward = argmin_at(horizon)
-    backend, _, _, info_block = _setup()
-    certificate = EnumeratedEfeSearch.over_backend(
+    backend, belief, preference, info_block = _setup()
+    result = EnumeratedEfeSearch.over_backend(
         backend, ACTION_SET, info_block=info_block, horizon=horizon
-    ).certificate
+    ).evaluate(belief, preference)
     walk, reach = _numpy_score(_walk(horizon)), _numpy_score(_reach(horizon))
-    assert certificate.expected == n_policies  # the two routes enumerate the same set
     return FlipMeasurement(
         horizon=horizon,
-        certificate=certificate,
+        certificate=result.certificate,
         delta_g=walk - reach,
         bound=flip_margin_error(walk, reach),
-        cue_ward=cue_ward,
+        cue_ward=_cue_ward(np.asarray(result.best_policy).ravel()),
     )
 
 
@@ -492,9 +489,9 @@ def _numpy_score(policy) -> float:
     of the scoring kernel, not of shared plumbing.
     """
     backend, belief, preference, info_block = _setup()
-    observation_matrix = np.asarray(backend.observation_model[0])  # C
+    observation_matrix = np.asarray(backend.model.observation_matrix)  # C
     precision = np.asarray(preference.precision)  # Lambda
-    goal = np.asarray(preference.goal)
+    goal = np.asarray(preference.target)
     idx = np.array(info_block)
 
     carry = belief
@@ -503,11 +500,13 @@ def _numpy_score(policy) -> float:
         predicted = backend.predicted_belief(carry, jnp.array([float(action)]))
         mean = np.asarray(predicted.mean)  # mu+
         cov = np.asarray(predicted.cov)  # Sigma+
-        noise = np.asarray(backend.observation_noise_at(predicted.mean))  # R(mu+)
+        noise = np.asarray(backend.model.observation_noise_at(predicted.mean))  # R(mu+)
         obs = observation_matrix @ mean  # o+ = C mu+
-        innovation = observation_matrix @ cov @ observation_matrix.T + noise  # S
+        predicted_observation_cov = (
+            observation_matrix @ cov @ observation_matrix.T + noise
+        )  # S
         pragmatic = 0.5 * (obs - goal) @ precision @ (obs - goal) + 0.5 * np.trace(
-            precision @ innovation
+            precision @ predicted_observation_cov
         )
         post_info = (
             np.linalg.inv(cov)
@@ -529,7 +528,7 @@ def _numpy_score(policy) -> float:
             cov
             - cov
             @ observation_matrix.T
-            @ np.linalg.inv(innovation)
+            @ np.linalg.inv(predicted_observation_cov)
             @ observation_matrix
             @ cov
         )
@@ -602,10 +601,10 @@ def epistemic_counterfactual(horizon=FLIP_H, actions=None):
     @jax.jit
     def batch(pols):
         def one(pol):
-            g, parts = policy_efe_ffg(
+            efe = policy_efe_ffg(
                 backend, belief, pol, preference, info_block=info_block
             )
-            return g, parts["pragmatic"]
+            return efe.g, efe.pragmatic
 
         return jax.vmap(one)(pols)
 
@@ -957,11 +956,16 @@ def _print_tables() -> None:
     )
     for k in range(FLIP_H):
         print(
-            f"   {k:>2} {rc.cond_sigma_pred[k]:>10.1f} {rc.cond_s[k]:>9.1f} "
-            f"{rc.cond_sigma_post[k]:>13.1f} {rc.min_eig_sigma_post[k]:>15.3e}"
+            f"   {k:>2} {rc.cond_predicted_cov[k]:>10.1f} "
+            f"{rc.cond_predicted_observation_cov[k]:>9.1f} "
+            f"{rc.cond_posterior_cov[k]:>13.1f} {rc.min_eig_posterior_cov[k]:>15.3e}"
         )
-    max_cond = max(rc.cond_sigma_pred.max(), rc.cond_s.max(), rc.cond_sigma_post.max())
-    min_eig = float(rc.min_eig_sigma_post.min())
+    max_cond = max(
+        rc.cond_predicted_cov.max(),
+        rc.cond_predicted_observation_cov.max(),
+        rc.cond_posterior_cov.max(),
+    )
+    min_eig = float(rc.min_eig_posterior_cov.min())
     print(
         f"   all PD = {rc.all_positive_definite}; min eig(Σ_post) = {min_eig:.3e} "
         f"({min_eig / MIN_EIG_FLOOR:.0e}x the floor); max cond = {max_cond:.0f}"
@@ -970,7 +974,7 @@ def _print_tables() -> None:
     walk_ship = float(
         policy_efe_ffg(
             backend, belief, _walk(FLIP_H), preference, info_block=info_block
-        )[0]
+        ).g
     )
     walk_np, reach_np = _numpy_score(_walk(FLIP_H)), _numpy_score(_reach(FLIP_H))
     print(
@@ -1074,9 +1078,7 @@ def check() -> None:
     backend, belief, preference, info_block = _setup()
     for policy in (_walk(FLIP_H), _reach(FLIP_H)):
         shipped = float(
-            policy_efe_ffg(backend, belief, policy, preference, info_block=info_block)[
-                0
-            ]
+            policy_efe_ffg(backend, belief, policy, preference, info_block=info_block).g
         )
         assert abs(shipped - _numpy_score(policy)) < 1e-9
 
@@ -1092,10 +1094,10 @@ def check() -> None:
     #    definite and off the floor, so the Cholesky guard never fires (margin is real).
     rc = conditioning(_walk(FLIP_H))
     assert rc.all_positive_definite
-    assert rc.min_eig_sigma_post.min() > MIN_EIG_FLOOR
-    assert rc.cond_sigma_pred.max() < COND_CEILING
-    assert rc.cond_s.max() < COND_CEILING
-    assert rc.cond_sigma_post.max() < COND_CEILING
+    assert rc.min_eig_posterior_cov.min() > MIN_EIG_FLOOR
+    assert rc.cond_predicted_cov.max() < COND_CEILING
+    assert rc.cond_predicted_observation_cov.max() < COND_CEILING
+    assert rc.cond_posterior_cov.max() < COND_CEILING
 
     # The equal-billing measurement (H* one sooner with the one-step reach -3) and the
     # refinement-stability check are heavier enumerations; they print in the bare run

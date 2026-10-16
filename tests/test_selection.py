@@ -6,6 +6,7 @@ import pytest
 from cpomdp.control import LQRController
 from cpomdp.selection import (
     ActionSelector,
+    EFESelector,
     LQRSelector,
     ObservationGoal,
     Preference,
@@ -35,42 +36,47 @@ def _point_mass_model():
 def _controller():
     return LQRController(
         _point_mass_model(),
-        goal_precision=GOAL_PRECISION,
-        effort_penalty=EFFORT_PENALTY,
+        precision=GOAL_PRECISION,
+        effort=EFFORT_PENALTY,
     )
 
 
 class TestPreference:
-    def test_stores_and_coerces_goal(self):
-        p = Preference(goal=[1.0, 2.0])
-        assert isinstance(p.goal, np.ndarray) or hasattr(p.goal, "shape")
-        np.testing.assert_array_equal(p.goal, [1.0, 2.0])
+    def test_stores_and_coerces_target(self):
+        preference = Preference(target=[1.0, 2.0])
+        assert hasattr(preference.target, "shape")
+        np.testing.assert_array_equal(preference.target, [1.0, 2.0])
+
+    def test_calls_its_vector_target_as_the_goals_do(self):
+        # StateGoal, ObservationGoal and LQRController.action call it target too.
+        with pytest.raises(TypeError):
+            Preference(goal=[1.0])  # ty: ignore[missing-argument, unknown-argument]
 
     def test_precision_defaults_to_identity(self):
-        p = Preference(goal=[1.0, 2.0])
-        np.testing.assert_array_equal(p.precision, np.eye(2))
+        preference = Preference(target=[1.0, 2.0])
+        np.testing.assert_array_equal(preference.precision, np.eye(2))
 
     def test_accepts_an_explicit_precision(self):
-        p = Preference(goal=[0.0, 0.0], precision=[[2.0, 0.0], [0.0, 3.0]])
-        np.testing.assert_array_equal(p.precision, [[2.0, 0.0], [0.0, 3.0]])
+        preference = Preference(target=[0.0, 0.0], precision=[[2.0, 0.0], [0.0, 3.0]])
+        np.testing.assert_array_equal(preference.precision, [[2.0, 0.0], [0.0, 3.0]])
 
-    def test_rejects_non_1d_goal(self):
+    def test_rejects_non_1d_target(self):
         with pytest.raises(ValueError, match="1-D"):
-            Preference(goal=[[1.0]])
+            Preference(target=[[1.0]])
 
     def test_rejects_asymmetric_precision(self):
         with pytest.raises(ValueError, match="symmetric"):
-            Preference(goal=[0.0, 0.0], precision=[[1.0, 0.2], [0.9, 1.0]])
+            Preference(target=[0.0, 0.0], precision=[[1.0, 0.2], [0.9, 1.0]])
 
     def test_rejects_negative_definite_precision(self):
         # A negative-definite "precision" makes the EFE pragmatic cost negative and
         # inverts the agent's behaviour — reject it as a covariance/precision.
         with pytest.raises(ValueError, match="positive-semi-definite"):
-            Preference(goal=[0.0], precision=[[-1.0]])
+            Preference(target=[0.0], precision=[[-1.0]])
 
     def test_rejects_precision_shape_mismatch(self):
         with pytest.raises(ValueError, match="match"):
-            Preference(goal=[0.0, 0.0], precision=[[1.0]])
+            Preference(target=[0.0, 0.0], precision=[[1.0]])
 
 
 class TestLQRSelector:
@@ -82,11 +88,11 @@ class TestLQRSelector:
         controller = _controller()
         selector = LQRSelector(controller)
         belief = Belief(mean=[0.3, -0.2], cov=[[1.0, 0.0], [0.0, 1.0]])
-        pref = Preference(goal=[1.0, 0.0])
+        preference = Preference(target=[1.0, 0.0])
 
         np.testing.assert_array_equal(
-            selector.select(belief, pref),
-            controller.action(belief.mean, pref.goal),
+            selector.select(belief, preference),
+            controller.action(belief.mean, preference.target),
         )
 
 
@@ -115,6 +121,19 @@ class TestStateGoal:
         # p is unknown at construction, so effort stays None and the Agent fills
         # the identity when it builds the controller.
         assert StateGoal([0.0]).effort is None
+
+    @pytest.mark.parametrize(
+        ("effort", "match"),
+        [
+            ([1.0], "square"),
+            ([[1.0, 0.2], [0.9, 1.0]], "symmetric"),
+            ([[0.0]], "positive-definite"),
+        ],
+    )
+    def test_rejects_an_effort_the_controller_cannot_invert(self, effort, match):
+        # It used to construct, and the Agent raised later naming effort_penalty.
+        with pytest.raises(ValueError, match=match):
+            StateGoal([0.0], effort=effort)
 
     def test_rejects_non_1d_target(self):
         with pytest.raises(ValueError, match="1-D"):
@@ -174,3 +193,102 @@ class TestObservationGoal:
         # Unrepresentable: an observation goal carries no LQR effort weight.
         with pytest.raises(TypeError):
             ObservationGoal([0.0], action_bounds=(-1.0, 1.0), effort=[[1.0]])  # ty: ignore[unknown-argument]
+
+
+# The action grid. Three classes took (action_bounds, n_candidates) and wrote the same
+# check three times, with Python's `<` on whatever the bounds were. Two sequences
+# compare element by element and stop at the first difference, so per-axis bounds with
+# the second axis inverted passed, and JAX's linspace failed later in its own words.
+
+_MODEL_1D = LinearGaussianModel(
+    dynamics_matrix=[[1.0]],
+    observation_matrix=[[1.0]],
+    dynamics_noise=[[0.05]],
+    observation_noise=[[0.3]],
+    prior=Belief(mean=[0.0], cov=[[0.5]]),
+    control_matrix=[[1.0]],
+)
+
+
+def _goal(action_bounds, n_candidates=21):
+    return ObservationGoal(
+        [0.5], action_bounds=action_bounds, n_candidates=n_candidates
+    )
+
+
+def _efe(action_bounds, n_candidates=21):
+    return EFESelector(
+        _MODEL_1D, action_bounds=action_bounds, n_candidates=n_candidates
+    )
+
+
+@pytest.mark.parametrize("build", [_goal, _efe], ids=["ObservationGoal", "EFESelector"])
+class TestActionGrid:
+    def test_per_axis_bounds_are_refused_for_a_one_dimensional_grid(self, build):
+        with pytest.raises(ValueError, match="two scalars"):
+            build(([-1.0, 5.0], [1.0, -5.0]))
+
+    def test_a_bound_that_is_not_a_pair_is_refused(self, build):
+        with pytest.raises(ValueError, match=r"pair \(lo, hi\)"):
+            build((1.0,))
+
+    @pytest.mark.parametrize("bounds", [(-1.0, np.inf), (np.nan, 1.0)])
+    def test_a_bound_that_is_not_finite_is_refused(self, build, bounds):
+        with pytest.raises(ValueError, match="finite"):
+            build(bounds)
+
+    def test_inverted_bounds_are_refused(self, build):
+        with pytest.raises(ValueError, match="lo < hi"):
+            build((1.0, -1.0))
+
+    @pytest.mark.parametrize("n_candidates", [1, 2.5])
+    def test_a_count_that_cannot_search_is_refused(self, build, n_candidates):
+        with pytest.raises((ValueError, TypeError), match="n_candidates"):
+            build((-1.0, 1.0), n_candidates)
+
+
+# The horizon was checked twice with a bare `< 1`. A float passed, and failed later
+# inside `range` or `jnp.repeat`, far from the argument that caused it.
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda horizon: ObservationGoal(
+            [0.5], action_bounds=(-1.0, 1.0), horizon=horizon
+        ),
+        lambda horizon: EFESelector(
+            _MODEL_1D, action_bounds=(-1.0, 1.0), horizon=horizon
+        ),
+    ],
+    ids=["ObservationGoal", "EFESelector"],
+)
+class TestHorizon:
+    def test_a_horizon_below_one_is_refused(self, build):
+        with pytest.raises(ValueError, match="horizon must be at least 1"):
+            build(0)
+
+    def test_a_fractional_horizon_is_refused(self, build):
+        with pytest.raises(TypeError, match="horizon must be an integer"):
+            build(2.5)
+
+    def test_an_integer_of_any_kind_is_held_as_an_int(self, build):
+        assert type(build(np.int64(2)).horizon) is int
+
+
+def test_the_goal_stores_its_bounds_as_two_floats():
+    bounds = _goal((np.float32(-1), 2)).action_bounds
+    assert bounds == (-1.0, 2.0)
+    assert all(type(bound) is float for bound in bounds)
+
+
+def test_the_grid_selector_defaults_to_the_goals_candidate_count():
+    assert EFESelector(_MODEL_1D, action_bounds=(-1.0, 1.0)).n_candidates == 21
+
+
+def test_the_grid_is_readable_as_the_actions_searched():
+    selector = _efe((-1.0, 1.0), n_candidates=5)
+    np.testing.assert_array_equal(
+        selector.candidates, [[-1.0], [-0.5], [0.0], [0.5], [1.0]]
+    )
+    assert selector.n_candidates == selector.candidates.shape[0]
