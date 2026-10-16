@@ -1,5 +1,7 @@
 """The sensor conditions, probed over a sampled reachable set."""
 
+import dataclasses
+
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -16,6 +18,7 @@ from cpomdp import (
     GaussianObservation,
     GaussianTransition,
     LinearGaussianModel,
+    ProbeReport,
     probe_model,
 )
 from cpomdp.diagnostics import (
@@ -123,15 +126,41 @@ class TestLoewnerOrder:
         assert loewner_order(a, b) == expected
 
 
+def test_the_report_names_each_field_for_what_it_describes():
+    # One prefix per object. A bare spread or rank leaves the reader asking which.
+    assert [field.name for field in dataclasses.fields(ProbeReport)] == [
+        "n_samples",
+        "n_observations",
+        "observation_matrix_rank",
+        "observation_matrix_full_row_rank",
+        "observation_noise_definite",
+        "observation_noise_indefinite_at",
+        "observation_noise_varies",
+        "observation_noise_spread",
+        "observation_noise_loewner_ordered",
+        "dynamics_noise_varies",
+        "dynamics_noise_spread",
+        "epistemic_varies",
+        "epistemic_range",
+    ]
+
+
+def test_probe_model_returns_a_probe_report():
+    model, belief = chain(range_noise)
+    assert isinstance(probe_model(model, belief, ACTIONS), ProbeReport)
+
+
 class TestProbeFlatModel:
     def test_state_dependent_sensor_passes_every_condition(self):
         model, belief = chain(range_noise)
         report = probe_model(model, belief, ACTIONS)
-        assert report.full_row_rank
-        assert report.definite
-        assert report.non_constant
+        assert report.observation_matrix_full_row_rank
+        assert report.observation_noise_definite
+        assert report.observation_noise_varies
         assert report.epistemic_varies
-        assert report.loewner_comparable  # scalar noises are always ordered
+        assert (
+            report.observation_noise_loewner_ordered
+        )  # scalar noises are always ordered
         assert not report.flattens
 
     def test_fixed_sensor_flattens(self):
@@ -145,9 +174,9 @@ class TestProbeFlatModel:
         )
         report = probe_model(model, Belief([0.0], [[1.0]]), ACTIONS)
         assert report.flattens
-        assert not report.non_constant
-        assert not report.process_non_constant
-        assert report.process_noise_spread == 0.0
+        assert not report.observation_noise_varies
+        assert not report.dynamics_noise_varies
+        assert report.dynamics_noise_spread == 0.0
         assert not report.epistemic_varies
         assert report.epistemic_range[0] == pytest.approx(report.epistemic_range[1])
 
@@ -171,8 +200,8 @@ class TestProbeFlatModel:
         assert report.epistemic_varies
         assert report.epistemic_range == pytest.approx((min(expected), max(expected)))
         # R never moved and Q did, so the recursion consults the action: not flat.
-        assert not report.non_constant
-        assert report.process_non_constant
+        assert not report.observation_noise_varies
+        assert report.dynamics_noise_varies
         assert not report.flattens
 
     def test_a_process_noise_that_stops_being_a_covariance_is_refused(self):
@@ -195,7 +224,7 @@ class TestProbeFlatModel:
         model, belief = chain(range_noise, control_matrix=0.0)
         report = probe_model(model, belief, ACTIONS)
         assert report.flattens
-        assert report.noise_spread == pytest.approx(0.0)
+        assert report.observation_noise_spread == pytest.approx(0.0)
 
     def test_noise_that_ignores_the_state_flattens(self):
         model, belief = chain(ignores_the_state)
@@ -204,10 +233,10 @@ class TestProbeFlatModel:
     def test_reports_where_the_noise_stops_being_a_covariance(self):
         model, belief = chain(goes_indefinite)
         report = probe_model(model, belief, ACTIONS)
-        assert not report.definite
-        assert report.indefinite_at
+        assert not report.observation_noise_definite
+        assert report.observation_noise_indefinite_at
         # every flagged mean is genuinely outside the band where 1 − x² stays positive
-        assert all(abs(mu[0]) >= 1.0 for mu in report.indefinite_at)
+        assert all(abs(mu[0]) >= 1.0 for mu in report.observation_noise_indefinite_at)
 
     def test_needs_an_action_to_predict_under(self):
         model, belief = chain(range_noise)
@@ -220,8 +249,8 @@ class TestProbeFlatModel:
         for line in (
             "full row rank",
             "positive def",
-            "R non-constant",
-            "Q non-constant",
+            "R varies",
+            "Q varies",
             "epistemic varies",
         ):
             assert line in text
@@ -271,7 +300,7 @@ class TestProbeGraphBackend:
     def test_separates_a_live_sensor_from_a_frozen_one(self):
         live = probe_model(self.build(alive=True), self.belief(), ACTIONS)
         frozen = probe_model(self.build(alive=False), self.belief(), ACTIONS)
-        assert live.non_constant
+        assert live.observation_noise_varies
         assert live.epistemic_varies
         assert frozen.flattens
         assert not frozen.epistemic_varies
@@ -300,8 +329,8 @@ class TestProbeGraphBackend:
             control_matrix=[[1.0], [0.0]],
         )
         report = probe_model(backend, Belief(jnp.zeros(2), jnp.eye(2)), ACTIONS)
-        assert not report.full_row_rank
-        assert (report.rank, report.n_observations) == (1, 2)
+        assert not report.observation_matrix_full_row_rank
+        assert (report.observation_matrix_rank, report.n_observations) == (1, 2)
 
 
 def test_condition_numbers_reads_a_stack_and_refuses_anything_else():

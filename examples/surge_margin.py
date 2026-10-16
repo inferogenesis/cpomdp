@@ -925,8 +925,9 @@ def falsifiers() -> tuple[CheckReport, ...]:
             tier=Tier.COMPUTED,
             detail=(
                 f"probe_model over {report.n_samples} reachable means: R spread "
-                f"{report.noise_spread:.3e}, epistemic {report.epistemic_range[0]:.3f}"
-                f" .. {report.epistemic_range[1]:.3f} nats"
+                f"{report.observation_noise_spread:.3e}, epistemic "
+                f"{report.epistemic_range[0]:.3f} .. "
+                f"{report.epistemic_range[1]:.3f} nats"
             ),
         ),
         CheckReport(
