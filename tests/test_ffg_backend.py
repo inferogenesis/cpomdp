@@ -1,12 +1,12 @@
 """The branching FFG as a recursive filter: ``CouplingGraphBackend`` (issue #25).
 
-``test_ffg_tree.py`` pins the *static* within-slice collect (``CouplingGraph.infer`` —
-a root prior + readings -> the root marginal). This file pins the *temporal* recursion
-that turns that structure into an ``InferenceBackend``: each node carries its own
-dynamics (driven relaxation — ADR-017), the whole tree steps forward under an action,
-and the exact ``[[all]]`` filter is the joint-precision solve (predict through the
-block-diagonal per-node dynamics, add the structural coupling + observation precision
-blocks, solve).
+``test_ffg_tree.py`` pins the *static* within-slice collect
+(``CouplingGraph.infer_root`` — a root prior + readings -> the root marginal). This file
+pins the *temporal* recursion that turns that structure into an ``InferenceBackend``:
+each node carries its own dynamics (driven relaxation — ADR-017), the whole tree steps
+forward under an action, and the exact ``[[all]]`` filter is the joint-precision solve
+(predict through the block-diagonal per-node dynamics, add the structural coupling +
+observation precision blocks, solve).
 
 Oracle: a plain-NumPy driven-relaxation filter — per step ``predict`` (block-diagonal
 ``F = blkdiag(A_i)``, ``Q = blkdiag(Q_i)``) then a joint-precision ``update`` that folds

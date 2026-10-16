@@ -7,7 +7,8 @@ sensors and checks, on construction, that the wiring is a well-formed rooted tre
 dimension-consistent factors.
 
 The graph carries no names. A node is only its index, so the same structure can stand
-for any model. Its one public inference is the static collect to the root, ``infer``.
+for any model. Its one public inference is the static collect to the root,
+``infer_root``.
 A filter over time is a ``CouplingGraphBackend``.
 """
 
@@ -416,7 +417,7 @@ class CouplingGraph:
                     f"got {shape}"
                 )
 
-    def infer(self, readings: Mapping[int, ArrayLike], prior: Belief) -> Belief:
+    def infer_root(self, readings: Mapping[int, ArrayLike], prior: Belief) -> Belief:
         """Compute the marginal belief at the root from per-node readings and a prior.
 
         Each reading becomes a message about its node; those messages are passed up the
@@ -479,25 +480,25 @@ class CouplingGraph:
     ) -> dict[int, CanonicalGaussian]:
         """Every node's exact marginal by two-pass belief propagation over the tree.
 
-        Where ``infer`` collects to the root and returns only that one marginal, this
-        adds a downward *distribute* pass so **every** node's marginal comes back — the
-        cheap, structure-exploiting alternative to a dense joint solve. Each seed is a
-        node's already-formed canonical message (its local prior + evidence, combined by
-        the caller); marginalisation stays in canonical form, so no node is inverted on
-        this path.
+        Where ``infer_root`` collects to the root and returns only that one marginal,
+        this adds a downward *distribute* pass so **every** node's marginal comes back —
+        the cheap, structure-exploiting alternative to a dense joint solve. Each seed is
+        a node's already-formed canonical message (its local prior + evidence, combined
+        by the caller); marginalisation stays in canonical form, so no node is inverted
+        on this path.
 
         Args:
             seeds: a canonical message per node — the node's local information. Unlike
-                ``infer``'s raw ``readings``, these are ready-made ``CanonicalGaussian``
-                messages, not readings still needing a sensor.
+                ``infer_root``'s raw ``readings``, these are ready-made
+                ``CanonicalGaussian`` messages, not readings still needing a sensor.
 
         Returns:
             A ``CanonicalGaussian`` marginal per node index; call ``.to_moment()`` on
             any one for its ``(mean, cov)``.
         """
-        # Collect: fold each subtree up into its parent (as ``infer``), but cache every
-        # edge's upward message for the distribute pass. ``below[node]`` ends holding
-        # the node's own seed plus everything its children sent up.
+        # Collect: fold each subtree up into its parent (as ``infer_root``), but cache
+        # every edge's upward message for the distribute pass. ``below[node]`` ends
+        # holding the node's own seed plus everything its children sent up.
         below = dict(seeds)
         up_msg = {}
         for node in self._collect_order:

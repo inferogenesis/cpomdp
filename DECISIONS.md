@@ -4680,7 +4680,7 @@ The message passing is private: `GaussianTransition._predict`,
 `GaussianCoupling._message_to_parent` and `_message_to_child`,
 `CouplingGraph._infer_all`, and the `CanonicalGaussian` payload in `cpomdp.ffg._message`.
 A user builds the graph and runs it through `CouplingGraphBackend` or
-`CouplingGraph.infer`. Neither needs them. They are typed on a payload no page
+`CouplingGraph.infer_root`. Neither needs them. They are typed on a payload no page
 documents, and they are the hot path the energy work is most likely to change (RFC-001).
 
 ### Consequences
@@ -4692,8 +4692,8 @@ documents, and they are the hot path the energy work is most likely to change (R
   numbers are unchanged and its per-step work does not grow.
 - `ChainBackend` checks a state-dependent `R(μ⁻)` for positive-definiteness each step,
   as building a `GaussianObservation` did.
-- `CouplingGraph.infer` refuses a reading on a node with a state-dependent sensor and
-  names the node. It used to raise from inside the factor.
+- `CouplingGraph.infer_root` refuses a reading on a node with a state-dependent sensor
+  and names the node. It used to raise from inside the factor.
 - A custom factor needs a published factor protocol and a page for the payload. Neither
   exists. As ADR-069 has it, the first user who writes one is who would promote them.
 - ADR-019 and ADR-021 keep their wording. Their `CallableGaussianObservation` is this

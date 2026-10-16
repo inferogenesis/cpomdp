@@ -406,12 +406,13 @@ certainty equivalence is optimal, and no use of the readings beats it.
   it across the node's block, so the sensor read the sum of the node's components and
   the filter returned a plausible posterior from the wrong model.
 - Malformed graph inputs raise an error that names the argument. A reading on a node
-  with no sensor raised a bare `KeyError: 1` from `CouplingGraph.infer`, and a prior over
-  the wrong dimension raised `cannot add messages of shape (2, 2) and (1, 1)`.
-  `GaussianTransition.from_ou(0.0, ...)` raised `ZeroDivisionError`, and a negative `tau`
-  or `dt` blamed `dynamics_noise`, an argument the caller never passed. A `root` or a
-  dimension of 1.5 was truncated to 1. A `CouplingGraphBackend` over a graph with no
-  sensor failed in a zero-size reduction and now refuses at construction.
+  with no sensor raised a bare `KeyError: 1` from `CouplingGraph.infer`, now
+  `infer_root`, and a prior over the wrong dimension raised
+  `cannot add messages of shape (2, 2) and (1, 1)`.
+  `GaussianTransition.from_ou(0.0, ...)` raised `ZeroDivisionError`, and a negative
+  `tau` or `dt` blamed `dynamics_noise`, an argument the caller never passed. A `root`
+  or a dimension of 1.5 was truncated to 1. A `CouplingGraphBackend` over a graph with
+  no sensor failed in a zero-size reduction and now refuses at construction.
 - The graph EFE rollouts and searches skipped the checks `FfgEfeSelector` makes on its
   target. `policy_efe_ffg`, `policy_efe_ffg_trace`, the crossover statistic and both
   searches' `over_backend` scored on a carry partition that severs an EFE-load-bearing
@@ -462,10 +463,13 @@ certainty equivalence is optimal, and no use of the readings beats it.
   read-only, and `observation_models` is a read-only mapping. Construction is the only place
   the wiring is checked. A sensor added afterwards to node 7 of a two-node graph skipped
   the range check and reached the backend. Build a new graph instead.
-- **Breaking:** `CouplingGraph.infer` takes the readings first and the prior second,
-  `infer(readings, prior)`, the order `infer_states(observation, prior)` takes. It was
-  the one inference call that took the belief first. A call in the old order raises a
-  `TypeError` that names `readings`, since a `Belief` is not a mapping of readings.
+- **Breaking:** `CouplingGraph.infer` is `infer_root(readings, prior)`. It takes the
+  readings first and the prior second, the order `infer_states(observation, prior)`
+  takes. It was the one inference call that took the belief first. A call in the old
+  order raises a `TypeError` that names `readings`, since a `Belief` is not a mapping of
+  readings. The new name says what comes back: the root's marginal, from a prior over
+  the root alone. `infer_states` returns a belief over every node, and a bare `infer`
+  beside it read as its twin.
 - **Breaking:** an `ObservationGoal`'s `horizon` defaults to `None`, and the `Agent` reads
   it off the model: the shortest horizon at which the target moves the expected free
   energy, found by differentiating the candidate grid's scores with respect to the
@@ -487,14 +491,14 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `cpomdp.backends.base` and `cpomdp.backends.rxinfer`. The first is the shape check the
   built-in backends share and the second is the RxInfer test oracle, and a cpomdp user
   calls neither (ADR-069). `import cpomdp` no longer leaves `cpomdp.jax` behind.
-- **Breaking:** the graph model's message passing is private. `GaussianTransition.predict`
-  and `CouplingGraph.infer_all` take a leading underscore. `GaussianCoupling`'s
-  `message_to_parent` and `message_to_child` are private methods of `Coupling`, and
-  `cpomdp.ffg.message` is `cpomdp.ffg._message`. v0.4.4
-  published them on the top-level construction classes, typed on a `CanonicalGaussian`
-  no page documents. They are the hot path the energy work will change. A user builds
-  the graph and runs it through `CouplingGraphBackend` or `CouplingGraph.infer`, and
-  neither needs them (ADR-069, ADR-071).
+- **Breaking:** the graph model's message passing is private.
+  `GaussianTransition.predict` and `CouplingGraph.infer_all` take a leading underscore.
+  `GaussianCoupling`'s `message_to_parent` and `message_to_child` are private methods of
+  `Coupling`, and `cpomdp.ffg.message` is `cpomdp.ffg._message`. v0.4.4 published them
+  on the top-level construction classes, typed on a `CanonicalGaussian` no page
+  documents. They are the hot path the energy work will change. A user builds the graph
+  and runs it through `CouplingGraphBackend` or `CouplingGraph.infer_root`, and neither
+  needs them (ADR-069, ADR-071).
 - **Breaking:** a *fixed* `observation_model` or `dynamics_noise_model` must now restate
   the model's `observation_noise` / `dynamics_noise` exactly, and a sensor's linearized
   observation matrix must equal `observation_matrix`. `LinearGaussianModel` previously
