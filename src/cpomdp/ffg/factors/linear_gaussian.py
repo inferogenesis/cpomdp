@@ -21,11 +21,12 @@ from dataclasses import dataclass
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 from jax import Array
 from jaxtyping import Float64
 from numpy.typing import ArrayLike
 
-from cpomdp._validation import validate_covariance
+from cpomdp._validation import concrete, validate_covariance
 from cpomdp.ffg._message import CanonicalGaussian
 
 __all__ = ["GaussianCoupling", "GaussianTransition"]
@@ -105,10 +106,25 @@ class GaussianTransition:
         Returns:
             A ``GaussianTransition`` with 1×1 ``dynamics_matrix`` (A) and
             ``dynamics_noise`` (Q).
+
+        Raises:
+            ValueError: if ``tau``, ``stationary_var`` or ``dt`` is not a finite
+                positive number.
         """
-        a = jnp.exp(-dt / tau)  # A = e^(−dt/τ)
-        q = stationary_var * (1.0 - a * a)  # Q = Σ_stat (1 − A²)
-        return cls(jnp.reshape(a, (1, 1)), dynamics_noise=jnp.reshape(q, (1, 1)))
+        for name, value in (
+            ("tau", tau),
+            ("stationary_var", stationary_var),
+            ("dt", dt),
+        ):
+            _require_positive(value, name)
+        dynamics_matrix = jnp.exp(-dt / tau)  # A = e^(−dt/τ)
+        dynamics_noise = stationary_var * (
+            1.0 - dynamics_matrix * dynamics_matrix
+        )  # Q = Σ_stat (1 − A²)
+        return cls(
+            jnp.reshape(dynamics_matrix, (1, 1)),
+            dynamics_noise=jnp.reshape(dynamics_noise, (1, 1)),
+        )
 
     def _predict(
         self,
@@ -350,3 +366,10 @@ class GaussianCoupling:
         object.__setattr__(obj, "coupling_matrix", coupling_matrix)
         object.__setattr__(obj, "coupling_noise", coupling_noise)
         return obj
+
+
+def _require_positive(value: float, name: str) -> None:
+    """Refuse a value that is not finite and positive. Skipped under a trace."""
+    number = concrete(value)
+    if number is not None and not (np.isfinite(number) and number > 0):
+        raise ValueError(f"{name} must be a finite positive number, got {value}")

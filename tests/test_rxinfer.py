@@ -173,7 +173,7 @@ def test_branching_tree_matches_coupling_graph():
         root=chea,
         dims=(1, 1, 1, 1, 1),
         couplings=tuple(
-            Coupling(p, c, GaussianCoupling([[w]], coupling_noise=[[q]]), 1.0)
+            Coupling(p, c, GaussianCoupling([[w]], coupling_noise=[[q]]))
             for p, c, w, q in edges
         ),
         observations={
@@ -182,7 +182,7 @@ def test_branching_tree_matches_coupling_graph():
         },
     )
     readings: dict[int, ArrayLike] = {motor_a: [1.25], motor_b: [1.15], cheb: [0.95]}
-    native = graph.infer(Belief(mean=[0.0], cov=[[4.0]]), readings)
+    native = graph.infer(readings, Belief(mean=[0.0], cov=[[4.0]]))
 
     rx_mean, rx_var = _rxinfer_chemotaxis_tree_root(
         prior_mean=0.0,

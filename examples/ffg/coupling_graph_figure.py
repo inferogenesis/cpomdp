@@ -74,7 +74,7 @@ EQUIV_TOL = 1e-7
 def build_graph() -> tuple[CouplingGraph, Belief, dict[int, np.ndarray]]:
     """The tree as a `CouplingGraph`, with its root prior and the leaf readings."""
     couplings = tuple(
-        Coupling(parent, child, GaussianCoupling([[w]], coupling_noise=[[q]]), tau=0.0)
+        Coupling(parent, child, GaussianCoupling([[w]], coupling_noise=[[q]]))
         for parent, child, w, q in EDGES
     )
     observations = {
@@ -171,7 +171,7 @@ def assemble_joint_precision() -> np.ndarray:
 def _posteriors() -> tuple[Belief, Belief, float]:
     """Both routes' root beliefs and the max absolute gap between them."""
     graph, prior, readings = build_graph()
-    native = graph.infer(prior, readings)
+    native = graph.infer(readings, prior)
     flat = infer_flattened()
     gap = max(
         float(np.max(np.abs(np.asarray(native.mean) - np.asarray(flat.mean)))),
@@ -197,13 +197,13 @@ NODE_META = {
 
 CODE = """\
 couplings = (
-    Coupling(r, h, GaussianCoupling([[0.9]], coupling_noise=[[0.05]]), tau=0.0),
-    Coupling(h, a, GaussianCoupling([[1.0]], coupling_noise=[[0.03]]), tau=0.0),
-    Coupling(h, b, GaussianCoupling([[1.0]], coupling_noise=[[0.03]]), tau=0.0),
+    Coupling(r, h, GaussianCoupling([[0.9]], coupling_noise=[[0.05]])),
+    Coupling(h, a, GaussianCoupling([[1.0]], coupling_noise=[[0.03]])),
+    Coupling(h, b, GaussianCoupling([[1.0]], coupling_noise=[[0.03]])),
 )
 graph  = CouplingGraph(root=r, dims=dims,
                        couplings=couplings, observations=obs)
-belief = graph.infer(prior, {a: y_a, b: y_b})"""
+belief = graph.infer({a: y_a, b: y_b}, prior)"""
 
 
 def _draw_tree(ax) -> None:

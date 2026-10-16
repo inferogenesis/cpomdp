@@ -405,6 +405,13 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `C` on a two-dimensional node used to construct, and `CouplingGraphBackend` broadcast
   it across the node's block, so the sensor read the sum of the node's components and
   the filter returned a plausible posterior from the wrong model.
+- Malformed graph inputs raise an error that names the argument. A reading on a node
+  with no sensor raised a bare `KeyError: 1` from `CouplingGraph.infer`, and a prior over
+  the wrong dimension raised `cannot add messages of shape (2, 2) and (1, 1)`.
+  `GaussianTransition.from_ou(0.0, ...)` raised `ZeroDivisionError`, and a negative `tau`
+  or `dt` blamed `dynamics_noise`, an argument the caller never passed. A `root` or a
+  dimension of 1.5 was truncated to 1. A `CouplingGraphBackend` over a graph with no
+  sensor failed in a zero-size reduction and now refuses at construction.
 - The graph EFE rollouts and searches skipped the checks `FfgEfeSelector` makes on its
   target. `policy_efe_ffg`, `policy_efe_ffg_trace`, the crossover statistic and both
   searches' `over_backend` scored on a carry partition that severs an EFE-load-bearing
@@ -455,6 +462,10 @@ certainty equivalence is optimal, and no use of the readings beats it.
   read-only, and `observations` is a read-only mapping. Construction is the only place
   the wiring is checked. A sensor added afterwards to node 7 of a two-node graph skipped
   the range check and reached the backend. Build a new graph instead.
+- **Breaking:** `CouplingGraph.infer` takes the readings first and the prior second,
+  `infer(readings, prior)`, the order `infer_states(observation, prior)` takes. It was
+  the one inference call that took the belief first. A call in the old order raises a
+  `TypeError` that names `readings`, since a `Belief` is not a mapping of readings.
 - **Breaking:** an `ObservationGoal`'s `horizon` defaults to `None`, and the `Agent` reads
   it off the model: the shortest horizon at which the target moves the expected free
   energy, found by differentiating the candidate grid's scores with respect to the
@@ -478,10 +489,11 @@ certainty equivalence is optimal, and no use of the readings beats it.
   calls neither (ADR-069). `import cpomdp` no longer leaves `cpomdp.jax` behind.
 - **Breaking:** the graph model's message passing is private. `GaussianTransition.predict`,
   `GaussianCoupling.message_to_parent` and `message_to_child` and `CouplingGraph.infer_all`
-  take a leading underscore, and `cpomdp.ffg.message` is `cpomdp.ffg._message`. v0.4.4 published them on the top-level
-  construction classes, typed on a `CanonicalGaussian` no page documents. They are the hot
-  path the energy work will change. A user builds the graph and runs it through
-  `CouplingGraphBackend` or `CouplingGraph.infer`, and neither needs them (ADR-069).
+  take a leading underscore, and `cpomdp.ffg.message` is `cpomdp.ffg._message`. v0.4.4
+  published them on the top-level construction classes, typed on a `CanonicalGaussian`
+  no page documents. They are the hot path the energy work will change. A user builds
+  the graph and runs it through `CouplingGraphBackend` or `CouplingGraph.infer`, and
+  neither needs them (ADR-069, ADR-073).
 - **Breaking:** a *fixed* `observation_model` or `dynamics_noise_model` must now restate
   the model's `observation_noise` / `dynamics_noise` exactly, and a sensor's linearized
   observation matrix must equal `observation_matrix`. `LinearGaussianModel` previously
@@ -650,6 +662,13 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `GaussianCoupling([[0.05]], [[0.9]])` built an edge with the two swapped. The new name
   follows the `_matrix` suffix every other linear map carries. 33 call sites moved to
   keywords.
+- **Breaking:** `Coupling` takes no `tau`. The edge's time-constant was required and read
+  by nothing. In the chemotaxis example it restated the timescale the child's
+  `GaussianTransition.from_ou` already took, and other callers made one up. A node's
+  timescale is its transition. `Coupling` now checks its fields at construction: a node
+  index that is not an int, a factor that is not a `GaussianCoupling` and a non-bool
+  `efe_relevant` raise `TypeError`. A bare matrix as the factor used to construct and
+  fail later on a missing attribute (ADR-074).
 - **Breaking:** `CouplingGraphBackend` takes a required keyword `prior`, the belief over
   the joint state before any reading. Its `model.prior` was an N(0, I) placeholder, so
   an `Agent` built on the backend planned and filtered from a belief the caller never

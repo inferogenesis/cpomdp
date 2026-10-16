@@ -15,6 +15,9 @@ canonical-form math under test. The keystone bar is atol 1e-7 on *every* node's 
 (not just the root), over multi-step sequences with and without control.
 """
 
+import copy
+import pickle
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -185,7 +188,7 @@ def _build(
 ):
     """Build a ``CouplingGraphBackend`` (graph + per-node transitions) for a spec."""
     couplings = tuple(
-        Coupling(parent, child, GaussianCoupling(w, coupling_noise=q), 1.0)
+        Coupling(parent, child, GaussianCoupling(w, coupling_noise=q))
         for parent, child, w, q in edges
     )
     observations = {
@@ -594,6 +597,40 @@ class TestProtocolAndReadout:
         with pytest.raises(ValueError, match="2-D joint state"):
             self._one_node_backend(Belief(mean=[0.0], cov=[[1.0]]))
 
+    def test_a_graph_with_no_sensor_is_refused_by_name(self):
+        # It used to fail with a zero-size reduction inside the model's noise check.
+        graph = CouplingGraph(
+            root=0,
+            dims=(1, 1),
+            couplings=(
+                Coupling(0, 1, GaussianCoupling([[1.0]], coupling_noise=[[0.5]])),
+            ),
+            observations={},
+        )
+        transition = GaussianTransition([[0.9]], dynamics_noise=[[0.1]])
+        with pytest.raises(ValueError, match="no node of the graph carries a sensor"):
+            CouplingGraphBackend(
+                graph, (transition, transition), prior=unit_prior(graph)
+            )
+
+    @pytest.mark.parametrize(
+        "round_trip",
+        [copy.deepcopy, lambda backend: pickle.loads(pickle.dumps(backend))],
+        ids=["deepcopy", "pickle"],
+    )
+    def test_survives_a_copy_and_a_pickle(self, round_trip):
+        # An agent reaches a multiprocessing worker by pickle, backend and graph both.
+        backend = _build(
+            _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
+        )
+        prior = Belief(mean=np.zeros(5), cov=np.eye(5) * 2.0)
+        reading = np.array([0.4, -0.2, 0.1])
+        copied = round_trip(backend)
+        np.testing.assert_array_equal(
+            copied.infer_states(reading, prior).mean,
+            backend.infer_states(reading, prior).mean,
+        )
+
     def test_prior_not_mutated(self):
         backend = _build(
             _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
@@ -832,7 +869,7 @@ def _rx_relaxation_oracle(
 def _build_rx(dims, edges, rx_obs, dyn, *, control_matrix=None, partition=None):
     """Build a ``CouplingGraphBackend`` with state-dependent (callable) observations."""
     couplings = tuple(
-        Coupling(parent, child, GaussianCoupling(w, coupling_noise=q), 1.0)
+        Coupling(parent, child, GaussianCoupling(w, coupling_noise=q))
         for parent, child, w, q in edges
     )
     observations = {

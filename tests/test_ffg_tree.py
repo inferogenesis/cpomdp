@@ -1,4 +1,4 @@
-"""Branching factor-graph inference: messages combining at a shared node (Phase 4).
+"""Branching factor-graph inference: messages combining at a shared node.
 
 The chain (``test_ffg_chain.py``) is the degenerate FFG — every node has degree 2.
 The shared ``CheA`` network ADR-012 targets has a node of degree > 2: one latent
@@ -170,7 +170,7 @@ def _tree_marginal_oracle(root, dims, edges, obs_specs, m0, P0, readings):
 def _check_infer(root, dims, edges, obs_specs, m0, P0, readings, atol=1e-8):
     """Build the graph, run ``infer``, and check its marginal against the oracle."""
     couplings = tuple(
-        Coupling(parent, child, GaussianCoupling(w, coupling_noise=q), 1.0)
+        Coupling(parent, child, GaussianCoupling(w, coupling_noise=q))
         for parent, child, w, q in edges
     )
     observations = {
@@ -180,7 +180,7 @@ def _check_infer(root, dims, edges, obs_specs, m0, P0, readings, atol=1e-8):
         root=root, dims=dims, couplings=couplings, observations=observations
     )
     m0, P0 = np.asarray(m0, float), np.asarray(P0, float)
-    out = graph.infer(Belief(mean=m0, cov=P0), readings)
+    out = graph.infer(readings, Belief(mean=m0, cov=P0))
     mu_o, cov_o = _tree_marginal_oracle(root, dims, edges, obs_specs, m0, P0, readings)
     np.testing.assert_allclose(np.asarray(out.mean), mu_o, atol=atol)
     np.testing.assert_allclose(np.asarray(out.cov), cov_o, atol=atol)
@@ -310,23 +310,58 @@ class TestCouplingGraphInfer:
         rng = np.random.default_rng(19)
         w, q = rng.standard_normal((1, 2)), _spd(rng, 1)
         graph = CouplingGraph(
-            0, (2, 1), (Coupling(0, 1, GaussianCoupling(w, coupling_noise=q), 1.0),), {}
+            0, (2, 1), (Coupling(0, 1, GaussianCoupling(w, coupling_noise=q)),), {}
         )
         m0, P0 = rng.standard_normal(2), _spd(rng, 2)
-        out = graph.infer(Belief(mean=m0, cov=P0), {})
+        out = graph.infer({}, Belief(mean=m0, cov=P0))
         np.testing.assert_allclose(np.asarray(out.mean), m0, atol=1e-8)
         np.testing.assert_allclose(np.asarray(out.cov), P0, atol=1e-8)
 
-    def test_reading_without_observation_factor_raises(self):
-        # A reading for a node that has no sensor is a usage error.
-        graph = CouplingGraph(
+    @staticmethod
+    def _two_node_graph(observations):
+        return CouplingGraph(
             0,
             (1, 1),
-            (Coupling(0, 1, GaussianCoupling([[1.0]], coupling_noise=[[0.5]]), 1.0),),
-            {},
+            (Coupling(0, 1, GaussianCoupling([[1.0]], coupling_noise=[[0.5]])),),
+            observations,
         )
-        with pytest.raises(KeyError):
-            graph.infer(Belief(mean=np.zeros(1), cov=np.eye(1)), {1: np.zeros(1)})
+
+    def test_reading_on_a_node_without_a_sensor_is_refused_by_name(self):
+        # It used to raise a bare KeyError: 1.
+        graph = self._two_node_graph({})
+        with pytest.raises(ValueError, match=r"node 1 has no sensor"):
+            graph.infer({1: np.zeros(1)}, Belief(mean=np.zeros(1), cov=np.eye(1)))
+
+    def test_prior_over_the_wrong_dimension_is_refused_by_name(self):
+        # It used to raise "cannot add messages of shape (2, 2) and (1, 1)".
+        graph = self._two_node_graph({})
+        with pytest.raises(ValueError, match=r"prior.*root node 0.*1-D"):
+            graph.infer({}, Belief(mean=np.zeros(2), cov=np.eye(2)))
+
+    def test_prior_that_is_not_a_belief_is_refused(self):
+        graph = self._two_node_graph({})
+        with pytest.raises(TypeError, match="prior must be a Belief"):
+            graph.infer({}, {1: np.zeros(1)})
+
+    def test_reading_of_the_wrong_width_is_refused_by_name(self):
+        sensor = FixedSensor(np.eye(1), observation_noise=np.eye(1))
+        graph = self._two_node_graph({1: sensor})
+        with pytest.raises(ValueError, match=r"reading on node 1.*\(1,\)"):
+            graph.infer({1: np.zeros(2)}, Belief(mean=np.zeros(1), cov=np.eye(1)))
+
+    def test_takes_the_readings_first_as_infer_states_does(self):
+        # infer_states(observation, prior) sets the order every inference call follows.
+        sensor = FixedSensor(np.eye(1), observation_noise=np.eye(1))
+        graph = self._two_node_graph({1: sensor})
+        prior = Belief(mean=np.zeros(1), cov=np.eye(1))
+        out = graph.infer({1: np.ones(1)}, prior)
+        assert float(out.mean[0]) > 0.0  # the reading pulled the root up
+
+    def test_readings_that_are_not_a_mapping_are_refused(self):
+        graph = self._two_node_graph({})
+        prior = Belief(mean=np.zeros(1), cov=np.eye(1))
+        with pytest.raises(TypeError, match="readings must map"):
+            graph.infer(prior, prior)
 
     def test_jit_grad_vmap_through_infer(self):
         # The collect is static structure over traced array data, so it jits, vmaps over
@@ -341,7 +376,6 @@ class TestCouplingGraphInfer:
                     GaussianCoupling(
                         jnp.array([[1.5, -0.5]]), coupling_noise=jnp.array([[0.3]])
                     ),
-                    1.0,
                 ),
             ),
             {1: FixedSensor(jnp.eye(1), observation_noise=jnp.array([[0.2]]))},
@@ -349,7 +383,7 @@ class TestCouplingGraphInfer:
         prior = Belief(mean=jnp.zeros(2), cov=jnp.eye(2))
 
         def root_mean(y):
-            return graph.infer(prior, {1: y}).mean
+            return graph.infer({1: y}, prior).mean
 
         y = jnp.array([0.7])
         np.testing.assert_allclose(
@@ -403,7 +437,7 @@ def _joint_all_marginals_oracle(dims, edges, seeds):
 def _check_infer_all(dims, edges, seeds, atol=1e-8):
     """Build the graph, run _infer_all, check *every* node's marginal vs the oracle."""
     couplings = tuple(
-        Coupling(parent, child, GaussianCoupling(w, coupling_noise=q), 1.0)
+        Coupling(parent, child, GaussianCoupling(w, coupling_noise=q))
         for parent, child, w, q in edges
     )
     graph = CouplingGraph(root=0, dims=dims, couplings=couplings, observations={})
@@ -451,6 +485,53 @@ class TestCouplingGraphInferAll:
         _check_infer_all(dims, edges, seeds)
 
 
+class TestCoupling:
+    _FACTOR = GaussianCoupling([[0.8]], coupling_noise=[[0.05]])
+
+    def test_an_edge_carries_no_timescale(self):
+        # A node's timescale lives in its GaussianTransition. An edge copy of it was
+        # read by nothing and had to be made up by every caller.
+        edge = Coupling(0, 1, self._FACTOR)
+        assert not hasattr(edge, "tau")
+        with pytest.raises(TypeError, match="tau"):
+            Coupling(0, 1, self._FACTOR, tau=1.0)  # ty: ignore[unknown-argument]
+
+    @pytest.mark.parametrize(
+        ("parent", "child", "named"),
+        [("0", 1, "parent"), (0, 1.5, "child"), (True, 1, "parent")],
+    )
+    def test_refuses_a_node_index_that_is_not_an_int(self, parent, child, named):
+        with pytest.raises(TypeError, match=named):
+            Coupling(parent, child, self._FACTOR)
+
+    def test_takes_an_integral_float_index_and_a_numpy_bool(self):
+        # 1.0 from a JSON config and np.True_ from a comparison are exact values.
+        edge = Coupling(
+            0.0,  # ty: ignore[invalid-argument-type]
+            1.0,  # ty: ignore[invalid-argument-type]
+            self._FACTOR,
+            efe_relevant=np.True_,  # ty: ignore[invalid-argument-type]
+        )
+        assert (edge.parent, edge.child, edge.efe_relevant) == (0, 1, True)
+        assert type(edge.efe_relevant) is bool
+
+    def test_refuses_a_factor_that_is_not_a_gaussian_coupling(self):
+        # A bare matrix used to construct and fail later on a missing attribute.
+        with pytest.raises(TypeError, match="GaussianCoupling"):
+            Coupling(0, 1, [[1.0]])  # ty: ignore[invalid-argument-type]
+
+    def test_refuses_an_efe_relevant_that_is_not_a_bool(self):
+        with pytest.raises(TypeError, match="efe_relevant"):
+            Coupling(0, 1, self._FACTOR, efe_relevant="yes")  # ty: ignore[invalid-argument-type]
+
+    def test_keeps_a_numpy_integer_node_as_an_int(self):
+        # The field is typed int, so ty flags the call. At runtime the index is coerced.
+        parent, child = np.int64(0), np.int64(1)
+        edge = Coupling(parent, child, self._FACTOR)  # ty: ignore[invalid-argument-type]
+        assert type(edge.parent) is int
+        assert type(edge.child) is int
+
+
 class TestCouplingGraphValidation:
     def _w(self, c, p):
         return GaussianCoupling(np.zeros((c, p)) + 0.5, coupling_noise=np.eye(c) * 0.3)
@@ -459,7 +540,7 @@ class TestCouplingGraphValidation:
         g = CouplingGraph(
             0,
             (2, 1, 1),
-            (Coupling(0, 1, self._w(1, 2), 1.0), Coupling(0, 2, self._w(1, 2), 1.0)),
+            (Coupling(0, 1, self._w(1, 2)), Coupling(0, 2, self._w(1, 2))),
             {1: FixedSensor(np.eye(1), observation_noise=np.eye(1))},
         )
         assert g.root == 0
@@ -471,7 +552,7 @@ class TestCouplingGraphValidation:
 
     def test_rejects_root_out_of_range(self):
         with pytest.raises(ValueError, match="root"):
-            CouplingGraph(5, (1, 1), (Coupling(0, 1, self._w(1, 1), 1.0),), {})
+            CouplingGraph(5, (1, 1), (Coupling(0, 1, self._w(1, 1)),), {})
 
     def test_rejects_root_as_child(self):
         with pytest.raises(ValueError, match="child"):
@@ -479,8 +560,8 @@ class TestCouplingGraphValidation:
                 0,
                 (1, 1, 1),
                 (
-                    Coupling(1, 0, self._w(1, 1), 1.0),
-                    Coupling(0, 2, self._w(1, 1), 1.0),
+                    Coupling(1, 0, self._w(1, 1)),
+                    Coupling(0, 2, self._w(1, 1)),
                 ),
                 {},
             )
@@ -491,8 +572,8 @@ class TestCouplingGraphValidation:
                 0,
                 (1, 1, 1),
                 (
-                    Coupling(0, 1, self._w(1, 1), 1.0),
-                    Coupling(2, 1, self._w(1, 1), 1.0),
+                    Coupling(0, 1, self._w(1, 1)),
+                    Coupling(2, 1, self._w(1, 1)),
                 ),
                 {},
             )
@@ -503,8 +584,8 @@ class TestCouplingGraphValidation:
                 0,
                 (1, 1, 1),
                 (
-                    Coupling(1, 2, self._w(1, 1), 1.0),
-                    Coupling(2, 1, self._w(1, 1), 1.0),
+                    Coupling(1, 2, self._w(1, 1)),
+                    Coupling(2, 1, self._w(1, 1)),
                 ),
                 {},
             )
@@ -512,14 +593,14 @@ class TestCouplingGraphValidation:
     def test_rejects_factor_dim_mismatch(self):
         # W is (1,1) but the edge needs (dim[child], dim[parent]) = (1, 2).
         with pytest.raises(ValueError, match="factor W shape"):
-            CouplingGraph(0, (2, 1), (Coupling(0, 1, self._w(1, 1), 1.0),), {})
+            CouplingGraph(0, (2, 1), (Coupling(0, 1, self._w(1, 1)),), {})
 
     def test_rejects_observation_on_unknown_node(self):
         with pytest.raises(ValueError, match="observation references unknown node"):
             CouplingGraph(
                 0,
                 (1, 1),
-                (Coupling(0, 1, self._w(1, 1), 1.0),),
+                (Coupling(0, 1, self._w(1, 1)),),
                 {9: FixedSensor(np.eye(1), observation_noise=np.eye(1))},
             )
 
@@ -530,8 +611,36 @@ class TestCouplingGraphValidation:
             CouplingGraph(
                 0,
                 (2, 1),
-                (Coupling(0, 1, self._w(1, 2), 1.0),),
+                (Coupling(0, 1, self._w(1, 2)),),
                 {0: FixedSensor(np.eye(1), observation_noise=np.eye(1))},
+            )
+
+    @pytest.mark.parametrize(
+        ("root", "dims", "named"),
+        [(0.5, (1, 1), "root"), (True, (1, 1), "root"), (0, (1, 1.5), "dims")],
+    )
+    def test_rejects_a_root_or_dimension_that_is_not_an_int(self, root, dims, named):
+        # int() used to truncate 1.5 to 1 and build a graph nobody declared.
+        with pytest.raises(TypeError, match=named):
+            CouplingGraph(root, dims, (Coupling(0, 1, self._w(1, 1)),), {})
+
+    def test_takes_an_integral_float_root_and_dimension(self):
+        graph = CouplingGraph(
+            0.0,  # ty: ignore[invalid-argument-type]
+            (1.0, 1.0),  # ty: ignore[invalid-argument-type]
+            (Coupling(0, 1, self._w(1, 1)),),
+            {},
+        )
+        assert (graph.root, graph.dims) == (0, (1, 1))
+
+    def test_rejects_a_coupling_that_is_not_a_coupling(self):
+        # A bare (parent, child, factor) tuple used to fail on a missing attribute.
+        with pytest.raises(TypeError, match=r"couplings.*Coupling"):
+            CouplingGraph(
+                0,
+                (1, 1),
+                ((0, 1, self._w(1, 1)),),  # ty: ignore[invalid-argument-type]
+                {},
             )
 
     @pytest.mark.parametrize("field", ["root", "dims", "couplings", "observations"])
@@ -541,7 +650,7 @@ class TestCouplingGraphValidation:
         graph = CouplingGraph(
             0,
             (1, 1),
-            (Coupling(0, 1, self._w(1, 1), 1.0),),
+            (Coupling(0, 1, self._w(1, 1)),),
             {1: FixedSensor(np.eye(1), observation_noise=np.eye(1))},
         )
         with pytest.raises(AttributeError):
@@ -550,9 +659,7 @@ class TestCouplingGraphValidation:
     def test_observations_cannot_gain_a_sensor_after_validation(self):
         # A sensor added to node 7 of a two-node graph would skip the range check.
         sensor = FixedSensor(np.eye(1), observation_noise=np.eye(1))
-        graph = CouplingGraph(
-            0, (1, 1), (Coupling(0, 1, self._w(1, 1), 1.0),), {1: sensor}
-        )
+        graph = CouplingGraph(0, (1, 1), (Coupling(0, 1, self._w(1, 1)),), {1: sensor})
         with pytest.raises(TypeError):
             # Writing to it is the test, so ty's refusal is expected.
             graph.observations[7] = sensor  # ty: ignore[invalid-assignment]
@@ -565,9 +672,7 @@ class TestCouplingGraphValidation:
     def test_survives_a_copy_and_a_pickle(self, round_trip):
         # A simulation forks with deepcopy and reaches a worker process by pickle.
         sensor = FixedSensor(np.eye(1), observation_noise=np.eye(1))
-        graph = CouplingGraph(
-            0, (1, 1), (Coupling(0, 1, self._w(1, 1), 1.0),), {1: sensor}
-        )
+        graph = CouplingGraph(0, (1, 1), (Coupling(0, 1, self._w(1, 1)),), {1: sensor})
         copied = round_trip(graph)
         assert sorted(copied.observations) == [1]
         with pytest.raises(TypeError):
@@ -579,7 +684,7 @@ class TestCouplingGraphValidation:
             CouplingGraph(
                 0,
                 (1, 1),
-                (Coupling(0, 1, self._w(1, 1), 1.0),),
+                (Coupling(0, 1, self._w(1, 1)),),
                 {1: np.eye(1)},  # ty: ignore[invalid-argument-type]
             )
 
@@ -588,11 +693,9 @@ class TestCouplingGraphValidation:
         sensor = CallableSensor(
             np.eye(1), lambda x, p: p * (1.0 + x @ x)[None, None], 0.5
         )
-        graph = CouplingGraph(
-            0, (1, 1), (Coupling(0, 1, self._w(1, 1), 1.0),), {1: sensor}
-        )
+        graph = CouplingGraph(0, (1, 1), (Coupling(0, 1, self._w(1, 1)),), {1: sensor})
         with pytest.raises(ValueError, match=r"node 1.*CouplingGraphBackend"):
-            graph.infer(Belief(mean=np.zeros(1), cov=np.eye(1)), {1: np.zeros(1)})
+            graph.infer({1: np.zeros(1)}, Belief(mean=np.zeros(1), cov=np.eye(1)))
 
 
 # --- CouplingGraph.infer vs the normal backend on the hand-flattened joint ---
@@ -677,7 +780,7 @@ def _flattened_kalman_root(root, dims, edges, obs_specs, m0, p0, readings):
 class TestFlattenedKalmanParity:
     """`CouplingGraph.infer` vs the normal backend on the hand-flattened joint.
 
-    The difference Phase 5 demonstrates is representational, not numerical: a branching
+    The difference the demo shows is representational, not numerical: a branching
     model the chain backend cannot draw still yields the *same* posterior a flattened
     `LinearGaussianModel` does through `KalmanBackend`. These pin that identity
     directly (graph vs the normal backend) on the demo's chemotaxis tree and a spread
@@ -686,7 +789,7 @@ class TestFlattenedKalmanParity:
 
     def _check(self, root, dims, edges, obs_specs, m0, p0, readings, atol=1e-7):
         couplings = tuple(
-            Coupling(p, c, GaussianCoupling(w, coupling_noise=q), 1.0)
+            Coupling(p, c, GaussianCoupling(w, coupling_noise=q))
             for p, c, w, q in edges
         )
         observations = {
@@ -696,7 +799,7 @@ class TestFlattenedKalmanParity:
             root=root, dims=dims, couplings=couplings, observations=observations
         )
         m0, p0 = np.asarray(m0, float), np.asarray(p0, float)
-        out = graph.infer(Belief(mean=m0, cov=p0), readings)
+        out = graph.infer(readings, Belief(mean=m0, cov=p0))
         km, kc = _flattened_kalman_root(root, dims, edges, obs_specs, m0, p0, readings)
         np.testing.assert_allclose(np.asarray(out.mean), km, atol=atol)
         np.testing.assert_allclose(np.asarray(out.cov), kc, atol=atol)

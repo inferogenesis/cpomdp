@@ -1,21 +1,24 @@
 """A tree of Gaussian-coupled variables and the structure that wires it together.
 
 Nodes are integer indices ``0..N-1``, each with a dimension. A ``Coupling`` edge links
-a parent node to a child node through a linear-Gaussian factor and a time-constant, and
-the edges must form a tree rooted at a chosen node. ``CouplingGraph`` gathers the
-nodes, edges, and per-node observations and checks, on construction, that the wiring is
-a well-formed rooted tree with dimension-consistent factors.
+a parent node to a child node through a linear-Gaussian factor, and the edges must form
+a tree rooted at a chosen node. ``CouplingGraph`` gathers the nodes, edges, and per-node
+sensors and checks, on construction, that the wiring is a well-formed rooted tree with
+dimension-consistent factors.
 
-The graph carries no names: a node is only its index, so the same structure can stand
-for any model. It holds structure, not inference — building one validates the wiring;
-the message passing that reads it lives elsewhere.
+The graph carries no names. A node is only its index, so the same structure can stand
+for any model. Its one public inference is the static collect to the root, ``infer``.
+A filter over time is a ``CouplingGraphBackend``.
 """
 
+import operator
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
+from typing import SupportsIndex
 
 import jax.numpy as jnp
+import numpy as np
 from jax import Array
 from jaxtyping import Float64
 from numpy.typing import ArrayLike
@@ -35,9 +38,9 @@ class Coupling:
     ``parent`` and ``child`` are node indices, oriented so the parent is the endpoint
     nearer the tree's root. ``factor`` is the
     [`GaussianCoupling`][cpomdp.GaussianCoupling] holding this edge's ``W`` (shape
-    ``(dim[child], dim[parent])``) and its noise covariance. ``tau`` is a
-    time-constant carried alongside the edge; it is metadata and does not affect the
-    factor.
+    ``(dim[child], dim[parent])``) and its noise covariance. A node's timescale is
+    its [`GaussianTransition`][cpomdp.GaussianTransition], so an edge carries none
+    (ADR-074).
 
     ``efe_relevant`` is a modeller's *declaration* that this edge carries information
     the instrumental epistemic depends on — a physics call, not a structural one (in
@@ -46,13 +49,26 @@ class Coupling:
     flagged edge drops the cross-temporal covariance it holds, breaking the integration
     of that information about a slow latent; every graph EFE entry point refuses such a
     partition (ADR-018). Default ``False``; it does not affect the factor or the filter.
+
+    Raises:
+        TypeError: if ``parent`` or ``child`` is not an int, ``factor`` is not a
+            ``GaussianCoupling``, or ``efe_relevant`` is not a bool.
     """
 
     parent: int
     child: int
     factor: GaussianCoupling
-    tau: float
     efe_relevant: bool = False
+
+    def __post_init__(self) -> None:
+        """Coerce the node indices to ``int`` and check every field's type."""
+        object.__setattr__(self, "parent", _as_int(self.parent, "parent"))
+        object.__setattr__(self, "child", _as_int(self.child, "child"))
+        if not isinstance(self.factor, GaussianCoupling):
+            raise TypeError(
+                f"factor must be a GaussianCoupling, got {type(self.factor).__name__}"
+            )
+        object.__setattr__(self, "efe_relevant", _as_bool(self.efe_relevant))
 
 
 class CouplingGraph:
@@ -73,7 +89,8 @@ class CouplingGraph:
         observations: maps a node index to the ``ObservationModel`` that reads it.
 
     Raises:
-        TypeError: if an observation is not an ``ObservationModel``.
+        TypeError: if ``root`` or a dimension is not an int, an edge is not a
+            ``Coupling``, or an observation is not an ``ObservationModel``.
         ValueError: if ``dims`` is empty or non-positive; if ``root``, an edge, or an
             observation references an out-of-range node; if an edge's factor ``W`` is
             not ``(dim[child], dim[parent])``; if a sensor's ``C`` is not as wide as the
@@ -92,8 +109,8 @@ class CouplingGraph:
         couplings: Sequence[Coupling],
         observations: Mapping[int, ObservationModel],
     ) -> None:
-        self._root = int(root)
-        self._dims = tuple(int(d) for d in dims)
+        self._root = _as_int(root, "root")
+        self._dims = tuple(_as_int(dim, f"dims[{i}]") for i, dim in enumerate(dims))
         self._couplings = tuple(couplings)
         self._observations = dict(observations)
         self._validate()
@@ -132,6 +149,10 @@ class CouplingGraph:
             raise ValueError(f"root {self.root} out of range for {n} nodes")
 
         for edge in self.couplings:
+            if not isinstance(edge, Coupling):
+                raise TypeError(
+                    f"couplings must hold Coupling edges, got {type(edge).__name__}"
+                )
             for idx in (edge.parent, edge.child):
                 if not 0 <= idx < n:
                     raise ValueError(f"coupling references unknown node {idx}")
@@ -225,8 +246,46 @@ class CouplingGraph:
         observation_matrix, observation_noise = self._linearized_sensor(node, state)
         return likelihood_message(observation_matrix, observation_noise, reading)
 
-    def infer(self, prior: Belief, readings: Mapping[int, ArrayLike]) -> Belief:
-        """Compute the marginal belief at the root from a prior and per-node readings.
+    def _check_prior(self, prior: Belief) -> None:
+        """Refuse a prior that is not a ``Belief`` over the root node's state."""
+        if not isinstance(prior, Belief):
+            raise TypeError(f"prior must be a Belief, got {type(prior).__name__}")
+        root_dim = self.dims[self.root]
+        if prior.mean.shape != (root_dim,):
+            raise ValueError(
+                f"prior must be over root node {self.root}'s {root_dim}-D state, "
+                f"got a mean of shape {prior.mean.shape}"
+            )
+
+    def _check_readings(self, readings: Mapping[int, ArrayLike]) -> None:
+        """Refuse a reading static inference cannot fold in, naming its node."""
+        if not isinstance(readings, Mapping):
+            raise TypeError(
+                "readings must map a node index to its reading, got "
+                f"{type(readings).__name__}"
+            )
+        for node, reading in readings.items():
+            if node not in self.observations:
+                raise ValueError(
+                    f"node {node} has no sensor, so it cannot take a reading. The "
+                    f"observed nodes are {sorted(self.observations)}."
+                )
+            if not self.observations[node].is_fixed:
+                raise ValueError(
+                    f"node {node} carries a state-dependent sensor, and static "
+                    "inference has no predicted mean to evaluate R(x) at. Run the "
+                    "graph through a CouplingGraphBackend."
+                )
+            width = self._sensor_at_zero[node][0].shape[0]
+            shape = np.shape(reading)
+            if shape != (width,):
+                raise ValueError(
+                    f"the reading on node {node} must have shape ({width},), "
+                    f"got {shape}"
+                )
+
+    def infer(self, readings: Mapping[int, ArrayLike], prior: Belief) -> Belief:
+        """Compute the marginal belief at the root from per-node readings and a prior.
 
         Each reading becomes a message about its node; those messages are passed up the
         tree through the couplings and combined at the root with the prior, giving the
@@ -234,25 +293,27 @@ class CouplingGraph:
         moment form — once to lift the prior in, once to read the result out — while
         every message in between stays in canonical form.
 
+        The reading comes first and the belief second, the order
+        [`InferenceBackend.infer_states`][cpomdp.InferenceBackend.infer_states] takes.
+
         Args:
-            prior: the belief on the root node, taken as its prior.
             readings: maps a node index to that node's observation. Each such node must
                 carry a fixed sensor, since static inference has no predicted mean to
                 evaluate a state-dependent ``R(x)`` at.
+            prior: the belief on the root node, taken as its prior.
 
         Returns:
             The marginal belief at the root.
 
         Raises:
-            ValueError: if a reading's node carries a state-dependent sensor.
+            TypeError: if ``readings`` is not a mapping or ``prior`` is not a
+                ``Belief``.
+            ValueError: if ``prior`` is not over the root's state, or a reading is on
+                a node with no sensor, on a node whose sensor is state-dependent, or
+                not as wide as its sensor.
         """
-        for node in readings:
-            if not self.observations[node].is_fixed:
-                raise ValueError(
-                    f"node {node} carries a state-dependent sensor, and static "
-                    "inference has no predicted mean to evaluate R(x) at. Run the "
-                    "graph through a CouplingGraphBackend."
-                )
+        self._check_readings(readings)
+        self._check_prior(prior)
 
         # Lift the moment-form prior into a canonical message on the root.
         prior_precision = jnp.linalg.inv(prior.cov)  # Λ₀ = Σ⁻¹
@@ -329,3 +390,19 @@ def _combine(
 ) -> CanonicalGaussian:
     """Add ``msg`` to ``acc[key]``, or start the slot with it if absent."""
     return acc[key] + msg if key in acc else msg
+
+
+def _as_bool(value: object) -> bool:
+    """``efe_relevant`` as a ``bool``. A NumPy bool is stored as one."""
+    if not isinstance(value, bool | np.bool_):
+        raise TypeError(f"efe_relevant must be a bool, got {type(value).__name__}")
+    return bool(value)
+
+
+def _as_int(value: object, name: str) -> int:
+    """``value`` as an ``int``. A bool and a non-integral number are refused."""
+    if isinstance(value, float | np.floating) and float(value).is_integer():
+        return int(value)
+    if isinstance(value, bool) or not isinstance(value, SupportsIndex):
+        raise TypeError(f"{name} must be an int, got {type(value).__name__}")
+    return operator.index(value)

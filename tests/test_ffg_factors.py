@@ -250,6 +250,27 @@ class TestGaussianTransition:
                 0.1,
             )
 
+    @pytest.mark.parametrize(
+        ("bad", "named"),
+        [
+            ({"tau": 0.0}, "tau"),
+            ({"tau": -1.0}, "tau"),
+            ({"tau": float("inf")}, "tau"),
+            ({"dt": 0.0}, "dt"),
+            ({"dt": -0.1}, "dt"),
+            ({"dt": float("nan")}, "dt"),
+            ({"stationary_var": 0.0}, "stationary_var"),
+        ],
+    )
+    def test_from_ou_refuses_a_parameter_that_is_not_positive(self, bad, named):
+        # tau = 0 raised ZeroDivisionError, and a negative tau or dt blamed
+        # dynamics_noise, an argument the caller never passed.
+        params = {"tau": 2.0, "stationary_var": 0.5, "dt": 0.1} | bad
+        with pytest.raises(ValueError, match=f"^{named} must be"):
+            GaussianTransition.from_ou(
+                params["tau"], stationary_var=params["stationary_var"], dt=params["dt"]
+            )
+
     def test_rejects_singular_process_noise(self):
         # Q is inverted in the joint, so a singular Q is rejected at construction.
         with pytest.raises(ValueError, match="positive-definite"):

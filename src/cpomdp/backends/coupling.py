@@ -284,6 +284,11 @@ class CouplingGraphBackend:
         ``(node, lo, hi)``: reading rows ``lo:hi`` of the stacked observation belong to
         ``node``. Ascending node order is the stacking order a caller must pass.
         """
+        if not self.graph.observations:
+            raise ValueError(
+                "no node of the graph carries a sensor, so the filter has no reading "
+                "to fold in. Give at least one node a FixedSensor or CallableSensor."
+            )
         layout, cursor = [], 0
         for node in sorted(self.graph.observations):
             width = self.graph._linearized_sensor(node)[0].shape[0]
