@@ -8,7 +8,11 @@ import jax.numpy as jnp
 from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
-from cpomdp._validation import validate_covariance, validate_finite
+from cpomdp._validation import (
+    NOISELESS_SENSOR,
+    validate_covariance,
+    validate_finite,
+)
 from cpomdp.dynamics import DynamicsNoise
 from cpomdp.observation import ObservationModel
 from cpomdp.structure import ModelStructure
@@ -287,7 +291,10 @@ class LinearGaussianModel:
 
         # observation_noise: covariance of the observation noise, (m, m), symmetric.
         validate_covariance(
-            self.observation_noise, "observation_noise", require_definite=True
+            self.observation_noise,
+            "observation_noise",
+            require_definite=True,
+            reason=NOISELESS_SENSOR,
         )
         if self.observation_noise.shape != (m, m):
             raise ValueError(

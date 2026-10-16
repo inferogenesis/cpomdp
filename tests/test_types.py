@@ -153,7 +153,11 @@ class TestLinearGaussianModels:
     def test_rejects_noiseless_observation_noise(self):
         # A noiseless R=0 sends the EFE information gain to +inf and silently
         # collapses action selection — reject it as not positive-definite.
-        with pytest.raises(ValueError, match="positive-definite"):
+        with pytest.raises(
+            ValueError,
+            match="positive-definite because a noiseless sensor sends the information "
+            "gain to infinity",
+        ):
             LinearGaussianModel(**_valid_kwargs(observation_noise=[[0.0]]))
 
     def test_rejects_control_wrong_rows(self):

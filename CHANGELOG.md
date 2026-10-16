@@ -427,10 +427,12 @@ certainty equivalence is optimal, and no use of the readings beats it.
 - Every refusal of a covariance that is not positive-definite gave one reason, "a
   noiseless or degenerate sensor sends the information gain to infinity". A
   semi-definite `dynamics_noise` on a `GaussianTransition` or `coupling_noise` on a
-  `GaussianCoupling` was blamed on a sensor the caller never passed. The refusal now
-  says the matrix is inverted. The graph path still needs a definite Q where the flat
-  model accepts a semi-definite one, because its transition factor inverts Q, and
-  `CouplingGraphBackend` says so.
+  `GaussianCoupling` was blamed on a sensor the caller never passed. Each refusal now
+  gives its own caller's reason. An FFG factor's says its information form inverts the
+  matrix. A sensor's R keeps the information-gain reason, and the harness says it draws
+  the reading through a Cholesky factor. The graph path still needs a definite Q where
+  the flat model accepts a semi-definite one, because its transition factor inverts Q,
+  and `CouplingGraphBackend` says so.
 - The graph EFE rollouts and searches skipped the checks `FfgEfeSelector` makes on its
   target. `policy_efe_ffg`, `policy_efe_ffg_trace`, the crossover statistic and both
   searches' `over_backend` scored on a carry partition that severs an EFE-load-bearing

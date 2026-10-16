@@ -880,7 +880,10 @@ class TestDefiniteNoise:
     def test_a_semi_definite_node_noise_names_the_inversion(self):
         with pytest.raises(
             ValueError,
-            match="dynamics_noise must be positive-definite because it is inverted",
+            match=(
+                "dynamics_noise must be positive-definite because the information "
+                "form inverts it"
+            ),
         ) as refusal:
             GaussianTransition(np.eye(2), dynamics_noise=np.diag([1e-4, 0.0]))
         assert "sensor" not in str(refusal.value)
@@ -888,7 +891,10 @@ class TestDefiniteNoise:
     def test_a_semi_definite_edge_noise_names_the_inversion(self):
         with pytest.raises(
             ValueError,
-            match="coupling_noise must be positive-definite because it is inverted",
+            match=(
+                "coupling_noise must be positive-definite because the information "
+                "form inverts it"
+            ),
         ) as refusal:
             GaussianCoupling([[1.0]], coupling_noise=[[0.0]])
         assert "sensor" not in str(refusal.value)

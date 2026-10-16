@@ -4697,7 +4697,9 @@ Every quantity has one home, and it is the home it has on a flat backend.
   inputs.
 - The graph path keeps its positive-definite Q. Its transition factor builds the joint
   over the current and next state in information form, and that joint contains Q's
-  inverse. The refusal now says the matrix is inverted, where it blamed a sensor.
+  inverse. Each refusal of a matrix that is not definite gives its caller's reason, and
+  the factor's says the information form inverts it. The one shared reason blamed a
+  sensor for every matrix.
 
 ### Consequences
 
