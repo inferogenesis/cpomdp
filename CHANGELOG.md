@@ -398,8 +398,8 @@ certainty equivalence is optimal, and no use of the readings beats it.
   model under a fixed sensor reported a constant epistemic value the kernel never
   computes. The probe now takes `Q` at each predicted mean as the kernel does. Where a
   sampled `Q` is not a covariance it raises, instead of dropping that sample from
-  `epistemic_range`. `SensorReport` gains `process_non_constant` and
-  `process_noise_spread`, and `flattens` needs both noises constant. Under `Q(x)` the
+  `epistemic_range`. The report gains `dynamics_noise_varies` and
+  `dynamics_noise_spread`, and `flattens` needs both noises constant. Under `Q(x)` the
   action reaches the recursion with `R` fixed.
 - `CouplingGraph` checks each sensor's width against the node it observes. A one-column
   `C` on a two-dimensional node used to construct, and `CouplingGraphBackend` broadcast
@@ -575,6 +575,15 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `CallableDynamicsNoise` name them that way. The flat sensors called the state `x`, and
   `linearize(state=...)` worked on the graph factors and failed on them.
   `CallableDynamicsNoise.noise_at` reads a list as an array, as the sensors do.
+- **Breaking:** `SensorReport` is `ProbeReport`, named for `probe_model`, which returns
+  it. It reports on `Q` as well as the sensor. Each field now carries the name of the
+  object it describes: `rank` and `full_row_rank` are `observation_matrix_rank` and
+  `observation_matrix_full_row_rank`. `definite`, `indefinite_at`, `non_constant`,
+  `noise_spread` and `loewner_comparable` are `observation_noise_definite`,
+  `observation_noise_indefinite_at`, `observation_noise_varies`,
+  `observation_noise_spread` and `observation_noise_loewner_ordered`.
+  `report.noise_spread` read as covering both noises and covered only `R`. The summary
+  says "R varies" and "Q varies" where it said "non-constant".
 - **Breaking:** the epistemic term's aim is named `info_node` and `info_block`, not
   `target`. `target` carried two unrelated types on exported API: a desired value
   (`Float64[Array, "n"]`) on `StateGoal` and `ObservationGoal`, and the joint-state

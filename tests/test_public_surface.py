@@ -9,6 +9,7 @@ import pytest
 import cpomdp
 from cpomdp.backends.base import InadmissiblePartitionError
 from cpomdp.control import LQRController
+from cpomdp.diagnostics import ProbeReport
 from cpomdp.dynamics import CallableDynamicsNoise, DynamicsNoiseModel
 
 
@@ -19,6 +20,7 @@ from cpomdp.dynamics import CallableDynamicsNoise, DynamicsNoiseModel
         ("InadmissiblePartitionError", InadmissiblePartitionError),
         ("DynamicsNoiseModel", DynamicsNoiseModel),
         ("CallableDynamicsNoise", CallableDynamicsNoise),
+        ("ProbeReport", ProbeReport),
     ],
 )
 def test_a_promoted_name_is_exported_at_the_top_level(name, obj):
@@ -26,7 +28,9 @@ def test_a_promoted_name_is_exported_at_the_top_level(name, obj):
     assert getattr(cpomdp, name) is obj
 
 
-@pytest.mark.parametrize("name", ["DynamicsNoise", "CallableProcessNoise"])
+@pytest.mark.parametrize(
+    "name", ["DynamicsNoise", "CallableProcessNoise", "SensorReport"]
+)
 def test_a_renamed_name_is_gone_from_the_top_level(name):
     assert name not in cpomdp.__all__
     assert not hasattr(cpomdp, name)
