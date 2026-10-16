@@ -1,10 +1,11 @@
-"""Process-noise models: state-dependent dynamics noise Q(x).
+"""Dynamics noise models: state-dependent dynamics noise Q(x).
 
-The internal-noise dual of ``observation_model``. ``DynamicsNoise`` is the seam the EFE
-predict step asks for the process-noise covariance at a state; ``CallableProcessNoise``
-is the state-dependent case. Per RFC-001 chapter 8 this is where the *binding* precision
-constraint lives for the chemotaxis fidelity (internal processing, not the sensor).
-The kernel evaluates it at ``μ⁺`` — the diffusion of the arrived-at state.
+The dynamics-side twin of ``observation``. ``DynamicsNoiseModel`` is the seam the EFE
+predict step asks for the dynamics-noise covariance at a state, as ``ObservationModel``
+is for the sensor. ``CallableDynamicsNoise`` is the state-dependent case. Per RFC-001
+chapter 8 this is where the *binding* precision constraint lives for the chemotaxis
+fidelity (internal processing, not the sensor). The kernel evaluates it at ``μ⁺``, the
+diffusion of the arrived-at state.
 """
 
 from collections.abc import Callable
@@ -12,72 +13,93 @@ from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 import jax
+import jax.numpy as jnp
 from jaxtyping import Array, Float64, PyTree
 from numpy.typing import ArrayLike
 
-__all__ = ["CallableProcessNoise", "DynamicsNoise"]
+__all__ = ["CallableDynamicsNoise", "DynamicsNoiseModel"]
 
 
 @runtime_checkable
-class DynamicsNoise(Protocol):
-    """How much the dynamics diffuse per step — the process noise covariance Q(x).
+class DynamicsNoiseModel(Protocol):
+    """How much the dynamics diffuse per step, as a covariance ``Q(x)`` at each state.
 
-    The EFE predict step asks for ``Q`` at a state. ``is_fixed`` flags the constant
-    case (a plain matrix); a state-dependent ``Q(x)`` re-introduces epistemic value
-    through the *internal* route (RFC-001 Section8).
+    The model's ``dynamics_noise_model`` slot takes one, as ``observation_model`` takes
+    an [`ObservationModel`][cpomdp.ObservationModel]. A constant ``Q`` needs no object.
+    It goes in ``dynamics_noise``, and a plain matrix does not satisfy this protocol. A
+    state-dependent ``Q(x)`` brings epistemic value back through the *internal* route
+    (RFC-001 chapter 8).
+
+    Attributes:
+        is_fixed: ``True`` when ``Q`` does not vary with the state. The filter then
+            keeps its fixed path and reads the model's ``dynamics_noise``, which equals
+            this object's ``Q``.
     """
 
     is_fixed: bool
 
-    def noise_at(self, x: ArrayLike) -> Float64[Array, "n n"]:
-        """The process-noise covariance ``Q(x)`` at state ``x``."""
+    def noise_at(self, state: ArrayLike, /) -> Float64[Array, "n n"]:
+        """The dynamics-noise covariance ``Q`` at ``state``."""
         ...
 
 
 @jax.tree_util.register_pytree_node_class
 @dataclass(frozen=True, init=False)
-class CallableProcessNoise:
-    """State-dependent process noise ``Q(x) = q_fn(x, q_params)``.
+class CallableDynamicsNoise:
+    """State-dependent dynamics noise, ``Q(state) = noise_fn(state, noise_params)``.
 
-    ``q_fn`` holds the functional *form* (static aux — a callable can't be a traced
-    leaf); ``q_params`` holds the *values* it is a function of (a pytree leaf, so EFE
-    is grad-able w.r.t. them — process-noise learning). The rule for what goes where:
-    a number lives in ``q_params`` if you'd ever want to *fit* it; it's baked into
-    ``q_fn`` only if it's structural and never learned. Pass a module-level ``q_fn``
-    (a closure/lambda hashes by identity and defeats ``jit`` caching).
+    The dynamics-side twin of [`CallableSensor`][cpomdp.CallableSensor], with the same
+    two arguments. ``noise_fn`` holds the functional *form*. It is static aux, since a
+    callable cannot be a traced leaf. ``noise_params`` holds the *values* it is a
+    function of, as a pytree leaf, so the EFE is differentiable with respect to them.
+    A number belongs in ``noise_params`` if it might ever be fitted, and is baked into
+    ``noise_fn`` only if it is structural. Pass a module-level ``noise_fn``. A closure
+    or lambda hashes by identity and defeats ``jit`` caching.
+
+    ``noise_fn`` must return a positive-semi-definite ``(n, n)`` covariance at every
+    reachable state. The model probes it once at construction, where ``n`` is known.
+
+    Attributes:
+        noise_fn: ``(state, noise_params) -> Q``, the covariance at one state.
+        noise_params: the pytree of values ``noise_fn`` reads.
     """
 
-    q_fn: Callable
-    q_params: PyTree
+    noise_fn: Callable[[Float64[Array, "n"], PyTree], Float64[Array, "n n"]]  # aux
+    noise_params: PyTree  # leaf
     is_fixed = False
 
-    def __init__(self, q_fn, q_params) -> None:
-        object.__setattr__(self, "q_fn", q_fn)
-        object.__setattr__(self, "q_params", q_params)
+    def __init__(
+        self,
+        noise_fn: Callable[[Float64[Array, "n"], PyTree], Float64[Array, "n n"]],
+        noise_params: PyTree,
+    ) -> None:
+        object.__setattr__(self, "noise_fn", noise_fn)
+        object.__setattr__(self, "noise_params", noise_params)
         self._validate()
 
-    def noise_at(self, x: ArrayLike) -> Float64[Array, "n n"]:
-        """Q(x) — the process-noise covariance at state x."""
-        return self.q_fn(x, self.q_params)
+    def noise_at(self, state: ArrayLike, /) -> Float64[Array, "n n"]:
+        """``Q`` at ``state``, which is read as a float array first."""
+        return self.noise_fn(jnp.asarray(state, dtype=float), self.noise_params)
 
     def tree_flatten(self) -> tuple[tuple[PyTree], Callable]:
-        """Children (traced): ``(q_params,)``; aux (static): ``q_fn``."""
-        return (self.q_params,), self.q_fn
+        """Traced children ``(noise_params,)``; aux ``noise_fn``."""
+        return (self.noise_params,), self.noise_fn
 
     @classmethod
     def tree_unflatten(
         cls, aux_data: Callable, children: tuple
-    ) -> "CallableProcessNoise":
+    ) -> "CallableDynamicsNoise":
         """Rebuild without re-validating — leaves may be tracers."""
-        (q_params,) = children
+        (noise_params,) = children
         obj = object.__new__(cls)
-        object.__setattr__(obj, "q_fn", aux_data)
-        object.__setattr__(obj, "q_params", q_params)
+        object.__setattr__(obj, "noise_fn", aux_data)
+        object.__setattr__(obj, "noise_params", noise_params)
         return obj
 
     def _validate(self) -> None:
-        # Shape/PSD of Q(x) can't be checked here — we don't know n. The MODEL probes
-        # dynamics_noise_model.noise_at(zeros(n)) at its own construction, where n
-        # is known.
-        if not callable(self.q_fn):
-            raise TypeError(f"q_fn must be callable, got {type(self.q_fn).__name__}")
+        # The shape of Q(x) cannot be checked here without n. The model probes
+        # dynamics_noise_model.noise_at(zeros(n)) at its own construction.
+        if not callable(self.noise_fn):
+            raise TypeError(
+                f"noise_fn must be callable, got {type(self.noise_fn).__name__}"
+            )

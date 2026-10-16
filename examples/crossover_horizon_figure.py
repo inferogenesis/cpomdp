@@ -213,18 +213,20 @@ def build_model(*, frozen_noise: float | None = None) -> LinearGaussianModel:
     )
     observed = observation_matrix()  # C
     _require_full_row_rank(observed)
+    # The live sensor carries C and R(x) itself. The frozen twin states both plainly.
+    live = frozen_noise is None
     pinned = R_DULL if frozen_noise is None else frozen_noise
-    fixed_noise = np.diag([R_DULL] * CONTEXT_DIMS + [pinned] * CONTEXT_DIMS)
-    live_sensor = CallableSensor(observed, beacon_noise, sensor_params())
-    observation_model = None if frozen_noise is not None else live_sensor
+    frozen = np.diag([R_DULL] * CONTEXT_DIMS + [pinned] * CONTEXT_DIMS)
     return LinearGaussianModel(
         dynamics_matrix=dynamics_matrix.tolist(),
-        observation_matrix=observed.tolist(),
+        observation_matrix=None if live else observed.tolist(),
         dynamics_noise=dynamics_noise.tolist(),
-        observation_noise=fixed_noise.tolist(),
+        observation_noise=None if live else frozen.tolist(),
         prior=start_belief(),
         control_matrix=control_matrix.tolist(),
-        observation_model=observation_model,
+        observation_model=(
+            CallableSensor(observed, beacon_noise, sensor_params()) if live else None
+        ),
     )
 
 
@@ -268,7 +270,7 @@ def preference() -> Preference:
     matter of construction rather than of interpretation.
     """
     weights = [GOAL_PRECISION] * CONTEXT_DIMS + [BEACON_PRECISION] * CONTEXT_DIMS
-    return Preference(goal=[0.0] * STATE_DIMS, precision=np.diag(weights).tolist())
+    return Preference(target=[0.0] * STATE_DIMS, precision=np.diag(weights).tolist())
 
 
 def true_goal() -> np.ndarray:
@@ -331,10 +333,10 @@ def margin(horizon: int, *, frozen_noise: float | None = None) -> CrossoverStati
     """
     model = build_model(frozen_noise=frozen_noise)
     goal, belief = preference(), start_belief()
-    _, detour = policy_efe(model, belief, jnp.asarray(detour_policy(horizon)), goal)
-    _, direct = policy_efe(model, belief, jnp.asarray(direct_policy(horizon)), goal)
-    delta_epsilon = detour["epistemic"] - direct["epistemic"]
-    delta_c = detour["pragmatic"] - direct["pragmatic"]
+    detour = policy_efe(model, belief, jnp.asarray(detour_policy(horizon)), goal)
+    direct = policy_efe(model, belief, jnp.asarray(direct_policy(horizon)), goal)
+    delta_epsilon = detour.epistemic - direct.epistemic
+    delta_c = detour.pragmatic - direct.pragmatic
     return CrossoverStatistic(horizon, delta_epsilon, delta_c, delta_c - delta_epsilon)
 
 
@@ -420,7 +422,7 @@ def simulate(horizon: int, *, seed: int, n_steps: int = 12) -> dict:
     goal, truth = preference(), true_goal()
 
     def score(policy):
-        return float(policy_efe(model, belief, jnp.asarray(policy), goal)[0])
+        return float(policy_efe(model, belief, jnp.asarray(policy), goal).g)
 
     detours = score(detour_policy(horizon)) < score(direct_policy(horizon))
 

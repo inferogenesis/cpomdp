@@ -47,16 +47,16 @@ def _corridor_model(*, fixed=False):
     )
     return LinearGaussianModel(
         dynamics_matrix=[[1.0]],
-        observation_matrix=[[1.0]],
+        observation_matrix=[[1.0]] if fixed else None,
         dynamics_noise=[[0.05]],
-        observation_noise=[[0.3]],  # fixed-sensor fallback / fixed-model noise
+        observation_noise=[[0.3]] if fixed else None,
         prior=Belief(mean=[0.0], cov=[[0.5]]),
         control_matrix=[[1.0]],
         observation_model=sensor,
     )
 
 
-_PREF = Preference(goal=[0.0], precision=[[0.4]])  # obs-space: prefer to observe 0
+_PREF = Preference(target=[0.0], precision=[[0.4]])  # obs-space: prefer to observe 0
 
 
 def _numpy_g(model, belief, action, goal, precision):
@@ -84,14 +84,17 @@ def _numpy_g(model, belief, action, goal, precision):
     return pragmatic - epistemic, pragmatic
 
 
-def _brute_force(model, belief, pref, lo, hi, n, key="g"):
+def _brute_force(model, belief, preference, lo, hi, n_points, key="g"):
     """argmin of the NumPy G (or pragmatic) over a fine independent 1-D grid."""
-    grid = np.linspace(lo, hi, n)
-    vals = [
-        _numpy_g(model, belief, np.array([a]), pref.goal, pref.precision) for a in grid
+    grid = np.linspace(lo, hi, n_points)
+    scores = [
+        _numpy_g(
+            model, belief, np.array([action]), preference.target, preference.precision
+        )
+        for action in grid
     ]
-    idx = 0 if key == "g" else 1
-    return grid[int(np.argmin([v[idx] for v in vals]))]
+    part = 0 if key == "g" else 1
+    return grid[int(np.argmin([score[part] for score in scores]))]
 
 
 class TestEFESelector:
@@ -148,12 +151,12 @@ class TestEFESelector:
 
         # The one-step pragmatic argmin is DEADBEAT (drive the residual to 0 in one
         # step → a ≈ -1.0). Infinite-horizon LQR is gradual — it spreads the
-        # correction over the horizon. They only coincide as effort_penalty → 0 (LQR
+        # correction over the horizon. They only coincide as effort → 0 (LQR
         # → deadbeat); a *balanced* penalty puts LQR in its characteristic gradual
         # regime, which is where H=1 EFE ≠ H=∞ LQR is visible. Do not lower the
         # penalty back toward 0 — that collapses the very distinction being asserted.
         lqr = float(
-            LQRController(model, goal_precision=[[1.0]], effort_penalty=[[1.0]]).action(
+            LQRController(model, precision=[[1.0]], effort=[[1.0]]).action(
                 belief.mean, jnp.array([0.0])
             )[0]
         )
@@ -168,3 +171,50 @@ class TestEFESelector:
         efe_action = float(sel.select(belief, _PREF)[0])
         prag = _brute_force(model, belief, _PREF, -3.0, 3.0, 4001, key="pragmatic")
         assert efe_action > prag + 0.1  # detours toward the beacon
+
+
+# Each select used to re-trace the scoring under an eager vmap, and at horizon > 1 the
+# rollout's scan recompiled every call, about 180 ms a step whatever the grid. The
+# scorer is now compiled once, on the first select, and a selector traces its kernel
+# once however many beliefs it sees.
+
+
+def _counting(monkeypatch, name):
+    """Patch ``cpomdp.selection.<name>`` to count the times it is traced."""
+    import cpomdp.selection as selection
+
+    traced = []
+    original = getattr(selection, name)
+
+    def counted(*args, **kwargs):
+        traced.append(name)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(selection, name, counted)
+    return traced
+
+
+_BELIEFS = [Belief(mean=[position], cov=[[0.5]]) for position in (0.0, 0.4, -0.7)]
+
+
+class TestCompiledOnce:
+    def test_a_rollout_horizon_traces_its_rollout_once(self, monkeypatch):
+        traced = _counting(monkeypatch, "policy_efe")
+        selector = EFESelector(_corridor_model(), action_bounds=(-3.0, 3.0), horizon=3)
+        for belief in _BELIEFS:
+            selector.select(belief, _PREF)
+        assert len(traced) == 1
+
+    def test_one_step_traces_its_kernel_once(self, monkeypatch):
+        traced = _counting(monkeypatch, "expected_free_energy")
+        selector = EFESelector(_corridor_model(), action_bounds=(-3.0, 3.0))
+        for belief in _BELIEFS:
+            selector.select(belief, _PREF)
+        assert len(traced) == 1
+
+    def test_the_choice_is_the_argmin_of_the_scores(self):
+        selector = EFESelector(_corridor_model(), action_bounds=(-3.0, 3.0), horizon=2)
+        for belief in _BELIEFS:
+            scores = np.asarray(selector._scores(belief, _PREF))
+            chosen = selector.candidates[int(np.argmin(scores))]
+            np.testing.assert_array_equal(selector.select(belief, _PREF), chosen)
