@@ -163,7 +163,7 @@ class TestRolloutConditioning:
         trace = policy_efe_trace(model, belief, _policy([0.4, -0.2]), pref)
         bad_post = np.array(trace.posterior_cov)  # writable (jax arrays are read-only)
         bad_post[-1] = np.array([[1e-15, 0.0], [0.0, 1e-15]])
-        degraded = trace._replace(posterior_cov=jnp.asarray(bad_post))
+        degraded = dataclasses.replace(trace, posterior_cov=jnp.asarray(bad_post))
         rc = rollout_conditioning(degraded)
         assert not np.all(rc.min_eig_posterior_cov > MIN_EIG_FLOOR)
 

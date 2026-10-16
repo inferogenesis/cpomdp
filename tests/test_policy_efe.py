@@ -195,14 +195,14 @@ class TestMatchesNumpyOracle:
             g_ref, _ = _numpy_policy_efe(
                 model, belief, action[None, :], pref.target, pref.precision
             )
-            g_one = float(expected_free_energy(model, belief, action, pref)[0])
+            g_one = float(expected_free_energy(model, belief, action, pref).g)
             np.testing.assert_allclose(g_ref, g_one, atol=1e-9, err_msg=name)
 
     def test_multistep_matches_oracle(self):
         for name, model, belief, pref in _cases():
             for values in ([0.4, -0.2], [0.4, -0.2, 0.1]):
                 policy = _policy(values)
-                g = policy_efe(model, belief, policy, pref)[0]
+                g = policy_efe(model, belief, policy, pref).g
                 g_ref, _ = _numpy_policy_efe(
                     model, belief, policy, pref.target, pref.precision
                 )
@@ -217,8 +217,8 @@ class TestTransforms:
     def test_jit_agrees_with_eager(self):
         model, belief, pref = _model(), _belief(), _obs_preference()
         policy = _policy([0.4, -0.2])
-        eager = policy_efe(model, belief, policy, pref)[0]
-        jitted = jax.jit(lambda p: policy_efe(model, belief, p, pref)[0])(policy)
+        eager = policy_efe(model, belief, policy, pref).g
+        jitted = jax.jit(lambda p: policy_efe(model, belief, p, pref).g)(policy)
         np.testing.assert_allclose(jitted, eager, atol=1e-12)
 
     def test_vmap_over_policies(self):
@@ -226,13 +226,13 @@ class TestTransforms:
         policies = jnp.stack(
             [_policy([0.4, -0.2]), _policy([-1.0, 0.5]), _policy([0.0, 0.0])]
         )
-        batched = jax.vmap(lambda p: policy_efe(model, belief, p, pref)[0])(policies)
-        per = jnp.array([policy_efe(model, belief, p, pref)[0] for p in policies])
+        batched = jax.vmap(lambda p: policy_efe(model, belief, p, pref).g)(policies)
+        per = jnp.array([policy_efe(model, belief, p, pref).g for p in policies])
         np.testing.assert_allclose(batched, per, atol=1e-12)
 
     def test_grad_over_policy_runs(self):
         model, belief, pref = _model(), _belief(), _obs_preference()
-        grad = jax.grad(lambda p: policy_efe(model, belief, p, pref)[0])(
+        grad = jax.grad(lambda p: policy_efe(model, belief, p, pref).g)(
             _policy([0.4, -0.2])
         )
         assert grad.shape == (2, 1)

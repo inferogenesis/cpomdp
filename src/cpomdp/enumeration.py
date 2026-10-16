@@ -336,7 +336,7 @@ class _FlatScorer:
     def score(
         self, belief: Belief, policy: Float64[Array, "H p"], preference: "Preference"
     ) -> Float64[Array, ""]:
-        return policy_efe(self.model, belief, policy, preference)[0]
+        return policy_efe(self.model, belief, policy, preference).g
 
 
 @dataclass(frozen=True)
@@ -362,7 +362,7 @@ class _FfgScorer:
     ) -> Float64[Array, ""]:
         return _policy_efe_ffg(
             self.backend, belief, policy, preference, self.info_block
-        )[0]
+        ).g
 
 
 class _Scored(NamedTuple):

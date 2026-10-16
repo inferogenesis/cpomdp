@@ -145,10 +145,10 @@ def test_the_efe_functions_trace():
     model, preference = _rx_model(), Preference([1.0])
 
     def one_step(action):
-        return expected_free_energy(model, model.prior, action, preference)[0]
+        return expected_free_energy(model, model.prior, action, preference).g
 
     def rollout(policy):
-        return policy_efe(model, model.prior, policy, preference)[0]
+        return policy_efe(model, model.prior, policy, preference).g
 
     actions = jnp.array([[-1.0], [0.0], [1.0]])
     policies = jnp.repeat(actions[:, None, :], 3, axis=1)

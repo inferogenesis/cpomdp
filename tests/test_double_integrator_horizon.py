@@ -45,7 +45,7 @@ class TestDoubleIntegratorHorizon:
         model = _double_integrator()
         actions = jnp.linspace(-2.0, 2.0, 21)[:, None]
         gs = jnp.array(
-            [expected_free_energy(model, _BELIEF, a, _GOAL)[0] for a in actions]
+            [expected_free_energy(model, _BELIEF, a, _GOAL).g for a in actions]
         )
         assert float(jnp.max(gs) - jnp.min(gs)) < 1e-9
 
@@ -68,7 +68,7 @@ class TestDoubleIntegratorHorizon:
 
         fine = np.linspace(-2.0, 2.0, 161)
         gs = [
-            float(policy_efe(model, _BELIEF, jnp.array([[a], [a]]), _GOAL)[0])
+            float(policy_efe(model, _BELIEF, jnp.array([[a], [a]]), _GOAL).g)
             for a in fine
         ]
         oracle = float(fine[int(np.argmin(gs))])
