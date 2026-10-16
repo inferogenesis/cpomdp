@@ -652,9 +652,7 @@ class TestCouplingGraphValidation:
     def test_survives_a_copy_and_a_pickle(self, round_trip):
         # A simulation forks with deepcopy and reaches a worker process by pickle.
         sensor = FixedSensor(np.eye(1), observation_noise=np.eye(1))
-        graph = CouplingGraph(
-            0, (1, 1), (Coupling(0, 1, self._w(1, 1), 1.0),), {1: sensor}
-        )
+        graph = CouplingGraph(0, (1, 1), (Coupling(0, 1, self._w(1, 1)),), {1: sensor})
         copied = round_trip(graph)
         assert sorted(copied.observations) == [1]
         with pytest.raises(TypeError):
