@@ -31,13 +31,24 @@ jobs:
           # never fetched. The repo is ~24 MB, so this costs seconds.
           fetch-depth: 0
       # A dispatched run carries no pull_request payload, so its number is looked up.
+      # The action skips a run whose copy of this file differs from the default
+      # branch's, and then there is nothing to post either.
       - name: find the pull request
         id: pr
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NUMBER: ${{ github.event.pull_request.number }}
-        run: echo "number=${NUMBER:-$(gh pr view "$GITHUB_REF_NAME" --json number -q .number)}" >> "$GITHUB_OUTPUT"
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          echo "number=${NUMBER:-$(gh pr view "$GITHUB_REF_NAME" --json number -q .number)}" >> "$GITHUB_OUTPUT"
+          if git diff --quiet "origin/$DEFAULT_BRANCH" HEAD -- .github/workflows/claude-review.yml; then
+            echo "reviewable=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::this run's review workflow differs from $DEFAULT_BRANCH's, so the action skips it"
+            echo "reviewable=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: anthropics/claude-code-action@v1
+        if: ${{ steps.pr.outputs.reviewable == 'true' }}
         # A failed review shows red. It gates nothing: `main` has no required
         # status checks, and this job is skipped outright on forks (see `if`
         # above), so a contributor without the secret never sees a failure.
@@ -106,7 +117,7 @@ jobs:
       # Red when the review wrote nothing, which is how a run that died on its
       # turn budget or a denial shows instead of passing green.
       - name: post the review
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.pr.outputs.reviewable == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NUMBER: ${{ steps.pr.outputs.number }}
