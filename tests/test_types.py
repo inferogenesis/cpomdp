@@ -86,17 +86,21 @@ class TestLinearGaussianModels:
         assert m.n_observations == 1
 
     def test_control_is_optional(self):
-        m = LinearGaussianModel(**_valid_kwargs())
-        assert m.control_matrix is None
-        assert m.B is None
-        assert m.n_controls == 0
+        model = LinearGaussianModel(**_valid_kwargs())
+        assert model.control_matrix is None
+        assert model.n_controls == 0
+
+    @pytest.mark.parametrize("letter", ["A", "B", "C", "Q", "R"])
+    def test_each_field_has_one_name(self, letter):
+        # In pymdp A is the likelihood and C the preferences, so a letter alias here
+        # handed a pymdp user the dynamics matrix with no error.
+        assert not hasattr(LinearGaussianModel(**_valid_kwargs()), letter)
 
     def test_with_control(self):
         m = LinearGaussianModel(
             **_valid_kwargs(control_matrix=[[0.0], [1.0]])
         )  # 2x1 (p=1)
         np.testing.assert_array_equal(m.control_matrix, [[0.0], [1.0]])
-        np.testing.assert_array_equal(m.B, [[0.0], [1.0]])
         assert m.n_controls == 1
 
     def test_matrices_after_dynamics_are_keyword_only(self):
@@ -114,13 +118,6 @@ class TestLinearGaussianModels:
                 k["observation_noise"],
                 k["prior"],
             )
-
-    def test_letter_aliases_map_to_role_names(self):
-        m = LinearGaussianModel(**_valid_kwargs())
-        np.testing.assert_array_equal(m.A, m.dynamics_matrix)
-        np.testing.assert_array_equal(m.C, m.observation_matrix)
-        np.testing.assert_array_equal(m.Q, m.dynamics_noise)
-        np.testing.assert_array_equal(m.R, m.observation_noise)
 
     def test_rejects_non_square_dynamics(self):
         with pytest.raises(ValueError, match="square"):

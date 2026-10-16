@@ -69,8 +69,12 @@ def test_two_builds_share_no_array():
 def test_two_builds_are_equal_by_value():
     spec = _spec()
     left, right = spec.build(), spec.build()
-    assert np.array_equal(np.asarray(left.dynamics_matrix), np.asarray(right.A))
-    assert np.array_equal(np.asarray(left.observation_noise), np.asarray(right.R))
+    assert np.array_equal(
+        np.asarray(left.dynamics_matrix), np.asarray(right.dynamics_matrix)
+    )
+    assert np.array_equal(
+        np.asarray(left.observation_noise), np.asarray(right.observation_noise)
+    )
 
 
 def test_a_control_free_spec_builds_a_control_free_model():
@@ -115,7 +119,7 @@ def test_a_zero_magnitude_on_a_named_axis_is_the_identity():
     spec = _spec()
     perturbed = spec.build(Perturbation("flat", "dynamics_matrix", 0.0))
     assert np.array_equal(
-        np.asarray(perturbed.dynamics_matrix), np.asarray(spec.build().A)
+        np.asarray(perturbed.dynamics_matrix), np.asarray(spec.build().dynamics_matrix)
     )
 
 
