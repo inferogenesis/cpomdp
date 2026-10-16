@@ -178,7 +178,7 @@ class TestProbeFlatModel:
         assert not report.epistemic_varies
         assert report.epistemic_range[0] == pytest.approx(report.epistemic_range[1])
 
-    def test_state_dependent_process_noise_reaches_the_predicted_covariance(self):
+    def test_state_dependent_dynamics_noise_reaches_the_predicted_covariance(self):
         # The EFE kernel adds Q at each predicted mean. Adding the plain field instead
         # reports an epistemic value the kernel never computes, and under a fixed
         # sensor it would read as constant.
@@ -202,7 +202,7 @@ class TestProbeFlatModel:
         assert report.dynamics_noise_varies
         assert not report.flattens
 
-    def test_a_process_noise_that_stops_being_a_covariance_is_refused(self):
+    def test_a_dynamics_noise_that_stops_being_a_covariance_is_refused(self):
         # Q(x) is checked at the origin only, when the model is built. A reachable mean
         # where it has gone indefinite would make S indefinite there and drop that
         # sample from the epistemic range with nothing said.

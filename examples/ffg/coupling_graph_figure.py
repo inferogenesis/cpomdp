@@ -128,7 +128,7 @@ def _stacked_observation() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
 def infer_flattened() -> Belief:
     """Root posterior via the normal backend on the hand-flattened joint model.
 
-    Identity dynamics with zero process noise make the predict a no-op, so the single
+    Identity dynamics with zero dynamics noise make the predict a no-op, so the single
     `KalmanBackend` update just fuses the stacked observations into the joint prior;
     marginalising the posterior to the root block recovers the belief over ``r``.
     """

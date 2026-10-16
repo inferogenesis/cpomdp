@@ -12,6 +12,7 @@ from cpomdp._validation import (
     state_dependent,
 )
 from cpomdp.backends.base import GraphBackend, InferenceBackend
+from cpomdp.backends.coupling import CouplingGraphBackend
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.control import LQRController
 from cpomdp.enumeration import OpenLoopSelector, RecedingHorizonSelector
@@ -61,7 +62,7 @@ def _require_held_target(
 
 
 def _preference_for_selector(
-    model: LinearGaussianModel, objective: _Objective, selector: ActionSelector
+    backend: InferenceBackend, objective: _Objective, selector: ActionSelector
 ) -> Preference:
     """The ``Preference`` a selector of the caller's own chooses toward, checked.
 
@@ -75,13 +76,14 @@ def _preference_for_selector(
             f"chooses toward. Got {given}. A StateGoal or ObservationGoal configures "
             "the selector the Agent builds, so it goes without selector=."
         )
+    model = backend.model
     if model.control_matrix is None:
         raise ValueError("selector= needs a model with a control matrix to act with.")
-    selector_model = _selector_model(selector)
-    if selector_model is not None and not _same_model(selector_model, model):
+    if _scores_another_plant(selector, backend):
         raise ValueError(
-            f"this {type(selector).__name__} was built for another model. The Agent "
-            "filters under its own model, so build the selector from the same one."
+            f"this {type(selector).__name__} was built for another model or graph. The "
+            "Agent filters under its own, so build the selector from the same model, "
+            "or over the same graph backend."
         )
     if isinstance(selector, _STATE_SPACE_SELECTORS):
         space, length = "a state", model.n_states
@@ -121,15 +123,74 @@ def _same_model(first: LinearGaussianModel, second: LinearGaussianModel) -> bool
     return True
 
 
-def _selector_model(selector: ActionSelector) -> LinearGaussianModel | None:
-    """The model a built-in selector scores under, or None for a custom one."""
-    if isinstance(selector, EFESelector):
-        return selector._model
-    if isinstance(selector, FFGEFESelector):
-        return selector._backend.model
-    if isinstance(selector, LQRSelector):
-        return selector.controller.model
-    return None
+_BUILT_IN_SELECTORS = (*_STATE_SPACE_SELECTORS, *_OBSERVATION_SPACE_SELECTORS)
+_GRAPH_SCORED_SELECTORS = (FFGEFESelector, RecedingHorizonSelector, OpenLoopSelector)
+
+
+def _known_equal(first: ArrayLike, second: ArrayLike) -> bool:
+    """Whether two arrays are known to be equal. A traced one cannot be read, so not."""
+    first_value, second_value = concrete(first), concrete(second)
+    if first_value is None or second_value is None:
+        return False
+    return bool(np.array_equal(first_value, second_value))
+
+
+def _clusters(backend: CouplingGraphBackend) -> set[frozenset[int]]:
+    """A graph backend's carry partition, with the order it was written in dropped."""
+    return {frozenset(cluster) for cluster in backend.partition}
+
+
+def _same_couplings(first: CouplingGraphBackend, second: CouplingGraphBackend) -> bool:
+    """Whether two graph backends join the same nodes with equal factors and carry.
+
+    Edges match by the nodes they join, in whatever order the graph lists them. The
+    carry partition is compared with the edges, since it cuts the covariance the
+    predict step passes between them.
+    """
+    if _clusters(first) != _clusters(second):
+        return False
+    # A tree gives each node one parent, so (parent, child) names an edge.
+    first_edges = {(e.parent, e.child): e for e in first.graph.couplings}
+    second_edges = {(e.parent, e.child): e for e in second.graph.couplings}
+    return first_edges.keys() == second_edges.keys() and all(
+        a.efe_relevant == b.efe_relevant
+        and _known_equal(a.coupling_matrix, b.coupling_matrix)
+        and _known_equal(a.coupling_noise, b.coupling_noise)
+        for a, b in ((first_edges[key], second_edges[key]) for key in first_edges)
+    )
+
+
+def _scores_another_plant(selector: ActionSelector, backend: InferenceBackend) -> bool:
+    """Whether a built-in selector scores a different plant from ``backend``'s.
+
+    A custom selector is not checked (ADR-080). A graph-scored selector compares the
+    backend it scores on: the same object passes, and a ``CouplingGraphBackend`` with an
+    equal interface model, equal couplings and the same carry partition passes too,
+    since those are part of the plant and the interface model leaves them out. A
+    coupling that cannot be read under a trace counts as different. Any other graph
+    backend passes on an equal model when that model is its plant, and only as the same
+    object when it is not.
+    """
+    if not isinstance(selector, _BUILT_IN_SELECTORS):
+        return False
+    graph = selector.backend if isinstance(selector, _GRAPH_SCORED_SELECTORS) else None
+    if graph is None:
+        # A flat score on a coupled graph leaves out the couplings the agent filters by.
+        if _is_graph_interface(backend.model):
+            return True
+        return not _same_model(selector.model, backend.model)
+    if graph is backend:
+        return False
+    if not (
+        isinstance(graph, CouplingGraphBackend)
+        and isinstance(backend, CouplingGraphBackend)
+    ):
+        if _is_graph_interface(graph.model) or _is_graph_interface(backend.model):
+            return True  # its couplings cannot be read, so only identity passes
+        return not _same_model(graph.model, backend.model)
+    return not (
+        _same_model(graph.model, backend.model) and _same_couplings(graph, backend)
+    )
 
 
 def _lqr_path(
@@ -383,7 +444,7 @@ class Agent:
         ``StateGoal`` steers in state space via LQR (it needs a fixed sensor). An
         ``ObservationGoal`` seeks a preferred observation via EFE, over the goal's
         horizon or, left unset, the shortest at which the target moves the scores. It
-        needs a control matrix, and a sensor noise ``R(x)`` or process noise ``Q(x)``
+        needs a control matrix, and a sensor noise ``R(x)`` or dynamics noise ``Q(x)``
         that depends on the state, on a flat model and a graph alike. To choose with a
         selector of your own, pass a [`Preference`][cpomdp.Preference] and
         ``selector=``. The selector then carries the search. Omit the objective for a
@@ -481,7 +542,7 @@ class Agent:
         self._last_action: Float64[Array, "p"] | None = None
 
         if selector is not None:
-            self._preference = _preference_for_selector(model, objective, selector)
+            self._preference = _preference_for_selector(backend, objective, selector)
             self._selector = selector
         elif objective is None:
             return  # a perceive-only tracker: nothing to act toward

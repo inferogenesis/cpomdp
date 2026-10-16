@@ -6,7 +6,7 @@ than a hard-coded linear-Gaussian one. Every other kernel test uses
 `filter_sequence` would go unnoticed. The double below is defined here, in numpy,
 outside the package, and the filter has to run it unchanged.
 
-State-dependent process noise is the case it is written in, because that is the one
+State-dependent dynamics noise is the case it is written in, because that is the one
 the seam is claimed to admit and no shipped class provides (issue #56). Nothing here
 makes `Q(x)` a supported surface: the double is a test fixture, not an export.
 """
@@ -20,7 +20,7 @@ from cpomdp._lab.reference.quadrature import QuadratureGrid, gaussian_on
 from cpomdp._lab.reference.transition import LinearGaussianKernel, TransitionKernel
 
 
-class QuadraticProcessNoiseKernel:
+class QuadraticDynamicsNoiseKernel:
     """A scalar test double: ``x' ~ N(a·x, q0 + curvature·x²)``.
 
     Implements the protocol and nothing else. Plain numpy, no pytree registration and
@@ -58,7 +58,7 @@ def central_moment(density, order):
 
 
 def test_the_double_satisfies_the_protocol():
-    kernel = QuadraticProcessNoiseKernel(0.9, 0.2, 0.5)
+    kernel = QuadraticDynamicsNoiseKernel(0.9, 0.2, 0.5)
     assert isinstance(kernel, TransitionKernel)
     assert not kernel.is_fixed
 
@@ -67,7 +67,7 @@ def test_at_zero_curvature_it_is_the_shipped_kernel():
     # Anchors the double against the one path with an oracle. Without this, a bug in
     # the fixture would read as a bug in the seam.
     grid = QuadratureGrid(lower=[-6.0], upper=[6.0], counts=[301])
-    double = QuadraticProcessNoiseKernel(0.9, 0.2, 0.0)
+    double = QuadraticDynamicsNoiseKernel(0.9, 0.2, 0.0)
     shipped = LinearGaussianKernel([[0.9]], dynamics_noise=[[0.2]])
     np.testing.assert_allclose(
         double.log_transition(grid.nodes, grid.nodes),
@@ -83,7 +83,7 @@ def test_reading_the_noise_at_the_origin_gives_a_transition_density():
     # Every row integrates to one over destinations, which is what makes it a
     # conditional density and what makes prediction mass-preserving.
     grid = QuadratureGrid(lower=[-20.0], upper=[20.0], counts=[8001])
-    kernel = QuadraticProcessNoiseKernel(0.9, 0.2, 0.5)
+    kernel = QuadraticDynamicsNoiseKernel(0.9, 0.2, 0.5)
     transition = np.exp(
         kernel.log_transition(grid.nodes, np.array([[-1.5], [0.0], [2.0]]))
     )
@@ -98,7 +98,7 @@ def test_reading_it_at_the_destination_does_not():
     # expression that is not a transition density, and nothing downstream would
     # report the difference: prediction would quietly create or destroy mass.
     grid = QuadratureGrid(lower=[-20.0], upper=[20.0], counts=[8001])
-    kernel = QuadraticProcessNoiseKernel(0.9, 0.2, 0.5, at_destination=True)
+    kernel = QuadraticDynamicsNoiseKernel(0.9, 0.2, 0.5, at_destination=True)
     transition = np.exp(kernel.log_transition(grid.nodes, np.array([[0.0]])))
     assert abs(float(grid.integrate(transition[:, 0])) - 1.0) > 0.1
 
@@ -111,7 +111,7 @@ def test_predict_accepts_a_kernel_it_has_never_seen():
     prior = gaussian_on(grid, 0.0, 1.0).normalise()
     varying = predict(
         prior,
-        QuadraticProcessNoiseKernel(1.0, 0.2, 0.6).log_transition(
+        QuadraticDynamicsNoiseKernel(1.0, 0.2, 0.6).log_transition(
             grid.nodes, grid.nodes
         ),
     )
@@ -133,7 +133,7 @@ def test_predict_accepts_a_kernel_it_has_never_seen():
     assert abs(float(fixed.log_mass)) < 1e-10
 
 
-def test_state_dependent_process_noise_predicts_out_of_the_gaussian_family():
+def test_state_dependent_dynamics_noise_predicts_out_of_the_gaussian_family():
     # States that diffuse at different rates predict forward into a mixture of
     # differently-scaled Gaussians. A scale mixture is symmetric here, so skewness
     # says nothing and the tails are the tell: excess kurtosis is strictly positive,
@@ -143,7 +143,7 @@ def test_state_dependent_process_noise_predicts_out_of_the_gaussian_family():
 
     varying = predict(
         prior,
-        QuadraticProcessNoiseKernel(1.0, 0.2, 0.6).log_transition(
+        QuadraticDynamicsNoiseKernel(1.0, 0.2, 0.6).log_transition(
             grid.nodes, grid.nodes
         ),
     ).normalise()
@@ -168,7 +168,7 @@ def test_the_recursion_accepts_it_too_and_the_noise_changes_the_answer():
     prior = gaussian_on(grid, 0.0, 1.0).normalise()
 
     varying = filter_sequence(
-        prior, QuadraticProcessNoiseKernel(0.9, 0.15, 0.5), likelihood, observations
+        prior, QuadraticDynamicsNoiseKernel(0.9, 0.15, 0.5), likelihood, observations
     )
     fixed = filter_sequence(
         prior,
@@ -186,7 +186,7 @@ def test_the_recursion_accepts_it_too_and_the_noise_changes_the_answer():
 def test_a_kernel_of_the_wrong_shape_is_still_refused():
     # Generality is not permissiveness. The filter takes any kernel and no wrong one.
     grid = QuadratureGrid(lower=[-6.0], upper=[6.0], counts=[201])
-    kernel = QuadraticProcessNoiseKernel(0.9, 0.2, 0.5)
+    kernel = QuadraticDynamicsNoiseKernel(0.9, 0.2, 0.5)
     with pytest.raises(ValueError, match="201x201"):
         predict(
             gaussian_on(grid, 0.0, 1.0),

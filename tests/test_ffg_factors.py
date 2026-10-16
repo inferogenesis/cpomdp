@@ -271,7 +271,7 @@ class TestGaussianTransition:
                 params["tau"], stationary_var=params["stationary_var"], dt=params["dt"]
             )
 
-    def test_rejects_singular_process_noise(self):
+    def test_rejects_singular_dynamics_noise(self):
         # Q is inverted in the joint, so a singular Q is rejected at construction.
         with pytest.raises(ValueError, match="positive-definite"):
             GaussianTransition([[1.0]], dynamics_noise=[[0.0]])

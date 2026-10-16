@@ -9,6 +9,12 @@ from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.control import LQRController
 from cpomdp.dynamics import CallableDynamicsNoise
 from cpomdp.efe import expected_free_energy
+from cpomdp.enumeration import (
+    EnumeratedEFESearch,
+    FiniteActionSet,
+    OpenLoopSelector,
+    RecedingHorizonSelector,
+)
 from cpomdp.ffg._chain import ChainBackend
 from cpomdp.observation import CallableSensor
 from cpomdp.selection import (
@@ -77,7 +83,7 @@ def _run_closed_loop(agent, true_state, steps, rng=None):
 
     Each step is the full perceive -> act -> advance cycle. The agent sees only
     `obs` (a noisy position reading), never `true_state` directly. If `rng` is
-    given, sensor and process noise are injected — otherwise the plant is clean.
+    given, sensor and dynamics noise are injected — otherwise the plant is clean.
 
     The plant matrices are read off the agent's own model, so this drives a
     p=1 single-force point mass and a p=2 multi-actuator plant identically.
@@ -768,6 +774,33 @@ def test_efe_agent_reaches_lower_uncertainty_than_lqr():
     assert efe_final < 0.5 * lqr_final  # the payoff: markedly more certain under R(x)
     assert max(efe_pos) > 1.0  # mechanism: it sought the beacon, off the goal
     assert abs(float(lqr_mean[0])) < 0.05  # the LQR baseline does reach its state goal
+
+
+def test_every_built_in_selector_names_the_model_it_scores_under():
+    model = _corridor_model(fixed=False)
+    actions = FiniteActionSet([[-1.0], [0.0], [1.0]], version="v1")
+    search = EnumeratedEFESearch(model, actions, horizon=1)
+    controller = LQRController(model, precision=jnp.eye(1), effort=jnp.eye(1))
+    for selector in (
+        EFESelector(model, action_bounds=(-2.0, 2.0)),
+        LQRSelector(controller),
+        search,
+        RecedingHorizonSelector(search),
+        OpenLoopSelector(search),
+    ):
+        assert selector.model is model
+
+
+def test_a_search_driver_built_for_another_model_is_refused():
+    # The drivers were never checked, so they planned under another model silently.
+    agent_model = _corridor_model(fixed=False)
+    other_model = _corridor_model(fixed=False, dynamics_noise=0.5)
+    actions = FiniteActionSet([[-1.0], [0.0], [1.0]], version="v1")
+    driver = RecedingHorizonSelector(
+        EnumeratedEFESearch(other_model, actions, horizon=1)
+    )
+    with pytest.raises(ValueError, match="another model"):
+        Agent(agent_model, _OBS_PREFERENCE, selector=driver)
 
 
 def test_a_selector_built_for_another_model_is_refused():

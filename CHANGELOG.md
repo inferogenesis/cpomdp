@@ -56,6 +56,9 @@ certainty equivalence is optimal, and no use of the readings beats it.
 - `LQRController` and `InadmissiblePartitionError` are exported at the top level, and
   each has an API page. `LQRSelector` cannot be built without the first, and the graph
   EFE selector raises the second (ADR-069).
+- `CouplingGraphBackend.partition` reads back the carry partition's clusters. An
+  agent's selector check compares it, since a driver planning on another partition
+  scores a different plant from the one the agent filters.
 - `CouplingGraphBackend.stack_observations` takes one step's readings keyed by node, the
   form `CouplingGraph.infer` takes, and returns the vector `infer_states` takes. It
   refuses a missing node, a node with no sensor and a reading of the wrong width. The
@@ -615,9 +618,14 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `LQRSelector`, and a target of the wrong length is refused. The old pairing of a goal
   with a selector reading the other space cannot be written:
   `Agent(model, StateGoal(target), selector=EFESelector(...))` pursued `C · x = target`
-  and settled away from the target whenever `C` is not the identity. A built-in
-  selector scoring a different model is refused. One built from an equal copy, such as
-  a model rebuilt from the same config, is taken. A custom selector is not checked
+  and settled away from the target whenever `C` is not the identity. Every built-in
+  selector, search and search driver names the model it scores under as `model`, and a
+  graph-scored one names its graph as `backend`. One scoring a different plant is
+  refused. One built from an equal copy, such as a model rebuilt from the same config,
+  is taken. A graph-scored one is compared on its interface model, its couplings and
+  its carry partition, and a coupling unreadable under a trace counts as different. A
+  graph backend whose couplings cannot be read passes only as the same object, and a
+  flat selector is refused on a coupled graph. A custom selector is not checked
   (ADR-080).
 - **Breaking:** an `ObservationGoal` goes to EFE wherever a noise depends on the state,
   on a flat model and a graph alike. The dispatch read the sensor and the backend's
@@ -748,8 +756,8 @@ certainty equivalence is optimal, and no use of the readings beats it.
   again, and now call it. `ModelStructure.validate` skipped its `Q` check beside any
   `dynamics_noise_model`, and now skips it only beside a state-dependent one.
 - `LinearGaussianModel`'s `dynamics_noise` is optional when a `dynamics_noise_model` is
-  given, on the rule `observation_noise` follows. Omitted, it is the process noise's `Q`
-  at `prior.mean` (ADR-065). With no process-noise object the field is still required.
+  given, on the rule `observation_noise` follows. Omitted, it is the dynamics noise's `Q`
+  at `prior.mean` (ADR-065). With no dynamics-noise object the field is still required.
 - `ModelSpec` takes `observation_noise` and `dynamics_noise` as `None` beside the
   matching noise object and passes the `None` to the model, which derives the value
   (ADR-066). A perturbation naming a noise the spec leaves out is refused, as one naming

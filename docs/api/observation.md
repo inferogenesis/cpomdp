@@ -1,6 +1,6 @@
 # Observation models
 
-How a hidden state produces a sensor reading. `FixedSensor` is a constant linear sensor; `CallableSensor` lets the observation noise `R(x)` vary with the state — the reason an agent has anything to gain from seeking information. Under a fixed sensor and fixed process noise the epistemic term is identical for every policy [@koudahl2021epistemics]; a state-dependent `R(x)` is the minimal departure that makes it move with the action again [@corva2026statedependent]. Both satisfy the `ObservationModel` protocol.
+How a hidden state produces a sensor reading. `FixedSensor` is a constant linear sensor; `CallableSensor` lets the observation noise `R(x)` vary with the state — the reason an agent has anything to gain from seeking information. Under a fixed sensor and fixed dynamics noise the epistemic term is identical for every policy [@koudahl2021epistemics]; a state-dependent `R(x)` is the minimal departure that makes it move with the action again [@corva2026statedependent]. Both satisfy the `ObservationModel` protocol.
 
 ::: cpomdp.ObservationModel
 

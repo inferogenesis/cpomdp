@@ -307,7 +307,7 @@ class TestValidateSparsity:
         with pytest.raises(ValueError, match="single factor"):
             s.validate(bad)
 
-    def test_off_block_process_noise_fails(self):
+    def test_off_block_dynamics_noise_fails(self):
         bad = _block_model(
             dynamics_noise=[
                 [0.1, 0.0, 0.05, 0.0],

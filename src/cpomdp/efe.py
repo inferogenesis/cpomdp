@@ -43,7 +43,7 @@ THE FRAGILE CHOICES  (grep: ``FRAGILE(lit)``)
 1. Preference domain = OBSERVATIONS, not states. Canonical pymdp/Friston puts
    preferences over outcomes, so this is the faithful choice — but it diverges
    from ADR-003's collapse argument, which is written in state space, and it does
-   NOT match the state-space ``goal`` the LQR path currently uses. Reconciling the
+   NOT match the state-space ``target`` the LQR path currently uses. Reconciling the
    two consumers of ``Preference`` (state-space LQR vs obs-space EFE) is an OPEN
    design point; for C = I (fully observed) they coincide.
 2. Pragmatic = FULL form (mean + ½tr(ΛS)), i.e. cross-entropy −E_Q[ln P(o)] up to a
@@ -112,7 +112,7 @@ if TYPE_CHECKING:
     # duck-typing, so it does not depend on a backend at runtime. Its one runtime import
     # from the backends package is the exception the graph rollouts raise, and
     # `backends.base` imports nothing that imports this module. selection imports this
-    # module, so `_goal_and_precision` reads `Preference` at call time.
+    # module, so `_target_and_precision` reads `Preference` at call time.
     from cpomdp.backends.base import GraphBackend
     from cpomdp.selection import Preference
 
@@ -292,7 +292,7 @@ def expected_free_energy(
             "has no effect on a control-free (pure-tracking) model."
         )
     control_matrix = model.control_matrix  # narrowed to Array by the guard above
-    goal, precision = _goal_and_precision(preference)
+    target, precision = _target_and_precision(preference)
     action = jnp.asarray(action, dtype=float)
     step = _efe_step(
         model,
@@ -300,7 +300,7 @@ def expected_free_energy(
         belief.cov,
         control_matrix,
         action,
-        goal,
+        target,
         precision,
     )
     return EFEResult(g=step.g, pragmatic=step.pragmatic, epistemic=step.epistemic)
@@ -348,9 +348,9 @@ def policy_efe(
             "effect on a control-free (pure-tracking) model."
         )
     control_matrix = model.control_matrix
-    goal, precision = _goal_and_precision(preference)
+    target, precision = _target_and_precision(preference)
     policy = jnp.asarray(policy, dtype=float)
-    body = _rollout_body(model, control_matrix, goal, precision)
+    body = _rollout_body(model, control_matrix, target, precision)
 
     # Lean projection: keep only the three scalars in the scan's ys, so EFESelector's
     # vmap over |A|^H candidate policies never stacks the H×n×n covariances.
@@ -414,9 +414,9 @@ def policy_efe_trace(
             "effect on a control-free (pure-tracking) model."
         )
     control_matrix = model.control_matrix
-    goal, precision = _goal_and_precision(preference)
+    target, precision = _target_and_precision(preference)
     policy = jnp.asarray(policy, dtype=float)
-    body = _rollout_body(model, control_matrix, goal, precision)
+    body = _rollout_body(model, control_matrix, target, precision)
 
     _, trace = lax.scan(body, (belief.mean, belief.cov), policy)
     return trace
@@ -425,7 +425,7 @@ def policy_efe_trace(
 def _rollout_body(
     model: LinearGaussianModel,
     control_matrix: Float64[Array, "n p"],
-    goal: Float64[Array, "m"],
+    target: Float64[Array, "m"],
     precision: Float64[Array, "m m"],
 ) -> _RolloutStep:
     """Build the shared ``lax.scan`` step for the H-step rollout.
@@ -440,7 +440,7 @@ def _rollout_body(
 
     def step(carry, action):
         mu, sigma = carry
-        r = _efe_step(model, mu, sigma, control_matrix, action, goal, precision)
+        r = _efe_step(model, mu, sigma, control_matrix, action, target, precision)
         # predict-only propagation: rollout fetches its OWN C (the one eval the
         # one-step wrapper never pays), reusing the (Σ⁺, S) r already returned.
         c = (
@@ -532,9 +532,9 @@ def _policy_efe_ffg(
     A search checks its target once at construction and then scores every policy in
     the set, so the per-policy call skips the host-side check.
     """
-    goal, precision = _goal_and_precision(preference)
+    target, precision = _target_and_precision(preference)
     policy = jnp.asarray(policy, dtype=float)
-    body = _ffg_rollout_body(backend, goal, precision, info_block)
+    body = _ffg_rollout_body(backend, target, precision, info_block)
 
     # Lean projection: keep only the three scalars in the scan's ys, so a vmap over
     # candidate policies never stacks the H×n×n covariances (RFC-001, the H-step
@@ -598,16 +598,16 @@ def policy_efe_ffg_trace(
             the graph.
         TypeError: If ``preference`` is not a [`Preference`][cpomdp.Preference].
     """
-    goal, precision = _goal_and_precision(preference)
+    target, precision = _target_and_precision(preference)
     policy = jnp.asarray(policy, dtype=float)
     info_block = _info_block_of(backend, info_node)
-    body = _ffg_rollout_body(backend, goal, precision, info_block)
+    body = _ffg_rollout_body(backend, target, precision, info_block)
 
     _, trace = lax.scan(body, belief, policy)
     return trace
 
 
-def _goal_and_precision(
+def _target_and_precision(
     preference: "Preference",
 ) -> tuple[Float64[Array, "m"], Float64[Array, "m m"]]:
     """The two fields a score reads off ``preference``, or a refusal naming the fix.
@@ -715,7 +715,7 @@ def _info_block_of(
 
 def _ffg_rollout_body(
     backend: "GraphBackend",
-    goal: Float64[Array, "m"],
+    target: Float64[Array, "m"],
     precision: Float64[Array, "m m"],
     info_block: Sequence[int],
 ) -> _FFGRolloutStep:
@@ -741,7 +741,7 @@ def _ffg_rollout_body(
             predicted.cov,
             observation_matrix,
             observation_noise,
-            goal,
+            target,
             precision,
             info_block,
         )
@@ -846,7 +846,7 @@ def _ffg_efe_step(
     sigma_plus: Float64[Array, "n n"],
     observation_matrix: Float64[Array, "m n"],
     observation_noise: Float64[Array, "m m"],
-    goal: Float64[Array, "m"],
+    target: Float64[Array, "m"],
     precision: Float64[Array, "m m"],
     info_block: Sequence[int],
 ) -> EFEResult:
@@ -874,8 +874,8 @@ def _ffg_efe_step(
         sigma_plus: Σ⁺, the predicted joint covariance (n x n) — couplings included.
         observation_matrix: C, the real observation matrix over the joint state (m x n).
         observation_noise: R, the observation noise covariance (m x m).
-        goal: o*, the preferred observation (m-D).
-        precision: Λ, how sharply the goal is preferred (m x m).
+        target: o*, the preferred observation (m-D).
+        precision: Λ, how sharply the target is preferred (m x m).
         info_block: the joint-state indices whose info gain is the epistemic value,
             resolved from ``info_node`` by the public functions.
 
@@ -887,7 +887,7 @@ def _ffg_efe_step(
         observation_matrix @ sigma_plus @ observation_matrix.T + observation_noise
     )  # S = C·Σ⁺·Cᵀ + R
 
-    residual = o_pred - goal
+    residual = o_pred - target
     pragmatic = 0.5 * residual @ precision @ residual + 0.5 * jnp.trace(precision @ s)
 
     epistemic = _state_info_gain(
@@ -903,7 +903,7 @@ def _efe_step(
     sigma: Float64[Array, "n n"],
     control_matrix: Float64[Array, "n p"],
     action: Float64[Array, "p"],
-    goal: Float64[Array, "m"],
+    target: Float64[Array, "m"],
     precision: Float64[Array, "m m"],
 ) -> _EFEStep:
     # --- predict: push the belief one step through the dynamics under `action` ---
@@ -953,7 +953,7 @@ def _efe_step(
     # FRAGILE(lit) #2: cross-entropy form = mean term + ½tr(ΛS). The ½tr(ΛS) piece is
     # the variance penalty that distinguishes this from the mean-only form; against the
     # KL-risk form it differs only by −½ln det S, which the epistemic term restores.
-    residual = o_pred - goal
+    residual = o_pred - target
     pragmatic_mean = 0.5 * residual @ precision @ residual
     pragmatic_var = 0.5 * jnp.trace(precision @ pred_obs_cov)
     pragmatic = pragmatic_mean + pragmatic_var

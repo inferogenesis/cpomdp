@@ -562,12 +562,12 @@ class TestFormProof:
         )
 
 
-# --- Phase 2d: internal process noise Q(μ⁺) breaks the collapse FROM THE INSIDE,
+# --- Phase 2d: internal dynamics noise Q(μ⁺) breaks the collapse FROM THE INSIDE,
 # with the observation noise R held FIXED (RFC-001 Section 8: the binding constraint
 # lives in internal processing, not the sensor). dynamics_noise REPLACES the fixed
 # dynamics_noise matrix when set (mirrors observation). Q is evaluated at μ⁺.
 def _q_well(x, params):
-    """Internal process noise Q(x), low near 0, growing with position². Module-level."""
+    """Internal dynamics noise Q(x), low near 0 and growing with position²."""
     return jnp.array([[params["base"] + params["slope"] * x[0] ** 2]])
 
 
@@ -590,7 +590,7 @@ _INTERNAL_BELIEF = Belief(mean=[0.0], cov=[[0.2]])
 _INTERNAL_PREF = Preference(target=[0.0], precision=[[1.0]])
 
 
-class TestInternalProcessNoise:
+class TestInternalDynamicsNoise:
     def test_epistemic_reenters_via_internal_Q_with_R_fixed(self):
         # The internal dual of 2a: R is constant, yet epistemic varies across actions
         # because Q(μ⁺) — and so Σ⁺ and S — depend on the action.

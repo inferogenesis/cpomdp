@@ -803,9 +803,9 @@ def _flattened_kalman_root(root, dims, edges, obs_specs, m0, p0, readings):
     The "normal backend" route the demo contrasts against the graph: assemble the full
     joint prior over every node (a root-outward forward pass), stack each reading's
     `(C, R) into one tall update places at that node's block, run a single Kalman
-    step (identity dynamics, zero process noise, so predict is a no-op), and marginalise
-    the posterior back down to the root block. Independent of the message-passing under
-    test *and* of the moment-form oracle's manual conditioning.
+    step (identity dynamics and zero dynamics noise, so predict is a no-op), and
+    marginalise the posterior back down to the root block. Independent of the
+    message-passing under test *and* of the moment-form oracle's manual conditioning.
     """
     offs = np.cumsum([0, *dims])
     dim = int(offs[-1])

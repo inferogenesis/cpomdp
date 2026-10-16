@@ -102,7 +102,7 @@ to a Kalman filter), the coupling-graph figure, and a chemotaxis-network figure.
 
 [`crossover_horizon_figure.py`](crossover_horizon_figure.py)
 
-Under a **fixed** linear-Gaussian sensor and fixed process noise the epistemic term of
+Under a **fixed** linear-Gaussian sensor and fixed dynamics noise the epistemic term of
 expected free energy is a constant across policies. It cannot change any decision. The
 agent reduces to LQR, the collapse [`efe_collapse_figure.py`](efe_collapse_figure.py)
 draws. A state-dependent `R(x)` breaks that: the action reaches the noise, so curiosity

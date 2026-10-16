@@ -7,6 +7,7 @@ refuses it and names the route that keeps the couplings.
 """
 
 import dataclasses
+from typing import cast
 
 import jax
 import jax.numpy as jnp
@@ -16,6 +17,7 @@ import pytest
 from _support import unit_prior
 from cpomdp import (
     Agent,
+    CallableSensor,
     Coupling,
     CouplingGraph,
     CouplingGraphBackend,
@@ -23,6 +25,7 @@ from cpomdp import (
     FixedSensor,
     GaussianTransition,
     KalmanBackend,
+    LinearGaussianModel,
     LQRController,
     Preference,
     StateGoal,
@@ -30,7 +33,12 @@ from cpomdp import (
 from cpomdp.control import kalman_schedule, lqr_schedule
 from cpomdp.diagnostics import probe_model
 from cpomdp.efe import expected_free_energy, policy_efe, policy_efe_trace
-from cpomdp.enumeration import ChunkedEFESearch, EnumeratedEFESearch, FiniteActionSet
+from cpomdp.enumeration import (
+    ChunkedEFESearch,
+    EnumeratedEFESearch,
+    FiniteActionSet,
+    RecedingHorizonSelector,
+)
 
 
 def _backend(*, coupled):
@@ -162,6 +170,189 @@ def test_the_chain_backend_refuses_a_coupled_graphs_model():
         ChainBackend(_backend(coupled=True).model)
 
 
+def _coupled_backend(coupling_noise, partition=None):
+    graph = CouplingGraph(
+        dims=(1, 1),
+        couplings=(Coupling(0, 1, [[0.8]], coupling_noise=[[coupling_noise]]),),
+        observation_models={
+            0: CallableSensor([[1.0]], _sharp_near_zero, ()),
+            1: FixedSensor([[1.0]], observation_noise=[[0.1]]),
+        },
+    )
+    transitions = (
+        GaussianTransition([[0.9]], dynamics_noise=[[0.1]]),
+        GaussianTransition([[0.9]], dynamics_noise=[[0.1]]),
+    )
+    return CouplingGraphBackend(
+        graph,
+        transitions,
+        prior=unit_prior(graph),
+        control_matrix=[[1.0], [0.0]],
+        partition=partition,
+    )
+
+
+def _sharp_near_zero(state, params):
+    return jnp.array([[0.05 + state[0] ** 2]])
+
+
+def _driver_over(backend):
+    return RecedingHorizonSelector(
+        EnumeratedEFESearch.over_backend(backend, _ACTIONS, horizon=1)
+    )
+
+
+def test_a_driver_over_a_graph_with_other_couplings_is_refused():
+    # The interface models match. The couplings, which the score reads, do not.
+    agent_graph, other_graph = _coupled_backend(0.05), _coupled_backend(0.5)
+    with pytest.raises(ValueError, match="another"):
+        Agent.from_backend(
+            agent_graph, Preference(jnp.zeros(2)), selector=_driver_over(other_graph)
+        )
+
+
+def test_a_driver_over_a_graph_with_another_carry_partition_is_refused():
+    # The partition cuts covariance in the predict step the score rolls through.
+    agent_graph = _coupled_backend(0.05)
+    other_graph = _coupled_backend(0.05, partition=[[0], [1]])
+    with pytest.raises(ValueError, match="another"):
+        Agent.from_backend(
+            agent_graph, Preference(jnp.zeros(2)), selector=_driver_over(other_graph)
+        )
+
+
+def test_a_carry_partition_written_in_another_order_is_the_same_plant():
+    agent_graph = _coupled_backend(0.05, partition=[[0], [1]])
+    selector = _driver_over(_coupled_backend(0.05, partition=[[1], [0]]))
+    agent = Agent.from_backend(agent_graph, Preference(jnp.zeros(2)), selector=selector)
+    assert agent.selector is selector
+
+
+def _hub_backend(edge_order):
+    edges = {
+        "fast": Coupling(0, 1, [[0.8]], coupling_noise=[[0.05]]),
+        "slow": Coupling(0, 2, [[0.4]], coupling_noise=[[0.02]]),
+    }
+    graph = CouplingGraph(
+        dims=(1, 1, 1),
+        couplings=tuple(edges[name] for name in edge_order),
+        observation_models={
+            0: CallableSensor([[1.0]], _sharp_near_zero, ()),
+            1: FixedSensor([[1.0]], observation_noise=[[0.1]]),
+            2: FixedSensor([[1.0]], observation_noise=[[0.1]]),
+        },
+    )
+    transitions = tuple(
+        GaussianTransition([[0.9]], dynamics_noise=[[0.1]]) for _ in range(3)
+    )
+    return CouplingGraphBackend(
+        graph,
+        transitions,
+        prior=unit_prior(graph),
+        control_matrix=[[1.0], [0.0], [0.0]],
+    )
+
+
+def test_a_graph_with_its_edges_listed_in_another_order_is_the_same_plant():
+    agent_graph = _hub_backend(("fast", "slow"))
+    selector = _driver_over(_hub_backend(("slow", "fast")))
+    agent = Agent.from_backend(agent_graph, Preference(jnp.zeros(3)), selector=selector)
+    assert agent.selector is selector
+
+
+def test_a_graph_backend_reads_back_its_carry_partition():
+    assert _coupled_backend(0.05).partition == ((0, 1),)
+    assert _coupled_backend(0.05, partition=[[1], [0]]).partition == ((1,), (0,))
+
+
+def test_a_driver_over_an_equal_copy_of_the_graph_is_taken():
+    agent_graph, same_graph = _coupled_backend(0.05), _coupled_backend(0.05)
+    selector = _driver_over(same_graph)
+    agent = Agent.from_backend(agent_graph, Preference(jnp.zeros(2)), selector=selector)
+    assert agent.selector is selector
+
+
+def test_a_custom_selector_is_not_checked_whatever_it_calls_model():
+    # A misspecification ablation plans under a nominal plant on purpose (ADR-080).
+    true_model = _backend(coupled=False).to_flat_model()
+    nominal = dataclasses.replace(true_model, dynamics_noise=np.eye(2) * 0.5)
+
+    class NominalPlanner:
+        model = nominal
+
+        def select(self, belief, preference):
+            return jnp.zeros(1)
+
+    Agent(true_model, Preference(jnp.zeros(2)), selector=NominalPlanner())
+
+
+def _coupled_backend_with_leaf_noise(leaf_noise):
+    graph = CouplingGraph(
+        dims=(1, 1),
+        couplings=(Coupling(0, 1, [[0.8]], coupling_noise=[[0.05]]),),
+        observation_models={
+            0: CallableSensor([[1.0]], _sharp_near_zero, ()),
+            1: FixedSensor([[1.0]], observation_noise=[[leaf_noise]]),
+        },
+    )
+    transitions = (
+        GaussianTransition([[0.9]], dynamics_noise=[[0.1]]),
+        GaussianTransition([[0.9]], dynamics_noise=[[0.1]]),
+    )
+    return CouplingGraphBackend(
+        graph, transitions, prior=unit_prior(graph), control_matrix=[[1.0], [0.0]]
+    )
+
+
+def test_a_driver_over_a_graph_with_another_leaf_sensor_is_refused():
+    # The interface model stacks every node's sensor, so a leaf's noise is compared.
+    agent_graph = _coupled_backend_with_leaf_noise(0.1)
+    other_graph = _coupled_backend_with_leaf_noise(0.5)
+    with pytest.raises(ValueError, match="another"):
+        Agent.from_backend(
+            agent_graph, Preference(jnp.zeros(2)), selector=_driver_over(other_graph)
+        )
+
+
+class _OpaqueGraph:
+    """A graph backend the Agent cannot see the couplings of."""
+
+    def __init__(self, inner):
+        self._inner = inner
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
+def test_an_opaque_graph_backend_is_matched_by_identity():
+    # Its couplings cannot be read, so only the same backend object passes.
+    first = cast("CouplingGraphBackend", _OpaqueGraph(_coupled_backend(0.05)))
+    second = cast("CouplingGraphBackend", _OpaqueGraph(_coupled_backend(0.05)))
+    selector = _driver_over(first)
+    assert (
+        Agent.from_backend(first, Preference(jnp.zeros(2)), selector=selector).selector
+        is selector
+    )
+    with pytest.raises(ValueError, match="same graph backend"):
+        Agent.from_backend(second, Preference(jnp.zeros(2)), selector=selector)
+
+
+def test_a_flat_selector_is_refused_on_a_coupled_graph_agent():
+    # It would score the agent's plant without the edge the agent filters with.
+    agent_graph = _coupled_backend(0.05)
+    flat = LinearGaussianModel(
+        dynamics_matrix=agent_graph.model.dynamics_matrix,
+        observation_matrix=agent_graph.model.observation_matrix,
+        dynamics_noise=agent_graph.model.dynamics_noise,
+        prior=agent_graph.model.prior,
+        control_matrix=agent_graph.model.control_matrix,
+        observation_model=agent_graph.model.observation_model,
+    )
+    selector = EFESelector(flat, action_bounds=(-1.0, 1.0))
+    with pytest.raises(ValueError, match="another"):
+        Agent.from_backend(agent_graph, Preference(jnp.zeros(2)), selector=selector)
+
+
 def test_the_research_wrappers_refuse_a_coupled_graphs_model():
     # Each rebuilds the model field by field, which would drop the mark.
     from cpomdp._lab.degraded import WrongFixedRBackend
@@ -172,6 +363,35 @@ def test_the_research_wrappers_refuse_a_coupled_graphs_model():
         WrongFixedRBackend(model, magnitude=0.1)
     with pytest.raises(TypeError, match="couplings"):
         World(model)
+
+
+def test_a_driver_over_a_graph_with_another_efe_flag_is_refused():
+    # efe_relevant changes what the score aims at, so it is part of what is compared.
+    def flagged(relevant):
+        graph = CouplingGraph(
+            dims=(1, 1),
+            couplings=(
+                Coupling(0, 1, [[0.8]], coupling_noise=[[0.05]], efe_relevant=relevant),
+            ),
+            observation_models={
+                0: CallableSensor([[1.0]], _sharp_near_zero, ()),
+                1: FixedSensor([[1.0]], observation_noise=[[0.1]]),
+            },
+        )
+        transitions = (
+            GaussianTransition([[0.9]], dynamics_noise=[[0.1]]),
+            GaussianTransition([[0.9]], dynamics_noise=[[0.1]]),
+        )
+        return CouplingGraphBackend(
+            graph, transitions, prior=unit_prior(graph), control_matrix=[[1.0], [0.0]]
+        )
+
+    with pytest.raises(ValueError, match="another"):
+        Agent.from_backend(
+            flagged(False),
+            Preference(jnp.zeros(2)),
+            selector=_driver_over(flagged(True)),
+        )
 
 
 def test_a_scored_agent_refuses_a_coupled_graph_backend():

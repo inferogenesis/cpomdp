@@ -308,11 +308,15 @@ class _PolicyScorer(Protocol):
     The enumerated search owns the enumeration, the certificate, and the argmin; *how* a
     policy is scored is injected here (ADR-034). ``n_controls`` lets the search validate
     the declared action set against the scorer's control dimension, and ``n_states``
-    sizes the memory floor a policy budget reports.
+    sizes the memory floor a policy budget reports. ``model`` is the model whose sizes,
+    sensor and control the score reads, a graph's interface model on that path.
     """
 
     n_controls: int
     n_states: int
+
+    @property
+    def model(self) -> LinearGaussianModel: ...
 
     def score(
         self, belief: Belief, policy: Float64[Array, "H p"], preference: "Preference"
@@ -349,6 +353,10 @@ class _FFGScorer:
 
     backend: "GraphBackend"
     info_block: tuple[int, ...]
+
+    @property
+    def model(self) -> LinearGaussianModel:
+        return self.backend.model
 
     @property
     def n_controls(self) -> int:
@@ -437,6 +445,8 @@ class ExhaustiveEFESearch(ABC):
     ) -> None:
         """Validate the specification and record the enumeration's size."""
         _validate_spec(scorer, action_set, horizon)
+        self._model = scorer.model
+        self._backend = getattr(scorer, "backend", None)
         self._action_set = action_set
         self._horizon = int(horizon)
         self._n_policies = action_set.size**self._horizon
@@ -472,7 +482,7 @@ class ExhaustiveEFESearch(ABC):
 
         Args:
             belief: the belief to plan from.
-            preference: the goal and precision the EFE scores against.
+            preference: the target and precision the EFE scores against.
         """
 
     def policies_at(self, indices: ArrayLike) -> Float64[Array, "... H p"]:
@@ -503,6 +513,20 @@ class ExhaustiveEFESearch(ABC):
     def n_policies(self) -> int:
         """The enumerated policy count ``|A|^H``, attributable work (RFC-001)."""
         return self._n_policies
+
+    @property
+    def model(self) -> LinearGaussianModel:
+        """The model every policy is scored under, on a graph the backend's own.
+
+        On a coupled graph it is the interface model, which leaves out the couplings
+        the score reads off ``backend``.
+        """
+        return self._model
+
+    @property
+    def backend(self) -> "GraphBackend | None":
+        """The graph backend the policies are scored on, or ``None`` on a flat model."""
+        return self._backend
 
     @property
     def horizon(self) -> int:
@@ -645,7 +669,7 @@ class EnumeratedEFESearch(ExhaustiveEFESearch):
 
         Args:
             belief: the belief to plan from.
-            preference: the goal and precision the EFE scores against.
+            preference: the target and precision the EFE scores against.
 
         Returns:
             The argmin, its score, its index, the certificate and the score vector.
@@ -828,7 +852,7 @@ class ChunkedEFESearch(ExhaustiveEFESearch):
 
         Args:
             belief: the belief to plan from.
-            preference: the goal and precision the EFE scores against.
+            preference: the target and precision the EFE scores against.
 
         Returns:
             The argmin, its score, its index, and the certificate the loop's own count
@@ -998,6 +1022,16 @@ class _SearchDriver(ABC):
     def horizon(self) -> int:
         """The planning horizon H."""
         return self._search.horizon
+
+    @property
+    def model(self) -> LinearGaussianModel:
+        """The model the search plans under."""
+        return self._search.model
+
+    @property
+    def backend(self) -> "GraphBackend | None":
+        """The graph backend the search scores on, or ``None`` on a flat model."""
+        return self._search.backend
 
     @property
     def warrant(self) -> Warrant:

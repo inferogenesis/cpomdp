@@ -1,9 +1,9 @@
-"""Figure: the epistemic collapse breaks from the *inside* — through process noise.
+"""Figure: the epistemic collapse breaks from the *inside* — through dynamics noise.
 
 The companion to examples/efe_collapse_figure.py. There, a state-dependent sensor
 R(x) made the epistemic term action-dependent. Here the observation noise R is held
 FIXED and the action-dependence comes entirely from state-dependent internal
-process noise Q(x) — the route RFC-001 chapter 8 cares about, where the binding
+dynamics noise Q(x) — the route RFC-001 chapter 8 cares about, where the binding
 precision constraint lives in internal processing rather than the sensor.
 
 - LEFT (fixed Q): epistemic is flat across actions — the ADR-003 collapse, same as
@@ -105,7 +105,7 @@ def main():
 
     fig, (ax_l, ax_r) = plt.subplots(1, 2, figsize=(12.5, 5.2), sharex=True)
     fig.suptitle(
-        "Internal process noise breaks the collapse from the inside (R held fixed)",
+        "Internal dynamics noise breaks the collapse from the inside (R held fixed)",
         fontsize=13.5,
         fontweight="bold",
     )
