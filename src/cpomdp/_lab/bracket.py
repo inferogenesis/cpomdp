@@ -107,7 +107,7 @@ def closed_loop_cost(
             model's prior.
 
     Returns:
-        The expected cost in the units of ``goal_precision`` and ``effort_penalty``.
+        The expected cost in the units of the schedule's ``precision`` and ``effort``.
 
     Raises:
         ValueError: If either noise depends on the state, if ``goal`` is not a vector
@@ -144,7 +144,7 @@ def closed_loop_cost(
     assert model.control_matrix is not None  # the schedule was built on it
     control_matrix = model.control_matrix  # B
     observation_matrix = model.observation_matrix  # C
-    goal_precision, effort_penalty = schedule.goal_precision, schedule.effort_penalty
+    precision, effort = schedule.precision, schedule.effort
 
     # Second moment of (state − goal, estimate − goal). The estimate starts at the
     # prior mean with no spread of its own; the state starts spread around it.
@@ -163,9 +163,7 @@ def closed_loop_cost(
         controller_gains, filter_gains, strict=True
     ):
         # uᵀ R u with u = −L · (estimate − goal)
-        cost += jnp.trace(
-            controller_gain.T @ effort_penalty @ controller_gain @ moment[n:, n:]
-        )
+        cost += jnp.trace(controller_gain.T @ effort @ controller_gain @ moment[n:, n:])
         pushed = dynamics_matrix - control_matrix @ controller_gain  # A − B L
         # state ← A·state − B L·estimate + w
         # estimate ← K C A·state + (A − B L − K C A)·estimate + K C·w + K·v
@@ -183,7 +181,7 @@ def closed_loop_cost(
             ]
         )
         moment = transition @ moment @ transition.T + entry @ disturbance @ entry.T
-        cost += jnp.trace(goal_precision @ moment[:n, :n])
+        cost += jnp.trace(precision @ moment[:n, :n])
     return float(cost)
 
 
@@ -249,9 +247,10 @@ def full_information_cost(
 
         J_lower = dᵀ P_H d + tr(P_H Σ₀) + Σ_{j=0}^{H−1} tr((Q + P_j) Q_w)
 
-    The first two terms are the terminal quadratic averaged over where the state
-    starts. The sum is what the dynamics noise adds at each step, priced at the cost
-    of everything that remains from there.
+    ``P_j`` is the cost still to pay with ``j`` steps remaining, which the schedule
+    stores as ``costs_to_go[H − j]``. The first two terms are the whole plan's cost
+    averaged over where the state starts. The sum is what the dynamics noise adds at
+    each step, priced at the cost of everything that remains from there.
 
     The goal has to be a state the dynamics hold at zero action, ``A · goal = goal``,
     since the plan regulates the offset from it and the offset only obeys the same
@@ -263,7 +262,7 @@ def full_information_cost(
         prior: Where the state starts, as a Gaussian. Defaults to the model's prior.
 
     Returns:
-        The expected cost in the units of ``goal_precision`` and ``effort_penalty``.
+        The expected cost in the units of the schedule's ``precision`` and ``effort``.
 
     Raises:
         ValueError: If the model's dynamics noise depends on the state, if ``goal`` is
@@ -276,10 +275,10 @@ def full_information_cost(
     prior = _prior_over(model, prior)
 
     offset = prior.mean - goal  # d
-    terminal = schedule.cost_to_go[schedule.horizon]  # P_H
-    from_start = offset @ terminal @ offset + jnp.trace(terminal @ prior.cov)
-    # W_j = Q + P_j for j = 0..H−1: what remains after the step whose noise it prices
-    remaining = schedule.goal_precision + schedule.cost_to_go[:-1]
+    whole_plan = schedule.costs_to_go[0]  # P_H
+    from_start = offset @ whole_plan @ offset + jnp.trace(whole_plan @ prior.cov)
+    # W_k = Q + P_{H−k−1}: what remains after step k, whose noise it prices
+    remaining = schedule.precision + schedule.costs_to_go[1:]
     from_noise = jnp.einsum("jab,ba->", remaining, model.dynamics_noise)
     return float(from_start + from_noise)
 
@@ -310,7 +309,7 @@ def optimal_cost(
             model's prior.
 
     Returns:
-        The expected cost in the units of ``goal_precision`` and ``effort_penalty``.
+        The expected cost in the units of the schedule's ``precision`` and ``effort``.
 
     Raises:
         ValueError: If either noise depends on the state, if ``goal`` is not a vector
@@ -323,14 +322,14 @@ def optimal_cost(
         model, horizon=schedule.horizon, prior=prior
     ).covariances
     assert model.control_matrix is not None  # the schedule was built on it
-    control_matrix, effort_penalty = model.control_matrix, schedule.effort_penalty
-    # W_k = Q + P_{H−k−1}: what remains after step k, read in step order
-    remaining = schedule.goal_precision + schedule.cost_to_go[-2::-1]
+    control_matrix, effort = model.control_matrix, schedule.effort
+    # W_k = Q + P_{H−k−1}: what remains after step k
+    remaining = schedule.precision + schedule.costs_to_go[1:]
     penalty = 0.0
     for gain, after, error in zip(
         schedule.gains, remaining, covariances[:-1], strict=True
     ):
-        action_cost = effort_penalty + control_matrix.T @ after @ control_matrix
+        action_cost = effort + control_matrix.T @ after @ control_matrix
         penalty += jnp.trace(gain.T @ action_cost @ gain @ error)
     return float(floor + penalty)
 

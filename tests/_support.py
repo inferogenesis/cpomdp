@@ -53,8 +53,8 @@ def point_mass_schedule(horizon):
     return lqr_schedule(
         point_mass_model(),
         horizon=horizon,
-        goal_precision=GOAL_PRECISION,
-        effort_penalty=EFFORT_PENALTY,
+        precision=GOAL_PRECISION,
+        effort=EFFORT_PENALTY,
     )
 
 

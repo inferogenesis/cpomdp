@@ -441,6 +441,13 @@ def _horizon(agent):
     return agent.selector.horizon
 
 
+class TestTheGoalsPreference:
+    def test_the_agent_scores_against_the_preference_the_goal_hands_over(self):
+        agent = Agent(_double_integrator(_sharp_near_one), _REACH_ONE)
+        # white-box: one place turns a goal into a Preference, the goal itself
+        assert agent._preference is _REACH_ONE.preference
+
+
 class TestDerivedHorizon:
     def test_a_push_two_steps_from_the_reading_is_searched_over_two(self):
         agent = Agent(_double_integrator(_sharp_near_one), _REACH_ONE)

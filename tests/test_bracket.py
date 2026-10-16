@@ -48,7 +48,7 @@ def _sampled_full_information_cost(schedule, goal, prior_mean, prior_cov, draws)
 
     Rolls the dynamics forward under the schedule with a numpy generator, charging
     the stage cost on every arrived-at state and every action. Nothing here reads
-    ``cost_to_go``, so agreement is evidence about the closed form.
+    ``costs_to_go``, so agreement is evidence about the closed form.
     """
     rng = np.random.default_rng(0)
     a, b = np.asarray(DYNAMICS), np.asarray(CONTROL)
@@ -70,13 +70,13 @@ class TestFullInformationCost:
         model = point_mass_model()
         schedule = lqr_schedule(
             model,
-            goal_precision=GOAL_PRECISION,
-            effort_penalty=EFFORT_PENALTY,
+            precision=GOAL_PRECISION,
+            effort=EFFORT_PENALTY,
             horizon=3,
         )
         assert schedule.model is model
-        np.testing.assert_array_equal(schedule.goal_precision, GOAL_PRECISION)
-        np.testing.assert_array_equal(schedule.effort_penalty, EFFORT_PENALTY)
+        np.testing.assert_array_equal(schedule.precision, GOAL_PRECISION)
+        np.testing.assert_array_equal(schedule.effort, EFFORT_PENALTY)
 
     def test_matches_a_sampled_rollout_with_the_state_known(self):
         schedule = point_mass_schedule(6)
@@ -87,7 +87,7 @@ class TestFullInformationCost:
         closed = full_information_cost(schedule, goal=GOAL, prior=prior)
         assert abs(closed - sampled) < 4 * standard_error
 
-    def test_without_noise_it_is_the_terminal_quadratic_alone(self):
+    def test_without_noise_it_is_the_whole_plan_quadratic_alone(self):
         # A known start and no process noise: the whole cost is x0ᵀ P_H x0, which the
         # brute-force plan already pins.
         model = LinearGaussianModel(
@@ -100,8 +100,8 @@ class TestFullInformationCost:
         )
         schedule = lqr_schedule(
             model,
-            goal_precision=GOAL_PRECISION,
-            effort_penalty=EFFORT_PENALTY,
+            precision=GOAL_PRECISION,
+            effort=EFFORT_PENALTY,
             horizon=5,
         )
         x0 = np.array([0.8, -0.3])
@@ -113,7 +113,7 @@ class TestFullInformationCost:
             schedule, goal=np.zeros(2), prior=known
         ) == pytest.approx(expected, rel=1e-12)
 
-    def test_the_prior_covariance_adds_its_trace_against_the_terminal_cost(self):
+    def test_the_prior_covariance_adds_its_trace_against_the_whole_plan_cost(self):
         schedule = point_mass_schedule(4)
         cov = np.array([[0.5, 0.1], [0.1, 0.2]])
         spread = full_information_cost(
@@ -123,7 +123,7 @@ class TestFullInformationCost:
             schedule, goal=GOAL, prior=Belief(mean=[0.0, 0.0], cov=np.zeros((2, 2)))
         )
         assert spread - known == pytest.approx(
-            np.trace(np.asarray(schedule.cost_to_go[4]) @ cov), rel=1e-12
+            np.trace(np.asarray(schedule.costs_to_go[0]) @ cov), rel=1e-12
         )
 
     def test_the_goal_is_a_shift_of_the_prior_mean(self):
@@ -313,8 +313,8 @@ def _point_mass_schedule(horizon, *, observation_noise=1e-2, prior_cov=None):
     )
     return lqr_schedule(
         model,
-        goal_precision=GOAL_PRECISION,
-        effort_penalty=EFFORT_PENALTY,
+        precision=GOAL_PRECISION,
+        effort=EFFORT_PENALTY,
         horizon=horizon,
     )
 
@@ -341,9 +341,7 @@ class TestOptimalCost:
         _, covs = numpy_kalman_covariances(np.eye(2), horizon)
         penalty = 0.0
         for k in range(horizon):
-            remaining = np.asarray(GOAL_PRECISION) + np.asarray(
-                plan.cost_to_go[horizon - k - 1]
-            )
+            remaining = np.asarray(GOAL_PRECISION) + np.asarray(plan.costs_to_go[k + 1])
             gain = np.asarray(plan.gains[k])
             penalty += np.trace(gain.T @ (rc + b.T @ remaining @ b) @ gain @ covs[k])
         expected = full_information_cost(plan, goal=GOAL) + penalty

@@ -50,10 +50,10 @@ def _gain_and_posterior_cov(
         covariance, shape ``(n, n)``, for this step.
     """
     cov_pred = dynamics_matrix @ prior_cov @ dynamics_matrix.T + dynamics_noise
-    prediction_error_cov = (
+    predicted_observation_cov = (
         observation_matrix @ cov_pred @ observation_matrix.T + observation_noise
-    )
-    gain = jnp.linalg.solve(prediction_error_cov, observation_matrix @ cov_pred).T
+    )  # S
+    gain = jnp.linalg.solve(predicted_observation_cov, observation_matrix @ cov_pred).T
     cov_post = (
         jnp.eye(dynamics_matrix.shape[0]) - gain @ observation_matrix
     ) @ cov_pred

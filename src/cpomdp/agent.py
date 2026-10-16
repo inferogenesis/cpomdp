@@ -326,15 +326,14 @@ class Agent:
                     "CouplingGraphBackend, not a flat backend."
                 )
             m = model.n_observations
-            obs_target = jnp.asarray(objective.target, dtype=float)
-            if obs_target.shape != (m,):
+            if objective.target.shape != (m,):
                 raise ValueError(
                     f"ObservationGoal target must be a 1-D vector of length {m} (the "
-                    f"observation dimension), got shape {obs_target.shape}"
+                    f"observation dimension), got shape {objective.target.shape}"
                 )
             self._controller = None
             self._goal = None
-            self._preference = Preference(obs_target, objective.precision)
+            self._preference = objective.preference
             if selector is not None:
                 self._selector = selector
             elif is_ffg:

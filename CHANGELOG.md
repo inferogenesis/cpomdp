@@ -127,7 +127,9 @@ certainty equivalence is optimal, and no use of the readings beats it.
   the seam and the reference filter reach it without reaching the evaluator.
 - `cpomdp.control` — the finite-horizon schedule. `lqr_schedule` runs the control
   Riccati recursion backward a declared number of steps from a zero terminal cost and
-  keeps every gain, where `LQRController` iterates to a fixed point and keeps one.
+  keeps every gain, where `LQRController` iterates to a fixed point and keeps one. It
+  takes the two costs as `precision` and `effort`, the names a `StateGoal` gives them,
+  and `LQRSchedule` keeps them under those names.
   `LQRSchedule.first_gain` is the gain a receding-horizon planner at horizon `H`
   applies at every step; the steady-state gain is its limit and differs from it at every
   finite `H`, by an amount that shrinks with `H` and reads as an error when the horizons
@@ -135,7 +137,10 @@ certainty equivalence is optimal, and no use of the readings beats it.
   down before a reading exists, since under fixed noise they never see one. The two are
   the dual pair and are called alike: `lqr_schedule(model, horizon=...)` and
   `kalman_schedule(model, horizon=...)`, each returning a schedule that reports its
-  `horizon`. The Control page of the API reference opens the schedule in plain terms.
+  `horizon`. They are read alike too. `gains[k]`, `costs_to_go[k]` and `covariances[k]`
+  all belong to step `k` of the plan, so `costs_to_go[0]` prices the whole plan and
+  `covariances[0]` is the prior's. The Control page of the API reference opens the
+  schedule in plain terms.
 - `cpomdp._lab.bracket` — the control bracket, private until its leg under
   state-dependent noise lands. `full_information_cost` is `J_lower`, the plan priced
   with the state observed. `CertaintyEquivalentController` acts on the estimate as if it
@@ -679,22 +684,27 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `NamedTuple`, so one family answered in two forms, and a misspelt key failed only when
   it ran. `g` comes first, so `result[0]` still reads `G`. Code that unpacked
   `G, parts = ...` reads `result.g` and `result.pragmatic` instead. A `vmap` over
-  candidate actions returns one `EfeResult` with every field batched.
+  candidate actions returns one `EfeResult` with every field batched, and the batch is
+  ranked by `batch.g`. NumPy's `argmin` on the record itself flattens all three fields
+  and returns an index past the candidates. The old pair fitted
+  `jax.value_and_grad(..., has_aux=True)` as it stood. A function differentiated that
+  way now returns `(result.g, result)`, and `jax.grad` takes one returning `result.g`.
 - **Breaking:** `PolicyEfeTrace`'s moment fields are `predicted_mean`, `predicted_cov`,
   `posterior_cov` and `predicted_observation_cov`, renamed from `mu_pred`, `sigma_pred`,
-  `sigma_post` and `s`. `RolloutConditioning`'s fields follow them, so `cond_s` is
-  `cond_predicted_observation_cov` and `min_eig_sigma_post` is `min_eig_posterior_cov`,
-  with `cond_predicted_cov` and `cond_posterior_cov` beside them. `trace.s` could not be
-  read without the docstring. S also went by four names across the docstrings, and is
-  the predicted observation covariance in all of them now. `g`, `pragmatic` and
-  `epistemic` keep their names, which `EfeResult` shares.
+  `sigma_post` and `s`. `RolloutConditioning`'s fields follow them. `cond_sigma_pred` is
+  `cond_predicted_cov`, `cond_s` is `cond_predicted_observation_cov`, `cond_sigma_post`
+  is `cond_posterior_cov` and `min_eig_sigma_post` is `min_eig_posterior_cov`.
+  `trace.s` could not be read without the docstring. S also went by four names across
+  the docstrings, and is the predicted observation covariance in every public one now.
+  `g`, `pragmatic` and `epistemic` keep their names, which `EfeResult` shares.
 - `ObservationGoal.preference` is the `Preference` the expected free energy functions
   score against, built once from the goal's target and precision. Passing the goal
   itself to `expected_free_energy`, `policy_efe` or a sibling raised `'ObservationGoal'
-  object has no attribute 'goal'`. It now raises a `TypeError` naming
-  `goal.preference`, and a `StateGoal` is refused as aiming at a state. The functions
-  still take one type, the `Preference` pytree that passes through `jit` and `vmap`, so
-  a goal's search settings never reach a score that would ignore them.
+  object has no attribute 'goal'`. It now raises a `TypeError` naming the goal's
+  `.preference`. A `StateGoal` is refused as aiming at a state, and a bare goal vector
+  with how to wrap it. The functions take one type, the `Preference` pytree that passes
+  through `jit` and `vmap`, and refuse anything else, so a goal's search settings never
+  reach a score that would ignore them.
 - **Breaking:** `ObservationGoal` takes `action_bounds` by keyword. `StateGoal` already
   takes everything after its first argument by keyword, so this was the odd one out in a
   public pair a reader meets together. The two positional slots also transposed without

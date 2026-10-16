@@ -35,7 +35,7 @@ __all__ = ["GaussianTransition"]
 class GaussianTransition:
     """Tier-1 dynamics factor ``N(x'; Ax + b, Q)``: how one node steps in time.
 
-    Holds the node's fixed transition and process noise. A
+    Holds the node's fixed transition and dynamics noise. A
     [`CouplingGraphBackend`][cpomdp.CouplingGraphBackend] takes one per node.
 
     - ``dynamics_matrix`` — A, shape ``(n, n)``.

@@ -5122,3 +5122,44 @@ second way to read the same number.
   without complaint.
 - The Agent still builds its `Preference` from the goal's fields. Reading
   `objective.preference` there would leave one place that converts a goal.
+
+## ADR-079 — the EFE functions check a Preference by type, and the LQR schedule takes the goal's names
+
+**Date:** 2026-10-16
+**Status:** Accepted
+**Supersedes:** ADR-078's attribute-read check of a preference, its "every docstring" for
+the name of S, and its silence on ADR-009. ADR-009's scope that `policy_efe` stays
+internal, which ADR-069's public-module rule had already overridden without naming it.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+ADR-078 read a preference's two fields by attribute and refused one that lacked them. A
+goal carries a target and a precision too, so once the field names agreed nothing told a
+goal from a preference by its attributes. The read also turned a fault inside a real
+`Preference` into a refusal of it. Separately, `lqr_schedule` took `goal_precision` and
+`effort_penalty` while `StateGoal` and `LQRController` say `precision` and `effort`, and
+it stored its costs in steps-remaining order while `kalman_schedule` stores plan order.
+
+### Decision
+
+The EFE functions refuse anything but a `Preference` by type. The refusal names no
+function, since the selectors and searches reach it through the same kernel, and the
+check runs once per trace under `jit` and `vmap`. `ObservationGoal.preference` returns
+the goal's target and precision as one, built once.
+
+`lqr_schedule` takes `precision` and `effort` and keeps them under those names.
+`costs_to_go[k]` is the cost that remains to pay before acting at step `k`, beside
+`gains[k]` and the filter's `covariances[k]`. Before, `cost_to_go[0]` was the zero
+terminal cost, and a caller zipping the two schedules got the wrong step with no error.
+
+S is the predicted observation covariance in every public docstring. Private research
+docstrings keep their own names. `EfeResult`'s docstring says to rank and differentiate
+by `g`, because NumPy's `argmin` over a batched record flattens all three fields and can
+return an index past the candidates without an error.
+
+### Consequences
+
+- An object with a target and a precision that is not a `Preference` is refused, where
+  it used to be scored.
+- Code that reversed `cost_to_go` by hand reads `costs_to_go` as it is.

@@ -16,6 +16,7 @@ from cpomdp.control import LQRController
 from cpomdp.efe import (
     _checked_info_block,
     _ffg_efe_step,
+    _goal_and_precision,
     expected_free_energy,
     policy_efe,
 )
@@ -335,6 +336,7 @@ class FfgEfeSelector:
         ``μ⁺`` per candidate — constant under a fixed sensor, action-dependent under
         ``R(x)`` (the dual effect). This is the RFC-001 hot path; keep it lean.
         """
+        goal, precision = _goal_and_precision(preference)
 
         def g_of(action: Float64[Array, "p"]) -> Float64[Array, ""]:
             predicted = self._backend.predicted_belief(belief, action)  # μ⁺, Σ⁺
@@ -346,8 +348,8 @@ class FfgEfeSelector:
                 predicted.cov,
                 self._observation_matrix,
                 observation_noise,
-                preference.goal,
-                preference.precision,
+                goal,
+                precision,
                 self._target,
             ).g
 
@@ -443,8 +445,8 @@ class ObservationGoal:
     epistemic term at a single latent *node* (info gain about that node's marginal, the
     factored-EFE regime on a branching backend, issue #26); ``None`` = whole-state info
     gain (the default, unchanged behaviour). The Agent dispatches an ObservationGoal to
-    an EFESelector. Not a pytree - construction-time only; the Agent extracts a
-    Preference.
+    an EFESelector. Not a pytree, and read at construction only. The Agent reads its
+    ``preference`` and hands that to the EFE functions.
     """
 
     target: Float64[Array, "m"]
