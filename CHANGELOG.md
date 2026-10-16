@@ -490,7 +490,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
   step and exists to show that the message algebra is the Kalman filter on a chain,
   which `tests/test_ffg_chain.py` holds it to. Filter with `KalmanBackend`. The
   flagship example's agreement check between the two moves into that test file, on the
-  same model and the same scripted inputs (ADR-071).
+  same model and the same scripted inputs (ADR-076).
 - **Breaking:** a *fixed* `observation_model` or `dynamics_noise_model` must now restate
   the model's `observation_noise` / `dynamics_noise` exactly, and a sensor's linearized
   observation matrix must equal `observation_matrix`. `LinearGaussianModel` previously

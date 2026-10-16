@@ -1,4 +1,4 @@
-"""The names ADR-069 promotes to the top level, and one ADR-071 makes private, pinned.
+"""The names ADR-069 promotes to the top level, and one ADR-076 makes private, pinned.
 
 The strict docs build resolves `cpomdp.LQRController` through the import whether or not
 `__all__` lists it, so the API page alone does not catch a name falling off the surface.
