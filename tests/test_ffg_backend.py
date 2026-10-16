@@ -638,6 +638,97 @@ class TestProtocolAndReadout:
         np.testing.assert_array_equal(np.asarray(prior.cov), before)
 
 
+class TestOneNamePerQuantity:
+    """Each size the backend knows has one home: the model it hands out, or its graph.
+
+    The backend carried `n_total`, `dims` and `n_observations` beside `model.n_states`,
+    `graph.dims` and `model.n_observations`, the same numbers under other names.
+    """
+
+    def test_sizes_are_read_off_the_model_and_the_graph(self):
+        backend = _build(
+            _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
+        )
+        assert backend.model.n_states == 5
+        assert backend.model.n_observations == 3
+        assert backend.graph.dims == _CHEMOTAXIS_DIMS
+
+    @pytest.mark.parametrize("duplicate", ["n_total", "dims", "n_observations"])
+    def test_the_backend_carries_no_second_name_for_a_size(self, duplicate):
+        backend = _build(
+            _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
+        )
+        assert not hasattr(backend, duplicate)
+
+
+def _noise_rising_off_zero(x, params):
+    """``R(x) = 0.5 + x₀²``, so ``R(0)`` and ``R`` anywhere else differ."""
+    return jnp.array([[0.5 + x[0] ** 2]])
+
+
+class TestObservationChannel:
+    """C is read off the model and R at a mean, so no accessor hands out ``R(0)``.
+
+    The backend's `observation_model` returned `(C, R)` with R linearized at zero,
+    beside `model.observation_model`, which is a sensor object.
+    """
+
+    def test_c_is_the_model_s_observation_matrix(self):
+        backend = _build(
+            _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
+        )
+        expected = np.zeros((3, 5))
+        expected[[0, 1, 2], [2, 3, 4]] = 1.0  # nodes 2, 3, 4 in ascending order
+        np.testing.assert_array_equal(
+            np.asarray(backend.model.observation_matrix), expected
+        )
+
+    def test_r_is_read_at_the_mean_it_is_asked_about(self):
+        backend = _build_rx(
+            (2,),
+            [],
+            {0: (np.array([[1.0, 0.0]]), _noise_rising_off_zero, ())},
+            [(np.eye(2), np.eye(2) * 0.1)],
+        )
+        np.testing.assert_allclose(
+            np.asarray(backend.observation_noise_at([3.0, 3.0])), [[9.5]]
+        )
+
+    def test_no_tuple_freezes_r_at_zero(self):
+        backend = _build_rx(
+            (2,),
+            [],
+            {0: (np.array([[1.0, 0.0]]), _noise_rising_off_zero, ())},
+            [(np.eye(2), np.eye(2) * 0.1)],
+        )
+        assert not hasattr(backend, "observation_model")
+
+
+class TestNodeLookup:
+    """A node outside the graph is refused by name, never read as an empty block.
+
+    `block(-1)` used to return an empty range, which aims an epistemic term at nothing,
+    and `block(5)` on five nodes raised a bare `IndexError`.
+    """
+
+    @pytest.mark.parametrize("node", [-1, 5])
+    def test_block_refuses_a_node_outside_the_graph(self, node):
+        backend = _build(
+            _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
+        )
+        with pytest.raises(ValueError, match=rf"node {node} .* 0\.\.4"):
+            backend.block(node)
+
+    @pytest.mark.parametrize("node", [-1, 5])
+    def test_marginal_refuses_a_node_outside_the_graph(self, node):
+        backend = _build(
+            _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
+        )
+        prior = Belief(mean=np.zeros(5), cov=np.eye(5))
+        with pytest.raises(ValueError, match=rf"node {node} .* 0\.\.4"):
+            backend.marginal(node, prior)
+
+
 class TestTransforms:
     def test_jit_grad_vmap_through_infer_states(self):
         backend = _build(

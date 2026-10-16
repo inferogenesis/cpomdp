@@ -94,7 +94,7 @@ class TestH1CollapsesToAnchors:
         # node-restricted 1.72 — the ledger records both so they are never confused.
         backend, belief, pref, _ = _setup()
         a_sense, a_myopic = _anchor_actions()
-        whole = tuple(range(backend.n_total))
+        whole = tuple(range(backend.model.n_states))
         stat = crossover_statistic(
             backend,
             belief,
@@ -174,7 +174,7 @@ class TestReachWalkDeclaredMembers:
         a_sense, a_myopic = _anchor_actions()
         from cpomdp.efe import _ffg_efe_step
 
-        observation_matrix, _ = backend.observation_model
+        observation_matrix = backend.model.observation_matrix
         eps, gees = [], []
         for action in np.asarray(CROSSOVER_ACTION_SET.actions):
             predicted = backend.predicted_belief(belief, jnp.asarray(action))

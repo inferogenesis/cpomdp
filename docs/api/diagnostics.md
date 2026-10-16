@@ -6,6 +6,4 @@ Whether a state-dependent `R(x)` earns its keep is a question about the states a
 
 ::: cpomdp.ProbeReport
 
-A flat `LinearGaussianModel` and a graph backend reach their predicted means by different routes, so `probe_model` takes either. `ProbeBackend` is the three members it needs from the second.
-
-::: cpomdp.diagnostics.ProbeBackend
+A flat `LinearGaussianModel` and a graph backend reach their predicted means by different routes, so `probe_model` takes either. Pass a [`CouplingGraphBackend`][cpomdp.CouplingGraphBackend] as the second.

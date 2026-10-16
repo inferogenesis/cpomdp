@@ -46,7 +46,7 @@ def _joint_mean(position: float) -> jnp.ndarray:
 def test_node_shapes_and_wiring_agree(pair):
     """dims, root, and which node carries the observation."""
     maze, registered = pair
-    assert maze.dims == registered.dims
+    assert maze.graph.dims == registered.graph.dims
     assert maze.graph.root == registered.graph.root
     assert sorted(maze.graph.observation_models) == sorted(
         registered.graph.observation_models
@@ -100,7 +100,7 @@ def test_the_whole_rx_surface_agrees(pair):
     """
     maze, registered = pair
     np.testing.assert_allclose(
-        maze.observation_model[0], registered.observation_model[0]
+        maze.model.observation_matrix, registered.model.observation_matrix
     )
     for position in PROBE_POSITIONS:
         np.testing.assert_allclose(

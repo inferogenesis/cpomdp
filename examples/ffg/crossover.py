@@ -492,7 +492,7 @@ def _numpy_score(policy) -> float:
     of the scoring kernel, not of shared plumbing.
     """
     backend, belief, preference, info_block = _setup()
-    observation_matrix = np.asarray(backend.observation_model[0])  # C
+    observation_matrix = np.asarray(backend.model.observation_matrix)  # C
     precision = np.asarray(preference.precision)  # Lambda
     goal = np.asarray(preference.goal)
     idx = np.array(info_block)

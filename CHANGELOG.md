@@ -405,6 +405,10 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `C` on a two-dimensional node used to construct, and `CouplingGraphBackend` broadcast
   it across the node's block, so the sensor read the sum of the node's components and
   the filter returned a plausible posterior from the wrong model.
+- `CouplingGraphBackend.block` and `marginal` refuse a node outside the graph and name
+  the valid range. `block(-1)` returned an empty range, so an epistemic term aimed at it
+  scored zero. `marginal(-1, belief)` failed inside a reduction, and `block(5)` on five
+  nodes raised a bare `IndexError`.
 - Malformed graph inputs raise an error that names the argument. A reading on a node
   with no sensor raised a bare `KeyError: 1` from `CouplingGraph.infer`, now
   `infer_root`, and a prior over the wrong dimension raised
@@ -589,9 +593,8 @@ certainty equivalence is optimal, and no use of the readings beats it.
   scheme is a question the caller has to answer each time. `GaussianTransition.dynamics`
   and the `CouplingGraphBackend(control=...)` argument move with it, as do the demo
   constants (`SENSOR` is `OBSERVATION_MATRIX`, `PROCESS_NOISE` is `DYNAMICS_NOISE`).
-  `LinearGaussianModel.observation_model` and `InferenceBackend.observation_model()` now
-  share a name on two classes: the field holds the declaration, the method returns the
-  `(C, R)` it resolves to. No numerical behaviour moved.
+  `LinearGaussianModel.observation_model` holds the declaration, and no backend carries a
+  member of the same name. No numerical behaviour moved.
 - **Breaking:** `LinearGaussianModel` drops its `.A`, `.B`, `.C`, `.Q` and `.R`
   properties. Each field has its role name only. In pymdp `A` is the likelihood and `C`
   the preferences, so `model.A` handed a pymdp user the dynamics matrix with no error,
@@ -699,6 +702,25 @@ certainty equivalence is optimal, and no use of the readings beats it.
   an `Agent` built on the backend planned and filtered from a belief the caller never
   chose, and `to_flat_model()` carried the same placeholder. The flagship example
   overwrote `agent.belief` to work around it. Pass the starting belief at construction.
+- **Breaking:** `CouplingGraphBackend` has one name for each size it knows. `n_total` is
+  `backend.model.n_states`, `dims` is `backend.graph.dims` and `n_observations` is
+  `backend.model.n_observations`. Each was the same number under a second name, and
+  `n_total` was the only place the joint width was not called `n_states`. The `Agent`
+  leaves an `info_node` range check to `backend.block`, which names the valid nodes.
+- **Breaking:** `CouplingGraphBackend.observation_model` is removed. It returned `(C, R)`
+  with R linearized at zero, so under a state-dependent sensor it handed out `R(0)` as the
+  noise the EFE reads. On the same object `backend.model.observation_model` was a sensor.
+  Read C as `backend.model.observation_matrix`, as on every backend, and R at a mean as
+  `backend.observation_noise_at(mean)`. Under a state-dependent sensor
+  `backend.model.observation_noise` is now R at the prior mean, the rule every flat model
+  follows (ADR-064). It was R at zero.
+- **Breaking:** one protocol describes a graph backend, `GraphBackend` in
+  `cpomdp.backends.base`. It was `EfeBackend`, a name that suggested `KalmanBackend`
+  cannot score EFE, and `cpomdp.diagnostics.ProbeBackend` restated part of it for
+  `probe_model`. `ProbeBackend` is removed, and `probe_model` takes a
+  `CouplingGraphBackend` as before. `GraphBackend` declares no `dims`, `n_total` or
+  `observation_model`, which the entries above retire. Like `EfeBackend` before it, it
+  carries no promise (ADR-069).
 - **Breaking:** every `LinearGaussianModel` argument after `dynamics` is keyword-only.
   The four matrices are two maps and two covariances of the same rank, and only the
   covariances are content-checked, so a transposed pair constructed in silence whenever
@@ -713,8 +735,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `_JointObservation` and `epistemic_value`. C is the *observation matrix* in the same
   literature that gives R its name, so the two halves of the measurement equation now
   read from one vocabulary. C is not `observation_model`: that name means the whole
-  `(C, R)` channel, both on `InferenceBackend.observation_model()` and on the model field
-  the entry above renames. The 2026-06-13 sketch wanted plain `observation` for C, which the state-
+  channel, the model field the entry above renames. The 2026-06-13 sketch wanted plain `observation` for C, which the state-
   dependent sensor field later claimed. The `.C` alias is unchanged, and no numerical
   behaviour moved.
 - **Breaking:** `sensor_noise` is now `observation_noise`, on `LinearGaussianModel`,

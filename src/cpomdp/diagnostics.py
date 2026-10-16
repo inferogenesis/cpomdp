@@ -45,11 +45,9 @@ reachable state". A negative is evidence, not proof.
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, cast
 
-import jax
 import numpy as np
-from jaxtyping import Float64
 from numpy.typing import ArrayLike
 
 from cpomdp._validation import validate_covariance
@@ -58,37 +56,12 @@ if TYPE_CHECKING:
     # Annotation-only: every diagnostic here reads its argument's fields by duck typing,
     # so diagnostics depends on none of these at runtime (they already depend on nothing
     # here). Keeps the dependency one-way.
+    from cpomdp.backends.base import GraphBackend
     from cpomdp.efe import PolicyEfeTrace
     from cpomdp.types import Belief, LinearGaussianModel
 
 
-class ProbeBackend(Protocol):
-    """The three members [`probe_model`][cpomdp.probe_model] reads off a graph backend.
-
-    Structural rather than a name, because three members is what the function requires.
-    Any backend growing them works, and the diagnostic keeps its one-way dependency on
-    the backends package. [`CouplingGraphBackend`][cpomdp.CouplingGraphBackend]
-    satisfies it.
-    """
-
-    @property
-    def observation_model(self) -> tuple[jax.Array, jax.Array]:
-        """``(C, R)`` over the joint state."""
-        ...
-
-    def predicted_belief(
-        self, prior: "Belief", action: ArrayLike | None = None
-    ) -> "Belief":
-        """The belief one prediction step ahead under ``action``."""
-        ...
-
-    def observation_noise_at(self, mean: ArrayLike) -> Float64[jax.Array, "m m"]:
-        """The stacked ``R`` linearized at a predicted mean."""
-        ...
-
-
 __all__ = [
-    "ProbeBackend",
     "ProbeReport",
     "RolloutConditioning",
     "epistemic_value",
@@ -309,7 +282,7 @@ def _spread(matrices: list[np.ndarray]) -> float:
 
 
 def probe_model(
-    model: "LinearGaussianModel | ProbeBackend",
+    model: "LinearGaussianModel | GraphBackend",
     belief: "Belief",
     actions: Sequence[ArrayLike],
     *,
@@ -325,9 +298,8 @@ def probe_model(
 
     Args:
         model: a [`LinearGaussianModel`][cpomdp.LinearGaussianModel], or a backend
-            exposing ``predicted_belief`` / ``observation_noise_at`` /
-            ``observation_model`` ([`CouplingGraphBackend`][cpomdp.CouplingGraphBackend]
-            does).
+            exposing ``model`` / ``predicted_belief`` / ``observation_noise_at``
+            ([`CouplingGraphBackend`][cpomdp.CouplingGraphBackend] does).
         belief: the belief to predict from — the shared prior every action starts at.
         actions: the candidate actions to sample.
         tol: below this, two noise covariances or two epistemic values count as equal.
@@ -343,8 +315,8 @@ def probe_model(
         raise ValueError("probe_model needs at least one action to predict under.")
 
     if hasattr(model, "predicted_belief"):  # a graph backend
-        backend = cast("ProbeBackend", model)
-        observation_matrix = np.asarray(backend.observation_model[0], dtype=float)
+        backend = cast("GraphBackend", model)
+        observation_matrix = np.asarray(backend.model.observation_matrix, dtype=float)
         predicted = [backend.predicted_belief(belief, np.asarray(a)) for a in actions]
         means = np.asarray([np.asarray(p.mean, dtype=float) for p in predicted])
         covs = [np.asarray(p.cov, dtype=float) for p in predicted]
