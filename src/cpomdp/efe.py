@@ -145,7 +145,8 @@ class EfeResult(NamedTuple):
     Attributes:
         g: The expected free energy ``G = pragmatic − epistemic``. Lower is preferred.
         pragmatic: The goal term, a cost.
-        epistemic: The information the observation carries about the state, a value.
+        epistemic: The information the observation carries about the state, or
+            about the targeted node where one is set, a value.
     """
 
     g: Float64[Array, ""]
@@ -290,14 +291,15 @@ def policy_efe(
 ) -> EfeResult:
     """Summed EFE of a horizon-H ``policy`` from ``belief``.
 
-    [`EFESelector`][cpomdp.EFESelector] and the searches in ``cpomdp.enumeration``
-    score with it. A ``lax.scan`` over the ``policy`` rows sums each step's G while
-    propagating the belief predict-only between steps. The mean follows the
-    prediction. The covariance contracts by the Kalman update at the moments that
-    step's score already predicted. ``H`` is ``policy.shape[0]``, and at ``H = 1`` it
-    reduces exactly to [`expected_free_energy`][cpomdp.expected_free_energy].
-    Composes under ``jit``, ``vmap`` and ``grad``. The Expected free energy page of
-    the API reference opens the rollout in plain terms.
+    [`EFESelector`][cpomdp.EFESelector] above horizon 1 and the flat exhaustive
+    searches in ``cpomdp.enumeration`` score with it. A ``lax.scan`` over the
+    ``policy`` rows sums each step's G while propagating the belief predict-only
+    between steps. The mean follows the prediction. The covariance contracts by the
+    Kalman update at the moments that step's score already predicted. ``H`` is
+    ``policy.shape[0]``, and at ``H = 1`` it reduces exactly to
+    [`expected_free_energy`][cpomdp.expected_free_energy]. Composes under ``jit``,
+    ``vmap`` and ``grad``. The Expected free energy page of the API reference opens
+    the rollout in plain terms.
 
     Args:
         model: The generative model. Must have a control matrix.
