@@ -370,7 +370,9 @@ certainty equivalence is optimal, and no use of the readings beats it.
 - The `LQRController` docstring and the backends page said the Agent's filter is solved
   once at construction, as ADR-002 and ADR-003 planned. Every release has filtered per
   step. Both now say so, and ADR-072 records the per-step filter as the default and the
-  steady-state one as the opt-in.
+  steady-state one as the opt-in. The README points at ADR-072 beside ADR-003. It said
+  all inference runs as message passing over a factor graph, and now says that of
+  branching models, which is where `CouplingGraphBackend` does it.
 - Public docstrings cited build-plan labels a pip user cannot look up, "Phase 1A",
   "item E" and "standing rule 6" among them. They are gone, and
   `tests/test_docstring_labels.py` fails on one in any docstring outside `cpomdp._lab`.
