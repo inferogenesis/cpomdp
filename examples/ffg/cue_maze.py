@@ -179,7 +179,8 @@ def enumeration_cost(
 
     Call it before the sweep. The memory figure is the one that actually bites.
     `evaluate` `vmap`s the rollout across the *whole* policy set at once, so every
-    policy simultaneously holds a predicted covariance, a posterior and an innovation.
+    policy simultaneously holds a predicted covariance, a posterior and a predicted
+    observation covariance.
     Adding a dimension multiplies the policy count by `((2(n+1)|m|+1) / (2n|m|+1))^H`,
     gentle for one extra axis and brutal for three.
 

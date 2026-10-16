@@ -505,9 +505,11 @@ def _numpy_score(policy) -> float:
         cov = np.asarray(predicted.cov)  # Sigma+
         noise = np.asarray(backend.observation_noise_at(predicted.mean))  # R(mu+)
         obs = observation_matrix @ mean  # o+ = C mu+
-        innovation = observation_matrix @ cov @ observation_matrix.T + noise  # S
+        predicted_observation_cov = (
+            observation_matrix @ cov @ observation_matrix.T + noise
+        )  # S
         pragmatic = 0.5 * (obs - goal) @ precision @ (obs - goal) + 0.5 * np.trace(
-            precision @ innovation
+            precision @ predicted_observation_cov
         )
         post_info = (
             np.linalg.inv(cov)
@@ -529,7 +531,7 @@ def _numpy_score(policy) -> float:
             cov
             - cov
             @ observation_matrix.T
-            @ np.linalg.inv(innovation)
+            @ np.linalg.inv(predicted_observation_cov)
             @ observation_matrix
             @ cov
         )
