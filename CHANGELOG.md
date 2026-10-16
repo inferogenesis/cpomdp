@@ -572,10 +572,10 @@ certainty equivalence is optimal, and no use of the readings beats it.
 ### Changed
 
 - **Breaking:** a public class spells an acronym in capitals, as `EFESelector` and
-  `LQRController` already did. `FfgEfeSelector` is `FFGEFESelector`, and
+  `LQRController` already did. `FfgEfeSelector` is `FFGEFESelector`,
   `EnumeratedEfeSearch` and `ChunkedEfeSearch` are `EnumeratedEFESearch` and
-  `ChunkedEFESearch`. The classes new in this release take the same casing:
-  `EFEResult`, `PolicyEFETrace` and `ExhaustiveEFESearch` (ADR-088).
+  `ChunkedEFESearch`, and `PolicyEfeTrace` is `PolicyEFETrace`. The classes new in
+  this release take the same casing: `EFEResult` and `ExhaustiveEFESearch` (ADR-088).
 - **Breaking:** `Agent` takes a model or a backend, never both. `Agent(model, objective)`
   filters with the default per-step `KalmanBackend`, and
   `Agent.from_backend(backend, objective)` takes any other engine, a
@@ -835,8 +835,10 @@ certainty equivalence is optimal, and no use of the readings beats it.
   so one family answered in two forms and a misspelt key failed only when it ran.
   `EFEResult` and `PolicyEFETrace` are frozen dataclasses registered with JAX, read by
   name as the search results are. Neither indexes nor unpacks, so `result[0]` and
-  `G, parts = ...` both fail and read `result.g` instead. A `vmap` over candidate
-  actions returns one `EFEResult` with every field batched, ranked by `batch.g`.
+  `G, parts = ...` both fail, and a caller reads `result.g`. NumPy refuses to read a
+  record as one array, so `np.argmin(batch)` raises where it returned an index past the
+  candidates. A `vmap` over candidate actions returns one `EFEResult` with every field
+  batched, ranked by `jnp.argmin(batch.g)` (ADR-087).
   The old pair fitted
   `jax.value_and_grad(..., has_aux=True)` as it stood. A function differentiated that
   way now returns `(result.g, result)`, and `jax.grad` takes one returning `result.g`.
