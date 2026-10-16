@@ -232,7 +232,7 @@ def test_ffg_agent_matches_kalman_efe_agent_end_to_end():
     )
     ref_agent = Agent(
         model,
-        ObservationGoal([0.5], action_bounds=bounds, n_candidates=k),
+        Preference([0.5]),
         selector=EFESelector(model, n_candidates=k, action_bounds=bounds),
     )
 

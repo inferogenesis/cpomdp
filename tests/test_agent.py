@@ -251,9 +251,9 @@ def test_state_goal_at_equilibrium_is_accepted():
 #   fixed sensor    + state goal=     -> LQRSelector  (state tracking, v0.2 path)
 #   callable sensor + obs preference= -> EFESelector  (information-seeking, v0.3)
 #
-# An explicit selector= overrides the dispatch verbatim. Every other quadrant
-# raises: a state goal on a callable sensor would need converting through C; an
-# obs preference on a fixed sensor is output regulation (deferred). The model is
+# A Preference with selector= skips the dispatch and uses that selector. Every other
+# quadrant raises: a state goal on a callable sensor would need converting through C;
+# an obs preference on a fixed sensor is output regulation (deferred). The model is
 # the 1-D single-integrator corridor the EFESelector tests use (μ⁺ = μ + a,
 # observe position) with a precision-well sensor sharp at a beacon.
 # ============================================================================
@@ -299,7 +299,17 @@ def _corridor_model(*, fixed, control_matrix=True):
 _OBS_GOAL = ObservationGoal(
     [0.0], action_bounds=(-3.0, 3.0), precision=[[0.4]]
 )  # observe position 0
+_OBS_PREFERENCE = Preference(
+    [0.0], [[0.4]]
+)  # the same wish, for a selector of one's own
 _BOUNDS = (-3.0, 3.0)
+
+
+class _Hold:
+    """A custom selector the Agent cannot inspect: it always rests."""
+
+    def select(self, belief, preference):
+        return jnp.zeros(1)
 
 
 class TestRegimeDispatch:
@@ -321,22 +331,69 @@ class TestRegimeDispatch:
         assert isinstance(agent.selector, EFESelector)
 
     def test_explicit_selector_is_used_verbatim(self):
-        # An explicit selector= overrides the dispatched selector, used as given.
-        sel = EFESelector(
-            _corridor_model(fixed=False), n_candidates=11, action_bounds=_BOUNDS
+        # selector= takes a Preference, and the selector it is given is the one used.
+        model = _corridor_model(fixed=False)
+        sel = EFESelector(model, n_candidates=11, action_bounds=_BOUNDS)
+        agent = Agent(model, _OBS_PREFERENCE, selector=sel)
+        assert agent.selector is sel
+        agent.infer_states([0.1])
+        np.testing.assert_array_equal(
+            agent.sample_action(), sel.select(agent.belief, _OBS_PREFERENCE)
         )
-        agent = Agent(_corridor_model(fixed=False), _OBS_GOAL, selector=sel)
+
+    def test_explicit_selector_chooses_by_efe_on_a_fixed_sensor(self):
+        # The Agent declines an ObservationGoal on a fixed sensor. A selector built by
+        # hand chooses by EFE there anyway, the collapse regime EFESelector tests use.
+        model = _corridor_model(fixed=True)
+        sel = EFESelector(model, n_candidates=11, action_bounds=_BOUNDS)
+        agent = Agent(model, _OBS_PREFERENCE, selector=sel)
         assert agent.selector is sel
 
-    def test_explicit_selector_rescues_fixed_sensor_observation_goal(self):
-        # The escape hatch: an ObservationGoal on a fixed sensor raises under auto-
-        # dispatch (output regulation, deferred), but an explicit selector= opts
-        # into H=1 EFE on a fixed sensor — the collapse regime EFESelector tests use.
-        sel = EFESelector(
-            _corridor_model(fixed=True), n_candidates=11, action_bounds=_BOUNDS
+    def test_a_goal_beside_a_selector_is_refused(self):
+        # The goal's box went unread: declared (-0.1, 0.1), the agent returned 1.5.
+        model = _corridor_model(fixed=False)
+        narrow = ObservationGoal([1.5], action_bounds=(-0.1, 0.1))
+        sel = EFESelector(model, n_candidates=7, action_bounds=_BOUNDS)
+        with pytest.raises(TypeError, match="Preference"):
+            Agent(model, narrow, selector=sel)
+
+    def test_a_state_goal_beside_a_selector_is_refused_before_any_riccati_solve(self):
+        # No stabilising gain exists here, and the Agent used to solve for one it then
+        # discarded, raising RuntimeError before it looked at the selector.
+        model = LinearGaussianModel(
+            dynamics_matrix=np.eye(2),
+            observation_matrix=[[1.0, 0.0]],
+            dynamics_noise=np.eye(2) * 1e-6,
+            observation_noise=[[1e-2]],
+            prior=Belief(mean=[0.0, 0.0], cov=np.eye(2)),
+            control_matrix=[[0.0], [1.0]],
         )
-        agent = Agent(_corridor_model(fixed=True), _OBS_GOAL, selector=sel)
+        with pytest.raises(TypeError, match="Preference"):
+            Agent(model, StateGoal([0.0, 0.0]), selector=_Hold())
+
+    def test_a_selector_without_an_objective_is_refused(self):
+        # It used to be dropped, leaving a tracker whose sample_action never named it.
+        model = _corridor_model(fixed=False)
+        sel = EFESelector(model, n_candidates=11, action_bounds=_BOUNDS)
+        with pytest.raises(TypeError, match="Preference"):
+            Agent(model, selector=sel)
+
+    def test_a_preference_without_a_selector_is_refused(self):
+        with pytest.raises(TypeError, match="selector="):
+            Agent(_corridor_model(fixed=False), _OBS_PREFERENCE)
+
+    def test_from_backend_takes_the_same_two_forms(self):
+        model = _corridor_model(fixed=False)
+        sel = EFESelector(model, n_candidates=11, action_bounds=_BOUNDS)
+        agent = Agent.from_backend(KalmanBackend(model), _OBS_PREFERENCE, selector=sel)
         assert agent.selector is sel
+        with pytest.raises(TypeError, match="Preference"):
+            Agent.from_backend(KalmanBackend(model), _OBS_GOAL, selector=sel)
+
+    def test_a_selector_needs_a_model_that_can_act(self):
+        model = _corridor_model(fixed=False, control_matrix=False)
+        with pytest.raises(ValueError, match="control matrix"):
+            Agent(model, _OBS_PREFERENCE, selector=_Hold())
 
     def test_efe_agent_completes_a_perceive_act_cycle(self):
         # The EFE path wires end-to-end: perceive (Kalman) then act (EFE selection).
@@ -372,23 +429,31 @@ class TestRegimeDispatch:
                 ObservationGoal([0.0, 0.0], action_bounds=(-3.0, 3.0)),
             )
 
-    def test_state_goal_with_an_observation_space_selector_raises(self):
-        # EFESelector reads the preference as an observation. Handed a StateGoal it
-        # pursues C·x = target, so on C = 2 it would settle at x = target / 2.
-        model = _corridor_model(fixed=True)
-        sel = EFESelector(model, n_candidates=11, action_bounds=_BOUNDS)
-        with pytest.raises(ValueError, match="observation"):
-            Agent(model, StateGoal([1.0]), selector=sel)
+    def test_a_preference_of_the_wrong_length_for_an_efe_selector_is_refused(self):
+        # EFESelector reads the preference as an observation, here of length 1. A
+        # state-length target used to fail inside the first select's dot_general.
+        model = _reaching_model()
+        sel = EFESelector(model, n_candidates=11, action_bounds=_BOUNDS, horizon=2)
+        with pytest.raises(ValueError, match="observation, a vector of length 1"):
+            Agent(model, Preference(GOAL), selector=sel)
 
-    def test_observation_goal_with_lqr_selector_raises(self):
-        # LQRSelector regulates the state, so an observation target would be
-        # pursued as a state.
-        model = _corridor_model(fixed=True)
+    def test_a_preference_of_the_wrong_length_for_lqr_is_refused(self):
+        model = _reaching_model()
         sel = LQRSelector(
-            LQRController(model, goal_precision=jnp.eye(1), effort_penalty=jnp.eye(1))
+            LQRController(model, goal_precision=jnp.eye(2), effort_penalty=jnp.eye(1))
         )
-        with pytest.raises(ValueError, match="StateGoal"):
-            Agent(model, _OBS_GOAL, selector=sel)
+        with pytest.raises(ValueError, match="state, a vector of length 2"):
+            Agent(model, Preference([1.0]), selector=sel)
+
+    def test_lqr_selector_takes_a_state_preference(self):
+        model = _reaching_model()
+        controller = LQRController(
+            model, goal_precision=jnp.eye(2), effort_penalty=jnp.eye(1)
+        )
+        agent = Agent(model, Preference(GOAL), selector=LQRSelector(controller))
+        np.testing.assert_array_equal(
+            agent.sample_action(), controller.action(model.prior.mean, GOAL)
+        )
 
     def test_qs_aliases_belief(self):
         # pymdp muscle-memory: agent.qs is a read-only alias of agent.belief.
@@ -535,12 +600,10 @@ class TestSelectorAccess:
         assert printed.endswith(")), backend=KalmanBackend)")
 
     def test_a_selector_without_a_repr_prints_its_name(self):
-        class Fixed:
-            def select(self, belief, preference):
-                return jnp.zeros(1)
-
-        agent = Agent(_corridor_model(fixed=False), _OBS_GOAL, selector=Fixed())
-        assert "selector=Fixed," in repr(agent)
+        agent = Agent(_corridor_model(fixed=False), _OBS_PREFERENCE, selector=_Hold())
+        assert repr(agent) == (
+            "Agent(objective=Preference, selector=_Hold, backend=KalmanBackend)"
+        )
 
 
 def test_state_goal_path_is_byte_identical_to_lqr():

@@ -29,7 +29,7 @@ from cpomdp.enumeration import (
     RecedingHorizonSelector,
     SearchWarrant,
 )
-from cpomdp.selection import ActionSelector, ObservationGoal, Preference
+from cpomdp.selection import ActionSelector, Preference
 from cpomdp.types import Belief, LinearGaussianModel
 
 
@@ -161,8 +161,9 @@ class TestDrivesAgent:
     def test_receding_selector_runs_in_the_agent_loop(self):
         model = _model()
         search = EnumeratedEfeSearch(model, _action_set(), horizon=2)
-        goal = ObservationGoal(target=[1.0], action_bounds=(-1.0, 1.0))
-        agent = Agent(model, goal, selector=RecedingHorizonSelector(search))
+        agent = Agent(
+            model, Preference([1.0]), selector=RecedingHorizonSelector(search)
+        )
         agent.infer_states(jnp.array([0.1]))
         action = agent.sample_action()
         assert action.shape == (1,)

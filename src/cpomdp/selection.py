@@ -39,13 +39,16 @@ __all__ = [
 class Preference:
     """What the agent wants: a goal and how sharply it is preferred.
 
+    Every selector's ``select`` reads one. The [`Agent`][cpomdp.Agent] builds it from a
+    goal, or takes it as the objective beside a selector of your own, in the space
+    that selector reads.
+
     Single-mode for v0.3 — one Gaussian preference. The disjunctive *mixture*
     case (visit one of several goals) is RFC-002, deferred; this type is the seam
     that a mixture ``Preference`` plugs into.
 
-    ``precision`` is unused by [`LQRSelector`][cpomdp.LQRSelector] (it is baked into
-    the controller's Riccati solve at construction); it is carried here for the EFE
-    pragmatic term added in Phase 1A.
+    ``precision`` is unused by [`LQRSelector`][cpomdp.LQRSelector], whose controller
+    solved for its own weights at construction. The EFE pragmatic term reads it.
     """
 
     goal: Float64[Array, "n"]

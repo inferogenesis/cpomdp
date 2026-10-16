@@ -5163,3 +5163,69 @@ return an index past the candidates without an error.
 - An object with a target and a precision that is not a `Preference` is refused, where
   it used to be scored.
 - Code that reversed `cost_to_go` by hand reads `costs_to_go` as it is.
+
+## ADR-080 — a goal configures the selector the Agent builds, and `selector=` takes a `Preference`
+
+**Date:** 2026-10-15
+**Status:** Accepted
+**Supersedes:** ADR-007's `selector=` override beside a typed goal. The goal types, their
+dispatch and the bundling of each regime's settings into its goal stand.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+ADR-007 put each regime's settings into its goal. `StateGoal` carries the LQR weights.
+`ObservationGoal` carries the action box, the grid size, the horizon and the node the
+information term aims at. ADR-007 also kept `selector=` beside the goal as the escape
+hatch. A selector carries its own settings, so an agent given both held two descriptions
+of one search. The selector's won and the goal's went unread. In the review's case a goal
+declared the action box (-0.1, 0.1) and the agent returned 1.5. Nothing warned.
+
+The hatch leaked elsewhere too. A selector passed with no goal was dropped, and the agent
+became a tracker. Beside a `StateGoal`, the Agent first solved the control Riccati
+equation for a controller it then threw away. On a plant with no stabilising gain that
+solve raised before the selector was read.
+
+### Decision
+
+The objective's type says where the search is configured.
+
+- `Agent(model, goal)`, with a `StateGoal` or an `ObservationGoal`. The goal configures
+  the selector and the Agent builds it.
+- `Agent(model, preference, selector=...)`. The selector configures itself. The
+  `Preference` carries what every selector reads, the target and its precision.
+
+A goal beside `selector=` is refused. So are a `Preference` without a selector and a
+selector without a `Preference`. `Agent.from_backend` takes the same two forms.
+
+I weighed two other shapes.
+
+1. Optional search fields on the goal, refused beside a selector. The review recommended
+   it. Each field then needs a `None` that means "the Agent's default", and whether a
+   goal's fields are read depends on another argument.
+2. The search fields as keywords on `Agent`. Then
+   `Agent(model, StateGoal(target), action_bounds=...)` can be written and needs a guard.
+   ADR-007 removed states like that by typing.
+
+The chosen form extends ADR-007's argument to the override. Each objective type says
+whether a selector comes with it, so the pairing is a type check at construction.
+
+### Consequences
+
+- `Agent(model, ObservationGoal(target, action_bounds=...))` and
+  `Agent(model, StateGoal(target))` are unchanged.
+- Beside `selector=` the Agent builds nothing. No Riccati solve and no horizon probe
+  runs, and the sensor does not choose the regime. The Agent checks that the model can
+  act, and that a built-in selector gets a target of the length it reads: `n` for
+  `LQRSelector`, `m` for the EFE selectors and the search drivers. `LQRSelector` still
+  refuses a target the dynamics do not hold. A custom selector is not checked.
+- The space check this replaces refused a built-in selector paired with a goal in the
+  other space. That pairing can no longer be written.
+- ADR-068's horizon probe runs only for a selector the Agent builds. A hand-built
+  `EFESelector` keeps the horizon it was given.
+- `LQRSelector` reads both weights from its controller. A `Preference`'s precision does
+  not reach it.
+- A fixed-noise twin for an ablation takes a `Preference` and a hand-built selector over
+  the curious agent's grid. `examples/surge_margin.py` builds its twin that way.
+- The override form is assembled from the parts a `jax.lax.scan` loop uses: a backend, a
+  selector and a `Preference`.
