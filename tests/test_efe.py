@@ -418,7 +418,7 @@ class TestFormProof:
 
 # --- Phase 2d: internal process noise Q(μ⁺) breaks the collapse FROM THE INSIDE,
 # with the observation noise R held FIXED (RFC-001 Section 8: the binding constraint
-# lives in internal processing, not the sensor). process_noise REPLACES the fixed
+# lives in internal processing, not the sensor). dynamics_noise REPLACES the fixed
 # dynamics_noise matrix when set (mirrors observation). Q is evaluated at μ⁺.
 def _q_well(x, params):
     """Internal process noise Q(x), low near 0, growing with position². Module-level."""
@@ -433,7 +433,7 @@ def _internal_q_model():
         dynamics_matrix=[[1.0]],
         observation_matrix=[[1.0]],
         dynamics_noise=[[0.1]],
-        observation_noise=[[0.3]],  # R is FIXED (observation=None)
+        observation_noise=[[0.3]],  # R is FIXED (no observation_model)
         prior=Belief(mean=[0.0], cov=[[0.2]]),
         control_matrix=[[1.0]],
         dynamics_noise_model=pn,
@@ -484,8 +484,8 @@ class TestInternalProcessNoise:
         np.testing.assert_allclose(epi, epi_with(_q_well(mu_pred, params)), atol=1e-9)
         assert abs(epi - epi_with(_q_well(mu, params))) > 1e-3  # NOT Q(μ)
 
-    def test_fixed_path_unchanged_when_process_noise_none(self):
-        # process_noise=None must give a byte-identical Σ⁺/G to the matrix path.
+    def test_fixed_path_unchanged_when_dynamics_noise_none(self):
+        # dynamics_noise=None must give a byte-identical Σ⁺/G to the matrix path.
         base = LinearGaussianModel(
             dynamics_matrix=[[1.0]],
             observation_matrix=[[1.0]],

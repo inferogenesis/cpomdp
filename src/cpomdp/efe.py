@@ -731,8 +731,8 @@ def _efe_step(
     # which is its own linearization everywhere; for a state-dependent R(x) this point
     # is what the action reaches, and so what the epistemic term ends up measuring.
     if model.observation_model is None:
-        # FAST PATH — a bare matvec/matmul, byte-identical to Phase 1A. Kept inline
-        # (no method dispatch) so the fixed-sensor hot path stays lean.
+        # FAST PATH — a bare matvec/matmul. Kept inline (no method dispatch) so the
+        # fixed-sensor hot path stays lean.
         observation_matrix, observation_noise = model.C, model.R
         o_pred = observation_matrix @ mu_pred
         pred_obs_cov = (

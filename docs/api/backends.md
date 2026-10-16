@@ -1,6 +1,6 @@
 # Backends
 
-The inference engine is swappable behind the `InferenceBackend` protocol. `KalmanBackend` is the default. The `Agent` runs it per step, and the gain and covariance are recomputed from each belief. `KalmanBackend(model, steady_state=True)` freezes them at construction instead, for a fixed-noise model, and reaches an agent through `Agent.from_backend`. On a fixed-noise model the per-step filter is the exact Kalman filter. Under a state-dependent `R(x)` or `Q(x)` it reads the noise at the predicted mean, a first-order plug-in. `RxInferBackend` is imported from `cpomdp.backends.rxinfer` and needs the optional `rxinfer` extra. It re-derives the fixed-noise answers through Julia as an independent correctness oracle [@bagaev2023rxinfer], and it refuses a model with `R(x)` or `Q(x)`.
+The inference engine is swappable behind the `InferenceBackend` protocol. `KalmanBackend` is the default. The `Agent` runs it per step, and the gain and covariance are recomputed from each belief. `KalmanBackend(model, steady_state=True)` freezes them at construction instead, for a fixed-noise, time-invariant model read every step, and reaches an agent through `Agent.from_backend`. On a fixed-noise model the per-step filter is the exact Kalman filter. Under a state-dependent `R(x)` or `Q(x)` it reads the noise at the predicted mean, a first-order plug-in. `RxInferBackend` is imported from `cpomdp.backends.rxinfer` and needs the optional `rxinfer` extra. It re-derives the fixed-noise answers through Julia as an independent correctness oracle [@bagaev2023rxinfer], and it refuses a model with `R(x)` or `Q(x)`.
 
 ::: cpomdp.InferenceBackend
 
@@ -42,4 +42,4 @@ closures.
 | `RxInferBackend.infer_states` | Does not. It calls Julia |
 | `probe_model` | Does not. It runs in NumPy on the host |
 
-[`tests/test_transform_table.py`](https://github.com/inferogenesis/cpomdp/blob/main/tests/test_transform_table.py) checks every row under `jit`, `vmap` and `grad`, except `RxInferBackend`'s, which needs Julia. The `lax.scan` loop is on the Agent page.
+[`tests/test_transform_table.py`](https://github.com/inferogenesis/cpomdp/blob/main/tests/test_transform_table.py) runs every row except `RxInferBackend`'s, which needs Julia. A row that traces runs under `jit`, `vmap` and `grad`, and a row that does not is shown failing under `jit`. The `lax.scan` loop is on the Agent page.
