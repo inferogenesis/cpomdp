@@ -68,9 +68,11 @@ def test_dynamics_and_control_agree(pair):
             theirs.dynamics_noise,
             err_msg=f"Q differs at node {node}",
         )
-    # `_control` rather than `to_flat_model().control`: flattening raises on an R(x)
-    # model with couplings, which is exactly what both of these are.
-    np.testing.assert_allclose(maze._control, registered._control)
+    # `model`, not `to_flat_model()`: flattening raises on an R(x) model with
+    # couplings, which is exactly what both of these are.
+    np.testing.assert_allclose(
+        maze.model.control_matrix, registered.model.control_matrix
+    )
 
 
 def test_the_starting_belief_agrees(pair):

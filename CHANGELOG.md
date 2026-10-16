@@ -414,10 +414,10 @@ certainty equivalence is optimal, and no use of the readings beats it.
   the valid range. `block(-1)` returned an empty range, so an epistemic term aimed at it
   scored zero. `marginal(-1, belief)` failed inside a reduction, and `block(5)` on five
   nodes raised a bare `IndexError`.
-- A covariance refused for not being positive-definite was refused because "a noiseless
-  or degenerate sensor sends the information gain to infinity", whatever the matrix
-  was. A semi-definite `dynamics_noise` on a `GaussianTransition` or `coupling_noise` on
-  a `Coupling` was blamed on a sensor the caller never passed. The refusal now
+- Every refusal of a covariance that is not positive-definite gave one reason, "a
+  noiseless or degenerate sensor sends the information gain to infinity". A
+  semi-definite `dynamics_noise` on a `GaussianTransition` or `coupling_noise` on a
+  `Coupling` was blamed on a sensor the caller never passed. The refusal now
   says the matrix is inverted. The graph path still needs a definite Q where the flat
   model accepts a semi-definite one, because its transition factor inverts Q, and
   `CouplingGraphBackend` says so.
@@ -510,6 +510,12 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `cpomdp.backends.base` and `cpomdp.backends.rxinfer`. The first is the shape check the
   built-in backends share and the second is the RxInfer test oracle, and a cpomdp user
   calls neither (ADR-069). `import cpomdp` no longer leaves `cpomdp.jax` behind.
+- **Breaking:** `ChainBackend` is private, at `cpomdp.ffg._chain`. v0.4.4 published it at
+  `cpomdp.ffg.chain`. It returns `KalmanBackend`'s numbers at two extra inversions per
+  step and exists to show that the message algebra is the Kalman filter on a chain,
+  which `tests/test_ffg_chain.py` holds it to. Filter with `KalmanBackend`. The
+  flagship example's agreement check between the two moves into that test file, on the
+  same model and the same scripted inputs (ADR-076).
 - **Breaking:** the graph model's message passing is private.
   `GaussianTransition.predict` and `CouplingGraph.infer_all` take a leading underscore.
   `GaussianCoupling`'s `message_to_parent` and `message_to_child` are private methods of
@@ -744,6 +750,9 @@ certainty equivalence is optimal, and no use of the readings beats it.
 - **Breaking:** `CouplingGraphBackend.readout` and its `readout_node` argument are
   removed. `readout(belief)` was `marginal(readout_node, belief)`, and the argument did
   nothing else. Read any node, the root included, with `marginal(node, belief)`.
+- **Breaking:** `CouplingGraphBackend.graph` and `transitions` are read-only, as `model`
+  already was. The model and the factors are built from them at construction, so an
+  assignment left both describing the old graph. Build a new backend instead.
 - **Breaking:** every `LinearGaussianModel` argument after `dynamics` is keyword-only.
   The four matrices are two maps and two covariances of the same rank, and only the
   covariances are content-checked, so a transposed pair constructed in silence whenever
@@ -758,9 +767,9 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `_JointObservation` and `epistemic_value`. C is the *observation matrix* in the same
   literature that gives R its name, so the two halves of the measurement equation now
   read from one vocabulary. C is not `observation_model`: that name means the whole
-  channel, the model field the entry above renames. The 2026-06-13 sketch wanted plain `observation` for C, which the state-
-  dependent sensor field later claimed. The `.C` alias is unchanged, and no numerical
-  behaviour moved.
+  channel, the model field the entry above renames. The 2026-06-13 sketch wanted plain
+  `observation` for C, which the state-dependent sensor field later claimed. The `.C`
+  alias is unchanged, and no numerical behaviour moved.
 - **Breaking:** `sensor_noise` is now `observation_noise`, on `LinearGaussianModel`,
   `FixedSensor`, `CallableSensor` and `epistemic_value`.
   R is the *observation noise covariance* in the state-space literature this library
