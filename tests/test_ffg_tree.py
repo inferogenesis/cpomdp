@@ -4,7 +4,7 @@ The chain (``test_ffg_chain.py``) is the degenerate FFG — every node has degre
 The shared ``CheA`` network ADR-012 targets has a node of degree > 2: one latent
 feeding two branches. This file pins the first genuinely-branching inference — the
 marginal at a shared parent computed by *combining* the upward message from each
-branch (``GaussianCoupling._message_to_parent``) with the prior. The combination is
+branch (``Coupling._message_to_parent``) with the prior. The combination is
 the factor product ``CanonicalGaussian.__add__``; summing three messages at one node
 is the operation a chain never needs.
 
@@ -24,7 +24,6 @@ import pytest
 
 from cpomdp import CallableSensor, FixedSensor, KalmanBackend, LinearGaussianModel
 from cpomdp.ffg._message import CanonicalGaussian, likelihood_message
-from cpomdp.ffg.factors.linear_gaussian import GaussianCoupling
 from cpomdp.ffg.graph import Coupling, CouplingGraph
 from cpomdp.types import Belief
 
@@ -57,10 +56,10 @@ class TestSharedNodeTwoBranches:
 
         # --- FFG: combine the prior with each branch's upward message ---
         prior = _belief_as_canonical(m0, P0)
-        msg1 = GaussianCoupling(W1, coupling_noise=Q1)._message_to_parent(
+        msg1 = Coupling(0, 1, W1, coupling_noise=Q1)._message_to_parent(
             likelihood_message(jnp.eye(c1), jnp.asarray(R1), y1)
         )
-        msg2 = GaussianCoupling(W2, coupling_noise=Q2)._message_to_parent(
+        msg2 = Coupling(0, 2, W2, coupling_noise=Q2)._message_to_parent(
             likelihood_message(jnp.eye(c2), jnp.asarray(R2), y2)
         )
         out_mean, out_cov = (prior + msg1 + msg2).to_moment()
@@ -101,10 +100,10 @@ class TestSharedNodeTwoBranches:
         y1, y2 = rng.standard_normal(1), rng.standard_normal(1)
 
         prior = _belief_as_canonical(m0, P0)
-        msg1 = GaussianCoupling(W1, coupling_noise=Q1)._message_to_parent(
+        msg1 = Coupling(0, 1, W1, coupling_noise=Q1)._message_to_parent(
             likelihood_message(jnp.eye(1), jnp.asarray(R1), y1)
         )
-        msg2 = GaussianCoupling(W2, coupling_noise=Q2)._message_to_parent(
+        msg2 = Coupling(0, 2, W2, coupling_noise=Q2)._message_to_parent(
             likelihood_message(jnp.eye(1), jnp.asarray(R2), y2)
         )
         a_mean, a_cov = (prior + msg1 + msg2).to_moment()
@@ -170,8 +169,7 @@ def _tree_marginal_oracle(root, dims, edges, obs_specs, m0, P0, readings):
 def _check_infer(root, dims, edges, obs_specs, m0, P0, readings, atol=1e-8):
     """Build the graph, run ``infer``, and check its marginal against the oracle."""
     couplings = tuple(
-        Coupling(parent, child, GaussianCoupling(w, coupling_noise=q))
-        for parent, child, w, q in edges
+        Coupling(parent, child, w, coupling_noise=q) for parent, child, w, q in edges
     )
     observations = {
         n: FixedSensor(c, observation_noise=r) for n, (c, r) in obs_specs.items()
@@ -309,9 +307,7 @@ class TestCouplingGraphInfer:
         # No evidence -> the root marginal is exactly the prior, lifted and read back.
         rng = np.random.default_rng(19)
         w, q = rng.standard_normal((1, 2)), _spd(rng, 1)
-        graph = CouplingGraph(
-            0, (2, 1), (Coupling(0, 1, GaussianCoupling(w, coupling_noise=q)),), {}
-        )
+        graph = CouplingGraph(0, (2, 1), (Coupling(0, 1, w, coupling_noise=q),), {})
         m0, P0 = rng.standard_normal(2), _spd(rng, 2)
         out = graph.infer({}, Belief(mean=m0, cov=P0))
         np.testing.assert_allclose(np.asarray(out.mean), m0, atol=1e-8)
@@ -322,7 +318,7 @@ class TestCouplingGraphInfer:
         return CouplingGraph(
             0,
             (1, 1),
-            (Coupling(0, 1, GaussianCoupling([[1.0]], coupling_noise=[[0.5]])),),
+            (Coupling(0, 1, [[1.0]], coupling_noise=[[0.5]]),),
             observations,
         )
 
@@ -373,9 +369,8 @@ class TestCouplingGraphInfer:
                 Coupling(
                     0,
                     1,
-                    GaussianCoupling(
-                        jnp.array([[1.5, -0.5]]), coupling_noise=jnp.array([[0.3]])
-                    ),
+                    jnp.array([[1.5, -0.5]]),
+                    coupling_noise=jnp.array([[0.3]]),
                 ),
             ),
             {1: FixedSensor(jnp.eye(1), observation_noise=jnp.array([[0.2]]))},
@@ -437,8 +432,7 @@ def _joint_all_marginals_oracle(dims, edges, seeds):
 def _check_infer_all(dims, edges, seeds, atol=1e-8):
     """Build the graph, run _infer_all, check *every* node's marginal vs the oracle."""
     couplings = tuple(
-        Coupling(parent, child, GaussianCoupling(w, coupling_noise=q))
-        for parent, child, w, q in edges
+        Coupling(parent, child, w, coupling_noise=q) for parent, child, w, q in edges
     )
     graph = CouplingGraph(root=0, dims=dims, couplings=couplings, observations={})
     seed_msgs = {
@@ -486,15 +480,76 @@ class TestCouplingGraphInferAll:
 
 
 class TestCoupling:
-    _FACTOR = GaussianCoupling([[0.8]], coupling_noise=[[0.05]])
+    _COUPLING_MATRIX = ((0.8,),)  # W
+    _COUPLING_NOISE = ((0.05,),)  # Q
+
+    def _edge(self, parent=0, child=1, **keywords):
+        return Coupling(
+            parent,
+            child,
+            self._COUPLING_MATRIX,
+            coupling_noise=self._COUPLING_NOISE,
+            **keywords,
+        )
+
+    def test_an_edge_holds_its_own_matrix_and_noise(self):
+        # The edge is the factor. No second class wraps W and Q.
+        edge = Coupling(0, 1, [[2.0, -1.0]], coupling_noise=[[0.3]])
+        assert isinstance(edge.coupling_matrix, jax.Array)
+        np.testing.assert_array_equal(edge.coupling_matrix, [[2.0, -1.0]])
+        np.testing.assert_array_equal(edge.coupling_noise, [[0.3]])
 
     def test_an_edge_carries_no_timescale(self):
         # A node's timescale lives in its GaussianTransition. An edge copy of it was
         # read by nothing and had to be made up by every caller.
-        edge = Coupling(0, 1, self._FACTOR)
-        assert not hasattr(edge, "tau")
+        assert not hasattr(self._edge(), "tau")
         with pytest.raises(TypeError, match="tau"):
-            Coupling(0, 1, self._FACTOR, tau=1.0)  # ty: ignore[unknown-argument]
+            self._edge(tau=1.0)
+
+    @pytest.mark.parametrize("stale", [1.0, True], ids=["tau", "efe_relevant"])
+    def test_a_fourth_positional_argument_is_refused_by_arity(self, stale):
+        # tau was the fourth field in v0.4.4. A stale call used to land it in
+        # efe_relevant and blame a flag the caller never set.
+        with pytest.raises(TypeError, match="positional"):
+            # Calling it wrongly is the test, so ty's arity error is expected.
+            Coupling(
+                0,
+                1,
+                self._COUPLING_MATRIX,
+                stale,  # ty: ignore[too-many-positional-arguments]
+                coupling_noise=self._COUPLING_NOISE,
+            )
+
+    def test_coupling_noise_is_keyword_only(self):
+        # A scalar edge's W and Q are both (1, 1), and only Q is content-checked, so a
+        # swapped pair builds an edge whose messages are quietly wrong.
+        with pytest.raises(TypeError, match="positional"):
+            # Calling it wrongly is the test, so ty's arity errors are expected.
+            Coupling(  # ty: ignore[missing-argument]
+                0,
+                1,
+                [[0.05]],
+                [[0.9]],  # ty: ignore[too-many-positional-arguments]
+            )
+
+    def test_accepts_a_nonsquare_coupling_matrix(self):
+        # Parent and child may differ in dimension, so W need not be square.
+        edge = Coupling(0, 1, [[1.0, 0.0]], coupling_noise=[[1.0]])
+        assert edge.coupling_matrix.shape == (1, 2)
+
+    def test_rejects_a_coupling_matrix_that_is_not_2d(self):
+        with pytest.raises(ValueError, match="coupling_matrix must be 2-D"):
+            Coupling(0, 1, [1.0], coupling_noise=[[1.0]])
+
+    def test_rejects_singular_coupling_noise(self):
+        # Q is inverted in the message, so a singular Q is rejected at construction.
+        with pytest.raises(ValueError, match="positive-definite"):
+            Coupling(0, 1, [[1.0]], coupling_noise=[[0.0]])
+
+    def test_rejects_coupling_noise_shape_mismatch(self):
+        # W is 1x2 (one child row) but Q is 2x2. Q must be as tall as W.
+        with pytest.raises(ValueError, match="match"):
+            Coupling(0, 1, [[1.0, 0.0]], coupling_noise=[[1.0, 0.0], [0.0, 1.0]])
 
     @pytest.mark.parametrize(
         ("parent", "child", "named"),
@@ -502,45 +557,45 @@ class TestCoupling:
     )
     def test_refuses_a_node_index_that_is_not_an_int(self, parent, child, named):
         with pytest.raises(TypeError, match=named):
-            Coupling(parent, child, self._FACTOR)
+            self._edge(parent, child)
 
     def test_takes_an_integral_float_index_and_a_numpy_bool(self):
         # 1.0 from a JSON config and np.True_ from a comparison are exact values.
-        edge = Coupling(
-            0.0,  # ty: ignore[invalid-argument-type]
-            1.0,  # ty: ignore[invalid-argument-type]
-            self._FACTOR,
-            efe_relevant=np.True_,  # ty: ignore[invalid-argument-type]
-        )
+        edge = self._edge(0.0, 1.0, efe_relevant=np.True_)
         assert (edge.parent, edge.child, edge.efe_relevant) == (0, 1, True)
         assert type(edge.efe_relevant) is bool
 
-    def test_refuses_a_factor_that_is_not_a_gaussian_coupling(self):
-        # A bare matrix used to construct and fail later on a missing attribute.
-        with pytest.raises(TypeError, match="GaussianCoupling"):
-            Coupling(0, 1, [[1.0]])  # ty: ignore[invalid-argument-type]
-
     def test_refuses_an_efe_relevant_that_is_not_a_bool(self):
         with pytest.raises(TypeError, match="efe_relevant"):
-            Coupling(0, 1, self._FACTOR, efe_relevant="yes")  # ty: ignore[invalid-argument-type]
+            self._edge(efe_relevant="yes")
+
+    def test_stores_a_numpy_bool_efe_relevant_as_a_bool(self):
+        # A flag computed from an array, such as np.any(mask), is a NumPy bool. It was
+        # refused with "efe_relevant must be a bool, got bool".
+        edge = self._edge(efe_relevant=np.bool_(True))
+        assert edge.efe_relevant is True
 
     def test_keeps_a_numpy_integer_node_as_an_int(self):
-        # The field is typed int, so ty flags the call. At runtime the index is coerced.
-        parent, child = np.int64(0), np.int64(1)
-        edge = Coupling(parent, child, self._FACTOR)  # ty: ignore[invalid-argument-type]
+        edge = self._edge(np.int64(0), np.int64(1))
         assert type(edge.parent) is int
         assert type(edge.child) is int
 
 
 class TestCouplingGraphValidation:
-    def _w(self, c, p):
-        return GaussianCoupling(np.zeros((c, p)) + 0.5, coupling_noise=np.eye(c) * 0.3)
+    @staticmethod
+    def _edge(parent, child, child_dim=1, parent_dim=1):
+        return Coupling(
+            parent,
+            child,
+            np.zeros((child_dim, parent_dim)) + 0.5,
+            coupling_noise=np.eye(child_dim) * 0.3,
+        )
 
     def test_valid_tree_builds(self):
         g = CouplingGraph(
             0,
             (2, 1, 1),
-            (Coupling(0, 1, self._w(1, 2)), Coupling(0, 2, self._w(1, 2))),
+            (self._edge(0, 1, 1, 2), self._edge(0, 2, 1, 2)),
             {1: FixedSensor(np.eye(1), observation_noise=np.eye(1))},
         )
         assert g.root == 0
@@ -552,7 +607,7 @@ class TestCouplingGraphValidation:
 
     def test_rejects_root_out_of_range(self):
         with pytest.raises(ValueError, match="root"):
-            CouplingGraph(5, (1, 1), (Coupling(0, 1, self._w(1, 1)),), {})
+            CouplingGraph(5, (1, 1), (self._edge(0, 1),), {})
 
     def test_rejects_root_as_child(self):
         with pytest.raises(ValueError, match="child"):
@@ -560,8 +615,8 @@ class TestCouplingGraphValidation:
                 0,
                 (1, 1, 1),
                 (
-                    Coupling(1, 0, self._w(1, 1)),
-                    Coupling(0, 2, self._w(1, 1)),
+                    self._edge(1, 0),
+                    self._edge(0, 2),
                 ),
                 {},
             )
@@ -572,8 +627,8 @@ class TestCouplingGraphValidation:
                 0,
                 (1, 1, 1),
                 (
-                    Coupling(0, 1, self._w(1, 1)),
-                    Coupling(2, 1, self._w(1, 1)),
+                    self._edge(0, 1),
+                    self._edge(2, 1),
                 ),
                 {},
             )
@@ -584,23 +639,23 @@ class TestCouplingGraphValidation:
                 0,
                 (1, 1, 1),
                 (
-                    Coupling(1, 2, self._w(1, 1)),
-                    Coupling(2, 1, self._w(1, 1)),
+                    self._edge(1, 2),
+                    self._edge(2, 1),
                 ),
                 {},
             )
 
     def test_rejects_factor_dim_mismatch(self):
         # W is (1,1) but the edge needs (dim[child], dim[parent]) = (1, 2).
-        with pytest.raises(ValueError, match="factor W shape"):
-            CouplingGraph(0, (2, 1), (Coupling(0, 1, self._w(1, 1)),), {})
+        with pytest.raises(ValueError, match="coupling_matrix shape"):
+            CouplingGraph(0, (2, 1), (self._edge(0, 1),), {})
 
     def test_rejects_observation_on_unknown_node(self):
         with pytest.raises(ValueError, match="observation references unknown node"):
             CouplingGraph(
                 0,
                 (1, 1),
-                (Coupling(0, 1, self._w(1, 1)),),
+                (self._edge(0, 1),),
                 {9: FixedSensor(np.eye(1), observation_noise=np.eye(1))},
             )
 
@@ -611,7 +666,7 @@ class TestCouplingGraphValidation:
             CouplingGraph(
                 0,
                 (2, 1),
-                (Coupling(0, 1, self._w(1, 2)),),
+                (self._edge(0, 1, 1, 2),),
                 {0: FixedSensor(np.eye(1), observation_noise=np.eye(1))},
             )
 
@@ -622,24 +677,24 @@ class TestCouplingGraphValidation:
     def test_rejects_a_root_or_dimension_that_is_not_an_int(self, root, dims, named):
         # int() used to truncate 1.5 to 1 and build a graph nobody declared.
         with pytest.raises(TypeError, match=named):
-            CouplingGraph(root, dims, (Coupling(0, 1, self._w(1, 1)),), {})
+            CouplingGraph(root, dims, (self._edge(0, 1),), {})
 
     def test_takes_an_integral_float_root_and_dimension(self):
         graph = CouplingGraph(
             0.0,  # ty: ignore[invalid-argument-type]
             (1.0, 1.0),  # ty: ignore[invalid-argument-type]
-            (Coupling(0, 1, self._w(1, 1)),),
+            (self._edge(0, 1),),
             {},
         )
         assert (graph.root, graph.dims) == (0, (1, 1))
 
     def test_rejects_a_coupling_that_is_not_a_coupling(self):
-        # A bare (parent, child, factor) tuple used to fail on a missing attribute.
+        # A bare (parent, child, matrix) tuple used to fail on a missing attribute.
         with pytest.raises(TypeError, match=r"couplings.*Coupling"):
             CouplingGraph(
                 0,
                 (1, 1),
-                ((0, 1, self._w(1, 1)),),  # ty: ignore[invalid-argument-type]
+                ((0, 1, [[0.5]]),),  # ty: ignore[invalid-argument-type]
                 {},
             )
 
@@ -650,7 +705,7 @@ class TestCouplingGraphValidation:
         graph = CouplingGraph(
             0,
             (1, 1),
-            (Coupling(0, 1, self._w(1, 1)),),
+            (self._edge(0, 1),),
             {1: FixedSensor(np.eye(1), observation_noise=np.eye(1))},
         )
         with pytest.raises(AttributeError):
@@ -659,7 +714,7 @@ class TestCouplingGraphValidation:
     def test_observations_cannot_gain_a_sensor_after_validation(self):
         # A sensor added to node 7 of a two-node graph would skip the range check.
         sensor = FixedSensor(np.eye(1), observation_noise=np.eye(1))
-        graph = CouplingGraph(0, (1, 1), (Coupling(0, 1, self._w(1, 1)),), {1: sensor})
+        graph = CouplingGraph(0, (1, 1), (self._edge(0, 1),), {1: sensor})
         with pytest.raises(TypeError):
             # Writing to it is the test, so ty's refusal is expected.
             graph.observations[7] = sensor  # ty: ignore[invalid-assignment]
@@ -672,11 +727,11 @@ class TestCouplingGraphValidation:
     def test_survives_a_copy_and_a_pickle(self, round_trip):
         # A simulation forks with deepcopy and reaches a worker process by pickle.
         sensor = FixedSensor(np.eye(1), observation_noise=np.eye(1))
-        graph = CouplingGraph(0, (1, 1), (Coupling(0, 1, self._w(1, 1)),), {1: sensor})
+        graph = CouplingGraph(0, (1, 1), (self._edge(0, 1),), {1: sensor})
         copied = round_trip(graph)
         assert sorted(copied.observations) == [1]
         with pytest.raises(TypeError):
-            copied.observations[7] = sensor  # ty: ignore[invalid-assignment]
+            copied.observations[7] = sensor
 
     def test_rejects_an_observation_that_is_not_a_sensor(self):
         # A bare matrix used to construct and fail at the first filter step.
@@ -684,7 +739,7 @@ class TestCouplingGraphValidation:
             CouplingGraph(
                 0,
                 (1, 1),
-                (Coupling(0, 1, self._w(1, 1)),),
+                (self._edge(0, 1),),
                 {1: np.eye(1)},  # ty: ignore[invalid-argument-type]
             )
 
@@ -693,7 +748,7 @@ class TestCouplingGraphValidation:
         sensor = CallableSensor(
             np.eye(1), lambda x, p: p * (1.0 + x @ x)[None, None], 0.5
         )
-        graph = CouplingGraph(0, (1, 1), (Coupling(0, 1, self._w(1, 1)),), {1: sensor})
+        graph = CouplingGraph(0, (1, 1), (self._edge(0, 1),), {1: sensor})
         with pytest.raises(ValueError, match=r"node 1.*CouplingGraphBackend"):
             graph.infer({1: np.zeros(1)}, Belief(mean=np.zeros(1), cov=np.eye(1)))
 
@@ -788,10 +843,7 @@ class TestFlattenedKalmanParity:
     """
 
     def _check(self, root, dims, edges, obs_specs, m0, p0, readings, atol=1e-7):
-        couplings = tuple(
-            Coupling(p, c, GaussianCoupling(w, coupling_noise=q))
-            for p, c, w, q in edges
-        )
+        couplings = tuple(Coupling(p, c, w, coupling_noise=q) for p, c, w, q in edges)
         observations = {
             n: FixedSensor(c, observation_noise=r) for n, (c, r) in obs_specs.items()
         }

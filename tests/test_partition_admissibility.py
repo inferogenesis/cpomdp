@@ -21,7 +21,7 @@ from cpomdp.backends.base import InadmissiblePartitionError
 from cpomdp.backends.coupling import CouplingGraphBackend
 from cpomdp.efe import policy_efe_ffg, policy_efe_ffg_trace
 from cpomdp.enumeration import ChunkedEfeSearch, EnumeratedEfeSearch, FiniteActionSet
-from cpomdp.ffg.factors.linear_gaussian import GaussianCoupling, GaussianTransition
+from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
 from cpomdp.ffg.graph import Coupling, CouplingGraph
 from cpomdp.observation import FixedSensor
 from cpomdp.selection import FfgEfeSelector, ObservationGoal, Preference
@@ -37,13 +37,15 @@ def _hub_graph(*, fast_relevant=True, slow_relevant=False):
             Coupling(
                 0,
                 1,
-                GaussianCoupling([[0.8]], coupling_noise=[[0.05]]),
+                [[0.8]],
+                coupling_noise=[[0.05]],
                 efe_relevant=fast_relevant,
             ),
             Coupling(
                 0,
                 2,
-                GaussianCoupling([[0.6]], coupling_noise=[[0.05]]),
+                [[0.6]],
+                coupling_noise=[[0.05]],
                 efe_relevant=slow_relevant,
             ),
         ),
@@ -77,11 +79,9 @@ def _selector(backend, info_block=(0, 1, 2)):
 
 def test_coupling_carries_efe_relevant_flag():
     # The declared-relevance seam: an edge can be flagged EFE-load-bearing; default off.
-    flagged = Coupling(
-        0, 1, GaussianCoupling([[1.0]], coupling_noise=[[0.1]]), efe_relevant=True
-    )
+    flagged = Coupling(0, 1, [[1.0]], coupling_noise=[[0.1]], efe_relevant=True)
     assert flagged.efe_relevant is True
-    plain = Coupling(0, 1, GaussianCoupling([[1.0]], coupling_noise=[[0.1]]))
+    plain = Coupling(0, 1, [[1.0]], coupling_noise=[[0.1]])
     assert plain.efe_relevant is False
 
 

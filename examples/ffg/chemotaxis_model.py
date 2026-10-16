@@ -10,7 +10,7 @@ This is a model built on the toolbox, not part of it: the Phase-3 acceptance tes
 the end-to-end demo (#27) import ``chemotaxis_ffg`` from here.
 """
 
-from cpomdp.ffg.factors.linear_gaussian import GaussianCoupling, GaussianTransition
+from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
 from cpomdp.ffg.graph import Coupling, CouplingGraph
 from cpomdp.observation import FixedSensor
 
@@ -56,7 +56,8 @@ def chemotaxis_ffg(dt):
         Coupling(
             parent,
             child,
-            GaussianCoupling([[gain]], coupling_noise=[[noise]]),
+            [[gain]],
+            coupling_noise=[[noise]],
         )
         for parent, child, gain, noise in _EDGES
     )

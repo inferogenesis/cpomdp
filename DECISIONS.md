@@ -4737,3 +4737,44 @@ that is not a `GaussianCoupling` and an `efe_relevant` that is not a bool raise
   `dt`, which nothing stores either. `levels()` settles where τ and `dt` live when it
   lands.
 - The coupling-graph figure's code panel drops `tau=0.0`.
+
+## ADR-073 — an edge is one class
+
+**Date:** 2026-10-16
+**Status:** Accepted
+**Supersedes:** ADR-021's export of `GaussianCoupling`. ADR-072's field check that a
+factor is a `GaussianCoupling`, since the factor is no longer a separate object.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+An edge took two public classes. `Coupling` held the endpoints and wrapped a
+`GaussianCoupling`, which held `W` and `Q`. Both docstrings called themselves a graph
+edge and gave the same equation. Once its message methods went private (ADR-071),
+`GaussianCoupling` had no public behaviour and one consumer, `Coupling.factor`. A user
+wrote `Coupling(0, 1, GaussianCoupling([[0.9]], coupling_noise=[[0.05]]))` and had to
+learn which class went inside which.
+
+### Decision
+
+`Coupling` is the edge factor. It takes `coupling_matrix` (W) and a keyword-only
+`coupling_noise` (Q) itself, validates them as `GaussianCoupling` did, and carries the
+message algebra as private methods. `GaussianCoupling` is removed. No tier-2 factor
+exists, so folding the class in closes no live seam. A second factor kind would bring
+its own protocol, which ADR-071 leaves to the first user who writes one.
+
+`efe_relevant` is keyword-only. Dropping `tau` (ADR-072) moved it into the fourth
+positional slot, where a stale v0.4.4 call put its τ. Keyword-only, that call fails on
+arity.
+
+`Coupling` checks its fields at construction. A node index that is not an int and an
+`efe_relevant` that is not a bool raise `TypeError`. A NumPy integer index is stored as
+an `int`, and a NumPy bool as a `bool`.
+
+### Consequences
+
+- Every `Coupling` call changes again. The `GaussianCoupling` wrapper goes and its two
+  arguments move up. ADR-072's removal of `tau` lands in the same release, so a v0.4.4
+  caller migrates once.
+- A `Coupling` is not a pytree. Nothing traces through an edge. The graph's couplings
+  are constants of any traced function, and the readings are what a test differentiates.

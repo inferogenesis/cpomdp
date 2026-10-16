@@ -15,7 +15,6 @@ from cpomdp.backends.base import InferenceBackend
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.backends.rxinfer import RxInferBackend, _rxinfer_chemotaxis_tree_root
 from cpomdp.dynamics import CallableProcessNoise
-from cpomdp.ffg.factors.linear_gaussian import GaussianCoupling
 from cpomdp.ffg.graph import Coupling, CouplingGraph
 from cpomdp.observation import CallableSensor, FixedSensor
 from cpomdp.types import Belief, LinearGaussianModel
@@ -164,8 +163,7 @@ def test_branching_tree_matches_coupling_graph():
         root=chea,
         dims=(1, 1, 1, 1, 1),
         couplings=tuple(
-            Coupling(p, c, GaussianCoupling([[w]], coupling_noise=[[q]]))
-            for p, c, w, q in edges
+            Coupling(p, c, [[w]], coupling_noise=[[q]]) for p, c, w, q in edges
         ),
         observations={
             n: FixedSensor([[1.0]], observation_noise=[[obs_r]])

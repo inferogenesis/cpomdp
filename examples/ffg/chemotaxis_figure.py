@@ -54,8 +54,8 @@ def _topology(graph) -> tuple[dict[int, tuple[int, float, float]], dict[int, flo
     edges = {
         c.child: (
             c.parent,
-            float(np.asarray(c.factor.coupling_matrix)[0, 0]),
-            float(np.asarray(c.factor.coupling_noise)[0, 0]),
+            float(np.asarray(c.coupling_matrix)[0, 0]),
+            float(np.asarray(c.coupling_noise)[0, 0]),
         )
         for c in graph.couplings
     }

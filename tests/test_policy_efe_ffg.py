@@ -35,7 +35,7 @@ from cpomdp.efe import (
     policy_efe_ffg,
     policy_efe_ffg_trace,
 )
-from cpomdp.ffg.factors.linear_gaussian import GaussianCoupling, GaussianTransition
+from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
 from cpomdp.ffg.graph import Coupling, CouplingGraph
 from cpomdp.observation import CallableSensor, FixedSensor
 from cpomdp.selection import Preference
@@ -92,7 +92,7 @@ def _coupled_backend():
     graph = CouplingGraph(
         root=0,
         dims=(1, 1),
-        couplings=(Coupling(0, 1, GaussianCoupling([[0.8]], coupling_noise=[[0.05]])),),
+        couplings=(Coupling(0, 1, [[0.8]], coupling_noise=[[0.05]]),),
         observations={1: FixedSensor([[1.0]], observation_noise=[[0.1]])},
     )
     transitions = (
