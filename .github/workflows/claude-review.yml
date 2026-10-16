@@ -18,7 +18,7 @@ jobs:
       github.event_name == 'workflow_dispatch'
       || github.event.pull_request.head.repo.fork == false
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     permissions:
       contents: read
       pull-requests: write
@@ -61,15 +61,20 @@ jobs:
             Don't report formatting, naming style, import order or type-checker
             output. Lint and `ty` own those.
 
-            Post one comment with `gh pr comment`: a tally line, blockers in
-            full, nits as one-liners capped at five with "plus K similar". Lead
-            with "no blockers" when there are none. Don't summarise what the PR
-            does, the author knows. Add no attribution footer and no links off
-            this repository.
+            Post one comment: a tally line, blockers in full, nits as
+            one-liners capped at five with "plus K similar". Lead with "no
+            blockers" when there are none. Don't summarise what the PR does,
+            the author knows. Add no attribution footer and no links off this
+            repository. Write the comment to /tmp/review.md with the Write
+            tool, then post it with `gh pr comment <number> --body-file
+            /tmp/review.md`. Never put the body inline or in a heredoc.
           # Read/Grep/Glob let the review read surrounding code beyond the
           # diff hunks. The read-only git and shell forms are here because a
           # blocked call still costs a turn. Reviews were spending 9 to 18 of
           # their 40 turns on denials, dying before they could post.
+          # Write is for the comment file only. A long body passed inline or through a
+          # heredoc fell outside the gh pr comment pattern, and on #143 two reviews
+          # finished without posting.
           # Opus on the first review, which does the heavy lifting over the whole
           # diff; Sonnet on each later push. A manual re-run of the job replays
           # the original event, so a re-run of the opening review is an Opus one.
@@ -77,8 +82,8 @@ jobs:
           # still ran out mid-diff and posted nothing.
           claude_args: >-
             --model ${{ (github.event.action == 'opened' || github.event_name ==
-            'workflow_dispatch') && 'claude-opus-5' || 'claude-sonnet-5' }}
-            --max-turns 80 --allowed-tools
-            "Read,Grep,Glob,Bash(git
+            'workflow_dispatch') && 'claude-opus-5-5' || 'claude-sonnet-5-5' }}
+            --max-turns 120 --allowed-tools
+            "Read,Write,Grep,Glob,Bash(git
             diff:*),Bash(git log:*),Bash(git show:*),Bash(ls:*),Bash(cat:*),Bash(grep:*),Bash(gh
             pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*)"
