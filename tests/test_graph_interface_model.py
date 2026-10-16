@@ -25,6 +25,7 @@ from cpomdp import (
     FixedSensor,
     GaussianTransition,
     KalmanBackend,
+    LinearGaussianModel,
     LQRController,
     Preference,
     StateGoal,
@@ -276,3 +277,19 @@ def test_an_opaque_graph_backend_is_matched_by_identity():
     )
     with pytest.raises(ValueError, match="same graph backend"):
         Agent.from_backend(second, Preference(jnp.zeros(2)), selector=selector)
+
+
+def test_a_flat_selector_is_refused_on_a_coupled_graph_agent():
+    # It would score the agent's plant without the edge the agent filters with.
+    agent_graph = _coupled_backend(0.05)
+    flat = LinearGaussianModel(
+        dynamics_matrix=agent_graph.model.dynamics_matrix,
+        observation_matrix=agent_graph.model.observation_matrix,
+        dynamics_noise=agent_graph.model.dynamics_noise,
+        prior=agent_graph.model.prior,
+        control_matrix=agent_graph.model.control_matrix,
+        observation_model=agent_graph.model.observation_model,
+    )
+    selector = EFESelector(flat, action_bounds=(-1.0, 1.0))
+    with pytest.raises(ValueError, match="another"):
+        Agent.from_backend(agent_graph, Preference(jnp.zeros(2)), selector=selector)

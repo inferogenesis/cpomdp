@@ -159,6 +159,9 @@ def _scores_another_plant(selector: ActionSelector, backend: InferenceBackend) -
         return False
     graph = selector.backend if isinstance(selector, _GRAPH_SCORED_SELECTORS) else None
     if graph is None:
+        # A flat score on a coupled graph leaves out the couplings the agent filters by.
+        if is_graph_interface(backend.model):
+            return True
         return not _same_model(selector.model, backend.model)
     if graph is backend:
         return False

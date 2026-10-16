@@ -523,9 +523,9 @@ LOOP_TAIL = 10  # the steps averaged, since a grid action dithers by a cell
 
 def _steady_predicted_var(noise: float) -> float:
     """The scalar filter's steady-state P⁻ at one `R`, the positive root above."""
-    process_noise = DYNAMICS_NOISE[0][0]  # q
+    dynamics_noise = DYNAMICS_NOISE[0][0]  # q
     return 0.5 * (
-        process_noise + math.sqrt(process_noise**2 + 4.0 * process_noise * noise)
+        dynamics_noise + math.sqrt(dynamics_noise**2 + 4.0 * dynamics_noise * noise)
     )
 
 
