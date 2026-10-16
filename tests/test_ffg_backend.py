@@ -524,6 +524,58 @@ class TestCarryPartition:
             jax.jit(cut.severed_mass)(observation, prior), eager, atol=1e-12
         )
 
+    def test_severed_mass_has_a_zero_gradient_on_the_full_joint(self):
+        # The full joint severs nothing for every input, so the derivative is 0. The
+        # norm of a zero matrix has no gradient of its own and JAX returned NaN.
+        full = _build(
+            _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
+        )
+
+        def severed(scale):
+            prior = Belief(mean=jnp.zeros(5), cov=jnp.eye(5) * scale)
+            return full.severed_mass(jnp.ones(3), prior)
+
+        np.testing.assert_array_equal(np.asarray(jax.grad(severed)(2.0)), 0.0)
+
+    def test_severed_mass_vmaps_over_readings(self):
+        cut = _build(
+            _CHEMOTAXIS_DIMS,
+            _CHEMOTAXIS_EDGES,
+            _CHEMOTAXIS_OBS,
+            _CHEMOTAXIS_DYN,
+            partition=[[0, 1, 3, 4], [2]],
+        )
+        prior = Belief(mean=np.zeros(5), cov=np.eye(5))
+        readings = jnp.array([[0.1, 0.2, 0.3], [1.0, -1.0, 0.5]])
+        batched = jax.vmap(lambda y: cut.severed_mass(y, prior))(readings)
+        np.testing.assert_allclose(
+            batched,
+            [float(cut.severed_mass(y, prior)) for y in readings],
+            atol=1e-12,
+        )
+
+    def test_severed_mass_is_measured_from_the_cut_prior(self):
+        # Correlation the partition drops on ingest is not counted as severed again.
+        cut = _build(
+            _CHEMOTAXIS_DIMS,
+            _CHEMOTAXIS_EDGES,
+            _CHEMOTAXIS_OBS,
+            _CHEMOTAXIS_DYN,
+            partition=[[0, 1, 3, 4], [2]],
+        )
+        rng = np.random.default_rng(6)
+        correlated = _spd(rng, 5)
+        factored = correlated.copy()
+        factored[2, [0, 1, 3, 4]] = 0.0
+        factored[[0, 1, 3, 4], 2] = 0.0
+        mean = rng.standard_normal(5)
+        observation = jnp.asarray(rng.standard_normal(3))
+        np.testing.assert_allclose(
+            cut.severed_mass(observation, Belief(mean=mean, cov=correlated)),
+            cut.severed_mass(observation, Belief(mean=mean, cov=factored)),
+            atol=1e-12,
+        )
+
     def test_a_run_has_one_filter(self):
         # A second compiled-run filter returned arrays where infer_states returns a
         # Belief, and always paid the dense solve.

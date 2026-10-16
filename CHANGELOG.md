@@ -502,9 +502,9 @@ certainty equivalence is optimal, and no use of the readings beats it.
   nodes raised a bare `IndexError`.
 - `CouplingGraphBackend` cuts a prior by its partition before it filters from it, on
   every surface. Under an all-singleton partition `infer_states` kept only each node's
-  own block of a correlated prior. The run profile, `severed_mass` and
-  `predicted_belief` used all of it. So the run profile measured a filter `infer_states`
-  never ran, and the EFE predicted from correlation the filter dropped. The full-joint
+  own block of a correlated prior. `severed_mass` and `predicted_belief` used all of
+  it. So the severed mass counted correlation the filter had already dropped, and the
+  EFE predicted from it. The full-joint
   partition is unchanged. A mixed partition such as `[[0, 1, 3, 4], [2]]` over a
   correlated prior also returns a different posterior now, since the dense path inverts
   the cut prior (ADR-077).

@@ -5609,7 +5609,11 @@ its cheap node-by-node pass, paid the dense cost for a profile it might not want
 ### Consequences
 
 - One filter per backend. The profile's dense solve is a separate call, so its cost is
-  attributable and a run that does not profile does not pay it.
+  attributable and a run that does not profile does not pay it. A run that profiles on
+  a partition other than all singletons solves the same posterior twice per step, once
+  in `infer_states` and once in `severed_mass`. `filter_sequence` solved it once.
+- The severed mass has a zero gradient on the full joint, which severs nothing. A plain
+  norm of the zero difference gave NaN.
 - ADR-016's argument against storing per-step state on the backend still holds. The
   profile lives in the scan's output, never on `self`.
 

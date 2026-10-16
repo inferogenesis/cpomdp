@@ -724,7 +724,12 @@ class CouplingGraphBackend:
         exactly zero and the exact endpoint stays byte-identical.
         """
         factored = self._factor(cov)
-        return factored, jnp.linalg.norm(cov - factored)
+        squared = jnp.sum((cov - factored) ** 2)
+        # sqrt has no gradient at 0, and the full joint severs exactly 0. The inner
+        # where keeps the untaken branch finite, so its gradient is 0, not NaN.
+        nonzero = squared > 0.0
+        severed = jnp.where(nonzero, jnp.sqrt(jnp.where(nonzero, squared, 1.0)), 0.0)
+        return factored, severed
 
     def _control_shift(self, action: jax.Array | None) -> jax.Array:
         """The control shift ``b = B·action`` (zero when the model has no control)."""
