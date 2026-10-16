@@ -81,6 +81,17 @@ def _checked_n_candidates(n_candidates: int) -> int:
     return count
 
 
+def _checked_horizon(horizon: int) -> int:
+    """``horizon`` as an int of at least 1, the steps each candidate is held for."""
+    try:
+        steps = operator.index(horizon)
+    except TypeError:
+        raise TypeError(f"horizon must be an integer, got {horizon!r}") from None
+    if steps < 1:
+        raise ValueError(f"horizon must be at least 1, got {steps}")
+    return steps
+
+
 def _candidate_grid(
     action_bounds: tuple[float, float], n_candidates: int
 ) -> Float64[Array, "k 1"]:
@@ -89,8 +100,12 @@ def _candidate_grid(
     return jnp.linspace(lo, hi, _checked_n_candidates(n_candidates))[:, None]
 
 
-_TIE_TOLERANCE = 1e-9
-"""Scores within this of the best, relative to it, tie. The difference is roundoff."""
+_TIE_TOLERANCE = 1e-11
+"""Scores within this of the best, relative to it, tie. The difference is roundoff.
+
+Ten times the ``1e-12`` the graph backend leaves on a tie of size one, and far below
+any difference a candidate's action makes.
+"""
 
 
 def _grid_choice(
@@ -101,16 +116,23 @@ def _grid_choice(
     """The candidate with the lowest finite ``G``, or NaN when no score is finite.
 
     Among candidates whose scores tie, the one nearest zero wins. A tie means the action
-    reaches nothing the scores read, so the least action is the honest choice. The
+    reaches nothing the scores read, so the least action is the honest choice. Two
+    tied candidates equally near zero, such as ``±h`` on a grid without zero, give
+    the point between them. Either alone would push the same way every step. The
     graph backend's canonical form leaves roundoff of about ``1e-12`` on such a tie,
-    so scores within ``_TIE_TOLERANCE`` of the best count as tied. Jit-safe, and one
-    more pass over ``k`` scores than a plain argmin.
+    so scores within ``_TIE_TOLERANCE`` of the best count as tied. Jit-safe, and two
+    more passes over ``k`` scores than a plain argmin.
     """
     scores = jnp.where(jnp.isfinite(g), g, jnp.inf)  # NaN or inf never wins
     best = jnp.min(scores)
     tied = scores <= best + _TIE_TOLERANCE * jnp.maximum(1.0, jnp.abs(best))
-    index = jnp.argmin(jnp.where(tied, distance_from_zero, jnp.inf))
-    return jnp.where(jnp.isfinite(best), candidates[index], jnp.nan)
+    distance = jnp.where(tied, distance_from_zero, jnp.inf)
+    closest = jnp.min(distance)
+    nearest = distance <= closest + _TIE_TOLERANCE * jnp.maximum(1.0, closest)
+    choice = jnp.sum(jnp.where(nearest[:, None], candidates, 0.0), axis=0) / jnp.sum(
+        nearest
+    )
+    return jnp.where(jnp.isfinite(best), choice, jnp.nan)
 
 
 @jax.tree_util.register_pytree_node_class
@@ -122,9 +144,9 @@ class Preference:
     goal's ``target`` and ``precision``, or takes it as the objective beside a selector
     of your own, in the space that selector reads.
 
-    Single-mode for v0.3 — one Gaussian preference. The disjunctive *mixture*
-    case (visit one of several goals) is RFC-002, deferred; this type is the seam
-    that a mixture ``Preference`` plugs into.
+    It is one Gaussian preference, single-mode since v0.3. The disjunctive *mixture*
+    case, visiting one of several goals, is RFC-002 and deferred. A mixture
+    ``Preference`` plugs in here.
 
     ``precision`` is unused by [`LQRSelector`][cpomdp.LQRSelector], whose controller
     solved for its own weights at construction. The EFE pragmatic term reads it.
@@ -173,10 +195,9 @@ class Preference:
 class ActionSelector(Protocol):
     """Chooses an action from a belief and a preference.
 
-    The abstraction wall for action selection: [`LQRSelector`][cpomdp.LQRSelector] is
-    the fixed-noise case (a fixed sensor and fixed dynamics noise, where EFE collapses
-    to LQR, ADR-003);
-    [`EFESelector`][cpomdp.EFESelector] is the state-dependent one.
+    The abstraction wall for action selection. [`LQRSelector`][cpomdp.LQRSelector] is
+    the fixed-noise case, a fixed sensor and fixed dynamics noise, where EFE collapses
+    to LQR (ADR-003). [`EFESelector`][cpomdp.EFESelector] is the state-dependent one.
     [`Agent`][cpomdp.Agent] depends only on this, never on a concrete selector.
     """
 
@@ -280,14 +301,13 @@ class EFESelector:
             ValueError: If the model has no control matrix or more than one action
                 dimension, if ``action_bounds`` is not two finite scalars in order, if
                 ``n_candidates`` is below 2, or if ``horizon`` is below 1.
-            TypeError: If ``n_candidates`` is not an integer.
+            TypeError: If ``n_candidates`` or ``horizon`` is not an integer.
         """
         _require_scalar_control(
             model.control_matrix, "EFESelector", "EnumeratedEfeSearch"
         )
         candidates = _candidate_grid(action_bounds, n_candidates)
-        if horizon < 1:
-            raise ValueError(f"horizon must be >= 1, got {horizon}")
+        horizon = _checked_horizon(horizon)
         self._model = model
         self._horizon = horizon
         self._candidates = candidates
@@ -341,7 +361,7 @@ class EFESelector:
 
     @property
     def horizon(self) -> int:
-        """The lookahead depth — constant-action steps scored per candidate."""
+        """How many steps each candidate's one action is held and scored over."""
         return self._horizon
 
     @property
@@ -437,8 +457,8 @@ class FfgEfeSelector:
 
         For each candidate: predict the joint (``predicted_belief`` → ``μ⁺``, ``Σ⁺``),
         score with ``_ffg_efe_step``, ``argmin`` over the grid. ``R`` is re-read at
-        ``μ⁺`` per candidate — constant under a fixed sensor, action-dependent under
-        ``R(x)`` (the dual effect). This is the RFC-001 hot path; keep it lean. Ties
+        ``μ⁺`` per candidate. It is constant under a fixed sensor and moves with the
+        action under ``R(x)``, the dual effect. This is the RFC-001 hot path. Ties
         and scores that are not finite go as for
         [`EFESelector`][cpomdp.EFESelector], and the first call compiles the work.
         """
@@ -507,26 +527,32 @@ class FfgEfeSelector:
 class StateGoal:
     """A state-space objective: reach a target state (the LQR / fixed-sensor regime).
 
-    The complete spec for the state-tracking path - the target plus the LQR cost
-    weights it implies. ``precision`` is the state-cost weight and ``effort`` the
-    action-cost weight, under the names
-    [`LQRController`][cpomdp.LQRController] takes. ``effort`` is left None here
-    because the action dimension p isn't known until the Agent pairs this with a
-    model (the Agent fills the identity). The Agent dispatches a StateGoal to an
+    The complete spec for the state-tracking path, the target and the LQR cost
+    weights. ``precision`` is the state-cost weight and ``effort`` the action-cost
+    weight, under the names [`LQRController`][cpomdp.LQRController] takes. ``effort``
+    is left None here because the action dimension is unknown until the Agent pairs
+    the goal with a model. The Agent then fills the identity and builds an
     LQRSelector. Not a pytree. The Agent reads it once at construction and keeps a
     Preference for the selector.
 
     The target must hold still under the model's dynamics at zero action,
-    ``A · target = target``. LQR regulates the offset from the target and charges for
-    effort, so a target the dynamics move would take a constant push it never pays
-    in full, and the state would settle short. The Agent refuses such a target.
+    ``A · target = target`` with ``A`` the dynamics matrix. LQR regulates the offset
+    from the target and charges for effort, so a target the dynamics move would take a
+    constant push it never pays in full, and the state would settle short. The Agent
+    refuses such a target.
     """
 
     target: Float64[Array, "n"]
     precision: Float64[Array, "n n"]
     effort: Float64[Array, "p p"] | None
 
-    def __init__(self, target: ArrayLike, *, precision=None, effort=None) -> None:
+    def __init__(
+        self,
+        target: ArrayLike,
+        *,
+        precision: ArrayLike | None = None,
+        effort: ArrayLike | None = None,
+    ) -> None:
         target = jnp.asarray(target, dtype=float)
         object.__setattr__(self, "target", target)
         n = target.shape[0]
@@ -599,13 +625,13 @@ class ObservationGoal:
 
     def __init__(
         self,
-        target,
+        target: ArrayLike,
         *,
-        action_bounds,
-        precision=None,
-        n_candidates=_DEFAULT_N_CANDIDATES,
-        horizon=None,
-        info_node=None,
+        action_bounds: tuple[float, float],
+        precision: ArrayLike | None = None,
+        n_candidates: int = _DEFAULT_N_CANDIDATES,
+        horizon: int | None = None,
+        info_node: int | None = None,
     ) -> None:
         target = jnp.asarray(target, dtype=float)
         object.__setattr__(self, "target", target)
@@ -617,7 +643,9 @@ class ObservationGoal:
         )
         object.__setattr__(self, "action_bounds", _checked_action_bounds(action_bounds))
         object.__setattr__(self, "n_candidates", _checked_n_candidates(n_candidates))
-        object.__setattr__(self, "horizon", horizon)
+        object.__setattr__(
+            self, "horizon", None if horizon is None else _checked_horizon(horizon)
+        )
         object.__setattr__(
             self, "info_node", None if info_node is None else int(info_node)
         )
@@ -635,8 +663,6 @@ class ObservationGoal:
                 f"precision must be {m}x{m} to match the {m}-D observation goal, "
                 f"got shape {self.precision.shape}"
             )
-        if self.horizon is not None and self.horizon < 1:
-            raise ValueError(f"horizon must be >= 1, got {self.horizon}")
         if self.info_node is not None and self.info_node < 0:
             raise ValueError(
                 f"info_node must be a non-negative node index or None, "

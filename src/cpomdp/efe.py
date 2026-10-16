@@ -248,7 +248,7 @@ def expected_free_energy(
         belief: The current belief, mean μ and covariance Σ.
         action: The candidate action a, shape ``(p,)``.
         preference: The goal as an observation-space
-            [`Preference`][cpomdp.Preference]. Its ``goal`` is the preferred reading
+            [`Preference`][cpomdp.Preference]. Its ``target`` is the preferred reading
             o*, shape ``(m,)``, and its ``precision`` is Λ, shape ``(m, m)``. A
             reading coincides with a state only when ``C = I``. An
             [`ObservationGoal`][cpomdp.ObservationGoal] hands over its own as

@@ -43,9 +43,9 @@ def _controller():
 
 class TestPreference:
     def test_stores_and_coerces_target(self):
-        p = Preference(target=[1.0, 2.0])
-        assert hasattr(p.target, "shape")
-        np.testing.assert_array_equal(p.target, [1.0, 2.0])
+        preference = Preference(target=[1.0, 2.0])
+        assert hasattr(preference.target, "shape")
+        np.testing.assert_array_equal(preference.target, [1.0, 2.0])
 
     def test_calls_its_vector_target_as_the_goals_do(self):
         # StateGoal, ObservationGoal and LQRController.action call it target too.
@@ -53,14 +53,14 @@ class TestPreference:
             Preference(goal=[1.0])  # ty: ignore[missing-argument, unknown-argument]
 
     def test_precision_defaults_to_identity(self):
-        p = Preference(target=[1.0, 2.0])
-        np.testing.assert_array_equal(p.precision, np.eye(2))
+        preference = Preference(target=[1.0, 2.0])
+        np.testing.assert_array_equal(preference.precision, np.eye(2))
 
     def test_accepts_an_explicit_precision(self):
-        p = Preference(target=[0.0, 0.0], precision=[[2.0, 0.0], [0.0, 3.0]])
-        np.testing.assert_array_equal(p.precision, [[2.0, 0.0], [0.0, 3.0]])
+        preference = Preference(target=[0.0, 0.0], precision=[[2.0, 0.0], [0.0, 3.0]])
+        np.testing.assert_array_equal(preference.precision, [[2.0, 0.0], [0.0, 3.0]])
 
-    def test_rejects_non_1d_goal(self):
+    def test_rejects_non_1d_target(self):
         with pytest.raises(ValueError, match="1-D"):
             Preference(target=[[1.0]])
 
@@ -88,11 +88,11 @@ class TestLQRSelector:
         controller = _controller()
         selector = LQRSelector(controller)
         belief = Belief(mean=[0.3, -0.2], cov=[[1.0, 0.0], [0.0, 1.0]])
-        pref = Preference(target=[1.0, 0.0])
+        preference = Preference(target=[1.0, 0.0])
 
         np.testing.assert_array_equal(
-            selector.select(belief, pref),
-            controller.action(belief.mean, pref.target),
+            selector.select(belief, preference),
+            controller.action(belief.mean, preference.target),
         )
 
 
@@ -245,6 +245,35 @@ class TestActionGrid:
     def test_a_count_that_cannot_search_is_refused(self, build, n_candidates):
         with pytest.raises((ValueError, TypeError), match="n_candidates"):
             build((-1.0, 1.0), n_candidates)
+
+
+# The horizon was checked twice with a bare `< 1`. A float passed, and failed later
+# inside `range` or `jnp.repeat`, far from the argument that caused it.
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda horizon: ObservationGoal(
+            [0.5], action_bounds=(-1.0, 1.0), horizon=horizon
+        ),
+        lambda horizon: EFESelector(
+            _MODEL_1D, action_bounds=(-1.0, 1.0), horizon=horizon
+        ),
+    ],
+    ids=["ObservationGoal", "EFESelector"],
+)
+class TestHorizon:
+    def test_a_horizon_below_one_is_refused(self, build):
+        with pytest.raises(ValueError, match="horizon must be at least 1"):
+            build(0)
+
+    def test_a_fractional_horizon_is_refused(self, build):
+        with pytest.raises(TypeError, match="horizon must be an integer"):
+            build(2.5)
+
+    def test_an_integer_of_any_kind_is_held_as_an_int(self, build):
+        assert type(build(np.int64(2)).horizon) is int
 
 
 def test_the_goal_stores_its_bounds_as_two_floats():

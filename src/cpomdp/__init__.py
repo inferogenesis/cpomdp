@@ -22,9 +22,9 @@ same sensors a flat model takes (``FixedSensor``, ``CallableSensor``) and whose
 ``CouplingGraphBackend`` with a per-node ``GaussianTransition``. A state-dependent
 ``R(x)`` on a coupled node cannot be flattened to a fixed linear-Gaussian model.
 Asking it to raises ``IncompatibleLinearizationError`` (ADR-019, ADR-020). The
-``Agent`` dispatches an ``FfgEfeSelector`` — the FFG peer of
-``EFESelector`` — for such a backend. To choose with a selector of your own,
-pass a ``Preference`` and ``selector=``.
+``Agent`` builds an ``FfgEfeSelector``, the FFG peer of ``EFESelector``, for an
+``ObservationGoal`` on such a backend. To choose with a selector of your own, pass
+a ``Preference`` and ``selector=``.
 
 Whether a state-dependent sensor earns its keep is a question about the states an
 action can actually reach: ``probe_model`` samples that reachable set and

@@ -5278,3 +5278,31 @@ the model.
 - A `StateGoal` still refuses `R(x)` alone. Under `Q(x)` its target stays a state the
   filter can read, and LQR stays blind to the information term.
 - The flags are fixed at construction, so the check adds nothing per cycle.
+
+## ADR-082 — a goal on Q(x) alone stops at horizon 1
+
+**Date:** 2026-10-16
+**Status:** Accepted
+**Supersedes:** ADR-081's consequence that a `Q(x)`-only model with an `ObservationGoal`
+gets an `EFESelector` at the horizon ADR-068 reads off the model, for horizons past 1.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+ADR-081 sent a model whose only state dependence is `Q(x)` to the EFE path, and ADR-068's
+probe then picks the shortest horizon at which the target moves the scores. On a double
+integrator observed in position that horizon is 2. The `Q(x)` surface above horizon 1
+is registered as unclaimed (#56), and the Agent page says `Q(x)` is claimed at horizon 1
+only. So the default path built a selector the project does not claim.
+
+### Decision
+
+A `Q(x)`-only model with an `ObservationGoal` gets an `EFESelector` when the probe reads
+horizon 1. Past horizon 1 the Agent refuses it, names the horizon the probe found, and
+points to `Agent(model, Preference(...), selector=EFESelector(model, ..., horizon=H))`,
+which reaches it by hand.
+
+### Consequences
+
+- Claiming #56 later lifts the refusal and edits nothing else.
+- A sensor whose `R(x)` varies is unaffected. Its surface above horizon 1 is claimed.

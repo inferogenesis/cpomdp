@@ -210,10 +210,10 @@ def test_kalman_backend_model_is_read_only():
     "build",
     [
         ScoredAgent,
-        lambda m: LQRController(m, precision=np.eye(2), effort=np.eye(1)),
+        lambda model: LQRController(model, precision=np.eye(2), effort=np.eye(1)),
         ChainBackend,
-        lambda m: WrongFixedRBackend(m, magnitude=0.5),
-        lambda m: DiagonalCovarianceBackend(KalmanBackend(m)),
+        lambda model: WrongFixedRBackend(model, magnitude=0.5),
+        lambda model: DiagonalCovarianceBackend(KalmanBackend(model)),
     ],
     ids=["ScoredAgent", "LQRController", "ChainBackend", "WrongFixedR", "Diagonal"],
 )
@@ -285,7 +285,7 @@ _WELL_PARAMS = {
 }
 
 
-def _corridor_model(*, fixed, control_matrix=True):
+def _corridor_model(*, fixed, control_matrix=True, dynamics_noise=0.05):
     """1-D single integrator; fixed or precision-well sensor; optional control."""
     sensor = (
         None
@@ -297,7 +297,7 @@ def _corridor_model(*, fixed, control_matrix=True):
     return LinearGaussianModel(
         dynamics_matrix=[[1.0]],
         observation_matrix=[[1.0]] if fixed else None,
-        dynamics_noise=[[0.05]],
+        dynamics_noise=[[dynamics_noise]],
         observation_noise=[[0.3]] if fixed else None,
         prior=Belief(mean=[0.0], cov=[[0.5]]),
         control_matrix=[[1.0]] if control_matrix else None,
@@ -314,9 +314,9 @@ _OBS_PREFERENCE = Preference(
 _BOUNDS = (-3.0, 3.0)
 
 
-def _still_near_beacon(x, params):
+def _still_near_beacon(state, params):
     """Q(x): the state diffuses least at the beacon, position 1.5."""
-    return jnp.array([[0.01 + 0.1 * (x[0] - 1.5) ** 2]])
+    return jnp.array([[0.01 + 0.1 * (state[0] - 1.5) ** 2]])
 
 
 class _Hold:
@@ -347,29 +347,29 @@ class TestRegimeDispatch:
     def test_explicit_selector_is_used_verbatim(self):
         # selector= takes a Preference, and the selector it is given is the one used.
         model = _corridor_model(fixed=False)
-        sel = EFESelector(model, n_candidates=11, action_bounds=_BOUNDS)
-        agent = Agent(model, _OBS_PREFERENCE, selector=sel)
-        assert agent.selector is sel
+        selector = EFESelector(model, n_candidates=11, action_bounds=_BOUNDS)
+        agent = Agent(model, _OBS_PREFERENCE, selector=selector)
+        assert agent.selector is selector
         agent.infer_states([0.1])
         np.testing.assert_array_equal(
-            agent.sample_action(), sel.select(agent.belief, _OBS_PREFERENCE)
+            agent.sample_action(), selector.select(agent.belief, _OBS_PREFERENCE)
         )
 
     def test_explicit_selector_chooses_by_efe_on_a_fixed_sensor(self):
         # The Agent declines an ObservationGoal on a fixed sensor. A selector built by
         # hand chooses by EFE there anyway, the collapse regime EFESelector tests use.
         model = _corridor_model(fixed=True)
-        sel = EFESelector(model, n_candidates=11, action_bounds=_BOUNDS)
-        agent = Agent(model, _OBS_PREFERENCE, selector=sel)
-        assert agent.selector is sel
+        selector = EFESelector(model, n_candidates=11, action_bounds=_BOUNDS)
+        agent = Agent(model, _OBS_PREFERENCE, selector=selector)
+        assert agent.selector is selector
 
     def test_a_goal_beside_a_selector_is_refused(self):
         # The goal's box went unread: declared (-0.1, 0.1), the agent returned 1.5.
         model = _corridor_model(fixed=False)
         narrow = ObservationGoal([1.5], action_bounds=(-0.1, 0.1))
-        sel = EFESelector(model, n_candidates=7, action_bounds=_BOUNDS)
+        selector = EFESelector(model, n_candidates=7, action_bounds=_BOUNDS)
         with pytest.raises(TypeError, match="Preference"):
-            Agent(model, narrow, selector=sel)
+            Agent(model, narrow, selector=selector)
 
     def test_a_state_goal_beside_a_selector_is_refused_before_any_riccati_solve(self):
         # No stabilising gain exists here, and the Agent used to solve for one it then
@@ -388,9 +388,9 @@ class TestRegimeDispatch:
     def test_a_selector_without_an_objective_is_refused(self):
         # It used to be dropped, leaving a tracker whose sample_action never named it.
         model = _corridor_model(fixed=False)
-        sel = EFESelector(model, n_candidates=11, action_bounds=_BOUNDS)
+        selector = EFESelector(model, n_candidates=11, action_bounds=_BOUNDS)
         with pytest.raises(TypeError, match="Preference"):
-            Agent(model, selector=sel)
+            Agent(model, selector=selector)
 
     def test_a_preference_without_a_selector_is_refused(self):
         with pytest.raises(TypeError, match="selector="):
@@ -398,11 +398,13 @@ class TestRegimeDispatch:
 
     def test_from_backend_takes_the_same_two_forms(self):
         model = _corridor_model(fixed=False)
-        sel = EFESelector(model, n_candidates=11, action_bounds=_BOUNDS)
-        agent = Agent.from_backend(KalmanBackend(model), _OBS_PREFERENCE, selector=sel)
-        assert agent.selector is sel
+        selector = EFESelector(model, n_candidates=11, action_bounds=_BOUNDS)
+        agent = Agent.from_backend(
+            KalmanBackend(model), _OBS_PREFERENCE, selector=selector
+        )
+        assert agent.selector is selector
         with pytest.raises(TypeError, match="Preference"):
-            Agent.from_backend(KalmanBackend(model), _OBS_GOAL, selector=sel)
+            Agent.from_backend(KalmanBackend(model), _OBS_GOAL, selector=selector)
 
     def test_a_selector_needs_a_model_that_can_act(self):
         model = _corridor_model(fixed=False, control_matrix=False)
@@ -457,6 +459,32 @@ class TestRegimeDispatch:
 
         assert epistemic(1.5) != pytest.approx(epistemic(-1.5))
 
+    def _q_of_x_double_integrator(self):
+        # The push reaches the observed position a step after it moves the velocity.
+        position_and_velocity = [[1.0, 0.1], [0.0, 1.0]]
+        return LinearGaussianModel(
+            dynamics_matrix=position_and_velocity,
+            observation_matrix=[[1.0, 0.0]],
+            dynamics_noise_model=CallableDynamicsNoise(
+                lambda state, params: jnp.eye(2) * (0.01 + state[1] ** 2), None
+            ),
+            observation_noise=[[0.3]],
+            prior=Belief(mean=[0.0, 0.0], cov=jnp.eye(2)),
+            control_matrix=[[0.0], [0.1]],
+        )
+
+    def test_q_of_x_alone_past_horizon_one_is_refused(self):
+        # Q(x) is claimed at horizon 1 only (#56), so the Agent does not build the
+        # horizon-2 selector this model would need.
+        with pytest.raises(ValueError, match="horizon 1"):
+            Agent(self._q_of_x_double_integrator(), _OBS_GOAL)
+
+    def test_q_of_x_past_horizon_one_is_reached_by_hand(self):
+        model = self._q_of_x_double_integrator()
+        selector = EFESelector(model, action_bounds=(-2.0, 2.0), horizon=2)
+        agent = Agent(model, Preference([1.0]), selector=selector)
+        assert agent.selector is selector
+
     def test_observation_goal_wrong_obs_dim_raises(self):
         # A 2-D obs goal on a model that observes m=1 must fail at construction, not
         # crash cryptically deep in the EFE kernel at sample_action.
@@ -470,15 +498,17 @@ class TestRegimeDispatch:
         # EFESelector reads the preference as an observation, here of length 1. A
         # state-length target used to fail inside the first select's dot_general.
         model = _reaching_model()
-        sel = EFESelector(model, n_candidates=11, action_bounds=_BOUNDS, horizon=2)
+        selector = EFESelector(model, n_candidates=11, action_bounds=_BOUNDS, horizon=2)
         with pytest.raises(ValueError, match="observation, a vector of length 1"):
-            Agent(model, Preference(GOAL), selector=sel)
+            Agent(model, Preference(GOAL), selector=selector)
 
     def test_a_preference_of_the_wrong_length_for_lqr_is_refused(self):
         model = _reaching_model()
-        sel = LQRSelector(LQRController(model, precision=jnp.eye(2), effort=jnp.eye(1)))
+        selector = LQRSelector(
+            LQRController(model, precision=jnp.eye(2), effort=jnp.eye(1))
+        )
         with pytest.raises(ValueError, match="state, a vector of length 2"):
-            Agent(model, Preference([1.0]), selector=sel)
+            Agent(model, Preference([1.0]), selector=selector)
 
     def test_lqr_selector_takes_a_state_preference(self):
         model = _reaching_model()
@@ -740,3 +770,21 @@ def test_efe_agent_reaches_lower_uncertainty_than_lqr():
     assert efe_final < 0.5 * lqr_final  # the payoff: markedly more certain under R(x)
     assert max(efe_pos) > 1.0  # mechanism: it sought the beacon, off the goal
     assert abs(float(lqr_mean[0])) < 0.05  # the LQR baseline does reach its state goal
+
+
+def test_a_selector_built_for_another_model_is_refused():
+    # The Agent filters under its model, so a selector scoring another would plan for
+    # a plant the agent is not filtering.
+    agent_model = _corridor_model(fixed=False)
+    other_model = _corridor_model(fixed=False, dynamics_noise=0.5)
+    selector = EFESelector(other_model, action_bounds=(-2.0, 2.0))
+    with pytest.raises(ValueError, match="another model"):
+        Agent(agent_model, _OBS_PREFERENCE, selector=selector)
+
+
+def test_a_selector_built_from_an_equal_copy_of_the_model_is_taken():
+    # A model rebuilt from the same config is the same plant.
+    agent_model = _corridor_model(fixed=False)
+    selector = EFESelector(_corridor_model(fixed=False), action_bounds=(-2.0, 2.0))
+    agent = Agent(agent_model, _OBS_PREFERENCE, selector=selector)
+    assert agent.selector is selector

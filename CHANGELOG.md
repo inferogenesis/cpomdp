@@ -475,6 +475,8 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `action_bounds=([-1, 5], [1, -5])` constructed with its second axis inverted and the
   selectors then failed inside JAX's `linspace`. An infinite bound and a fractional
   `n_candidates` are refused too, and `ObservationGoal.action_bounds` holds two floats.
+  `ObservationGoal` and `EFESelector` check `horizon` through one helper as well. A
+  fractional horizon passed both and failed later inside `range` or `jnp.repeat`.
 - When no candidate scores a finite `G`, `EFESelector` and `FfgEfeSelector` return NaN,
   and `Agent.sample_action` refuses it, naming the noise. Both selectors returned the
   first candidate, which looks decisive. With `R(x) = 1 - x0²` at `x0 = 2` every score
@@ -506,8 +508,10 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `LQRSelector`, and a target of the wrong length is refused. The old pairing of a goal
   with a selector reading the other space cannot be written:
   `Agent(model, StateGoal(target), selector=EFESelector(...))` pursued `C · x = target`
-  and settled away from the target whenever `C` is not the identity. A custom selector
-  is not checked (ADR-080).
+  and settled away from the target whenever `C` is not the identity. A built-in
+  selector scoring a different model is refused. One built from an equal copy, such as
+  a model rebuilt from the same config, is taken. A custom selector is not checked
+  (ADR-080).
 - **Breaking:** an `ObservationGoal` goes to EFE wherever a noise depends on the state,
   on a flat model and a graph alike. The dispatch read the sensor and the backend's
   type. A model whose only state dependence was `Q(x)` was refused as a fixed sensor and
@@ -562,9 +566,10 @@ certainty equivalence is optimal, and no use of the readings beats it.
   took the first candidate, the lower bound. A tie means the action reaches nothing the
   scores read. On that double integrator, an `EFESelector` built by hand at horizon 1
   scored every candidate 1.163426662195336 and returned `action_bounds[0]` on every
-  step. It now rests. Scores within a relative `1e-9` of the best count as tied, since
-  the graph backend leaves roundoff of about `1e-12` on such a tie. Choosing costs one
-  more pass over the `k` scores per cycle.
+  step. It now rests. Two tied candidates equally near zero, `±h` on a grid without
+  zero, give the point between them. Scores within a relative `1e-11` of the best
+  count as tied, since the graph backend leaves roundoff of about `1e-12` on such a
+  tie. Choosing costs two more passes over the `k` scores per cycle.
 - `EFESelector` and `FfgEfeSelector` compile their scoring once, on the first `select`,
   and reuse it. Each `select` re-traced the grid under an eager `vmap`, and at horizon
   above 1 the rollout's scan compiled again on every call, a fixed cost per step that

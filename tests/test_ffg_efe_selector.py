@@ -78,12 +78,15 @@ def test_ffg_selector_reduces_to_efe_selector_single_node():
 
     belief = Belief(mean=[0.3, -0.2], cov=[[0.7, 0.1], [0.1, 0.4]])
     preference = Preference(target=[1.0], precision=[[2.0]])
-    bounds, k = (-2.0, 2.0), 21
+    action_bounds, n_candidates = (-2.0, 2.0), 21
 
     ffg = FfgEfeSelector(
-        backend, info_block=range(2), n_candidates=k, action_bounds=bounds
+        backend,
+        info_block=range(2),
+        n_candidates=n_candidates,
+        action_bounds=action_bounds,
     )
-    efe = EFESelector(model, n_candidates=k, action_bounds=bounds)
+    efe = EFESelector(model, n_candidates=n_candidates, action_bounds=action_bounds)
 
     np.testing.assert_allclose(
         np.asarray(ffg.select(belief, preference)),
@@ -277,24 +280,29 @@ def test_ffg_agent_matches_kalman_efe_agent_end_to_end():
         prior=unit_prior(graph),
         control_matrix=control,
     )
-    bounds, k = (-2.0, 2.0), 21
+    action_bounds, n_candidates = (-2.0, 2.0), 21
 
     ffg_agent = Agent.from_backend(
         backend,
         Preference([0.5]),
         selector=FfgEfeSelector(
-            backend, info_block=range(2), n_candidates=k, action_bounds=bounds
+            backend,
+            info_block=range(2),
+            n_candidates=n_candidates,
+            action_bounds=action_bounds,
         ),
     )
     ref_agent = Agent(
         model,
         Preference([0.5]),
-        selector=EFESelector(model, n_candidates=k, action_bounds=bounds),
+        selector=EFESelector(
+            model, n_candidates=n_candidates, action_bounds=action_bounds
+        ),
     )
 
-    for y in ([0.3], [-0.1], [0.2]):
-        ffg_agent.infer_states(y)
-        ref_agent.infer_states(y)
+    for observation in ([0.3], [-0.1], [0.2]):
+        ffg_agent.infer_states(observation)
+        ref_agent.infer_states(observation)
         np.testing.assert_allclose(
             np.asarray(ffg_agent.sample_action()),
             np.asarray(ref_agent.sample_action()),
@@ -332,22 +340,28 @@ def _score_components(backend, belief, preference, candidates, info_block):
 
 
 def _single_node_rx_backend(params):
-    A = np.array([[1.0, 0.1], [0.0, 1.0]])  # drives state[0], which C observes
-    Q = np.eye(2) * 0.1
-    C = np.array([[1.0, 0.0]])
-    B = np.array([[1.0], [0.0]])
+    dynamics_matrix = np.array([[1.0, 0.1], [0.0, 1.0]])  # A
+    dynamics_noise = np.eye(2) * 0.1  # Q
+    observation_matrix = np.array([[1.0, 0.0]])  # C
+    control_matrix = np.array([[1.0], [0.0]])  # B, drives the observed state[0]
     graph = CouplingGraph(
         dims=(2,),
         couplings=(),
-        observation_models={0: CallableSensor(C, _rx_noise, params)},
+        observation_models={0: CallableSensor(observation_matrix, _rx_noise, params)},
     )
     backend = CouplingGraphBackend(
         graph,
-        (GaussianTransition(A, dynamics_noise=Q),),
+        (GaussianTransition(dynamics_matrix, dynamics_noise=dynamics_noise),),
         prior=unit_prior(graph),
-        control_matrix=B,
+        control_matrix=control_matrix,
     )
-    return backend, A, Q, C, B
+    return (
+        backend,
+        dynamics_matrix,
+        dynamics_noise,
+        observation_matrix,
+        control_matrix,
+    )
 
 
 class TestStateDependentSelection:
@@ -358,50 +372,73 @@ class TestStateDependentSelection:
         # R(μ⁺) moves with the action, so the epistemic term varies across candidates —
         # the dual effect. A fixed sensor's epistemic is flat across actions (ADR-003).
         params = {"R0": np.array([[0.5]]), "gain": 2.0}
-        rx, A, Q, C, B = _single_node_rx_backend(params)
+        (
+            rx,
+            dynamics_matrix,
+            dynamics_noise,
+            observation_matrix,
+            control_matrix,
+        ) = _single_node_rx_backend(params)
         belief = Belief(mean=[0.5, -0.2], cov=[[0.7, 0.1], [0.1, 0.4]])
-        pref = Preference(target=[1.0], precision=[[2.0]])
-        cands = jnp.linspace(-2.0, 2.0, 9)[:, None]
-        _, epi = _score_components(rx, belief, pref, cands, range(2))
-        assert float(jnp.max(epi) - jnp.min(epi)) > 1e-6  # varies with action
+        preference = Preference(target=[1.0], precision=[[2.0]])
+        candidates = jnp.linspace(-2.0, 2.0, 9)[:, None]
+        _, epistemic = _score_components(rx, belief, preference, candidates, range(2))
+        assert (
+            float(jnp.max(epistemic) - jnp.min(epistemic)) > 1e-6
+        )  # varies with action
 
         graph_fx = CouplingGraph(
             dims=(2,),
             couplings=(),
-            observation_models={0: FixedSensor(C, observation_noise=params["R0"])},
+            observation_models={
+                0: FixedSensor(observation_matrix, observation_noise=params["R0"])
+            },
         )
         fx = CouplingGraphBackend(
             graph_fx,
-            (GaussianTransition(A, dynamics_noise=Q),),
+            (GaussianTransition(dynamics_matrix, dynamics_noise=dynamics_noise),),
             prior=unit_prior(graph_fx),
-            control_matrix=B,
+            control_matrix=control_matrix,
         )
-        _, epi_fx = _score_components(fx, belief, pref, cands, range(2))
-        np.testing.assert_allclose(np.asarray(epi_fx), float(epi_fx[0]), atol=1e-9)
+        _, fixed_epistemic = _score_components(
+            fx, belief, preference, candidates, range(2)
+        )
+        np.testing.assert_allclose(
+            np.asarray(fixed_epistemic), float(fixed_epistemic[0]), atol=1e-9
+        )
 
     def test_single_node_rx_selector_matches_flat_efe_selector(self):
         # Trusted oracle: single node (no couplings, μ⁺ = μ⁻), whole-state info block.
         # The FFG R(x) selector must pick the same action as EFESelector on the
         # equivalent flat CallableSensor model, atol 1e-7 (the R(x) analogue of B4).
         params = {"R0": np.array([[0.5]]), "gain": 0.4}
-        rx, A, Q, C, B = _single_node_rx_backend(params)
+        (
+            rx,
+            dynamics_matrix,
+            dynamics_noise,
+            observation_matrix,
+            control_matrix,
+        ) = _single_node_rx_backend(params)
         model = LinearGaussianModel(
-            dynamics_matrix=A,
-            dynamics_noise=Q,
+            dynamics_matrix=dynamics_matrix,
+            dynamics_noise=dynamics_noise,
             prior=Belief(mean=np.zeros(2), cov=np.eye(2)),
-            control_matrix=B,
-            observation_model=CallableSensor(C, _rx_noise, params),
+            control_matrix=control_matrix,
+            observation_model=CallableSensor(observation_matrix, _rx_noise, params),
         )
         belief = Belief(mean=[0.3, -0.2], cov=[[0.7, 0.1], [0.1, 0.4]])
-        pref = Preference(target=[1.0], precision=[[2.0]])
-        bounds, k = (-2.0, 2.0), 21
+        preference = Preference(target=[1.0], precision=[[2.0]])
+        action_bounds, n_candidates = (-2.0, 2.0), 21
         ffg = FfgEfeSelector(
-            rx, info_block=range(2), n_candidates=k, action_bounds=bounds
+            rx,
+            info_block=range(2),
+            n_candidates=n_candidates,
+            action_bounds=action_bounds,
         )
-        efe = EFESelector(model, n_candidates=k, action_bounds=bounds)
+        efe = EFESelector(model, n_candidates=n_candidates, action_bounds=action_bounds)
         np.testing.assert_allclose(
-            np.asarray(ffg.select(belief, pref)),
-            np.asarray(efe.select(belief, pref)),
+            np.asarray(ffg.select(belief, preference)),
+            np.asarray(efe.select(belief, preference)),
             atol=1e-7,
         )
 
@@ -429,20 +466,27 @@ class TestStateDependentSelection:
         )
         belief = Belief(mean=[0.0], cov=[[1.0]])
         # goal 3.0 on the fixed channel, ~0 weight on the info channel (decoupling).
-        pref = Preference(target=[3.0, 0.0], precision=[[0.15, 0.0], [0.0, 1e-4]])
-        bounds, k = (-4.0, 4.0), 41
-        cands = jnp.linspace(-4.0, 4.0, k)[:, None]
-        prag, epi = _score_components(rx, belief, pref, cands, range(1))
-        full_action = cands[int(jnp.argmin(prag - epi))]
-        prag_action = cands[int(jnp.argmin(prag))]
+        preference = Preference(target=[3.0, 0.0], precision=[[0.15, 0.0], [0.0, 1e-4]])
+        action_bounds, n_candidates = (-4.0, 4.0), 41
+        candidates = jnp.linspace(-4.0, 4.0, n_candidates)[:, None]
+        pragmatic, epistemic = _score_components(
+            rx, belief, preference, candidates, range(1)
+        )
+        full_action = candidates[int(jnp.argmin(pragmatic - epistemic))]
+        pragmatic_action = candidates[int(jnp.argmin(pragmatic))]
         assert not np.isclose(
-            float(full_action[0]), float(prag_action[0])
+            float(full_action[0]), float(pragmatic_action[0])
         )  # the epistemic genuinely moved the decision, away from the pragmatic goal
-        sel = FfgEfeSelector(
-            rx, info_block=range(1), n_candidates=k, action_bounds=bounds
+        selector = FfgEfeSelector(
+            rx,
+            info_block=range(1),
+            n_candidates=n_candidates,
+            action_bounds=action_bounds,
         )
         np.testing.assert_allclose(
-            np.asarray(sel.select(belief, pref)), np.asarray(full_action), atol=1e-7
+            np.asarray(selector.select(belief, preference)),
+            np.asarray(full_action),
+            atol=1e-7,
         )
 
 

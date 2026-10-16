@@ -6,7 +6,7 @@ import numpy as np
 from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
-from cpomdp._validation import equilibrium_drift, state_dependent
+from cpomdp._validation import concrete, equilibrium_drift, state_dependent
 from cpomdp.backends.base import GraphBackend, InferenceBackend
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.control import LQRController
@@ -68,6 +68,12 @@ def _preference_for_selector(
         )
     if model.control_matrix is None:
         raise ValueError("selector= needs a model with a control matrix to act with.")
+    selector_model = _selector_model(selector)
+    if selector_model is not None and not _same_model(selector_model, model):
+        raise ValueError(
+            f"this {type(selector).__name__} was built for another model. The Agent "
+            "filters under its own model, so build the selector from the same one."
+        )
     if isinstance(selector, _STATE_SPACE_SELECTORS):
         space, length = "a state", model.n_states
     elif isinstance(selector, _OBSERVATION_SPACE_SELECTORS):
@@ -82,6 +88,39 @@ def _preference_for_selector(
     if isinstance(selector, _STATE_SPACE_SELECTORS):
         _require_held_target(model, objective.target, "the Preference's target")
     return objective
+
+
+def _same_model(first: LinearGaussianModel, second: LinearGaussianModel) -> bool:
+    """Whether two models are the same plant: one structure and equal arrays.
+
+    A model rebuilt from the same config is the same plant, so this compares values.
+    A sensor or noise function compares by identity, since two functions cannot be
+    compared by what they compute. A traced leaf cannot be read, so it counts as equal.
+    """
+    if first is second:
+        return True
+    first_leaves, first_structure = jax.tree_util.tree_flatten(first)
+    second_leaves, second_structure = jax.tree_util.tree_flatten(second)
+    if first_structure != second_structure:
+        return False
+    for first_leaf, second_leaf in zip(first_leaves, second_leaves, strict=True):
+        first_value, second_value = concrete(first_leaf), concrete(second_leaf)
+        if first_value is None or second_value is None:
+            continue
+        if not np.array_equal(first_value, second_value):
+            return False
+    return True
+
+
+def _selector_model(selector: ActionSelector) -> LinearGaussianModel | None:
+    """The model a built-in selector scores under, or None for a custom one."""
+    if isinstance(selector, EFESelector):
+        return selector._model
+    if isinstance(selector, FfgEfeSelector):
+        return selector._backend.model
+    if isinstance(selector, LQRSelector):
+        return selector.controller.model
+    return None
 
 
 def _lqr_path(
@@ -114,7 +153,7 @@ def _information_can_move(model: LinearGaussianModel) -> bool:
     does, and the information term of the expected free energy is flat (ADR-003).
     """
     noises = (model.observation_model, model.dynamics_noise_model)
-    return any(noise is not None and not noise.is_fixed for noise in noises)
+    return any(state_dependent(noise) is not None for noise in noises)
 
 
 def _efe_path(
@@ -128,13 +167,19 @@ def _efe_path(
         )
     is_graph = isinstance(backend, GraphBackend)
     if not _information_can_move(model):
-        own = "FfgEfeSelector" if is_graph else "EFESelector"
+        # A StateGoal on a graph runs LQR on a model without its couplings, so a graph
+        # user is pointed only at the EFE selector.
+        way_out = (
+            "Pass a Preference with selector=FfgEfeSelector(...) to choose by EFE "
+            "anyway."
+            if is_graph
+            else "Pass a StateGoal for the LQR path, or a Preference with "
+            "selector=EFESelector(...) to choose by EFE anyway."
+        )
         raise ValueError(
             "an ObservationGoal needs a noise that depends on the state, and both "
             "noises are fixed here. The information term is then the same for every "
-            "action, and choosing by EFE is output regulation (deferred). Pass a "
-            f"StateGoal for the LQR path, or a Preference with selector={own}(...) "
-            "to choose by EFE anyway."
+            f"action, and choosing by EFE is output regulation (deferred). {way_out}"
         )
     if objective.info_node is not None and not is_graph:
         raise ValueError(
@@ -151,7 +196,18 @@ def _efe_path(
     preference = objective.preference
     if isinstance(backend, GraphBackend):
         return preference, _graph_efe_selector(backend, objective)
-    return preference, _reaching_efe_selector(model, objective, preference)
+    selector = _reaching_efe_selector(model, objective, preference)
+    sensor_is_fixed = (
+        model.observation_model is None or model.observation_model.is_fixed
+    )
+    if sensor_is_fixed and selector.horizon > 1:
+        raise ValueError(
+            f"only Q(x) depends on the state here, and the target first moves the "
+            f"scores at horizon {selector.horizon}. Q(x) is claimed at horizon 1 only "
+            f"(#56). To score it anyway, pass a Preference with "
+            f"selector=EFESelector(model, ..., horizon={selector.horizon})."
+        )
+    return preference, selector
 
 
 def _graph_efe_selector(
@@ -284,7 +340,7 @@ class Agent:
     | ``qs`` | ``belief`` | posterior over the state |
     | ``infer_states`` | ``infer_states`` | fold an observation in |
     | ``sample_action`` | ``sample_action`` | choose an action |
-    | ``C`` | ``objective`` | a StateGoal or ObservationGoal |
+    | ``C`` | ``objective`` | a StateGoal, an ObservationGoal, or a Preference |
     | ``D`` | ``model.prior`` | belief before any observation |
 
     One honest difference from pymdp: ``sample_action`` is **deterministic** here,
@@ -336,8 +392,9 @@ class Agent:
                 ``selector=``. ``None`` builds a pure tracker, which perceives and
                 never acts.
             selector: An [`ActionSelector`][cpomdp.ActionSelector] of your own, for a
-                search no goal describes: EFE on a fixed sensor, a varying-sequence
-                search driver, or a custom rule. It needs a ``Preference`` as the
+                search no goal describes: EFE with both noises fixed, a
+                varying-sequence search driver, an ``LQRSelector`` over a controller
+                of your own, or a custom rule. It needs a ``Preference`` as the
                 objective, in the space the selector reads. That is an observation
                 for the EFE selectors and the search drivers, and a state for
                 ``LQRSelector``.
@@ -523,12 +580,13 @@ class Agent:
 
         Delegates to the agent's ``ActionSelector``, handing it the current belief
         and the objective's ``Preference``. For a ``StateGoal`` under a fixed
-        sensor that selection is exactly the LQR optimum, ``-L∞·(mean − goal)`` —
-        one matrix-vector product, front-loaded at construction (ADR-003); for an
-        ``ObservationGoal`` it is the EFE-minimising action over the front-loaded
-        candidate grid. Deterministic, not a sample, and it takes no ``rng_key`` (see
-        the class docstring). There is no separate ``infer_policies`` step — policy
-        evaluation is folded in here. On the EFE path its per-cycle cost reads back as
+        sensor that selection is exactly the LQR optimum, ``-L∞·(mean − target)``
+        with ``L∞`` the steady-state gain solved at construction (ADR-003). That is
+        one matrix-vector product. For an ``ObservationGoal`` it is the
+        EFE-minimising action over the front-loaded candidate grid. Deterministic,
+        not a sample, and it takes no ``rng_key`` (see the class docstring). Policy
+        evaluation is folded in here, so there is no separate ``infer_policies``
+        step. On the EFE path its per-cycle cost reads back as
         ``agent.selector.cost_per_cycle``. The chosen action is remembered so the next
         ``infer_states`` predicts with it.
 
@@ -552,9 +610,10 @@ class Agent:
         action = self._selector.select(self.belief, self._preference)
         if bool(jnp.isnan(action).any()):
             raise ValueError(
-                "the selector returned no action: no candidate scored a finite "
-                "expected free energy at this belief. A state-dependent R(x) or Q(x) "
-                "that is not a covariance at the predicted states does this."
+                "the selector returned a non-finite action at this belief. For an "
+                "EFE selector, no candidate scored a finite expected free energy, "
+                "which a state-dependent R(x) or Q(x) that is not a covariance at "
+                "the predicted states does."
             )
         self._last_action = action
         return action

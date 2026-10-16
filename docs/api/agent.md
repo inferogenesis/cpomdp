@@ -12,7 +12,8 @@ The stateful façade you drive: `infer_states` to perceive, `sample_action` to a
     builds one for an `ObservationGoal` wherever a noise depends on the state. That is
     the sensor's `R(x)`, or the dynamics noise `Q(x)` of a
     [`CallableDynamicsNoise`][cpomdp.CallableDynamicsNoise], which is claimed at horizon 1
-    only. The rule is the same on a flat model and on a graph. With both noises fixed
+    only, so a `Q(x)`-only goal that needs a longer horizon is refused. A graph carries
+    no `Q(x)`, so on a graph only `R(x)` makes a goal curious. With both noises fixed
     the information term is the same for every action, and the goal is refused.
     Green marks a curious agent, blue LQR, grey a tracker, a red outline a refusal at
     construction, and a dashed red outline a combination that builds and then raises or
@@ -31,6 +32,7 @@ The stateful façade you drive: `infer_states` to perceive, `sample_action` to a
         state -- "R(x) sensor" --> r2["Refused: a state goal on varying sensing"]:::refused
         state -- "graph model" --> uncoupled["LQR that ignores the graph's couplings"]:::gap
         obs -- "R(x) or Q(x)" --> c1["Curious EFE: horizon read off the model"]:::curious
+        obs -- "Q(x) only,<br/>horizon past 1" --> rq2["Refused: Q(x) is claimed at horizon 1 only"]:::refused
         obs -- "R(x) or Q(x),<br/>horizon set too short" --> r3["Refused: the target does not move the scores"]:::refused
         obs -- "both noises fixed,<br/>flat model or graph" --> r4["Refused: output regulation, deferred"]:::refused
         obs -- "graph model,<br/>R(x) node sensors" --> c2["Curious EFE: graph selector, horizon 1"]:::curious
