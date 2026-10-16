@@ -5558,7 +5558,7 @@ at construction.
 - The `LQRController` docstring and the backends page say the Agent filters per step.
   ADR-002 and ADR-003 keep their wording.
 
-## ADR-087 — a public name spells an acronym in capitals
+## ADR-088 — a public name spells an acronym in capitals
 
 **Date:** 2026-10-16
 **Status:** Accepted

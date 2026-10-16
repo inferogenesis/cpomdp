@@ -575,7 +575,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `LQRController` already did. `FfgEfeSelector` is `FFGEFESelector`, and
   `EnumeratedEfeSearch` and `ChunkedEfeSearch` are `EnumeratedEFESearch` and
   `ChunkedEFESearch`. The classes new in this release take the same casing:
-  `EFEResult`, `PolicyEFETrace` and `ExhaustiveEFESearch` (ADR-087).
+  `EFEResult`, `PolicyEFETrace` and `ExhaustiveEFESearch` (ADR-088).
 - **Breaking:** `Agent` takes a model or a backend, never both. `Agent(model, objective)`
   filters with the default per-step `KalmanBackend`, and
   `Agent.from_backend(backend, objective)` takes any other engine, a
