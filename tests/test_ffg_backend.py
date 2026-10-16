@@ -926,9 +926,7 @@ class TestStateDependentSensing:
         )
         model = LinearGaussianModel(
             dynamics_matrix=A,
-            observation_matrix=C,
             dynamics_noise=Q,
-            observation_noise=params["R0"],  # placeholder; overridden by observation
             prior=Belief(mean=np.zeros(2), cov=np.eye(2)),
             control_matrix=B,
             observation_model=CallableSensor(C, _rx_noise, params),
@@ -946,6 +944,29 @@ class TestStateDependentSensing:
             np.testing.assert_allclose(
                 np.asarray(belief_rx.cov), np.asarray(belief_flat.cov), atol=1e-7
             )
+
+    def test_a_prior_away_from_the_origin_builds_and_flattens(self):
+        # The flat model reads R at the prior mean from the graph's own sensor, so a
+        # representative R(0) beside it would be a second value for one field.
+        params = {"R0": np.array([[0.5]]), "gain": 0.3}
+        graph = CouplingGraph(
+            root=0,
+            dims=(2,),
+            couplings=(),
+            observations={
+                0: CallableGaussianObservation([[1.0, 0.0]], _rx_noise, params)
+            },
+        )
+        prior = Belief(mean=[1.0, 2.0], cov=np.eye(2))
+        backend = CouplingGraphBackend(
+            graph,
+            (GaussianTransition(np.eye(2), dynamics_noise=np.eye(2) * 0.1),),
+            prior=prior,
+        )
+        flat = backend.to_flat_model()
+        np.testing.assert_array_equal(
+            flat.observation_noise, _rx_noise(prior.mean, params)
+        )
 
     def test_branching_rx_matches_numpy_oracle(self):
         # Couplings + R(x) together: the branching backend must match the independent

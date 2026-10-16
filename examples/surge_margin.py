@@ -250,17 +250,17 @@ def _model(
         live: ``True`` for the ``R(x)`` agent, ``False`` for the fixed-`R` twin.
 
     Returns:
-        The model. The live one reads its noise off a
-        [`CallableSensor`][cpomdp.CallableSensor], and its nominal ``observation_noise``
-        is that sensor's `R` at the prior mean, the operating point. The twin is handed
-        the same value as a constant.
+        The model. The live one reads its channel off a
+        [`CallableSensor`][cpomdp.CallableSensor], and its ``observation_noise`` is that
+        sensor's `R` at the prior mean, the operating point. The twin is handed the same
+        value as a constant.
     """
     sensor = None
     if live:
         sensor = CallableSensor(OBSERVATION_MATRIX, METERS[meter], _meter_params(e_ref))
     return LinearGaussianModel(
         DYNAMICS_MATRIX,
-        observation_matrix=OBSERVATION_MATRIX,
+        observation_matrix=None if live else OBSERVATION_MATRIX,
         dynamics_noise=DYNAMICS_NOISE,
         observation_noise=None if live else [[_frozen_noise(e_ref, meter)]],
         prior=_belief(),

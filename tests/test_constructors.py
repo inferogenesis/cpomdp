@@ -211,19 +211,20 @@ def test_every_model_a_set_builds_is_its_own_object():
     assert not _leaves(left) & _leaves(right)
 
 
-# --- a scale the filter would not read is refused, not built ------------------------
+# --- a scale of a matrix a noise object supplies is refused, not built ---------------
 #
-# A state-dependent sensor supplies its own (C, R) and a state-dependent process noise
-# its own Q, so scaling the matrix each stands in for reaches nothing. Left unguarded
-# the cell builds what CORRECT builds and reports a label saying otherwise.
+# A sensor supplies its own (C, R) and a dynamics noise model its own Q. The model
+# refuses a declared matrix that differs from its object's, so the scaled cell could
+# never build, and the spec says why before the model is asked.
 
 
 def _noise_at(mean, params):
     return jnp.array([[1e-2]]) * (1.0 + jnp.sum(jnp.asarray(mean) ** 2))
 
 
+# Both agree with _spec's declared noises at its prior mean, the origin.
 def _process_at(x, params):
-    return jnp.eye(2) * 1e-3 * (1.0 + jnp.sum(jnp.asarray(x) ** 2))
+    return jnp.eye(2) * 1e-4 * (1.0 + jnp.sum(jnp.asarray(x) ** 2))
 
 
 class _FixedProcessNoise:
@@ -232,20 +233,57 @@ class _FixedProcessNoise:
     is_fixed = True
 
     def noise_at(self, x):
-        return jnp.eye(2) * 1e-3
+        return jnp.eye(2) * 1e-4
 
 
-@pytest.mark.parametrize("parameter", ["observation_matrix", "observation_noise"])
-def test_a_scale_the_state_dependent_sensor_shadows_is_refused(parameter):
-    spec = _spec(observation_model=CallableSensor([[1.0, 0.0]], _noise_at, ()))
-    with pytest.raises(ValueError, match="does not read on this spec"):
+@pytest.mark.parametrize(
+    ("parameter", "noise_objects"),
+    [
+        (
+            "observation_matrix",
+            {"observation_model": CallableSensor([[1.0, 0.0]], _noise_at, ())},
+        ),
+        (
+            "observation_noise",
+            {"observation_model": CallableSensor([[1.0, 0.0]], _noise_at, ())},
+        ),
+        (
+            "observation_matrix",
+            {
+                "observation_model": FixedSensor(
+                    [[1.0, 0.0]], observation_noise=[[1e-2]]
+                )
+            },
+        ),
+        (
+            "observation_noise",
+            {
+                "observation_model": FixedSensor(
+                    [[1.0, 0.0]], observation_noise=[[1e-2]]
+                )
+            },
+        ),
+        (
+            "dynamics_noise",
+            {"dynamics_noise_model": CallableProcessNoise(_process_at, ())},
+        ),
+        ("dynamics_noise", {"dynamics_noise_model": _FixedProcessNoise()}),
+    ],
+    ids=[
+        "state-dependent-C",
+        "state-dependent-R",
+        "fixed-C",
+        "fixed-R",
+        "state-dependent-Q",
+        "fixed-Q",
+    ],
+)
+def test_a_scale_of_a_matrix_its_noise_object_supplies_is_refused(
+    parameter, noise_objects
+):
+    spec = _spec(**noise_objects)
+    with pytest.raises(ValueError, match="supplies it"):
         spec.build(Perturbation("shadowed", parameter, -0.5))
-
-
-def test_a_scale_the_state_dependent_process_noise_shadows_is_refused():
-    spec = _spec(dynamics_noise_model=CallableProcessNoise(_process_at, ()))
-    with pytest.raises(ValueError, match="does not read on this spec"):
-        spec.build(Perturbation("shadowed", "dynamics_noise", -0.5))
 
 
 @pytest.mark.parametrize("parameter", ["dynamics_matrix", "control_matrix"])
@@ -261,23 +299,6 @@ def test_a_parameter_the_filter_still_reads_is_not_refused(parameter):
 def test_correct_still_builds_on_a_state_dependent_spec():
     spec = _spec(observation_model=CallableSensor([[1.0, 0.0]], _noise_at, ()))
     assert spec.build(CORRECT).observation_model is spec.observation_model
-
-
-@pytest.mark.parametrize("parameter", ["observation_matrix", "observation_noise"])
-def test_a_scale_a_fixed_sensor_restates_is_refused(parameter):
-    # A fixed sensor restates the plain fields and the model refuses the two
-    # disagreeing, so the scaled cell could never build. Refusing at the spec names
-    # the situation instead of failing deep inside LinearGaussianModel.
-    sensor = FixedSensor([[1.0, 0.0]], observation_noise=[[1e-2]])
-    spec = _spec(observation_model=sensor)
-    with pytest.raises(ValueError, match="restating"):
-        spec.build(Perturbation("read", parameter, -0.5))
-
-
-def test_a_scale_a_fixed_process_noise_restates_is_refused():
-    spec = _spec(dynamics_noise_model=_FixedProcessNoise())
-    with pytest.raises(ValueError, match="restating"):
-        spec.build(Perturbation("read", "dynamics_noise", -0.5))
 
 
 def test_correct_still_builds_with_an_agreeing_fixed_sensor():
@@ -324,7 +345,7 @@ def test_a_spec_may_leave_the_dynamics_noise_to_its_process_noise():
     process = CallableProcessNoise(_process_at, ())
     spec = _spec_leaving("dynamics_noise", dynamics_noise_model=process)
     assert spec.dynamics_noise is None
-    np.testing.assert_allclose(spec.build().dynamics_noise, np.eye(2) * 2e-3)
+    np.testing.assert_allclose(spec.build().dynamics_noise, np.eye(2) * 2e-4)
 
 
 @pytest.mark.parametrize("field", ["observation_noise", "dynamics_noise"])

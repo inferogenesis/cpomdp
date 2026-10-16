@@ -86,9 +86,7 @@ def scalar_chain(
     """The scalar chain the worked example uses: A = B = C = Q = 1, R(x) = 1 + x²."""
     model = LinearGaussianModel(
         dynamics_matrix=[[dynamics_matrix]],
-        observation_matrix=[[1.0]],
         dynamics_noise=[[process]],
-        observation_noise=[[1.0]],
         prior=Belief([mean], [[prior_var]]),
         control_matrix=[[control_matrix]],
         observation_model=CallableSensor([[1.0]], range_noise, RANGE_NOISE_PARAMS),

@@ -6,7 +6,7 @@ import numpy as np
 from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
-from cpomdp._validation import equilibrium_drift
+from cpomdp._validation import equilibrium_drift, state_dependent
 from cpomdp.backends.base import EfeBackend, InferenceBackend
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.control import LQRController
@@ -252,9 +252,7 @@ class Agent:
         self._backend = backend
         self._objective = objective
         self._belief = model.prior
-        sensor_is_fixed = (
-            model.observation_model is None or model.observation_model.is_fixed
-        )
+        sensor_is_fixed = state_dependent(model.observation_model) is None
 
         if objective is None:
             # perceive-only tracker: nothing to act toward.

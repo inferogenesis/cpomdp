@@ -42,9 +42,9 @@ def _model(observation_model=None):
     # 2-state, 1-observation, 1-action, controllable (mirrors test_efe.py).
     return LinearGaussianModel(
         dynamics_matrix=[[1.0, 0.1], [0.0, 1.0]],
-        observation_matrix=[[1.0, 0.0]],
+        observation_matrix=[[1.0, 0.0]] if observation_model is None else None,
         dynamics_noise=[[0.1, 0.0], [0.0, 0.1]],
-        observation_noise=[[0.5]],
+        observation_noise=[[0.5]] if observation_model is None else None,
         prior=Belief(mean=[0.0, 0.0], cov=[[1.0, 0.0], [0.0, 1.0]]),
         control_matrix=[[0.0], [1.0]],
         observation_model=observation_model,
@@ -83,7 +83,6 @@ def _internal_q_model():
     return LinearGaussianModel(
         dynamics_matrix=[[1.0]],
         observation_matrix=[[1.0]],
-        dynamics_noise=[[0.1]],
         observation_noise=[[0.3]],
         prior=Belief(mean=[0.0], cov=[[0.2]]),
         control_matrix=[[1.0]],
