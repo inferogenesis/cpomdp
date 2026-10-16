@@ -315,7 +315,7 @@ def probe_model(
         covs = [np.asarray(p.cov, dtype=float) for p in predicted]
         dynamics_spread = 0.0  # the graph's transitions carry a fixed Q
     else:  # a flat LinearGaussianModel
-        # Imported here so diagnostics keeps no import of types at module load.
+        # Runtime import here, so importing diagnostics loads no model code.
         from cpomdp.types import refuse_graph_interface
 
         refuse_graph_interface(model, "probe_model")
