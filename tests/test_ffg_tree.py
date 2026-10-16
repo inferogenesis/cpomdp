@@ -692,15 +692,14 @@ class TestCouplingGraphValidation:
                 {0: FixedSensor(np.eye(1), observation_noise=np.eye(1))},
             )
 
-    @pytest.mark.parametrize("dims", [(1, 1.5), (True, 1), (1.0, 1)])
+    @pytest.mark.parametrize("dims", [(1, 1.5), (True, 1)])
     def test_rejects_a_dimension_that_is_not_an_int(self, dims):
         # int() used to truncate 1.5 to 1 and build a graph nobody declared.
         with pytest.raises(TypeError, match=r"dims\[\d\] must be an int"):
             CouplingGraph(dims, (self._edge(0, 1),), {})
 
-    def test_takes_an_integral_float_root_and_dimension(self):
+    def test_takes_an_integral_float_dimension(self):
         graph = CouplingGraph(
-            0.0,  # ty: ignore[invalid-argument-type]
             (1.0, 1.0),  # ty: ignore[invalid-argument-type]
             (self._edge(0, 1),),
             {},
