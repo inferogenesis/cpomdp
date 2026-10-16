@@ -482,7 +482,7 @@ class CouplingGraphBackend:
 
         Validate the inputs, form the control shift ``b = control @ action``, then run
         the driven-relaxation pipeline: lift the joint prior into canonical form,
-        ``predict`` through the block-diagonal per-node dynamics (the temporal edges),
+        ``_predict`` through the block-diagonal per-node dynamics (the temporal edges),
         add the structural coupling precision and the per-node observation messages (the
         within-slice update), and ``to_moment`` the joint posterior back.
 
@@ -693,7 +693,7 @@ class CouplingGraphBackend:
 
         The pure numerical core, so a traced rollout (``rollout``) can call it inside a
         ``lax.scan`` body where the host-side ``_validate_step_inputs`` cannot run. Lift
-        the joint prior to canonical, ``predict`` through the block-diagonal per-node
+        the joint prior to canonical, ``_predict`` through the block-diagonal per-node
         dynamics (the temporal edges), then add the structural coupling precision and
         the per-node observation messages (the within-slice update). ChainBackend sums
         two terms; the tree's within-slice couplings are the third.
@@ -717,7 +717,7 @@ class CouplingGraphBackend:
     ) -> tuple[jax.Array, jax.Array]:
         """The joint (Λ, h) after dynamics + structural couplings, *before* observing.
 
-        The predict side of a step: lift the joint prior to canonical, ``predict``
+        The predict side of a step: lift the joint prior to canonical, ``_predict``
         through the block-diagonal per-node dynamics under ``action`` (the temporal
         edges), then add the structural coupling precision — but no observation.
         ``_assemble_unchecked`` folds the observation on top; ``predicted_belief``

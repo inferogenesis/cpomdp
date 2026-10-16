@@ -135,8 +135,8 @@ class ChainBackend:
         ``_validate_step_inputs`` (identical checks to ``KalmanBackend`` — same seam,
         same errors), form the control shift ``b = control @ action`` (zero when the
         model is uncontrolled), then run the module-docstring pipeline: lift the
-        prior into canonical form, ``predict`` through the transition factor, add the
-        observation factor's ``message(y)`` (the measurement update), and
+        prior into canonical form, ``_predict`` through the transition factor, add the
+        observation factor's ``_message(y)`` (the measurement update), and
         ``to_moment`` the result back into a ``Belief``.
 
         On a state-dependent side, the transition/observation factor for

@@ -14,6 +14,9 @@ The two children are correlated *through* the shared parent (off-diagonal
 ``W₁ P₀ W₂ᵀ`` blocks), which is exactly the structure message passing has to respect.
 """
 
+import copy
+import pickle
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -554,6 +557,22 @@ class TestCouplingGraphValidation:
         with pytest.raises(TypeError):
             # Writing to it is the test, so ty's refusal is expected.
             graph.observations[7] = sensor  # ty: ignore[invalid-assignment]
+
+    @pytest.mark.parametrize(
+        "round_trip",
+        [copy.deepcopy, lambda graph: pickle.loads(pickle.dumps(graph))],
+        ids=["deepcopy", "pickle"],
+    )
+    def test_survives_a_copy_and_a_pickle(self, round_trip):
+        # A simulation forks with deepcopy and reaches a worker process by pickle.
+        sensor = GaussianObservation(np.eye(1), observation_noise=np.eye(1))
+        graph = CouplingGraph(
+            0, (1, 1), (Coupling(0, 1, self._w(1, 1), 1.0),), {1: sensor}
+        )
+        copied = round_trip(graph)
+        assert sorted(copied.observations) == [1]
+        with pytest.raises(TypeError):
+            copied.observations[7] = sensor  # ty: ignore[invalid-assignment]
 
 
 # --- CouplingGraph.infer vs the normal backend on the hand-flattened joint ---
