@@ -77,7 +77,7 @@ jobs:
           # still ran out mid-diff and posted nothing.
           claude_args: >-
             --model ${{ (github.event.action == 'opened' || github.event_name ==
-            'workflow_dispatch') && 'claude-opus-5' || 'claude-sonnet-5' }}
+            'workflow_dispatch') && 'claude-opus-5-5' || 'claude-sonnet-5-5' }}
             --max-turns 80 --allowed-tools
             "Read,Grep,Glob,Bash(git
             diff:*),Bash(git log:*),Bash(git show:*),Bash(ls:*),Bash(cat:*),Bash(grep:*),Bash(gh
