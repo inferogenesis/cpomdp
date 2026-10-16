@@ -4636,7 +4636,7 @@ versions break before 1.0, as cpomdp's do.
 - A warrantlib 0.4 reaches cpomdp users only through a cpomdp release that lifts the
   cap.
 
-## ADR-071 — the EFE functions answer in one record and take one preference
+## ADR-078 — the EFE functions answer in one record and take one preference
 
 **Date:** 2026-10-15
 **Status:** Accepted
@@ -4709,18 +4709,18 @@ second way to read the same number.
 - The Agent still builds its `Preference` from the goal's fields. Reading
   `objective.preference` there would leave one place that converts a goal.
 
-## ADR-072 — the EFE functions check a Preference by type, and the LQR schedule takes the goal's names
+## ADR-079 — the EFE functions check a Preference by type, and the LQR schedule takes the goal's names
 
 **Date:** 2026-10-16
 **Status:** Accepted
-**Supersedes:** ADR-071's attribute-read check of a preference, its "every docstring" for
+**Supersedes:** ADR-078's attribute-read check of a preference, its "every docstring" for
 the name of S, and its silence on ADR-009. ADR-009's scope that `policy_efe` stays
 internal, which ADR-069's public-module rule had already overridden without naming it.
 **Phase:** v0.5.0, the public API review before release
 
 ### The question
 
-ADR-071 read a preference's two fields by attribute and refused one that lacked them. A
+ADR-078 read a preference's two fields by attribute and refused one that lacked them. A
 goal carries a target and a precision too, so once the field names agreed nothing told a
 goal from a preference by its attributes. The read also turned a fault inside a real
 `Preference` into a refusal of it. Separately, `lqr_schedule` took `goal_precision` and
