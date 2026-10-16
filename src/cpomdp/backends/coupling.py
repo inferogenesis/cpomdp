@@ -671,13 +671,18 @@ class CouplingGraphBackend:
         Raises:
             ValueError: If ``observations`` is not a ``(T, m)`` stack with at least one
                 step, if ``prior`` is not over the joint state, or if ``actions`` is
-                missing, unexpected or not one ``(p,)`` action per step.
+                missing, unexpected or not a ``(T, p)`` stack.
         """
         observations = jnp.asarray(observations, dtype=float)
-        if observations.ndim != 2 or observations.shape[0] == 0:
+        observation_width = self._model.n_observations  # m
+        if (
+            observations.ndim != 2
+            or observations.shape[0] == 0
+            or observations.shape[1] != observation_width
+        ):
             raise ValueError(
-                "observations must be a (T, m) stack of readings with at least one "
-                f"step, got shape {observations.shape}"
+                f"observations must be a (T, {observation_width}) stack of readings "
+                f"with at least one step, got shape {observations.shape}"
             )
         steps = observations.shape[0]
         if self._control is None:
@@ -691,12 +696,13 @@ class CouplingGraphBackend:
                     "this model has a control matrix, so actions are required"
                 )
             actions = jnp.asarray(actions, dtype=float)
-            if actions.ndim != 2 or actions.shape[0] != steps:
+            if actions.shape != (steps, self._model.n_controls):
                 raise ValueError(
-                    f"actions must be a ({steps}, p) stack, one action per reading, "
-                    f"got shape {actions.shape}"
+                    f"actions must be a ({steps}, {self._model.n_controls}) stack, one "
+                    f"action per reading, got shape {actions.shape}"
                 )
             first_action = actions[0]
+        # The widths are checked above, so this checks the prior.
         _validate_step_inputs(self._model, observations[0], prior, first_action)
 
         def step(

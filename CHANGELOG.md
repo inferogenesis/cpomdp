@@ -636,8 +636,8 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `(observations, prior, actions)`, the order `infer_states` takes, where it put the
   prior first. It returns `(means, covs, severed_mass)` as arrays. The `Belief` it
   returned had a time axis on its mean, which broke `Belief`'s invariant, and the
-  backend's own `marginal` refused it. It now checks the prior and the first step
-  before it scans.
+  backend's own `marginal` refused it. It now checks the prior and the width of each
+  stack before it scans.
 - **Breaking:** `CouplingGraphBackend.readout` and its `readout_node` argument are
   removed. `readout(belief)` was `marginal(readout_node, belief)`, and the argument did
   nothing else. Read any node, the root included, with `marginal(node, belief)`.

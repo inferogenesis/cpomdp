@@ -599,8 +599,21 @@ class TestCarryPartition:
             control_matrix=np.array([[1.0], [0.0], [0.0], [0.0], [0.0]]),
         )
         prior = Belief(mean=np.zeros(5), cov=np.eye(5))
-        with pytest.raises(ValueError, match="action must be a 1-D vector of length 1"):
+        with pytest.raises(
+            ValueError, match=r"actions must be a \(2, 1\) stack.*got shape \(2, 2\)"
+        ):
             backend.filter_sequence(np.zeros((2, 3)), prior, np.zeros((2, 2)))
+
+    def test_filter_sequence_refuses_readings_of_the_wrong_width(self):
+        backend = _build(
+            _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
+        )
+        prior = Belief(mean=np.zeros(5), cov=np.eye(5))
+        with pytest.raises(
+            ValueError,
+            match=r"observations must be a \(T, 3\) stack.*got shape \(4, 2\)",
+        ):
+            backend.filter_sequence(np.zeros((4, 2)), prior)
 
     def test_filter_sequence_refuses_an_empty_run(self):
         backend = _build(
