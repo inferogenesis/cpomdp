@@ -29,6 +29,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from jaxtyping import Array, Float64
+from numpy.typing import ArrayLike
 
 from cpomdp.efe import _checked_info_block, _policy_efe_ffg, policy_efe
 from cpomdp.types import Belief, LinearGaussianModel
@@ -55,15 +56,7 @@ __all__ = [
     "IncompleteEnumerationError",
     "OpenLoopSelector",
     "RecedingHorizonSelector",
-    "SearchWarrant",
 ]
-
-
-# The search vocabulary predates the shared one, and named two of its three levels. It
-# is now that enum, so `SearchWarrant.PROVED` and `Warrant.PROVED` are one object and
-# `EnumeratedEfeSearch.warrant` keeps its return type. A search earns `PROVED` from a
-# full enumeration (Prover 3 · enumeration) and `CORROBORATED` from a grid sample.
-SearchWarrant = Warrant
 
 
 class IncompleteEnumerationError(Exception):
@@ -80,14 +73,19 @@ class FiniteActionSet:
 
     Args:
         actions: the declared actions, shape ``(A, p)`` — ``A`` actions of dimension
-            ``p``. At least two (a set of one is no choice to search).
+            ``p``. At least two (a set of one is no choice to search), every entry
+            finite. A repeated action counts toward ``A``, so it is scored twice.
         version: a non-empty tag, so an action added later shows up in the diff.
+
+    Raises:
+        ValueError: If ``actions`` is not 2-D, holds fewer than two actions or a
+            non-finite entry, or if ``version`` is empty.
     """
 
     actions: Float64[Array, "A p"]
     version: str
 
-    def __init__(self, actions, *, version: str) -> None:
+    def __init__(self, actions: ArrayLike, *, version: str) -> None:
         object.__setattr__(self, "actions", jnp.asarray(actions, dtype=float))
         object.__setattr__(self, "version", version)
         self._validate()
@@ -101,6 +99,13 @@ class FiniteActionSet:
             raise ValueError(
                 f"a FiniteActionSet needs at least 2 actions to search, got "
                 f"{self.actions.shape[0]}"
+            )
+        finite = np.all(np.isfinite(np.asarray(self.actions)), axis=1)
+        if not finite.all():
+            rows = ", ".join(str(row) for row in np.flatnonzero(~finite))
+            raise ValueError(
+                f"every action must be finite. Non-finite rows: {rows}. A policy that "
+                "takes one scores NaN, and the search would still certify covering it."
             )
         if not isinstance(self.version, str) or not self.version:
             raise ValueError(
@@ -151,7 +156,7 @@ def _certify(
     return CompletenessCertificate(
         expected=expected,
         visited=visited,
-        warrant=SearchWarrant.PROVED,
+        warrant=Warrant.PROVED,
         action_set_size=action_set.size,
         horizon=horizon,
         action_set_version=action_set.version,
@@ -342,14 +347,14 @@ class EnumeratedEfeSearch:
         return self._horizon
 
     @property
-    def cost_per_cycle(self) -> int:
-        """Per-cycle step-evals = ``|A|^H * H`` — the honest exponential cost."""
+    def cost_per_plan(self) -> int:
+        """Step evaluations one ``evaluate`` costs, ``|A|^H * H`` (RFC-001)."""
         return self.n_policies * self._horizon
 
     @property
-    def warrant(self) -> SearchWarrant:
+    def warrant(self) -> Warrant:
         """``PROVED`` — a finite set enumerated in full decides its universal."""
-        return SearchWarrant.PROVED
+        return Warrant.PROVED
 
     @property
     def certificate(self) -> CompletenessCertificate:
@@ -648,14 +653,14 @@ class ChunkedEfeSearch:
         return -(-self._n_policies // self._chunk)
 
     @property
-    def cost_per_cycle(self) -> int:
-        """Per-cycle step-evals = ``|A|^H * H`` — the honest exponential cost."""
+    def cost_per_plan(self) -> int:
+        """Step evaluations one ``evaluate`` costs, ``|A|^H * H`` (RFC-001)."""
         return self._n_policies * self._horizon
 
     @property
-    def warrant(self) -> SearchWarrant:
+    def warrant(self) -> Warrant:
         """``PROVED`` — a finite set enumerated in full decides its universal."""
-        return SearchWarrant.PROVED
+        return Warrant.PROVED
 
 
 class RecedingHorizonSelector:
@@ -680,7 +685,7 @@ class RecedingHorizonSelector:
         return self._search.horizon
 
     @property
-    def warrant(self) -> SearchWarrant:
+    def warrant(self) -> Warrant:
         """``PROVED`` — inherited from the enumerated search."""
         return self._search.warrant
 
@@ -692,7 +697,7 @@ class RecedingHorizonSelector:
     @property
     def cost_per_plan(self) -> int:
         """Step-evals for one search = ``|A|^H * H`` (RFC-001 attributable work)."""
-        return self._search.cost_per_cycle
+        return self._search.cost_per_plan
 
     @property
     def replan_interval(self) -> int:
@@ -743,7 +748,7 @@ class OpenLoopSelector:
         return self._search.horizon
 
     @property
-    def warrant(self) -> SearchWarrant:
+    def warrant(self) -> Warrant:
         """``PROVED`` — inherited from the enumerated search."""
         return self._search.warrant
 
@@ -755,7 +760,7 @@ class OpenLoopSelector:
     @property
     def cost_per_plan(self) -> int:
         """Step-evals for one search = ``|A|^H * H`` (RFC-001 attributable work)."""
-        return self._search.cost_per_cycle
+        return self._search.cost_per_plan
 
     @property
     def replan_interval(self) -> int:

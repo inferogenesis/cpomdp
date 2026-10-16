@@ -1,10 +1,8 @@
 """The shared `Warrant` vocabulary and the check report that carries it.
 
-`SearchWarrant` had two levels: `PROVED` (exhaustive enumeration) and `CORROBORATED`
-(a grid sample). `Warrant` adds `CERTIFIED` (validated numerics over a compact domain)
-and lives in `warrantlib`, where a check suite can reach it without cpomdp.
-`SearchWarrant` stays as an alias, so existing call sites keep their members and their
-return type.
+`Warrant` has three levels: `PROVED` (exhaustive enumeration), `CERTIFIED` (validated
+numerics over a compact domain) and `CORROBORATED` (a grid sample). It lives in
+`warrantlib`, where a check suite can reach it without cpomdp.
 
 `CheckReport` is what a registered falsifier emits: a warrant, an `Outcome`, a `Tier`,
 and a reason. A falsifier does not pass, so `PASS` is not in the vocabulary at all. The
@@ -27,7 +25,6 @@ from cpomdp.enumeration import (
     FiniteActionSet,
     OpenLoopSelector,
     RecedingHorizonSelector,
-    SearchWarrant,
 )
 from cpomdp.selection import EFESelector, Preference
 from cpomdp.types import Belief, LinearGaussianModel
@@ -1007,16 +1004,6 @@ class TestPublicSurface:
         for name in ("Outcome", "Tier", "CheckReport", "SymbolicReduction"):
             assert name not in cpomdp.__all__
             assert not hasattr(cpomdp, name)
-
-
-class TestSearchWarrantAlias:
-    def test_alias_is_the_same_enum(self):
-        # Not merely equal. A separate enum breaks every `is` check in the suite.
-        assert SearchWarrant is Warrant
-
-    def test_existing_members_resolve_to_the_same_objects(self):
-        assert SearchWarrant.PROVED is Warrant.PROVED
-        assert SearchWarrant.CORROBORATED is Warrant.CORROBORATED
 
 
 class TestExistingLabelsUnchanged:

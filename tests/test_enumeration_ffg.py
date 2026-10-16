@@ -20,12 +20,13 @@ import numpy as np
 
 from _support import unit_prior
 from cpomdp.backends.coupling import CouplingGraphBackend
-from cpomdp.enumeration import EnumeratedEfeSearch, FiniteActionSet, SearchWarrant
+from cpomdp.enumeration import EnumeratedEfeSearch, FiniteActionSet
 from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
 from cpomdp.ffg.graph import Coupling, CouplingGraph
 from cpomdp.observation import CallableSensor, FixedSensor
 from cpomdp.selection import Preference
 from cpomdp.types import Belief, LinearGaussianModel
+from warrantlib import Warrant
 
 
 # --- fixtures (mirror tests/test_policy_efe_ffg.py) --------------------------------
@@ -124,10 +125,10 @@ class TestOverBackendSharedAccounting:
         ffg = EnumeratedEfeSearch.over_backend(
             backend, _action_set(), info_block=range(2), horizon=2
         )
-        assert ffg.warrant is SearchWarrant.PROVED
+        assert ffg.warrant is Warrant.PROVED
         assert ffg.certificate.complete
         assert ffg.n_policies == 9  # 3^2
-        assert ffg.cost_per_cycle == 18  # |A|^H * H = 9 * 2
+        assert ffg.cost_per_plan == 18  # |A|^H * H = 9 * 2
 
     def test_rejects_an_action_set_of_other_n_controls(self):
         backend, _ = _single_node_pair(state_dependent=False)  # p = 1

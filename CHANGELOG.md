@@ -465,6 +465,9 @@ certainty equivalence is optimal, and no use of the readings beats it.
   as index 2. An empty block gave a zero epistemic and a repeated one gave NaN. All of
   them now refuse both through one check. A search makes it once at construction, so
   scoring each policy costs nothing extra.
+- `FiniteActionSet` refuses a non-finite action and names its row. A NaN action scored
+  NaN on every policy that took it, and a search over the set still certified it
+  `PROVED`. A repeated action is still accepted and counts toward `|A|`.
 - `FfgEfeSelector` refuses a backend with no control matrix or with more than one action
   dimension, as `EFESelector` does. A control-free backend returned the grid's first
   action, and `p = 2` constructed and then failed at the first `select`. The two
@@ -908,9 +911,15 @@ certainty equivalence is optimal, and no use of the readings beats it.
   import it at call time to run the `isinstance` guard behind `PROVED`.
 - The check suites moved to `research/src/research/checks/`. The `research.checks.<module>`
   import path is unchanged, and so is every registered count.
-- `SearchWarrant` is an alias of `Warrant`. Every call site keeps its members and its
-  return type, so `EFESelector.warrant` still reads `CORROBORATED` and
+- **Breaking:** `SearchWarrant` is removed from `cpomdp.enumeration`. Import `Warrant`
+  from `cpomdp` or `warrantlib`, the one enum it was an alias of. Its members are the
+  same objects, so `EFESelector.warrant` still reads `CORROBORATED` and
   `EnumeratedEfeSearch.warrant` still reads `PROVED`.
+- **Breaking:** `EnumeratedEfeSearch.cost_per_cycle` is `cost_per_plan`, the name the
+  drivers already used for one search. `cost_per_cycle` now means one thing everywhere,
+  the cost of one agent step, and only selectors report it. Read as per step, the
+  search's figure overstated the open-loop driver by a factor of H, and the README did
+  exactly that.
 - `PROVED` without evidence does not construct, enforced in `CheckReport`. Two kinds
   qualify, one per decisive prover: a completeness certificate for an exhaustive
   enumeration, a `SymbolicReduction` for a theorem or a symbolic identity (Provers 1 and
