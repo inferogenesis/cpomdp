@@ -722,6 +722,11 @@ class ChunkedEfeSearch(ExhaustiveEfeSearch):
     It takes no policy budget. Its footprint is set by ``chunk``, and its time grows
     with ``cost_per_plan``.
 
+    ``evaluate`` composes with ``jit``, ``vmap`` and ``lax.scan``. Inside one, the
+    loop's count exists only once the program runs. The certificate then states the
+    expected count, and a callback checks the loop's count in the run, so a miscount
+    fails the run instead of certifying it.
+
     Args:
         model: the flat model to score on. It needs a control matrix.
         action_set: the declared actions, enumerated as every length-H sequence.
@@ -838,8 +843,27 @@ class ChunkedEfeSearch(ExhaustiveEfeSearch):
             best_policy=best_policy,
             best_g=argmin.best_g,
             best_index=argmin.best_index,
-            certificate=_certify(self._action_set, self._horizon, int(argmin.visited)),
+            certificate=self._certify_count(argmin.visited),
         )
+
+    def _certify_count(self, visited: Array) -> CompletenessCertificate:
+        """The certificate the loop's count earns, checked now or when the run ends.
+
+        Eagerly the count is read on the host and checked here. Under ``jit``, ``vmap``
+        or ``scan`` it exists only once the program runs. The certificate then states
+        the expected count, and a callback checks the loop's count against it in the
+        run, so a miscount fails the run rather than certifying it.
+        """
+        count = concrete(visited)
+        if count is None:
+            jax.debug.callback(self._check_count, visited)
+            return _certify(self._action_set, self._horizon, self._n_policies)
+        return _certify(self._action_set, self._horizon, int(count))
+
+    def _check_count(self, visited: Array) -> None:
+        """Raise from inside a compiled run if the loop's count is short."""
+        for count in np.ravel(np.asarray(visited)):
+            _certify(self._action_set, self._horizon, int(count))
 
     def _scan_blocks(
         self,

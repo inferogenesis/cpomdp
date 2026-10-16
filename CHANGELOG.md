@@ -270,8 +270,9 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `SearchResult` with the argmin, its `G`, its index and the certificate. The
   front-loaded search returns `EnumeratedSearchResult`, a `SearchResult` that adds the
   score vector. The two paths agree under `==`, ties included (ADR-036). Both drivers
-  take it, and the refinement cells of the fourth falsifier ran on it. The searches and
-  their drivers have an API page.
+  take it, and the refinement cells of the fourth falsifier ran on it. `evaluate`
+  composes with `jit`, `vmap` and `lax.scan`, where a callback checks the loop's count
+  when the program runs. The searches and their drivers have an API page.
 - `cpomdp.enumeration.ExhaustiveEfeSearch`, the base both exhaustive searches share
   (ADR-071). It declares `evaluate`, `policies_at`, `n_policies`, `horizon`,
   `cost_per_plan` and `warrant`. The drivers take any `ExhaustiveEfeSearch`, so a third
