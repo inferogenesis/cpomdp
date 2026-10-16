@@ -5,7 +5,7 @@ import operator
 from collections.abc import Sequence
 from dataclasses import dataclass
 from functools import cached_property
-from typing import Protocol, runtime_checkable
+from typing import Protocol, SupportsIndex, runtime_checkable
 
 import jax
 import jax.numpy as jnp
@@ -20,6 +20,7 @@ from cpomdp.efe import (
     _ffg_efe_step,
     _goal_and_precision,
     _info_block_of,
+    _info_nodes,
     expected_free_energy,
     policy_efe,
 )
@@ -93,14 +94,14 @@ def _checked_horizon(horizon: int) -> int:
 
 
 def _stored_info_node(
-    info_node: int | Sequence[int] | None,
+    info_node: SupportsIndex | Sequence[SupportsIndex] | None,
 ) -> int | tuple[int, ...] | None:
     """``info_node`` as an ``ObservationGoal`` keeps it: an int, a tuple, or None."""
     if info_node is None:
         return None
-    if isinstance(info_node, int):
-        return int(info_node)
-    return tuple(int(node) for node in info_node)
+    nodes = _info_nodes(info_node)
+    single = not isinstance(info_node, Sequence) or isinstance(info_node, str)
+    return nodes[0] if single else nodes
 
 
 def _candidate_grid(
@@ -419,7 +420,7 @@ class FFGEFESelector:
         *,
         action_bounds: tuple[float, float],
         n_candidates: int = _DEFAULT_N_CANDIDATES,
-        info_node: int | Sequence[int] | None = None,
+        info_node: SupportsIndex | Sequence[SupportsIndex] | None = None,
     ) -> None:
         """Front-load the candidate grid, after checking the backend and the target.
 
@@ -456,7 +457,7 @@ class FFGEFESelector:
         # candidate at μ⁺ via ``model.observation_noise_at`` (issue #27). A fixed
         # sensor returns the same constant each time.
         self._backend = backend
-        self._info_node = info_node
+        self._info_node = _stored_info_node(info_node)
         self._info_block = info_block
         self._observation_matrix = backend.model.observation_matrix  # C (constant)
         self._candidates = candidates
@@ -642,7 +643,7 @@ class ObservationGoal:
         precision: ArrayLike | None = None,
         n_candidates: int = _DEFAULT_N_CANDIDATES,
         horizon: int | None = None,
-        info_node: int | Sequence[int] | None = None,
+        info_node: SupportsIndex | Sequence[SupportsIndex] | None = None,
     ) -> None:
         target = jnp.asarray(target, dtype=float)
         object.__setattr__(self, "target", target)

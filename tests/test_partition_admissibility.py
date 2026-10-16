@@ -199,6 +199,25 @@ def test_info_node_refuses_an_empty_or_repeated_list(info_node, match):
         _selector(backend, info_node)
 
 
+def test_info_node_takes_a_numpy_integer():
+    # np.argmax and np.arange hand back NumPy integers, not ints.
+    backend = _backend(_hub_graph())
+    belief, policy = unit_prior(_hub_graph()), jnp.array([[0.3], [-0.2]])
+    preference = Preference(jnp.zeros(2))
+    np.testing.assert_array_equal(
+        policy_efe_ffg(backend, belief, policy, preference, info_node=np.int64(2)).g,
+        policy_efe_ffg(backend, belief, policy, preference, info_node=2).g,
+    )
+    goal = ObservationGoal([0.0, 0.0], action_bounds=(-1.0, 1.0), info_node=np.int64(2))
+    assert goal.info_node == 2
+
+
+def test_info_node_refuses_a_bool():
+    # True is an int to Python and would aim at node 1 without a word.
+    with pytest.raises(TypeError, match="info_node"):
+        ObservationGoal([0.0, 0.0], action_bounds=(-1.0, 1.0), info_node=True)
+
+
 @pytest.mark.parametrize("info_node", [99, -1, 3])
 def test_info_node_must_name_a_node_of_the_graph(info_node):
     # JAX clamps an out-of-range gather, so a stray target would score another node.

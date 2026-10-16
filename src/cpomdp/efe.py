@@ -93,12 +93,14 @@ THE DATA FLOW  (top → bottom: what goes in → what comes out)
 
 """
 
+import operator
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, SupportsIndex
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 from jax import lax
 from jaxtyping import Array, Float64
 
@@ -446,7 +448,7 @@ def policy_efe_ffg(
     policy: Float64[Array, "H p"],
     preference: "Preference",
     *,
-    info_node: int | Sequence[int] | None = None,
+    info_node: SupportsIndex | Sequence[SupportsIndex] | None = None,
 ) -> EFEResult:
     """Summed EFE of a horizon-H ``policy`` over a branching FFG backend.
 
@@ -533,7 +535,7 @@ def policy_efe_ffg_trace(
     policy: Float64[Array, "H p"],
     preference: "Preference",
     *,
-    info_node: int | Sequence[int] | None = None,
+    info_node: SupportsIndex | Sequence[SupportsIndex] | None = None,
 ) -> PolicyEFETrace:
     """Per-step trace of the FFG rollout, the diagnostic sibling of ``policy_efe_ffg``.
 
@@ -622,8 +624,29 @@ def _not_a_preference(given: object) -> str:
     return f"{_SCORED_AGAINST} This is a value of type {type(given).__name__}."
 
 
+def _info_node_index(node: object) -> int:
+    """One node index as an int, a NumPy integer included. A bool is refused."""
+    if isinstance(node, bool | np.bool_):
+        raise TypeError(f"info_node takes node indices, got the bool {node}")
+    try:
+        return operator.index(node)  # ty: ignore[invalid-argument-type]
+    except TypeError:
+        raise TypeError(
+            f"info_node takes node indices, got {type(node).__name__}"
+        ) from None
+
+
+def _info_nodes(
+    info_node: SupportsIndex | Sequence[SupportsIndex],
+) -> tuple[int, ...]:
+    """``info_node`` as a tuple of node indices: one node, or each of several."""
+    if isinstance(info_node, Sequence) and not isinstance(info_node, str):
+        return tuple(_info_node_index(node) for node in info_node)
+    return (_info_node_index(info_node),)
+
+
 def _info_block_of(
-    backend: "GraphBackend", info_node: int | Sequence[int] | None
+    backend: "GraphBackend", info_node: SupportsIndex | Sequence[SupportsIndex] | None
 ) -> tuple[int, ...]:
     """The joint-state indices ``info_node`` names, refused unless an EFE can aim there.
 
@@ -643,7 +666,7 @@ def _info_block_of(
         )
     if info_node is None:
         return tuple(range(backend.model.n_states))
-    nodes = (info_node,) if isinstance(info_node, int) else tuple(info_node)
+    nodes = _info_nodes(info_node)
     if not nodes:
         raise ValueError("info_node names no node. Pass None for the whole state.")
     if len(set(nodes)) != len(nodes):
@@ -817,8 +840,8 @@ def _ffg_efe_step(
         observation_noise: R, the observation noise covariance (m x m).
         goal: o*, the preferred observation (m-D).
         precision: Λ, how sharply the goal is preferred (m x m).
-        info_block: the state indices whose info gain is the epistemic value (a node's
-            block, or the whole state).
+        info_block: the joint-state indices whose info gain is the epistemic value,
+            resolved from ``info_node`` by the public functions.
 
     Returns:
         The scalar EFE ``G = pragmatic − epistemic`` (minimised) and its two terms.
