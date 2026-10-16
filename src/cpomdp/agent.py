@@ -6,8 +6,8 @@ import numpy as np
 from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
-from cpomdp._validation import equilibrium_drift
-from cpomdp.backends.base import EfeBackend, InferenceBackend
+from cpomdp._validation import equilibrium_drift, state_dependent
+from cpomdp.backends.base import GraphBackend, InferenceBackend
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.control import LQRController
 from cpomdp.enumeration import OpenLoopSelector, RecedingHorizonSelector
@@ -89,7 +89,7 @@ def _lqr_path(
 ) -> tuple[Preference, LQRSelector]:
     """The preference and the LQR selector a ``StateGoal`` asks for."""
     # A state-dependent sensor would mean converting the goal through C (deferred).
-    if not (model.observation_model is None or model.observation_model.is_fixed):
+    if state_dependent(model.observation_model) is not None:
         raise ValueError(
             "a StateGoal needs a fixed sensor. A state-dependent sensor would require "
             "converting the goal through C. Pass an ObservationGoal."
@@ -118,10 +118,8 @@ def _efe_path(
         raise ValueError(
             "an ObservationGoal needs a model with a control matrix to act."
         )
-    is_graph = isinstance(backend, EfeBackend)
-    sensor_is_fixed = (
-        model.observation_model is None or model.observation_model.is_fixed
-    )
+    is_graph = isinstance(backend, GraphBackend)
+    sensor_is_fixed = state_dependent(model.observation_model) is None
     if sensor_is_fixed and not is_graph:
         raise ValueError(
             "an ObservationGoal on a fixed sensor is output regulation (deferred). "
@@ -140,14 +138,14 @@ def _efe_path(
             f"ObservationGoal target must be a 1-D vector of length {m} (the "
             f"observation dimension), got shape {target.shape}"
         )
-    preference = Preference(target, objective.precision)
-    if isinstance(backend, EfeBackend):
+    preference = objective.preference
+    if isinstance(backend, GraphBackend):
         return preference, _graph_efe_selector(backend, objective)
     return preference, _reaching_efe_selector(model, objective, preference)
 
 
 def _graph_efe_selector(
-    backend: EfeBackend, objective: ObservationGoal
+    backend: GraphBackend, objective: ObservationGoal
 ) -> FfgEfeSelector:
     """The EFE selector for an ObservationGoal on a branching backend (issue #26).
 
@@ -161,15 +159,12 @@ def _graph_efe_selector(
             "must be 1 with a CouplingGraphBackend."
         )
     if objective.info_node is None:
-        info_block: range = range(backend.n_total)  # whole-state info gain
+        info_block = range(backend.model.n_states)  # whole-state info gain
     else:
-        n_nodes = len(backend.dims)
-        if not 0 <= objective.info_node < n_nodes:
-            raise ValueError(
-                f"info_node {objective.info_node} is not a node index "
-                f"(0..{n_nodes - 1})."
-            )
-        info_block = backend.block(objective.info_node)
+        try:
+            info_block = backend.block(objective.info_node)
+        except ValueError as error:
+            raise ValueError(f"info_node {objective.info_node}: {error}") from error
     return FfgEfeSelector(
         backend,
         info_block=info_block,
@@ -285,7 +280,7 @@ class Agent:
 
     One honest difference from pymdp: ``sample_action`` is **deterministic** here,
     not a draw from a policy posterior. With a fixed linear-Gaussian sensor and fixed
-    process noise the EFE-minimising action is the LQR optimum (ADR-003), so it
+    dynamics noise the EFE-minimising action is the LQR optimum (ADR-003), so it
     returns the single best action. The name keeps the pymdp muscle-memory; the
     behaviour is exact.
 

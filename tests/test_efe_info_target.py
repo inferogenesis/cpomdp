@@ -92,7 +92,7 @@ def test_full_state_gain_matches_expected_free_energy_epistemic():
     action = jnp.array([0.5])
     preference = Preference(goal=[1.0], precision=[[2.0]])
 
-    _, parts = expected_free_energy(model, belief, action, preference)
+    efe = expected_free_energy(model, belief, action, preference)
 
     sigma = np.asarray(belief.cov)
     sigma_pred = dynamics @ sigma @ dynamics.T + dynamics_noise  # Σ⁺
@@ -102,7 +102,7 @@ def test_full_state_gain_matches_expected_free_energy_epistemic():
         jnp.asarray(observation_noise),
         info_block=range(2),
     )
-    np.testing.assert_allclose(float(got), float(parts["epistemic"]), atol=1e-9)
+    np.testing.assert_allclose(float(got), float(efe.epistemic), atol=1e-9)
 
 
 def test_ffg_efe_step_reduces_to_expected_free_energy():
@@ -125,13 +125,13 @@ def test_ffg_efe_step_reduces_to_expected_free_energy():
     action = jnp.array([0.5])
     preference = Preference(goal=[1.0], precision=[[2.0]])
 
-    g_ref, parts_ref = expected_free_energy(model, belief, action, preference)
+    efe_ref = expected_free_energy(model, belief, action, preference)
 
     # The predicted moments the FFG step is handed (no couplings: μ⁺ = Aμ + Ba,
     # Σ⁺ = AΣAᵀ + Q).
     mu_plus = dynamics @ np.asarray(belief.mean) + control @ action
     sigma_plus = dynamics @ np.asarray(belief.cov) @ dynamics.T + dynamics_noise
-    g, parts = _ffg_efe_step(
+    efe = _ffg_efe_step(
         jnp.asarray(mu_plus),
         jnp.asarray(sigma_plus),
         jnp.asarray(observation_matrix),
@@ -140,10 +140,10 @@ def test_ffg_efe_step_reduces_to_expected_free_energy():
         preference.precision,
         info_block=range(2),
     )
-    np.testing.assert_allclose(float(g), float(g_ref), atol=1e-9)
+    np.testing.assert_allclose(float(efe.g), float(efe_ref.g), atol=1e-9)
     np.testing.assert_allclose(
-        float(parts["pragmatic"]), float(parts_ref["pragmatic"]), atol=1e-9
+        float(efe.pragmatic), float(efe_ref.pragmatic), atol=1e-9
     )
     np.testing.assert_allclose(
-        float(parts["epistemic"]), float(parts_ref["epistemic"]), atol=1e-9
+        float(efe.epistemic), float(efe_ref.epistemic), atol=1e-9
     )

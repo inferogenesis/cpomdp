@@ -3,13 +3,13 @@
 efe.py's one-step kernel is being split (Fowler "Extract Function") into a private
 `_efe_step` that the H-step rollout (`policy_efe`, B2) will `lax.scan` over. B1's whole
 job is to make that split **arithmetically inert**: the public `expected_free_energy`
-keeps returning a byte-identical `(G, parts)`, and `_efe_step` additionally surfaces the
+keeps returning a byte-identical `EfeResult`, and `_efe_step` additionally surfaces the
 three intermediates the rollout consumes — `(μ⁺, Σ⁺, S)` — with **no `C`** (the rollout
 fetches its own `C` only where it propagates; see the build plan Phase 3 / B1).
 
 Target: `_efe_step(model, mu, sigma, control, action, goal, precision)` returns an
-internal `_EfeStep` (g, pragmatic, epistemic, mu_pred, sigma_pred, s) — the public
-split plus the moments B2 propagates.
+internal `_EfeStep` (g, pragmatic, epistemic, predicted_mean, predicted_cov,
+predicted_observation_cov), the public split plus the moments B2 propagates.
 
 Two locks live here:
 
@@ -19,8 +19,9 @@ Two locks live here:
   XLA drift: both sides move together, so only a real arithmetic change trips it. Covers
   all three branches the extraction moves: fixed (`None`), `R(x)`, `Q(x)`.
 - `TestEfeStepContract` pins the signature, the `_EfeStep` fields, the byte-identical
-  `(G, parts)` the wrapper exposes, and the three intermediates' values (vs independent
-  NumPy) — including a shape check that `.s` is `S` (m×m), not `C` (m×n).
+  `EfeResult` the wrapper exposes, and the three intermediates' values (vs independent
+  NumPy), including a shape check that `.predicted_observation_cov` is `S` (m×m), not
+  `C` (m×n).
 
 This module imports `_efe_step` directly, so until B1 lands it is **collection-red** —
 the `ImportError` naming `_efe_step` is the build cue. The gate BEYOND this file: the
@@ -30,7 +31,7 @@ entire existing `test_efe.py` must pass UNMODIFIED.
 import jax.numpy as jnp
 import numpy as np
 
-from cpomdp.dynamics import CallableProcessNoise
+from cpomdp.dynamics import CallableDynamicsNoise
 from cpomdp.efe import _efe_step, expected_free_energy
 from cpomdp.observation import CallableSensor
 from cpomdp.selection import Preference
@@ -42,9 +43,9 @@ def _model(observation_model=None):
     # 2-state, 1-observation, 1-action, controllable (mirrors test_efe.py).
     return LinearGaussianModel(
         dynamics_matrix=[[1.0, 0.1], [0.0, 1.0]],
-        observation_matrix=[[1.0, 0.0]],
+        observation_matrix=[[1.0, 0.0]] if observation_model is None else None,
         dynamics_noise=[[0.1, 0.0], [0.0, 0.1]],
-        observation_noise=[[0.5]],
+        observation_noise=[[0.5]] if observation_model is None else None,
         prior=Belief(mean=[0.0, 0.0], cov=[[1.0, 0.0], [0.0, 1.0]]),
         control_matrix=[[0.0], [1.0]],
         observation_model=observation_model,
@@ -77,17 +78,17 @@ def _q_well(x, params):
 
 
 def _internal_q_model():
-    pn = CallableProcessNoise(
-        q_fn=_q_well, q_params={"base": jnp.array(0.05), "slope": jnp.array(0.4)}
+    dynamics_noise_model = CallableDynamicsNoise(
+        noise_fn=_q_well,
+        noise_params={"base": jnp.array(0.05), "slope": jnp.array(0.4)},
     )
     return LinearGaussianModel(
         dynamics_matrix=[[1.0]],
         observation_matrix=[[1.0]],
-        dynamics_noise=[[0.1]],
         observation_noise=[[0.3]],
         prior=Belief(mean=[0.0], cov=[[0.2]]),
         control_matrix=[[1.0]],
-        dynamics_noise_model=pn,
+        dynamics_noise_model=dynamics_noise_model,
     )
 
 
@@ -146,16 +147,19 @@ def _frozen_efe(model, belief, action, preference):
     action = jnp.asarray(action, dtype=float)
     mu, sigma = belief.mean, belief.cov
 
-    mu_pred = model.A @ mu + control @ action
+    mu_pred = model.dynamics_matrix @ mu + control @ action
     process_q = (
-        model.Q
+        model.dynamics_noise
         if model.dynamics_noise_model is None
         else model.dynamics_noise_model.noise_at(mu_pred)
     )
-    sigma_pred = model.A @ sigma @ model.A.T + process_q
+    sigma_pred = model.dynamics_matrix @ sigma @ model.dynamics_matrix.T + process_q
 
     if model.observation_model is None:
-        observation_matrix, observation_noise = model.C, model.R
+        observation_matrix, observation_noise = (
+            model.observation_matrix,
+            model.observation_noise,
+        )
         o_pred = observation_matrix @ mu_pred
         pred_obs_cov = (
             observation_matrix @ sigma_pred @ observation_matrix.T + observation_noise
@@ -188,16 +192,18 @@ class TestExtractionInert:
 
     def test_wrapper_is_byte_identical_to_frozen_kernel(self):
         for name, model, belief, pref, action in _cases():
-            g, parts = expected_free_energy(model, belief, action, pref)
+            efe = expected_free_energy(model, belief, action, pref)
             g_frozen, parts_frozen = _frozen_efe(model, belief, action, pref)
-            np.testing.assert_array_equal(g, g_frozen, err_msg=f"G non-inert: {name}")
             np.testing.assert_array_equal(
-                parts["pragmatic"],
+                efe.g, g_frozen, err_msg=f"G non-inert: {name}"
+            )
+            np.testing.assert_array_equal(
+                efe.pragmatic,
                 parts_frozen["pragmatic"],
                 err_msg=f"pragmatic non-inert: {name}",
             )
             np.testing.assert_array_equal(
-                parts["epistemic"],
+                efe.epistemic,
                 parts_frozen["epistemic"],
                 err_msg=f"epistemic non-inert: {name}",
             )
@@ -220,17 +226,17 @@ class TestEfeStepContract:
             pref.precision,
         )
 
-        # the (G, parts) the wrapper exposes must be exactly these — bit-for-bit.
-        g_ref, parts_ref = expected_free_energy(model, belief, action, pref)
-        np.testing.assert_array_equal(step.g, g_ref)
-        np.testing.assert_array_equal(step.pragmatic, parts_ref["pragmatic"])
-        np.testing.assert_array_equal(step.epistemic, parts_ref["epistemic"])
+        # the result the wrapper exposes must be exactly these, bit for bit.
+        efe_ref = expected_free_energy(model, belief, action, pref)
+        np.testing.assert_array_equal(step.g, efe_ref.g)
+        np.testing.assert_array_equal(step.pragmatic, efe_ref.pragmatic)
+        np.testing.assert_array_equal(step.epistemic, efe_ref.epistemic)
 
-        # shapes pin the contract — and prove `.s` is S (m×m), NOT C (m×n):
+        # shapes pin the contract, and prove S is (m×m), NOT C (m×n):
         # for this model n=2, m=1, so C would be (1, 2) and S is (1, 1).
-        assert step.mu_pred.shape == (2,)
-        assert step.sigma_pred.shape == (2, 2)
-        assert step.s.shape == (1, 1)
+        assert step.predicted_mean.shape == (2,)
+        assert step.predicted_cov.shape == (2, 2)
+        assert step.predicted_observation_cov.shape == (1, 1)
 
         # the three intermediates are the real moments B2 consumes (vs NumPy).
         a_mat = np.asarray(model.dynamics_matrix)
@@ -242,10 +248,14 @@ class TestEfeStepContract:
         sigma = np.asarray(belief.cov)
         a = np.asarray(action, dtype=float)
         sigma_pred_ref = a_mat @ sigma @ a_mat.T + q_mat
-        np.testing.assert_allclose(step.mu_pred, a_mat @ mu + b_mat @ a, atol=1e-12)
-        np.testing.assert_allclose(step.sigma_pred, sigma_pred_ref, atol=1e-12)
         np.testing.assert_allclose(
-            step.s, c_mat @ sigma_pred_ref @ c_mat.T + r_mat, atol=1e-12
+            step.predicted_mean, a_mat @ mu + b_mat @ a, atol=1e-12
+        )
+        np.testing.assert_allclose(step.predicted_cov, sigma_pred_ref, atol=1e-12)
+        np.testing.assert_allclose(
+            step.predicted_observation_cov,
+            c_mat @ sigma_pred_ref @ c_mat.T + r_mat,
+            atol=1e-12,
         )
 
     def test_matches_wrapper_on_state_dependent_sensor(self):
@@ -262,6 +272,6 @@ class TestEfeStepContract:
             pref.goal,
             pref.precision,
         )
-        g_ref, _ = expected_free_energy(model, belief, action, pref)
+        g_ref = expected_free_energy(model, belief, action, pref).g
         np.testing.assert_array_equal(step.g, g_ref)
-        assert step.s.shape == (1, 1)
+        assert step.predicted_observation_cov.shape == (1, 1)
