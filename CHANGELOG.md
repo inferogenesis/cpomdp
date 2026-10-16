@@ -272,6 +272,10 @@ certainty equivalence is optimal, and no use of the readings beats it.
   score vector. The two paths agree under `==`, ties included (ADR-036). Both drivers
   take it, and the refinement cells of the fourth falsifier ran on it. The searches and
   their drivers have an API page.
+- `cpomdp.enumeration.ExhaustiveEfeSearch`, the base both exhaustive searches share
+  (ADR-071). It declares `evaluate`, `policies_at`, `n_policies`, `horizon`,
+  `cost_per_plan` and `warrant`. The drivers take any `ExhaustiveEfeSearch`, so a third
+  search or a wrapper drives them with no edit to either.
 - `Provenance` (warrantlib 0.2.0) — which ref registered a claim and which one measured
   it, plus one line saying what a reviewer will find at the first. A `PROVED` report
   requires one, on the same terms as it requires evidence, and carries them as a tuple
@@ -430,8 +434,9 @@ certainty equivalence is optimal, and no use of the readings beats it.
   chunked one `+inf`. With no finite score there is no argmin, so the result now
   carries a NaN `best_policy` and `best_g` and a `best_index` of -1, and a driver
   returns a NaN action. The certificate still holds, because it certifies that every
-  policy was scored. `ChunkedEfeSearch.policies_at` refuses an index outside the
-  enumeration, -1 included, which would otherwise decode to a real policy.
+  policy was scored. `policies_at`, now on both searches, refuses an index outside the
+  enumeration, -1 included, which would otherwise decode to a real policy. Under `jit`
+  or `vmap` it decodes such an index to a NaN policy.
 - Each exhaustive search re-traced and recompiled its rollout on every plan, a fixed
   cost per plan that `cost_per_plan` does not count. A driver paid it every agent step.
   Each search now compiles once, on its first plan, and takes the belief and the

@@ -33,6 +33,7 @@ import sys
 import textwrap
 from dataclasses import fields
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -41,6 +42,7 @@ from cpomdp.enumeration import (
     ChunkedEfeSearch,
     EnumeratedEfeSearch,
     EnumeratedSearchResult,
+    ExhaustiveEfeSearch,
     FiniteActionSet,
     SearchResult,
 )
@@ -408,13 +410,24 @@ class TestInterchangeable:
         assert float(result.best_g) == float(result.g[result.best_index])
         assert result.certificate.complete
 
-    @pytest.mark.parametrize(
-        "name", ["evaluate", "n_policies", "horizon", "cost_per_plan", "warrant"]
-    )
-    def test_the_shared_surface(self, name):
+    def test_both_are_the_one_kind(self):
         front, chunked = self._both()
-        assert hasattr(front, name)
-        assert hasattr(chunked, name)
+        assert isinstance(front, ExhaustiveEfeSearch)
+        assert isinstance(chunked, ExhaustiveEfeSearch)
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "evaluate",
+            "policies_at",
+            "n_policies",
+            "horizon",
+            "cost_per_plan",
+            "warrant",
+        ],
+    )
+    def test_the_shared_surface_is_declared_on_the_kind(self, name):
+        assert hasattr(ExhaustiveEfeSearch, name)
 
     def test_the_certificate_lives_on_the_result_alone(self):
         # The chunked count is produced by the loop, so its certificate cannot exist
@@ -463,13 +476,33 @@ class TestNoFiniteScore:
         result = search.evaluate(Belief(mean=[2.0], cov=[[0.1]]), _pref())
         assert np.all(np.isnan(np.asarray(result.g)))
 
+    @pytest.mark.parametrize("search_type", [EnumeratedEfeSearch, ChunkedEfeSearch])
     @pytest.mark.parametrize("index", [-1, 4])
-    def test_an_index_outside_the_enumeration_decodes_to_nothing(self, index):
+    def test_an_index_outside_the_enumeration_decodes_to_nothing(
+        self, search_type, index
+    ):
         # -1 is the no-winner index. Decoded as a base-|A| numeral it would wrap to a
         # real policy, so the decoder refuses it, and anything past the end.
-        search = ChunkedEfeSearch(self._model(), _finite_set([0.0, 0.5]), horizon=2)
+        search = search_type(self._model(), _finite_set([0.0, 0.5]), horizon=2)
         with pytest.raises(ValueError, match=r"outside 0\.\.3"):
             search.policies_at(jnp.asarray([0, index]))
+
+    @pytest.mark.parametrize("search_type", [EnumeratedEfeSearch, ChunkedEfeSearch])
+    def test_compiled_an_index_outside_decodes_to_a_nan_policy(self, search_type):
+        # A compiled decode cannot raise. It returns the NaN policy a result with no
+        # winner carries, never the real policy -1 would wrap to.
+        search = search_type(self._model(), _finite_set([0.0, 0.5]), horizon=2)
+        decoded = jax.jit(search.policies_at)(jnp.asarray([3, -1, 4]))
+        np.testing.assert_array_equal(decoded[0], search.policies_at(3))
+        assert np.all(np.isnan(np.asarray(decoded[1:])))
+
+    @pytest.mark.parametrize("search_type", [EnumeratedEfeSearch, ChunkedEfeSearch])
+    def test_the_decode_maps_over_indices(self, search_type):
+        search = search_type(self._model(), _finite_set([0.0, 0.5]), horizon=2)
+        np.testing.assert_array_equal(
+            jax.vmap(search.policies_at)(jnp.arange(4)),
+            search.policies_at(jnp.arange(4)),
+        )
 
     @pytest.mark.parametrize("search_type", [EnumeratedEfeSearch, ChunkedEfeSearch])
     def test_one_finite_score_is_still_the_best(self, search_type):
