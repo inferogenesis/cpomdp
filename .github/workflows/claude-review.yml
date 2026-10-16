@@ -30,6 +30,13 @@ jobs:
           # and on a stacked PR that base is another branch a shallow clone has
           # never fetched. The repo is ~24 MB, so this costs seconds.
           fetch-depth: 0
+      # A dispatched run carries no pull_request payload, so its number is looked up.
+      - name: find the pull request
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NUMBER: ${{ github.event.pull_request.number }}
+        run: echo "number=${NUMBER:-$(gh pr view "$GITHUB_REF_NAME" --json number -q .number)}" >> "$GITHUB_OUTPUT"
       - uses: anthropics/claude-code-action@v1
         # A failed review shows red. It gates nothing: `main` has no required
         # status checks, and this job is skipped outright on forks (see `if`
@@ -43,7 +50,7 @@ jobs:
           # Logs each tool call and denial, so a review that posts nothing shows why.
           show_full_output: true
           prompt: |
-            Review this PR against its merge base.
+            Review PR #${{ steps.pr.outputs.number }} against its merge base.
 
             Report every issue you find. Do not filter by severity while
             searching, and tag each finding [BLOCKER] or [NIT]. A severity
@@ -70,19 +77,20 @@ jobs:
             Don't report formatting, naming style, import order or type-checker
             output. Lint and `ty` own those.
 
-            Post one comment: a tally line, blockers in full, nits as
+            Write one comment: a tally line, blockers in full, nits as
             one-liners capped at five with "plus K similar". Lead with "no
             blockers" when there are none. Don't summarise what the PR does,
             the author knows. Add no attribution footer and no links off this
-            repository. Write the comment to review.md at the repository root
-            with the Write tool, then post it with `gh pr comment <number>
-            --body-file review.md`. Never put the body inline or in a heredoc.
+            repository. Write it to review.md at the repository root with the
+            Write tool. The workflow posts that file to the PR, so don't post
+            it yourself.
           # Read/Grep/Glob let the review read surrounding code beyond the
           # diff hunks. The read-only git and shell forms are here because a
           # blocked call still costs a turn. Reviews were spending 9 to 18 of
           # their 40 turns on denials, dying before they could post.
-          # Write is for the comment file only. On #143 three reviews finished without
-          # posting. The file now sits inside the checkout, where Write may reach.
+          # Write is for the comment file only, which the next step posts. The
+          # model posting it itself failed twice: on #143 it could not write
+          # outside the checkout, and on #151 it was never told the PR number.
           # Opus on the first review, which does the heavy lifting over the whole
           # diff; Sonnet on each later push. A manual re-run of the job replays
           # the original event, so a re-run of the opening review is an Opus one.
@@ -94,4 +102,17 @@ jobs:
             --max-turns 120 --allowed-tools
             "Read,Write,Grep,Glob,Bash(git
             diff:*),Bash(git log:*),Bash(git show:*),Bash(ls:*),Bash(cat:*),Bash(grep:*),Bash(gh
-            pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*)"
+            pr diff:*),Bash(gh pr view:*)"
+      # Red when the review wrote nothing, which is how a run that died on its
+      # turn budget or a denial shows instead of passing green.
+      - name: post the review
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NUMBER: ${{ steps.pr.outputs.number }}
+        run: |
+          if [ ! -s review.md ]; then
+            echo "::error::the review wrote no review.md"
+            exit 1
+          fi
+          gh pr comment "$NUMBER" --body-file review.md
