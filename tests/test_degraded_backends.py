@@ -36,7 +36,7 @@ def _noise_at(mean, params):
     return jnp.array([[1e-2]]) * (1.0 + jnp.sum(jnp.asarray(mean) ** 2))
 
 
-def _process_noise_at(x, params):
+def _dynamics_noise_at(x, params):
     return jnp.eye(2) * 1e-3 * (1.0 + jnp.sum(jnp.asarray(x) ** 2))
 
 
@@ -174,10 +174,10 @@ def test_the_scored_model_keeps_its_state_dependent_sensor():
     assert backend.model.observation_model is sensed.observation_model
 
 
-def test_state_dependent_process_noise_reaches_the_substituted_filter():
+def test_state_dependent_dynamics_noise_reaches_the_substituted_filter():
     # R is what WrongFixedR replaces. Q(x) is not, so dropping it would be a second,
     # unnamed degradation, and the filter would move for a reason nothing declares.
-    dynamics_noise_model = CallableDynamicsNoise(_process_noise_at, ())
+    dynamics_noise_model = CallableDynamicsNoise(_dynamics_noise_at, ())
     model = LinearGaussianModel(
         dynamics_matrix=DYNAMICS,
         observation_matrix=SENSOR,

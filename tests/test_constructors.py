@@ -231,7 +231,7 @@ def _process_at(x, params):
     return jnp.eye(2) * 1e-4 * (1.0 + jnp.sum(jnp.asarray(x) ** 2))
 
 
-class _FixedProcessNoise:
+class _FixedDynamicsNoise:
     """A DynamicsNoiseModel that does not vary. Nothing shipped implements one."""
 
     is_fixed = True
@@ -271,7 +271,7 @@ class _FixedProcessNoise:
             "dynamics_noise",
             {"dynamics_noise_model": CallableDynamicsNoise(_process_at, ())},
         ),
-        ("dynamics_noise", {"dynamics_noise_model": _FixedProcessNoise()}),
+        ("dynamics_noise", {"dynamics_noise_model": _FixedDynamicsNoise()}),
     ],
     ids=[
         "state-dependent-C",
@@ -378,7 +378,7 @@ def test_a_spec_leaving_a_noise_with_no_object_fails_at_its_first_build(field):
             "dynamics_noise",
             {"dynamics_noise_model": CallableDynamicsNoise(_process_at, ())},
         ),
-        ("dynamics_noise", {"dynamics_noise_model": _FixedProcessNoise()}),
+        ("dynamics_noise", {"dynamics_noise_model": _FixedDynamicsNoise()}),
     ],
     ids=["state-dependent-R", "fixed-R", "state-dependent-Q", "fixed-Q"],
 )

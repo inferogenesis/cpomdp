@@ -810,6 +810,14 @@ class CouplingGraphBackend:
         return self._transitions
 
     @property
+    def partition(self) -> tuple[tuple[int, ...], ...]:
+        """The carry partition's clusters of nodes, fixed at construction.
+
+        One cluster over every node when none was given, the exact joint carry.
+        """
+        return self._partition
+
+    @property
     def model(self) -> LinearGaussianModel:
         """The model of the graph's interface, which leaves out its couplings.
 

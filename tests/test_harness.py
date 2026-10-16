@@ -344,7 +344,7 @@ def _sensor_noise_at(mean, params):
     return jnp.array([[1e-2]]) * (1.0 + 4.0 * jnp.sum(jnp.asarray(mean) ** 2))
 
 
-def _process_noise_at(x, params):
+def _dynamics_noise_at(x, params):
     return jnp.eye(2) * 1e-4 * (1.0 + 4.0 * jnp.sum(jnp.asarray(x) ** 2))
 
 
@@ -360,7 +360,7 @@ def _sensed_model(*, sensor=True, process=False) -> LinearGaussianModel:
             CallableSensor(SENSOR, _sensor_noise_at, ()) if sensor else None
         ),
         dynamics_noise_model=(
-            CallableDynamicsNoise(_process_noise_at, ()) if process else None
+            CallableDynamicsNoise(_dynamics_noise_at, ()) if process else None
         ),
     )
 
@@ -369,7 +369,7 @@ def test_a_state_dependent_sensor_constructs():
     assert World(_sensed_model()).n_observations == 1
 
 
-def test_state_dependent_process_noise_constructs():
+def test_state_dependent_dynamics_noise_constructs():
     assert World(_sensed_model(sensor=False, process=True)).n_states == 2
 
 
@@ -405,7 +405,7 @@ def test_the_sensor_noise_is_not_read_at_the_state_the_step_left():
     assert float(observation[0]) != float(wrong[0])
 
 
-def test_the_process_noise_is_read_at_the_pushed_forward_mean():
+def test_the_dynamics_noise_is_read_at_the_pushed_forward_mean():
     model = _sensed_model(sensor=False, process=True)
     start = jnp.asarray([1.0, 1.0])
     world = World(model, initial_state=start)
@@ -415,12 +415,12 @@ def test_the_process_noise_is_read_at_the_pushed_forward_mean():
     key_dynamics, _ = jax.random.split(key)
     pushed = jnp.asarray(DYNAMICS) @ start + jnp.asarray(CONTROL) @ jnp.asarray([1.0])
     expected = jax.random.multivariate_normal(
-        key_dynamics, pushed, _process_noise_at(pushed, ()), method="svd"
+        key_dynamics, pushed, _dynamics_noise_at(pushed, ()), method="svd"
     )
     assert np.array_equal(np.asarray(world.state), np.asarray(expected))
 
 
-def test_the_process_noise_is_not_read_at_the_state_the_step_left():
+def test_the_dynamics_noise_is_not_read_at_the_state_the_step_left():
     model = _sensed_model(sensor=False, process=True)
     start = jnp.asarray([1.0, 1.0])
     world = World(model, initial_state=start)
@@ -430,7 +430,7 @@ def test_the_process_noise_is_not_read_at_the_state_the_step_left():
     key_dynamics, _ = jax.random.split(key)
     pushed = jnp.asarray(DYNAMICS) @ start + jnp.asarray(CONTROL) @ jnp.asarray([1.0])
     wrong = jax.random.multivariate_normal(
-        key_dynamics, pushed, _process_noise_at(start, ()), method="svd"
+        key_dynamics, pushed, _dynamics_noise_at(start, ()), method="svd"
     )
     assert not np.array_equal(np.asarray(world.state), np.asarray(wrong))
 
@@ -512,7 +512,7 @@ def test_a_sensor_noise_that_is_not_positive_definite_is_refused_not_drawn():
     assert "inverted" not in str(refusal.value)
 
 
-def test_a_process_noise_that_goes_indefinite_is_refused_not_drawn():
+def test_a_dynamics_noise_that_goes_indefinite_is_refused_not_drawn():
     # The sensor's failure is a NaN. This one is not: the svd draw factors through the
     # singular values, so a negative eigenvalue is sampled as |λ| and the step returns
     # a finite, plausible state drawn from the wrong Q. Nothing downstream can tell.

@@ -135,9 +135,20 @@ def _known_equal(first: ArrayLike, second: ArrayLike) -> bool:
     return bool(np.array_equal(first_value, second_value))
 
 
+def _clusters(backend: CouplingGraphBackend) -> set[frozenset[int]]:
+    """A graph backend's carry partition, with the order it was written in dropped."""
+    return {frozenset(cluster) for cluster in backend.partition}
+
+
 def _same_couplings(first: CouplingGraphBackend, second: CouplingGraphBackend) -> bool:
-    """Whether two graph backends' edges join the same nodes with equal factors."""
+    """Whether two graph backends join the same nodes with equal factors and carry.
+
+    The carry partition is compared with the edges, since it cuts the covariance the
+    predict step passes between them.
+    """
     first_edges, second_edges = first.graph.couplings, second.graph.couplings
+    if _clusters(first) != _clusters(second):
+        return False
     return len(first_edges) == len(second_edges) and all(
         (a.parent, a.child, a.efe_relevant) == (b.parent, b.child, b.efe_relevant)
         and _known_equal(a.coupling_matrix, b.coupling_matrix)
@@ -151,10 +162,11 @@ def _scores_another_plant(selector: ActionSelector, backend: InferenceBackend) -
 
     A custom selector is not checked (ADR-080). A graph-scored selector compares the
     backend it scores on: the same object passes, and a ``CouplingGraphBackend`` with an
-    equal interface model and equal couplings passes too, since the couplings are part
-    of the plant and the interface model leaves them out. A coupling that cannot be
-    read under a trace counts as different. Any other graph backend passes on an equal
-    model when that model is its plant, and only as the same object when it is not.
+    equal interface model, equal couplings and the same carry partition passes too,
+    since those are part of the plant and the interface model leaves them out. A
+    coupling that cannot be read under a trace counts as different. Any other graph
+    backend passes on an equal model when that model is its plant, and only as the same
+    object when it is not.
     """
     if not isinstance(selector, _BUILT_IN_SELECTORS):
         return False

@@ -170,7 +170,7 @@ def test_the_chain_backend_refuses_a_coupled_graphs_model():
         ChainBackend(_backend(coupled=True).model)
 
 
-def _coupled_backend(coupling_noise):
+def _coupled_backend(coupling_noise, partition=None):
     graph = CouplingGraph(
         dims=(1, 1),
         couplings=(Coupling(0, 1, [[0.8]], coupling_noise=[[coupling_noise]]),),
@@ -184,7 +184,11 @@ def _coupled_backend(coupling_noise):
         GaussianTransition([[0.9]], dynamics_noise=[[0.1]]),
     )
     return CouplingGraphBackend(
-        graph, transitions, prior=unit_prior(graph), control_matrix=[[1.0], [0.0]]
+        graph,
+        transitions,
+        prior=unit_prior(graph),
+        control_matrix=[[1.0], [0.0]],
+        partition=partition,
     )
 
 
@@ -205,6 +209,28 @@ def test_a_driver_over_a_graph_with_other_couplings_is_refused():
         Agent.from_backend(
             agent_graph, Preference(jnp.zeros(2)), selector=_driver_over(other_graph)
         )
+
+
+def test_a_driver_over_a_graph_with_another_carry_partition_is_refused():
+    # The partition cuts covariance in the predict step the score rolls through.
+    agent_graph = _coupled_backend(0.05)
+    other_graph = _coupled_backend(0.05, partition=[[0], [1]])
+    with pytest.raises(ValueError, match="another"):
+        Agent.from_backend(
+            agent_graph, Preference(jnp.zeros(2)), selector=_driver_over(other_graph)
+        )
+
+
+def test_a_carry_partition_written_in_another_order_is_the_same_plant():
+    agent_graph = _coupled_backend(0.05, partition=[[0], [1]])
+    selector = _driver_over(_coupled_backend(0.05, partition=[[1], [0]]))
+    agent = Agent.from_backend(agent_graph, Preference(jnp.zeros(2)), selector=selector)
+    assert agent.selector is selector
+
+
+def test_a_graph_backend_reads_back_its_carry_partition():
+    assert _coupled_backend(0.05).partition == ((0, 1),)
+    assert _coupled_backend(0.05, partition=[[1], [0]]).partition == ((1,), (0,))
 
 
 def test_a_driver_over_an_equal_copy_of_the_graph_is_taken():

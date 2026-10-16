@@ -590,7 +590,7 @@ _INTERNAL_BELIEF = Belief(mean=[0.0], cov=[[0.2]])
 _INTERNAL_PREF = Preference(target=[0.0], precision=[[1.0]])
 
 
-class TestInternalProcessNoise:
+class TestInternalDynamicsNoise:
     def test_epistemic_reenters_via_internal_Q_with_R_fixed(self):
         # The internal dual of 2a: R is constant, yet epistemic varies across actions
         # because Q(μ⁺) — and so Σ⁺ and S — depend on the action.
