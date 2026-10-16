@@ -4722,5 +4722,4 @@ its attributes. It also turned a fault inside a real `Preference` into a refusal
 - `StateGoal` has no `preference` property. Its target is a state, and a `Preference`
   does not record its space, so one built from a `StateGoal` would score as a reading
   without complaint.
-- The Agent still builds its `Preference` from the goal's fields. Reading
-  `objective.preference` there would leave one place that converts a goal.
+- The Agent reads `objective.preference` as well, so one place converts a goal.
