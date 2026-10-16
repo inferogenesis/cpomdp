@@ -6,6 +6,8 @@ regulate a plant without them, with nothing raised. Each model-taking constructo
 refuses it and names the route that keeps the couplings.
 """
 
+import dataclasses
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -143,3 +145,18 @@ def test_the_rxinfer_oracle_refuses_a_coupled_graphs_model():
 
     with pytest.raises(TypeError, match="couplings"):
         RxInferBackend(_backend(coupled=True).model)
+
+
+def test_the_mark_survives_replacing_the_prior():
+    # The model's own docstring moves a prior with dataclasses.replace.
+    model = _backend(coupled=True).model
+    moved = dataclasses.replace(model, prior=model.prior)
+    with pytest.raises(TypeError, match="couplings"):
+        KalmanBackend(moved)
+
+
+def test_the_chain_backend_refuses_a_coupled_graphs_model():
+    from cpomdp.ffg._chain import ChainBackend
+
+    with pytest.raises(TypeError, match="couplings"):
+        ChainBackend(_backend(coupled=True).model)

@@ -114,6 +114,8 @@ class KalmanBackend:
         max_iter: Cap on steady-state iterations before giving up.
 
     Raises:
+        TypeError: If ``model`` is a coupled graph backend's model, which leaves
+            out the couplings.
         ValueError: If ``steady_state=True`` and the model carries ``R(x)`` or
             ``Q(x)``, which have no constant fixed point.
         RuntimeError: If the steady-state recursion does not converge within

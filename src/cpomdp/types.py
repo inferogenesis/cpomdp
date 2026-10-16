@@ -1,6 +1,6 @@
 """Core data types: the Gaussian ``Belief`` and its ``LinearGaussianModel``."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import jax
 import jax.numpy as jnp
@@ -11,8 +11,6 @@ from numpy.typing import ArrayLike
 from cpomdp._validation import (
     NOISELESS_SENSOR,
     concrete,
-    is_graph_interface,
-    mark_graph_interface,
     state_dependent,
     validate_covariance,
     validate_finite,
@@ -229,6 +227,11 @@ class LinearGaussianModel:
     observation_model: ObservationModel | None
     dynamics_noise_model: DynamicsNoiseModel | None
     structure: ModelStructure | None
+    _leaves_out_couplings: bool = field(default=False, repr=False, compare=False)
+    """Set by a coupled ``CouplingGraphBackend`` on its interface model (ADR-090).
+
+    A field, so ``dataclasses.replace`` and a pytree rebuild carry it. Leave it unset.
+    """
 
     def __init__(
         self,
@@ -242,15 +245,16 @@ class LinearGaussianModel:
         observation_model: ObservationModel | None = None,
         dynamics_noise_model: DynamicsNoiseModel | None = None,
         structure: ModelStructure | None = None,
+        _leaves_out_couplings: bool = False,
     ) -> None:
-        for field, value in (
+        for field_name, value in (
             ("dynamics_matrix", dynamics_matrix),
             ("observation_matrix", observation_matrix),
             ("dynamics_noise", dynamics_noise),
             ("observation_noise", observation_noise),
             ("control_matrix", control_matrix),
         ):
-            _refuse_noise_object(value, field)
+            _refuse_noise_object(value, field_name)
         object.__setattr__(
             self, "dynamics_matrix", jnp.asarray(dynamics_matrix, dtype=float)
         )
@@ -265,6 +269,7 @@ class LinearGaussianModel:
         object.__setattr__(self, "observation_model", observation_model)
         object.__setattr__(self, "dynamics_noise_model", dynamics_noise_model)
         object.__setattr__(self, "structure", structure)
+        object.__setattr__(self, "_leaves_out_couplings", bool(_leaves_out_couplings))
         self._validate_noise_sources()
         sensor_matrix, sensor_noise = self._sensor_at_prior()
         object.__setattr__(
@@ -483,7 +488,7 @@ class LinearGaussianModel:
             self.observation_model,
             self.dynamics_noise_model,
         )
-        return children, (self.structure, is_graph_interface(self))
+        return children, (self.structure, self._leaves_out_couplings)
 
     @classmethod
     def tree_unflatten(
@@ -509,8 +514,7 @@ class LinearGaussianModel:
         )
         for name, value in zip(fields, children, strict=True):
             object.__setattr__(obj, name, value)
-        structure, graph_interface = aux_data
+        structure, leaves_out_couplings = aux_data
         object.__setattr__(obj, "structure", structure)
-        if graph_interface:
-            mark_graph_interface(obj)
+        object.__setattr__(obj, "_leaves_out_couplings", leaves_out_couplings)
         return obj

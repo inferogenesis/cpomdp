@@ -299,6 +299,8 @@ def probe_model(
         A [`ProbeReport`][cpomdp.ProbeReport].
 
     Raises:
+        TypeError: If ``model`` is a coupled graph backend's model, which leaves
+            out the couplings.
         ValueError: If ``actions`` is empty, or if a state-dependent ``Q(x)`` is not a
             covariance at one of the sampled means.
     """
