@@ -414,6 +414,12 @@ certainty equivalence is optimal, and no use of the readings beats it.
   the valid range. `block(-1)` returned an empty range, so an epistemic term aimed at it
   scored zero. `marginal(-1, belief)` failed inside a reduction, and `block(5)` on five
   nodes raised a bare `IndexError`.
+- `CouplingGraphBackend` cuts a prior by its partition before it filters from it, on
+  every surface. Under an all-singleton partition `infer_states` kept only each node's
+  own block of a correlated prior. `rollout`, `partition_error` and `predicted_belief`
+  used all of it. So the run profile measured a filter `infer_states` never ran, and the
+  EFE predicted from correlation the filter dropped. The full-joint partition is
+  unchanged (ADR-071).
 - Every refusal of a covariance that is not positive-definite gave one reason, "a
   noiseless or degenerate sensor sends the information gain to infinity". A
   semi-definite `dynamics_noise` on a `GaussianTransition` or `coupling_noise` on a

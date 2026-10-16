@@ -136,7 +136,8 @@ class CouplingGraphBackend:
             filter carries the correlation within a cluster to the next step and
             drops the correlation between clusters (ADR-016). ``None`` is one cluster
             of every node, the exact filter. All singletons take a cheaper
-            node-by-node pass. ``severed_mass`` measures what a cut drops.
+            node-by-node pass. A prior passed in is cut the same way before it is
+            used. ``severed_mass`` measures what a cut drops.
 
     An ``observation`` passed to ``infer_states`` is the readings of the observed nodes
     stacked in **ascending node-index order**, each node contributing its sensor's rows.
@@ -177,6 +178,7 @@ class CouplingGraphBackend:
         # block-diagonal, so the within-slice solve is a tree and cheap two-pass BP
         # (``infer_all``) replaces the dense joint solve (ADR-016 energy lever).
         self._is_factored = all(len(cluster) == 1 for cluster in self._partition)
+        self._is_exact = len(self._partition) == 1  # one cluster severs nothing
 
         # Front-loaded factor tier — built once, reused every step (ADR-002).
         self._transition = self._build_transition()
@@ -556,8 +558,8 @@ class CouplingGraphBackend:
         within-slice problem is a tree: each node is seeded per-node (its own predicted
         block + observation) and ``CouplingGraph.infer_all`` returns every node's exact
         marginal in O(tree) small solves, never forming or inverting the dense joint
-        (ADR-016). Only each node's own diagonal block of the prior is used, so a
-        non-block-diagonal prior is factored on ingest — consistent with the partition.
+        (ADR-016). Only each node's own diagonal block of the prior is used. That is
+        the cut ``_factor`` makes on the dense path, read without forming it.
 
         A factor whose linearization point is a coupling-resolved marginal — a
         state-dependent ``R(x)`` today, a nonlinear sensor ``C(x)`` later — needs it
@@ -649,6 +651,10 @@ class CouplingGraphBackend:
         drops, so the per-run profile comes out of the trace rather than off ``self``.
         The prior and the first step are checked as ``infer_states`` checks them,
         before the scan starts.
+
+        The severed mass needs the dense joint, so every step takes the dense solve.
+        An all-singleton partition returns the numbers its node-by-node pass gives,
+        at the dense cost.
 
         Args:
             observations: the stacked readings per step, shape
@@ -753,15 +759,16 @@ class CouplingGraphBackend:
     ) -> tuple[jax.Array, jax.Array]:
         """The joint (Λ, h) after dynamics + structural couplings, *before* observing.
 
-        The predict side of a step: lift the joint prior to canonical, ``predict``
-        through the block-diagonal per-node dynamics under ``action`` (the temporal
-        edges), then add the structural coupling precision — but no observation.
+        The predict side of a step: cut the joint prior as the partition carries it,
+        lift it to canonical, ``predict`` through the block-diagonal per-node dynamics
+        under ``action`` (the temporal edges), then add the structural coupling
+        precision — but no observation.
         ``_assemble_unchecked`` folds the observation on top; ``predicted_belief``
         moment-forms it as Σ⁺ (the EFE reads the info gain as the drop from this to the
         post-observation covariance).
         """
         control_term = self._control_shift(action)
-        prior_precision = jnp.linalg.inv(prior.cov)  # Λ₀ = Σ⁻¹
+        prior_precision = jnp.linalg.inv(self._factor(prior.cov))  # Λ₀ = Σ⁻¹
         prior_msg = CanonicalGaussian._unchecked(
             prior_precision,
             prior_precision @ prior.mean,  # h₀ = Λ₀μ
@@ -769,21 +776,32 @@ class CouplingGraphBackend:
         predicted = self._transition.predict(prior_msg, control_term)  # → Λ⁻, h⁻
         return predicted.precision + self._structural_precision, predicted.potential
 
+    def _factor(self, cov: jax.Array) -> jax.Array:
+        """``cov`` with its between-cluster blocks zeroed, as the partition cuts it.
+
+        The one cut both ends of a step make (ADR-016). ``_predicted_precision``
+        applies it to the prior coming in and ``_carry`` to the posterior going out,
+        so every surface filters from the belief the node-by-node pass sees. The
+        within-cluster blocks are untouched. The full-joint ``[[all]]`` partition
+        returns ``cov`` itself and costs nothing per step.
+        """
+        if self._is_exact:
+            return cov
+        return cov * self._partition_mask
+
     def _carry(self, cov: jax.Array) -> tuple[jax.Array, jax.Array]:
         """Factor the carried joint *covariance* and measure what it severs (ADR-016).
 
-        The pure primitive behind both surfaces: zero the between-cluster covariance
-        blocks (keep the mask's within-cluster ones) at the time boundary, and return
-        the factored covariance alongside the severed mass as a jnp scalar (jit / grad /
-        vmap / scan safe — no host sync here). Factoring the covariance leaves the
+        The pure primitive behind both surfaces: ``_factor`` the posterior at the time
+        boundary, and return it alongside the severed mass as a jnp scalar (jit / grad /
+        vmap / scan safe, no host sync here). Factoring the covariance leaves the
         per-cluster diagonal blocks untouched, so every node's marginal this slice stays
-        exact (ADR-017); only the cross-cluster correlation carried forward is dropped.
-        The full-joint ``[[all]]`` mask keeps every block, so the carry is a no-op and
-        the severed mass is exactly zero (the exact endpoint stays byte-identical).
+        exact (ADR-017). Only the cross-cluster correlation carried forward is dropped.
+        The full-joint ``[[all]]`` partition keeps every block, so the severed mass is
+        exactly zero and the exact endpoint stays byte-identical.
         """
-        severed = cov * (1.0 - self._partition_mask)
-        factored = cov - severed
-        return factored, jnp.linalg.norm(severed)
+        factored = self._factor(cov)
+        return factored, jnp.linalg.norm(cov - factored)
 
     def _control_shift(self, action: jax.Array | None) -> jax.Array:
         """The control shift ``b = B·action`` (zero when the model has no control)."""
@@ -881,12 +899,12 @@ class CouplingGraphBackend:
     ) -> Belief:
         """The joint belief after dynamics + structural couplings, before observing.
 
-        The predict side of one step (Σ⁺, μ⁺): push the joint ``prior`` through the
-        per-node dynamics under ``action`` and fold in the structural couplings, but add
-        no observation. This is the covariance the EFE reads — a candidate action's
-        epistemic value is the info gain from this Σ⁺ to the post-observation covariance
-        (issue #26). Pure (no host-side validation), so it rides ``jit`` / ``vmap`` over
-        a grid of candidate actions.
+        The predict side of one step (Σ⁺, μ⁺): cut the joint ``prior`` as the partition
+        carries it, push it through the per-node dynamics under ``action`` and fold in
+        the structural couplings, but add no observation. This is the covariance the
+        EFE reads — a candidate action's epistemic value is the info gain from this Σ⁺
+        to the post-observation covariance (issue #26). Pure (no host-side
+        validation), so it rides ``jit`` / ``vmap`` over a grid of candidate actions.
         """
         coerced = None if action is None else jnp.asarray(action, dtype=float)
         precision, potential = self._predicted_precision(prior, coerced)
