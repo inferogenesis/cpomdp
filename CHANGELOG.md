@@ -418,7 +418,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
   Python in the environment. The next `import juliacall` by anything there, cpomdp
   imported or not, added RxInfer to that environment's Julia project and precompiled it.
   The wheel ships no such file now. The first `RxInferBackend` declares RxInfer to
-  juliapkg where the environment does not already, then starts Julia (ADR-071).
+  juliapkg where the environment does not already, then starts Julia (ADR-085).
 - RxInfer is declared as the range `5.4`, where it was pinned to exactly `5.4.0`.
   `cpomdp[rxinfer]` takes RxInfer's releases within 5.x and can share an environment
   that needs one of them. CI pins 5.4.0.

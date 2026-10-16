@@ -9,7 +9,7 @@ Starting Julia is slow (import + ``using RxInfer`` + JIT warmup), so it is done
 once per process, lazily, on the first backend built, and never per inference.
 Importing this module does not touch Julia. The first backend built also declares
 RxInfer to juliapkg, so nothing in the wheel declares it to anyone who never asks for
-this backend (ADR-071).
+this backend (ADR-085).
 """
 
 import importlib.util

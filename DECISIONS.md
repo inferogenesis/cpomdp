@@ -4636,7 +4636,7 @@ versions break before 1.0, as cpomdp's do.
 - A warrantlib 0.4 reaches cpomdp users only through a cpomdp release that lifts the
   cap.
 
-## ADR-071 — RxInfer is declared to juliapkg when the backend first starts Julia
+## ADR-085 — RxInfer is declared to juliapkg when the backend first starts Julia
 
 **Date:** 2026-10-15
 **Status:** Accepted
