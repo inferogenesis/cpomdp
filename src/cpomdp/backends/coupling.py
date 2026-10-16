@@ -28,7 +28,7 @@ from cpomdp.ffg._message import CanonicalGaussian
 from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
 from cpomdp.ffg.graph import Coupling, CouplingGraph
 from cpomdp.observation import ObservationModel
-from cpomdp.types import Belief, LinearGaussianModel
+from cpomdp.types import Belief, LinearGaussianModel, _GraphInterfaceModel
 
 __all__ = ["CouplingGraphBackend", "IncompatibleLinearizationError"]
 
@@ -404,7 +404,11 @@ class CouplingGraphBackend:
                 if noise_blocks
                 else jnp.zeros((0, 0))
             )
-        return LinearGaussianModel(
+        # With couplings the model is the interface, not the plant (ADR-091).
+        model_type = (
+            _GraphInterfaceModel if self._graph.couplings else LinearGaussianModel
+        )
+        return model_type(
             dynamics_matrix=self._transition.dynamics_matrix,
             observation_matrix=observation_matrix,
             dynamics_noise=self._transition.dynamics_noise,
@@ -807,7 +811,7 @@ class CouplingGraphBackend:
 
     @property
     def model(self) -> LinearGaussianModel:
-        """The flat ``LinearGaussianModel`` of the *real* interface (the backend model).
+        """The model of the graph's interface, which leaves out its couplings.
 
         Block-diagonal dynamics (F, Q), the real sensors and the control: the joint
         state as one linear-Gaussian model, with the sizes an [`Agent`][cpomdp.Agent]
@@ -818,8 +822,12 @@ class CouplingGraphBackend:
         front-loaded. A state-dependent graph's model reads each node's R at that
         node's block of the mean, the point the filter uses.
 
-        It omits the structural couplings, so it is not a filter for the graph.
-        ``to_flat_model()`` adds them as pseudo-observations for the oracle
+        It omits the structural couplings, so it is not the graph's plant. On a
+        coupled graph every flat consumer refuses it: both flat backends, the flat
+        selectors and searches, ``LQRController``, the schedules and the flat EFE
+        functions. The mark survives a pytree rebuild and ``dataclasses.replace``. A
+        model rebuilt field by field through the constructor is not marked.
+        ``to_flat_model()`` adds the couplings as pseudo-observations, for the oracle
         cross-check.
         """
         return self._model

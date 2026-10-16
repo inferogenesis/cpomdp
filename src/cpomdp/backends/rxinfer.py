@@ -23,7 +23,7 @@ from numpy.typing import ArrayLike
 
 from cpomdp._validation import require_fixed_noise
 from cpomdp.backends.base import _validate_step_inputs
-from cpomdp.types import Belief, LinearGaussianModel
+from cpomdp.types import Belief, LinearGaussianModel, _refuse_graph_interface
 
 __all__ = ["RxInferBackend"]
 
@@ -169,6 +169,7 @@ class RxInferBackend:
     """
 
     def __init__(self, model: LinearGaussianModel) -> None:
+        _refuse_graph_interface(model, "RxInferBackend")
         require_fixed_noise(
             model,
             "the RxInfer model filters on one fixed Q and R. Use KalmanBackend for "

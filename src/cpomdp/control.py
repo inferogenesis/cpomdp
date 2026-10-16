@@ -17,7 +17,7 @@ from numpy.typing import ArrayLike
 
 from cpomdp._validation import require_fixed_noise
 from cpomdp.backends.kalman import _gain_and_posterior_cov
-from cpomdp.types import Belief, LinearGaussianModel
+from cpomdp.types import Belief, LinearGaussianModel, _refuse_graph_interface
 
 __all__ = [
     "KalmanSchedule",
@@ -219,9 +219,12 @@ def lqr_schedule(
         ``costs_to_go[k]`` the cost still to pay before it, ``P_{H−k}``.
 
     Raises:
+        TypeError: If ``model`` is a coupled graph backend's model, which leaves
+            out the couplings.
         ValueError: If ``horizon`` is below one, or on any of the cost and model
             conditions ``LQRController`` refuses.
     """
+    _refuse_graph_interface(model, "lqr_schedule")
     if horizon < 1:
         raise ValueError(f"horizon must be at least 1, got {horizon}")
     precision, effort = _validated_costs(
@@ -302,9 +305,12 @@ def kalman_schedule(
         The gains and covariances, indexed as the plan indexes its steps.
 
     Raises:
+        TypeError: If ``model`` is a coupled graph backend's model, which leaves
+            out the couplings.
         ValueError: If ``horizon`` is below one, if either noise depends on the state,
             or if ``prior`` is not over the model's state.
     """
+    _refuse_graph_interface(model, "kalman_schedule")
     if horizon < 1:
         raise ValueError(f"horizon must be at least 1, got {horizon}")
     require_fixed_noise(model, _PRICES_FIXED_NOISE)
@@ -364,6 +370,8 @@ class LQRController:
             failed to converge.
 
     Raises:
+        TypeError: If ``model`` is a coupled graph backend's model, which leaves
+            out the couplings.
         ValueError: If the model has no ``control_matrix``, or a cost matrix does
             not match the state/action dimensions, is not symmetric, or fails its
             definiteness requirement (``precision`` PSD, ``effort`` PD).
@@ -381,6 +389,7 @@ class LQRController:
         tol: float = 1e-12,
         max_iter: int = 1000,
     ) -> None:
+        _refuse_graph_interface(model, "LQRController")
         self._model = model
         self._precision, self._effort = _validated_costs(
             model, precision, effort, names=("precision", "effort")

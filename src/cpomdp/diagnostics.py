@@ -51,6 +51,7 @@ import numpy as np
 from numpy.typing import ArrayLike
 
 from cpomdp._validation import validate_covariance
+from cpomdp.types import _refuse_graph_interface
 
 if TYPE_CHECKING:
     # Annotation-only: every diagnostic here reads its argument's fields by duck typing,
@@ -299,6 +300,8 @@ def probe_model(
         A [`ProbeReport`][cpomdp.ProbeReport].
 
     Raises:
+        TypeError: If ``model`` is a coupled graph backend's model, which leaves
+            out the couplings.
         ValueError: If ``actions`` is empty, or if a state-dependent ``Q(x)`` is not a
             covariance at one of the sampled means.
     """
@@ -313,6 +316,7 @@ def probe_model(
         covs = [np.asarray(p.cov, dtype=float) for p in predicted]
         dynamics_spread = 0.0  # the graph's transitions carry a fixed Q
     else:  # a flat LinearGaussianModel
+        _refuse_graph_interface(model, "probe_model")
         sensor_model = model
         dynamics_matrix = np.asarray(model.dynamics_matrix, dtype=float)
         prior_mean = np.asarray(belief.mean, dtype=float)

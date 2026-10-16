@@ -43,11 +43,14 @@ the protocol bridge, flagged here rather than hidden.
 import jax.numpy as jnp
 from numpy.typing import ArrayLike
 
-from cpomdp._validation import state_dependent, validate_covariance
+from cpomdp._validation import (
+    state_dependent,
+    validate_covariance,
+)
 from cpomdp.backends.base import _validate_step_inputs
 from cpomdp.ffg._message import CanonicalGaussian, likelihood_message
 from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
-from cpomdp.types import Belief, LinearGaussianModel
+from cpomdp.types import Belief, LinearGaussianModel, _refuse_graph_interface
 
 __all__ = ["ChainBackend"]
 
@@ -95,6 +98,7 @@ class ChainBackend:
         Args:
             model: see the class docstring.
         """
+        _refuse_graph_interface(model, "ChainBackend")
         self._model = model
         self._sensor_fixed = state_dependent(model.observation_model) is None
         self._process_fixed = state_dependent(model.dynamics_noise_model) is None

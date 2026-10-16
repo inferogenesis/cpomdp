@@ -241,14 +241,14 @@ class LinearGaussianModel:
         dynamics_noise_model: DynamicsNoiseModel | None = None,
         structure: ModelStructure | None = None,
     ) -> None:
-        for field, value in (
+        for field_name, value in (
             ("dynamics_matrix", dynamics_matrix),
             ("observation_matrix", observation_matrix),
             ("dynamics_noise", dynamics_noise),
             ("observation_noise", observation_noise),
             ("control_matrix", control_matrix),
         ):
-            _refuse_noise_object(value, field)
+            _refuse_noise_object(value, field_name)
         object.__setattr__(
             self, "dynamics_matrix", jnp.asarray(dynamics_matrix, dtype=float)
         )
@@ -505,3 +505,35 @@ class LinearGaussianModel:
             object.__setattr__(obj, name, value)
         object.__setattr__(obj, "structure", aux_data)
         return obj
+
+
+@jax.tree_util.register_pytree_node_class
+@dataclass(frozen=True, init=False)
+class _GraphInterfaceModel(LinearGaussianModel):
+    """A coupled ``CouplingGraphBackend``'s model: its interface, not its plant.
+
+    The sizes, prior, sensors and control the backend reads, with the couplings left
+    out (ADR-091). The type is the mark. ``dataclasses.replace`` builds through
+    ``obj.__class__`` and a pytree rebuild through ``tree_unflatten``'s ``cls``, so
+    neither loses it, and a flat consumer refuses it with ``_refuse_graph_interface``.
+    """
+
+
+def _is_graph_interface(model: object) -> bool:
+    """Whether ``model`` is a coupled graph backend's interface model."""
+    return isinstance(model, _GraphInterfaceModel)
+
+
+def _refuse_graph_interface(model: object, consumer: str) -> None:
+    """Refuse a coupled graph backend's model, which leaves out the couplings.
+
+    Raises:
+        TypeError: If ``model`` is a coupled ``CouplingGraphBackend``'s ``model``.
+    """
+    if _is_graph_interface(model):
+        raise TypeError(
+            f"{consumer} was given a CouplingGraphBackend's model, which leaves out "
+            "the graph's couplings, so it would compute on a plant without them. "
+            "Use the graph backend itself, or backend.to_flat_model() for a flat model "
+            "that keeps them."
+        )

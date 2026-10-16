@@ -5677,3 +5677,43 @@ keep the indices.
   repeated node list is refused.
 - `backend.block` stays public. `info_node` no longer needs it, and it stays for reading
   a node's slice of a belief.
+
+## ADR-091 — a coupled graph's model is its interface, and flat consumers refuse it
+
+**Date:** 2026-10-16
+**Status:** Accepted
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+`CouplingGraphBackend.model` is a plain `LinearGaussianModel` of the graph's interface:
+its sizes, prior, sensors and control, with the couplings left out. No fixed flat model
+reproduces the within-slice couplings in the real observation space, so this one is not
+the plant. Every model-taking API accepted it anyway and computed on the uncoupled
+plant. `Agent.from_backend(graph, StateGoal(...))` regulated it with LQR, and
+`KalmanBackend(backend.model)` filtered it, with nothing raised.
+
+### Decision
+
+A coupled graph backend marks its model. The flat backends, `Agent`, `EFESelector`,
+the flat search constructors, `LQRController`, `lqr_schedule`, `kalman_schedule`,
+`probe_model` and the flat EFE functions refuse a marked model and name the routes that
+keep the couplings, the backend itself or `backend.to_flat_model()`. A `StateGoal` on a
+coupled graph is refused. A graph with no couplings is its own plant and carries no
+mark.
+
+### Consequences
+
+- The mark is a private subclass of `LinearGaussianModel`, registered as its own
+  pytree, so `LinearGaussianModel`'s fields and constructor are unchanged. A copy made
+  with `dataclasses.replace` builds through the object's class, and a rebuild through
+  `jax.tree.map`, `device_put` or a `jit` boundary through `tree_unflatten`'s class, so
+  neither loses it. The jit cache keys on the type.
+- The constructors check once. The EFE functions make one `isinstance` check per eager
+  call and one per trace under `jit`, which leaves the fixed-noise hot path a matrix
+  product.
+- A model rebuilt field by field through the public constructor is a plain model and
+  carries no mark. The research harness's wrappers that take a model refuse a marked
+  one before they rebuild it.
+- The `InferenceBackend.model` docstring now promises the sizes, prior, sensor and
+  control a backend reads, not a model it filters exactly.

@@ -105,7 +105,7 @@ from jax import lax
 from jaxtyping import Array, Float64
 
 from cpomdp.backends.base import InadmissiblePartitionError
-from cpomdp.types import Belief, LinearGaussianModel
+from cpomdp.types import Belief, LinearGaussianModel, _refuse_graph_interface
 
 if TYPE_CHECKING:
     # Type-only imports. The kernel reads the backend's predict/observation methods by
@@ -280,9 +280,12 @@ def expected_free_energy(
         is preferred.
 
     Raises:
+        TypeError: If ``preference`` is not a [`Preference`][cpomdp.Preference], or
+            ``model`` is a coupled graph backend's model, which leaves out the
+            couplings.
         ValueError: If the model has no control matrix.
-        TypeError: If ``preference`` is not a [`Preference`][cpomdp.Preference].
     """
+    _refuse_graph_interface(model, "expected_free_energy")
     if model.control_matrix is None:
         raise ValueError(
             "expected_free_energy needs a model with a control matrix; an action "
@@ -333,9 +336,12 @@ def policy_efe(
         horizon.
 
     Raises:
+        TypeError: If ``preference`` is not a [`Preference`][cpomdp.Preference], or
+            ``model`` is a coupled graph backend's model, which leaves out the
+            couplings.
         ValueError: If the model has no control matrix.
-        TypeError: If ``preference`` is not a [`Preference`][cpomdp.Preference].
     """
+    _refuse_graph_interface(model, "policy_efe")
     if model.control_matrix is None:
         raise ValueError(
             "policy_efe needs a model with a control matrix; an action has no "
@@ -396,9 +402,12 @@ def policy_efe_trace(
         leading H axis.
 
     Raises:
+        TypeError: If ``preference`` is not a [`Preference`][cpomdp.Preference], or
+            ``model`` is a coupled graph backend's model, which leaves out the
+            couplings.
         ValueError: If the model has no control matrix.
-        TypeError: If ``preference`` is not a [`Preference`][cpomdp.Preference].
     """
+    _refuse_graph_interface(model, "policy_efe_trace")
     if model.control_matrix is None:
         raise ValueError(
             "policy_efe_trace needs a model with a control matrix; an action has no "

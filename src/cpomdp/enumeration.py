@@ -35,7 +35,7 @@ from numpy.typing import ArrayLike
 
 from cpomdp._validation import concrete
 from cpomdp.efe import _info_block_of, _policy_efe_ffg, policy_efe
-from cpomdp.types import Belief, LinearGaussianModel
+from cpomdp.types import Belief, LinearGaussianModel, _refuse_graph_interface
 
 # `CompletenessCertificate` is an evidence kind of the warrant vocabulary, so it is
 # defined in `warrantlib` beside `SymbolicReduction`. It is re-exported below, because
@@ -444,6 +444,7 @@ class ExhaustiveEFESearch(ABC):
     @classmethod
     def _flat_scorer(cls, model: LinearGaussianModel) -> _FlatScorer:
         """The flat constructor's scorer, refusing a model no action can move."""
+        _refuse_graph_interface(model, cls.__name__)
         if model.control_matrix is None:
             raise ValueError(
                 f"{cls.__name__} needs a model with a control matrix; an action has no "
@@ -556,6 +557,8 @@ class EnumeratedEFESearch(ExhaustiveEFESearch):
             unless set. ``None`` lifts the budget.
 
     Raises:
+        TypeError: If ``model`` is a coupled graph backend's model, which leaves
+            out the couplings.
         PolicyBudgetError: If ``|A|^H`` exceeds ``max_policies``.
         ValueError: If the model has no control matrix, if the action set's dimension
             or the horizon does not fit, or if ``max_policies`` is below 1.
@@ -749,6 +752,8 @@ class ChunkedEFESearch(ExhaustiveEFESearch):
             ``|A|^H``. The answer does not depend on it.
 
     Raises:
+        TypeError: If ``model`` is a coupled graph backend's model, which leaves
+            out the couplings.
         ValueError: If the model has no control matrix, if the action set's dimension
             or the horizon does not fit, if ``chunk`` is below 1, or if ``|A|^H``
             exceeds the index dtype's ceiling.

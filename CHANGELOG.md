@@ -572,6 +572,19 @@ certainty equivalence is optimal, and no use of the readings beats it.
 
 ### Changed
 
+- **Breaking:** a coupled `CouplingGraphBackend`'s `model` is refused where a plant is
+  taken: by `KalmanBackend`, `RxInferBackend`, the private `ChainBackend`, `Agent`,
+  `EFESelector`, `EnumeratedEFESearch`, `ChunkedEFESearch`, `LQRController`,
+  `lqr_schedule`, `kalman_schedule`, `probe_model`, `expected_free_energy`, `policy_efe`
+  and `policy_efe_trace`. The private research harness refuses it too, in `World`,
+  `ScoredAgent`, `WrongFixedRBackend` and every `InferenceRule` cell. The model
+  leaves out the couplings, so each of them computed on a different plant with nothing
+  raised. A copy made with `dataclasses.replace`, `jax.tree.map` or through a `jit`
+  boundary is refused too. A model rebuilt field by field through the
+  `LinearGaussianModel` constructor is not marked, and is taken as a plant.
+  `Agent.from_backend(graph, StateGoal(...))` ran LQR that way and is refused as well.
+  `backend.to_flat_model()` keeps the couplings, and a graph with none is its own plant
+  (ADR-091).
 - **Breaking:** a public class spells an acronym in capitals, as `EFESelector` and
   `LQRController` already did. `FfgEfeSelector` is `FFGEFESelector`,
   `EnumeratedEfeSearch` and `ChunkedEfeSearch` are `EnumeratedEFESearch` and

@@ -6,7 +6,11 @@ import numpy as np
 from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
-from cpomdp._validation import concrete, equilibrium_drift, state_dependent
+from cpomdp._validation import (
+    concrete,
+    equilibrium_drift,
+    state_dependent,
+)
 from cpomdp.backends.base import GraphBackend, InferenceBackend
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.control import LQRController
@@ -20,7 +24,12 @@ from cpomdp.selection import (
     Preference,
     StateGoal,
 )
-from cpomdp.types import Belief, LinearGaussianModel
+from cpomdp.types import (
+    Belief,
+    LinearGaussianModel,
+    _is_graph_interface,
+    _refuse_graph_interface,
+)
 
 __all__ = ["Agent"]
 
@@ -167,8 +176,8 @@ def _efe_path(
         )
     is_graph = isinstance(backend, GraphBackend)
     if not _information_can_move(model):
-        # A StateGoal on a graph runs LQR on a model without its couplings, so a graph
-        # user is pointed only at the EFE selector.
+        # A StateGoal on a coupled graph is refused, so a graph user is pointed at the
+        # EFE selector.
         way_out = (
             "Pass a Preference with selector=FFGEFESelector(...) to choose by EFE "
             "anyway."
@@ -411,8 +420,11 @@ class Agent:
                 scores, and ``selector=`` with a control-free model.
             TypeError: If ``objective`` is not a ``StateGoal``, ``ObservationGoal``
                 or ``Preference``, if a goal comes with ``selector=``, or if a
-                ``Preference`` or ``selector=`` comes without the other.
+                ``Preference`` or ``selector=`` comes without the other. Also raised
+                for a coupled ``CouplingGraphBackend``'s model, which leaves out the
+                couplings.
         """
+        _refuse_graph_interface(model, "Agent")
         self._setup(KalmanBackend(model), objective, selector)
 
     @classmethod
@@ -423,13 +435,14 @@ class Agent:
         *,
         selector: ActionSelector | None = None,
     ) -> "Agent":
-        """Build an agent that filters with ``backend`` and plans under its model.
+        """Build an agent that filters with ``backend`` and plans on the same plant.
 
         For an engine other than the default per-step Kalman filter: a steady-state
         [`KalmanBackend`][cpomdp.KalmanBackend], the RxInfer oracle, or a
         [`CouplingGraphBackend`][cpomdp.CouplingGraphBackend], which has no model of
-        its own to pass. The agent's model is ``backend.model``, so the planner and
-        the filter cannot work from different models.
+        its own to pass. The agent's model is ``backend.model``. A flat backend plans
+        under it. A graph backend plans on the graph, since a coupled graph's model
+        leaves out the couplings.
 
         Args:
             backend: The inference engine, any
@@ -445,7 +458,8 @@ class Agent:
             ValueError: If the objective and the backend's model are incompatible, as
                 for the constructor.
             TypeError: On an objective and ``selector=`` that do not pair, as for the
-                constructor.
+                constructor, or on a ``StateGoal`` with a coupled graph backend, whose
+                model leaves out the couplings LQR would need.
         """
         agent = cls.__new__(cls)
         agent._setup(backend, objective, selector)
@@ -472,6 +486,13 @@ class Agent:
         elif objective is None:
             return  # a perceive-only tracker: nothing to act toward
         elif isinstance(objective, StateGoal):
+            if _is_graph_interface(model):
+                raise TypeError(
+                    "a StateGoal on a coupled CouplingGraphBackend would regulate with "
+                    "LQR on a model that leaves out the couplings. Pass a Preference "
+                    "with selector=FFGEFESelector(...), or an ObservationGoal if a "
+                    "sensor's noise depends on the state."
+                )
             self._preference, self._selector = _lqr_path(model, objective)
         elif isinstance(objective, ObservationGoal):
             self._preference, self._selector = _efe_path(backend, objective)

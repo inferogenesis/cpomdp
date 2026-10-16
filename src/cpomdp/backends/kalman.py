@@ -5,9 +5,12 @@ import jax.numpy as jnp
 from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
-from cpomdp._validation import require_fixed_noise, state_dependent
+from cpomdp._validation import (
+    require_fixed_noise,
+    state_dependent,
+)
 from cpomdp.backends.base import _validate_step_inputs
-from cpomdp.types import Belief, LinearGaussianModel
+from cpomdp.types import Belief, LinearGaussianModel, _refuse_graph_interface
 
 __all__ = ["KalmanBackend"]
 
@@ -110,6 +113,8 @@ class KalmanBackend:
         max_iter: Cap on steady-state iterations before giving up.
 
     Raises:
+        TypeError: If ``model`` is a coupled graph backend's model, which leaves
+            out the couplings.
         ValueError: If ``steady_state=True`` and the model carries ``R(x)`` or
             ``Q(x)``, which have no constant fixed point.
         RuntimeError: If the steady-state recursion does not converge within
@@ -124,6 +129,7 @@ class KalmanBackend:
         tol: float = 1e-12,
         max_iter: int = 1000,
     ) -> None:
+        _refuse_graph_interface(model, "KalmanBackend")
         self._model = model
         self._steady_state = steady_state
         if steady_state:

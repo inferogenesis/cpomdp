@@ -370,6 +370,8 @@ class InferenceRule:
             ValueError: If the kind cannot be built over this model, as a frozen gain on
                 state-dependent noise is, or a magnitude leaving no valid covariance.
             RuntimeError: If a frozen gain's steady-state recursion does not converge.
+            TypeError: If ``model`` is a coupled graph backend's model, which every
+                kind refuses.
         """
         if self.kind is InferenceKind.EXACT:
             return KalmanBackend(model)

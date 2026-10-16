@@ -4,8 +4,10 @@ The stateful façade you drive: `infer_states` to perceive, `sample_action` to a
 
 ??? note "Variations of Agent"
     `Agent(model, goal)` filters with the per-step Kalman filter.
-    `Agent.from_backend(backend, goal)` takes any other engine, a graph model included,
-    and plans under `backend.model`. Both lead into the same choices below. Either one
+    `Agent.from_backend(backend, goal)` takes any other engine, a graph backend
+    included. A flat backend plans under `backend.model`, and a graph backend plans on
+    the graph, so a `StateGoal` on a coupled graph is refused. Both lead into the same
+    choices below. Either one
     takes a [`Preference`][cpomdp.Preference] and `selector=` in place of the goal.
 
     A curious agent is one whose information term changes with the action. The Agent
@@ -30,7 +32,7 @@ The stateful façade you drive: `infer_states` to perceive, `sample_action` to a
         state -- "fixed sensor,<br/>target held still" --> lqr["LQR: no information term"]:::lqr
         state -- "fixed sensor,<br/>target drifts" --> r1["Refused: LQR would settle short"]:::refused
         state -- "R(x) sensor" --> r2["Refused: a state goal on varying sensing"]:::refused
-        state -- "graph model" --> uncoupled["LQR that ignores the graph's couplings"]:::gap
+        state -- "coupled graph" --> uncoupled["Refused: LQR would leave out the couplings"]:::refused
         obs -- "R(x) or Q(x)" --> c1["Curious EFE: horizon read off the model"]:::curious
         obs -- "Q(x) only,<br/>horizon past 1" --> rq2["Refused: Q(x) is claimed at horizon 1 only"]:::refused
         obs -- "R(x) or Q(x),<br/>horizon set too short" --> r3["Refused: the target does not move the scores"]:::refused
