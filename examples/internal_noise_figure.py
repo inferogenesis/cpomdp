@@ -25,7 +25,7 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 
-from cpomdp.dynamics import CallableProcessNoise
+from cpomdp.dynamics import CallableDynamicsNoise
 from cpomdp.selection import Preference
 from cpomdp.types import Belief, LinearGaussianModel
 
@@ -40,7 +40,7 @@ OBSERVATION_MATRIX = [[1.0]]
 OBSERVATION_NOISE = [[0.3]]  # the SAME on both panels
 DYNAMICS_NOISE = [[0.2]]
 BELIEF = Belief(mean=[0.0], cov=[[0.4]])
-GOAL = Preference(goal=[0.0], precision=[[0.15]])
+GOAL = Preference(target=[0.0], precision=[[0.15]])
 ACTIONS = jnp.linspace(-2.5, 3.5, 400)
 BUMP = 1.2  # Q(x) is noisiest here — internal processing is least precise
 
@@ -62,7 +62,7 @@ def _model(dynamics_noise_model=None):
     return LinearGaussianModel(
         dynamics_matrix=DYNAMICS_MATRIX,
         observation_matrix=OBSERVATION_MATRIX,
-        dynamics_noise=DYNAMICS_NOISE,
+        dynamics_noise=DYNAMICS_NOISE if dynamics_noise_model is None else None,
         observation_noise=OBSERVATION_NOISE,
         prior=BELIEF,
         control_matrix=CONTROL_MATRIX,
@@ -91,8 +91,8 @@ def _panel(ax, prag, epi, g, title, note):
 
 def main():
     """Render the two-panel internal-noise figure to docs/assets/."""
-    prag_f, epi_f, g_f = _sweep(_model())  # fixed Q (process_noise=None)
-    q_well = CallableProcessNoise(
+    prag_f, epi_f, g_f = _sweep(_model())  # fixed Q, no dynamics_noise_model
+    q_well = CallableDynamicsNoise(
         _bump_q,
         {
             "bump": BUMP,

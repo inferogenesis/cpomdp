@@ -195,7 +195,10 @@ class FixedNoiseLikelihood:
     def _validate(self) -> None:
         _validate_observation_matrix(self.observation_matrix)
         validate_covariance(
-            self.observation_noise, "observation_noise", require_definite=True
+            self.observation_noise,
+            "observation_noise",
+            require_definite=True,
+            reason="the density is evaluated through its Cholesky factor",
         )
         m = self.observation_matrix.shape[0]
         if self.observation_noise.shape != (m, m):
@@ -279,7 +282,7 @@ class StateDependentNoiseLikelihood:
             closure or a lambda hashes by identity and defeats ``jit`` caching.
         observation_noise_params: the values ``observation_noise_fn`` is a function
             of, carried as a pytree leaf so the density is differentiable in them.
-            The split follows ``cpomdp.dynamics.CallableProcessNoise``: a number lives
+            The split follows ``cpomdp.dynamics.CallableDynamicsNoise``: a number lives
             in the params if it would ever be swept, and in the function only if it is
             structural.
     """

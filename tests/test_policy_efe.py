@@ -8,8 +8,8 @@ between steps:
   `y − Cμ⁺` has zero expectation (no real future observation);
 - the covariance contracts by the Kalman update `Σ_post = Σ⁺ − Σ⁺Cᵀ S⁻¹ C Σ⁺`,
   computed inline from the `(Σ⁺, S)` `_efe_step` already returns plus the `C` the
-  rollout fetches itself (`model.C` fixed, else `linearize(μ⁺)[0]`), then
-  symmetrized as a PSD guard.
+  rollout fetches itself (`model.observation_matrix` fixed, else
+  `linearize(μ⁺)[0]`), then symmetrized as a PSD guard.
 
 The signature is deliberately `horizon`-free: `H` is `policy.shape[0]` (which
 `lax.scan` uses as its static trip count), so a separate kwarg would be a
@@ -35,7 +35,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from cpomdp.dynamics import CallableProcessNoise
+from cpomdp.dynamics import CallableDynamicsNoise
 from cpomdp.efe import expected_free_energy, policy_efe
 from cpomdp.observation import CallableSensor
 from cpomdp.selection import Preference
@@ -46,9 +46,9 @@ from cpomdp.types import Belief, LinearGaussianModel
 def _model(observation_model=None):
     return LinearGaussianModel(
         dynamics_matrix=[[1.0, 0.1], [0.0, 1.0]],
-        observation_matrix=[[1.0, 0.0]],
+        observation_matrix=[[1.0, 0.0]] if observation_model is None else None,
         dynamics_noise=[[0.1, 0.0], [0.0, 0.1]],
-        observation_noise=[[0.5]],
+        observation_noise=[[0.5]] if observation_model is None else None,
         prior=Belief(mean=[0.0, 0.0], cov=[[1.0, 0.0], [0.0, 1.0]]),
         control_matrix=[[0.0], [1.0]],
         observation_model=observation_model,
@@ -60,7 +60,7 @@ def _belief():
 
 
 def _obs_preference():
-    return Preference(goal=[1.0], precision=[[2.0]])
+    return Preference(target=[1.0], precision=[[2.0]])
 
 
 def _state_noise(x, params):
@@ -81,17 +81,17 @@ def _q_well(x, params):
 
 
 def _internal_q_model():
-    pn = CallableProcessNoise(
-        q_fn=_q_well, q_params={"base": jnp.array(0.05), "slope": jnp.array(0.4)}
+    dynamics_noise_model = CallableDynamicsNoise(
+        noise_fn=_q_well,
+        noise_params={"base": jnp.array(0.05), "slope": jnp.array(0.4)},
     )
     return LinearGaussianModel(
         dynamics_matrix=[[1.0]],
         observation_matrix=[[1.0]],
-        dynamics_noise=[[0.1]],
         observation_noise=[[0.3]],
         prior=Belief(mean=[0.0], cov=[[0.2]]),
         control_matrix=[[1.0]],
-        dynamics_noise_model=pn,
+        dynamics_noise_model=dynamics_noise_model,
     )
 
 
@@ -104,7 +104,7 @@ def _cases():
             "qx",
             _internal_q_model(),
             Belief(mean=[0.0], cov=[[0.2]]),
-            Preference(goal=[0.0], precision=[[1.0]]),
+            Preference(target=[0.0], precision=[[1.0]]),
         ),
     ]
 
@@ -167,17 +167,19 @@ class TestH1ReducesToOneStepExact:
     def test_h1_is_bit_identical_to_expected_free_energy(self):
         action = jnp.array([0.4])  # p = 1 for every fixture
         for name, model, belief, pref in _cases():
-            g_roll, parts_roll = policy_efe(model, belief, action[None, :], pref)
-            g_one, parts_one = expected_free_energy(model, belief, action, pref)
-            np.testing.assert_array_equal(g_roll, g_one, err_msg=f"G H1: {name}")
+            efe_roll = policy_efe(model, belief, action[None, :], pref)
+            efe_one = expected_free_energy(model, belief, action, pref)
             np.testing.assert_array_equal(
-                parts_roll["pragmatic"],
-                parts_one["pragmatic"],
+                efe_roll.g, efe_one.g, err_msg=f"G H1: {name}"
+            )
+            np.testing.assert_array_equal(
+                efe_roll.pragmatic,
+                efe_one.pragmatic,
                 err_msg=f"pragmatic H1: {name}",
             )
             np.testing.assert_array_equal(
-                parts_roll["epistemic"],
-                parts_one["epistemic"],
+                efe_roll.epistemic,
+                efe_one.epistemic,
                 err_msg=f"epistemic H1: {name}",
             )
 
@@ -191,7 +193,7 @@ class TestMatchesNumpyOracle:
         action = jnp.array([0.4])
         for name, model, belief, pref in _cases():
             g_ref, _ = _numpy_policy_efe(
-                model, belief, action[None, :], pref.goal, pref.precision
+                model, belief, action[None, :], pref.target, pref.precision
             )
             g_one = float(expected_free_energy(model, belief, action, pref)[0])
             np.testing.assert_allclose(g_ref, g_one, atol=1e-9, err_msg=name)
@@ -202,7 +204,7 @@ class TestMatchesNumpyOracle:
                 policy = _policy(values)
                 g = policy_efe(model, belief, policy, pref)[0]
                 g_ref, _ = _numpy_policy_efe(
-                    model, belief, policy, pref.goal, pref.precision
+                    model, belief, policy, pref.target, pref.precision
                 )
                 np.testing.assert_allclose(
                     g, g_ref, atol=1e-9, err_msg=f"{name} H{len(values)}"
@@ -247,7 +249,7 @@ class TestPropagationPSD:
     def test_oracle_propagated_covs_are_psd(self):
         for name, model, belief, pref in _cases():
             _, covs = _numpy_policy_efe(
-                model, belief, _policy([0.8, -0.5, 0.3]), pref.goal, pref.precision
+                model, belief, _policy([0.8, -0.5, 0.3]), pref.target, pref.precision
             )
             for t, cov in enumerate(covs):
                 eigs = np.linalg.eigvalsh(cov)

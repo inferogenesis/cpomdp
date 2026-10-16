@@ -43,10 +43,10 @@ from cpomdp.types import Belief, LinearGaussianModel
 from warrantlib import CompletenessCertificate, Warrant
 
 if TYPE_CHECKING:
-    # Duck-typed at runtime (read for .goal/.precision via the efe kernels, and the
-    # backend's predict/observation methods), so no runtime dependency on selection or
-    # the backends package — keeps selection/backends -> enumeration the only edges.
-    from cpomdp.backends.base import EfeBackend
+    # Duck-typed at runtime (read for .target/.precision via the efe kernels, and the
+    # backend's predict and its model's C and R), so no runtime dependency on selection
+    # or the backends package — keeps selection/backends -> enumeration the only edges.
+    from cpomdp.backends.base import GraphBackend
     from cpomdp.selection import Preference
 
 __all__ = [
@@ -148,8 +148,8 @@ class FiniteActionSet:
         return int(self.actions.shape[0])
 
     @property
-    def action_dim(self) -> int:
-        """The action dimension ``p``."""
+    def n_controls(self) -> int:
+        """The action dimension ``p``, named as the model names it."""
         return int(self.actions.shape[1])
 
 
@@ -157,10 +157,10 @@ def _validate_spec(
     scorer: "_PolicyScorer", action_set: FiniteActionSet, horizon: int
 ) -> None:
     """The preconditions both enumeration paths share."""
-    if action_set.action_dim != scorer.action_dim:
+    if action_set.n_controls != scorer.n_controls:
         raise ValueError(
-            f"the action set is p={action_set.action_dim} but the control is "
-            f"p={scorer.action_dim}; the declared actions must match the action "
+            f"the action set is p={action_set.n_controls} but the control is "
+            f"p={scorer.n_controls}; the declared actions must match the action "
             "dimension."
         )
     if horizon < 1:
@@ -195,7 +195,7 @@ def _check_budget(
     # What is resident at once while `evaluate` runs: every policy, every score, and
     # the mean and covariance the batched rollout carries for each policy.
     per_policy = (
-        horizon * action_set.action_dim + 1 + scorer.n_states * (1 + scorer.n_states)
+        horizon * action_set.n_controls + 1 + scorer.n_states * (1 + scorer.n_states)
     )
     floor_gib = 8 * n_policies * per_policy / 1024**3
     raise PolicyBudgetError(
@@ -306,12 +306,12 @@ class _PolicyScorer(Protocol):
     """Scores one policy to its summed EFE ``G`` — the seam that swaps flat for FFG.
 
     The enumerated search owns the enumeration, the certificate, and the argmin; *how* a
-    policy is scored is injected here (ADR-034). ``action_dim`` lets the search validate
+    policy is scored is injected here (ADR-034). ``n_controls`` lets the search validate
     the declared action set against the scorer's control dimension, and ``n_states``
     sizes the memory floor a policy budget reports.
     """
 
-    action_dim: int
+    n_controls: int
     n_states: int
 
     def score(
@@ -326,7 +326,7 @@ class _FlatScorer:
     model: LinearGaussianModel
 
     @property
-    def action_dim(self) -> int:
+    def n_controls(self) -> int:
         return self.model.n_controls
 
     @property
@@ -346,11 +346,11 @@ class _FfgScorer:
     The block is checked once, by ``over_backend``, so ``score`` skips the check.
     """
 
-    backend: "EfeBackend"
+    backend: "GraphBackend"
     info_block: tuple[int, ...]
 
     @property
-    def action_dim(self) -> int:
+    def n_controls(self) -> int:
         return self.backend.model.n_controls
 
     @property
@@ -452,7 +452,7 @@ class ExhaustiveEfeSearch(ABC):
 
     @classmethod
     def _graph_scorer(
-        cls, backend: "EfeBackend", info_block: Sequence[int]
+        cls, backend: "GraphBackend", info_block: Sequence[int]
     ) -> _FfgScorer:
         """``over_backend``'s scorer, its block checked here rather than per policy."""
         if backend.model.control_matrix is None:
@@ -571,7 +571,7 @@ class EnumeratedEfeSearch(ExhaustiveEfeSearch):
     @classmethod
     def over_backend(
         cls,
-        backend: "EfeBackend",
+        backend: "GraphBackend",
         action_set: FiniteActionSet,
         *,
         info_block: Sequence[int],
@@ -762,7 +762,7 @@ class ChunkedEfeSearch(ExhaustiveEfeSearch):
     @classmethod
     def over_backend(
         cls,
-        backend: "EfeBackend",
+        backend: "GraphBackend",
         action_set: FiniteActionSet,
         *,
         info_block: Sequence[int],

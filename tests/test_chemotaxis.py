@@ -36,7 +36,7 @@ def test_topology_matches_the_chemotaxis_tree():
     assert graph.root == CHEA
     edges = {(c.parent, c.child) for c in graph.couplings}
     assert edges == {(CHEA, CHEY), (CHEA, CHEB), (CHEY, MOTOR_A), (CHEY, MOTOR_B)}
-    assert set(graph.observations) == {CHEB, MOTOR_A, MOTOR_B}
+    assert set(graph.observation_models) == {CHEB, MOTOR_A, MOTOR_B}
 
 
 def test_timescale_separation_is_present():
@@ -59,7 +59,7 @@ def test_filtering_matches_flat_kalman():
 
     rng = np.random.default_rng(0)
     prior = Belief(mean=np.zeros(5), cov=np.eye(5))
-    obs_seq = [rng.standard_normal(backend.n_observations) for _ in range(6)]
+    obs_seq = [rng.standard_normal(backend.model.n_observations) for _ in range(6)]
 
     belief = flat_belief = prior
     for y in obs_seq:
@@ -83,7 +83,7 @@ def test_filtering_matches_rxinfer_on_flat_model():
 
     rng = np.random.default_rng(1)
     prior = Belief(mean=np.zeros(5), cov=np.eye(5))
-    obs_seq = [rng.standard_normal(backend.n_observations) for _ in range(4)]
+    obs_seq = [rng.standard_normal(backend.model.n_observations) for _ in range(4)]
 
     belief = oracle_belief = prior
     for y in obs_seq:
@@ -112,11 +112,11 @@ def test_methylation_is_the_cheapest_node_to_sever():
         backend = CouplingGraphBackend(
             graph, transitions, prior=unit_prior(graph), partition=partition
         )
-        return backend.partition_error(y, prior)
+        return backend.severed_mass(y, prior)
 
     exact = CouplingGraphBackend(
         graph, transitions, prior=unit_prior(graph)
-    ).partition_error(y, prior)
+    ).severed_mass(y, prior)
     assert exact == pytest.approx(0.0)  # the full carry drops nothing
 
     cheb = sever_one(CHEB)
@@ -133,9 +133,11 @@ def test_epistemic_can_target_the_hidden_hub():
     # info gain the flat observation-space EFE is limited to.
     graph, transitions = chemotaxis_ffg(dt=0.01)
     backend = CouplingGraphBackend(graph, transitions, prior=unit_prior(graph))
-    observation_matrix, observation_noise = backend.observation_model
+    observation_matrix = backend.model.observation_matrix
     prior = Belief(mean=np.zeros(5), cov=np.eye(5))
-    sigma_pred = backend.predicted_belief(prior).cov  # Σ⁺
+    predicted = backend.predicted_belief(prior)
+    sigma_pred = predicted.cov  # Σ⁺
+    observation_noise = backend.model.observation_noise_at(predicted.mean)  # R(μ⁺)
 
     def info_gain(info_block):
         return float(
@@ -144,7 +146,7 @@ def test_epistemic_can_target_the_hidden_hub():
             )
         )
 
-    assert CHEA not in backend.graph.observations  # the hub is a hidden latent
+    assert CHEA not in backend.graph.observation_models  # the hub is a hidden latent
     chea = info_gain(backend.block(CHEA))
     whole = info_gain(range(5))
     assert chea > 0.0  # learnable through the couplings, though never observed directly
