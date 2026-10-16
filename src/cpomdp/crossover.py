@@ -19,7 +19,7 @@ The statistic is defined before the sweep measures H* (see warrant_numbers.md an
 the H-sweep harness does the measuring.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -62,7 +62,7 @@ def crossover_statistic(
     reach: Float64[Array, "H p"],
     preference: "Preference",
     *,
-    info_node: int | None = None,
+    info_node: int | Sequence[int] | None = None,
 ) -> CrossoverStatistic:
     """The crossover contrast between two equal-length policies at their horizon.
 
@@ -100,7 +100,7 @@ def crossover_horizon(
     reach_of: Callable[[int], Float64[Array, "H p"]],
     preference: "Preference",
     *,
-    info_node: int | None = None,
+    info_node: int | Sequence[int] | None = None,
     max_horizon: int,
 ) -> int | None:
     """H* — the first horizon at which the walk overtakes the reach.

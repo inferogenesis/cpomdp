@@ -502,9 +502,9 @@ certainty equivalence is optimal, and no use of the readings beats it.
   nodes raised a bare `IndexError`.
 - `CouplingGraphBackend` cuts a prior by its partition before it filters from it, on
   every surface. Under an all-singleton partition `infer_states` kept only each node's
-  own block of a correlated prior. The run profile, `severed_mass` and
-  `predicted_belief` used all of it. So the run profile measured a filter `infer_states`
-  never ran, and the EFE predicted from correlation the filter dropped. The full-joint
+  own block of a correlated prior. `severed_mass` and `predicted_belief` used all of
+  it. So the severed mass counted correlation the filter had already dropped, and the
+  EFE predicted from it. The full-joint
   partition is unchanged. A mixed partition such as `[[0, 1, 3, 4], [2]]` over a
   correlated prior also returns a different posterior now, since the dense path inverts
   the cut prior (ADR-077).
@@ -531,8 +531,8 @@ certainty equivalence is optimal, and no use of the readings beats it.
   edge, and the searches certified the argmin `PROVED`. None of them checked the
   joint-state indices they were aimed at. JAX clamps an out-of-range gather, so index 99
   on a 3-state joint scored as index 2. An empty block gave a zero epistemic and a
-  repeated one gave NaN. All of them now refuse a severing partition and a node outside
-  the graph through one check. A search makes it once at construction, so
+  repeated one gave NaN. All of them now refuse a severing partition, a node outside the
+  graph and an empty or repeated node list through one check. A search makes it once at construction, so
   scoring each policy costs nothing extra.
 - `FiniteActionSet` refuses a non-finite action and names its row. A NaN action scored
   NaN on every policy that took it, and a search over the set still certified it
@@ -828,7 +828,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
 - **Breaking:** the epistemic term's aim is `info_node` on every graph entry point:
   `ObservationGoal`, `FFGEFESelector`, `policy_efe_ffg`, `policy_efe_ffg_trace`, both
   `over_backend` class methods and the crossover functions. `None`, the default, is the
-  whole joint state. The graph APIs took `target`, a name the goals use for a desired
+  whole joint state, and a sequence of nodes aims at their joint marginal. The graph APIs took `target`, a name the goals use for a desired
   value, so a goal vector passed there gave `G = nan` and a different action with no
   raise. They then took `info_block`, the joint-state indices, while the goal took a node,
   with a different default on each. A caller converted with `backend.block(node)` and
