@@ -271,10 +271,10 @@ class TestOpenLoopResetDropsTheCertificate:
 
 class TestNoFiniteScore:
     @pytest.mark.parametrize("driver", [RecedingHorizonSelector, OpenLoopSelector])
-    def test_a_driver_returns_a_nan_action_rather_than_the_first_one(self, driver):
-        # The search has no best policy, so the driver has no action to give. A NaN
-        # action is what the Agent can refuse. The first declared action looked
-        # decisive and was not.
+    def test_a_driver_refuses_a_belief_no_policy_scores_from(self, driver):
+        # The search has no best policy, so the driver has no action to give. The
+        # first declared action looked decisive and was not, and a NaN action would
+        # reach the plant and the belief with nothing raised.
         sensor = CallableSensor(
             observation_matrix=[[1.0]],
             noise_fn=lambda x, p: jnp.array([[p["r"] - x[0] ** 2]]),
@@ -290,5 +290,6 @@ class TestNoFiniteScore:
         )
         actions = FiniteActionSet([[0.0], [0.5]], version="v1")
         selector = driver(EnumeratedEfeSearch(model, actions, horizon=2))
-        action = selector.select(Belief(mean=[2.0], cov=[[0.1]]), _pref())
-        assert np.all(np.isnan(np.asarray(action)))
+        with pytest.raises(ValueError, match="no policy"):
+            selector.select(Belief(mean=[2.0], cov=[[0.1]]), _pref())
+        assert selector.certificate is None

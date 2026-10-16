@@ -433,8 +433,9 @@ certainty equivalence is optimal, and no use of the readings beats it.
 - When every policy scored NaN, both searches returned the first declared sequence as
   their best and certified it `PROVED`. The front-loaded search scored it NaN and the
   chunked one `+inf`. With no finite score there is no argmin, so the result now
-  carries a NaN `best_policy` and `best_g` and a `best_index` of -1, and a driver
-  returns a NaN action. The certificate still holds, because it certifies that every
+  carries a NaN `best_policy` and `best_g` and a `best_index` of -1. A driver raises
+  `ValueError` on such a run, and returns a NaN action only under a trace, where it
+  cannot raise. The certificate still holds, because it certifies that every
   policy was scored. `policies_at`, now on both searches, refuses an index outside the
   enumeration, -1 included, which would otherwise decode to a real policy. Under `jit`
   or `vmap` it decodes such an index to a NaN policy.

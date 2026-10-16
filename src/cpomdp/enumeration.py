@@ -400,8 +400,8 @@ def _winner_or_none(
 
     A NaN score is masked to ``+inf`` before the argmin, so when every score is NaN the
     argmin lands on index 0 by default. Reporting that policy would present the first
-    declared sequence as a decision. The NaN policy is jit-safe and reaches the caller
-    as a NaN action, which the caller can refuse.
+    declared sequence as a decision. The NaN policy is jit-safe. A driver refuses it
+    on a concrete run and passes it on under a trace.
     """
     found = masked_best < jnp.inf
     return (
@@ -965,12 +965,24 @@ class _SearchDriver(ABC):
         self._certificate: CompletenessCertificate | None = None
 
     def _plan(self, belief: Belief, preference: "Preference") -> Float64[Array, "H p"]:
-        """Run the search on ``belief`` and keep the certificate it earned."""
+        """Run the search on ``belief`` and keep the certificate it earned.
+
+        Raises:
+            ValueError: If a concrete run finds no policy with a finite score.
+        """
         result = self._search.evaluate(belief, preference)
         # A trace scores nothing, so only a run that read a real count keeps its
-        # certificate.
-        if concrete(result.best_index) is not None:
-            self._certificate = result.certificate
+        # certificate. It cannot raise either, and returns the NaN policy instead.
+        best_index = concrete(result.best_index)
+        if best_index is None:
+            return result.best_policy
+        if best_index < 0:
+            raise ValueError(
+                "no policy scored finitely from this belief, so there is no action to "
+                "take. Every score was NaN, which points at a noise that is not "
+                "positive-definite where the rollouts reach."
+            )
+        self._certificate = result.certificate
         return result.best_policy
 
     @property

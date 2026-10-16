@@ -4778,3 +4778,7 @@ floor.
 - `policies_at` is on both searches and refuses an index outside the enumeration, -1
   included, because a base-`|A|` decode wraps it to a real policy. Under `jit` or `vmap`
   it decodes such an index to a NaN policy.
+- A driver raises `ValueError` on a concrete run where no policy scored finitely. This
+  supersedes ADR-071's NaN action for the agent to refuse. Nothing downstream refused it,
+  so the NaN reached the plant and the belief. Under a trace the driver still returns
+  the NaN policy, since it cannot raise there.
