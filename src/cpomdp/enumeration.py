@@ -1011,7 +1011,7 @@ class _SearchDriver(ABC):
 class RecedingHorizonSelector(_SearchDriver):
     """Re-plans every step and applies the first action of the best sequence.
 
-    An ``ActionSelector`` over either exhaustive search. Every ``select`` re-runs the
+    An ``ActionSelector`` over an exhaustive search. Every ``select`` re-runs the
     full ``A^H`` search on the current belief, so the belief drives every choice. It
     costs a whole plan per step, ``cost_per_cycle = |A|^H * H``. A measurement has to
     declare which mode it ran, so this and ``OpenLoopSelector`` stay separate (ADR-031).
@@ -1038,7 +1038,7 @@ class RecedingHorizonSelector(_SearchDriver):
 class OpenLoopSelector(_SearchDriver):
     """Plans once, then applies the whole best sequence without looking at beliefs.
 
-    An ``ActionSelector`` over either exhaustive search. It plans on the belief of the
+    An ``ActionSelector`` over an exhaustive search. It plans on the belief of the
     first ``select`` and returns the plan's actions in order, ignoring the interim
     beliefs. It re-plans only when the committed sequence is spent, or after ``reset``.
     Ignoring the interim beliefs is what makes it open-loop. One plan covers H steps, so

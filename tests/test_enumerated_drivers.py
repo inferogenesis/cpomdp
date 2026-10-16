@@ -1,4 +1,4 @@
-"""Receding-horizon and open-loop drivers over either exhaustive search.
+"""Receding-horizon and open-loop drivers over an exhaustive search.
 
 The enumerated search returns a whole best sequence. Two drivers turn that into an
 `ActionSelector` the `Agent` loop can run, and they differ in a way item E's
