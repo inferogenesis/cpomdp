@@ -44,14 +44,13 @@ import jax.numpy as jnp
 from numpy.typing import ArrayLike
 
 from cpomdp._validation import (
-    refuse_graph_interface,
     state_dependent,
     validate_covariance,
 )
 from cpomdp.backends.base import _validate_step_inputs
 from cpomdp.ffg._message import CanonicalGaussian, likelihood_message
 from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
-from cpomdp.types import Belief, LinearGaussianModel
+from cpomdp.types import Belief, LinearGaussianModel, refuse_graph_interface
 
 __all__ = ["ChainBackend"]
 

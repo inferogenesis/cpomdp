@@ -21,9 +21,9 @@ import jax.numpy as jnp
 import numpy as np
 from numpy.typing import ArrayLike
 
-from cpomdp._validation import refuse_graph_interface, require_fixed_noise
+from cpomdp._validation import require_fixed_noise
 from cpomdp.backends.base import _validate_step_inputs
-from cpomdp.types import Belief, LinearGaussianModel
+from cpomdp.types import Belief, LinearGaussianModel, refuse_graph_interface
 
 __all__ = ["RxInferBackend"]
 

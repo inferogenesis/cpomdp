@@ -15,9 +15,9 @@ import jax.numpy as jnp
 from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
-from cpomdp._validation import refuse_graph_interface, require_fixed_noise
+from cpomdp._validation import require_fixed_noise
 from cpomdp.backends.kalman import _gain_and_posterior_cov
-from cpomdp.types import Belief, LinearGaussianModel
+from cpomdp.types import Belief, LinearGaussianModel, refuse_graph_interface
 
 __all__ = [
     "KalmanSchedule",

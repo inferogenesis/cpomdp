@@ -9,8 +9,6 @@ from numpy.typing import ArrayLike
 from cpomdp._validation import (
     concrete,
     equilibrium_drift,
-    is_graph_interface,
-    refuse_graph_interface,
     state_dependent,
 )
 from cpomdp.backends.base import GraphBackend, InferenceBackend
@@ -26,7 +24,12 @@ from cpomdp.selection import (
     Preference,
     StateGoal,
 )
-from cpomdp.types import Belief, LinearGaussianModel
+from cpomdp.types import (
+    Belief,
+    LinearGaussianModel,
+    is_graph_interface,
+    refuse_graph_interface,
+)
 
 __all__ = ["Agent"]
 

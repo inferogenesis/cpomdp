@@ -4,8 +4,10 @@ The stateful façade you drive: `infer_states` to perceive, `sample_action` to a
 
 ??? note "Variations of Agent"
     `Agent(model, goal)` filters with the per-step Kalman filter.
-    `Agent.from_backend(backend, goal)` takes any other engine, a graph model included,
-    and plans under `backend.model`. Both lead into the same choices below. Either one
+    `Agent.from_backend(backend, goal)` takes any other engine, a graph backend
+    included. A flat backend plans under `backend.model`, and a graph backend plans on
+    the graph, so a `StateGoal` on a coupled graph is refused. Both lead into the same
+    choices below. Either one
     takes a [`Preference`][cpomdp.Preference] and `selector=` in place of the goal.
 
     A curious agent is one whose information term changes with the action. The Agent
