@@ -286,7 +286,7 @@ on the audit half.
 
 - [x] Promote `SearchWarrant` to a shared `Warrant` enum (now in `warrantlib`) and add
       **`CERTIFIED`** for Prover 3 · validated. `SearchWarrant` stayed as an alias
-      until v0.5.0 removed it (ADR-071), so `EFESelector.warrant` and
+      until v0.5.0 removed it (ADR-083), so `EFESelector.warrant` and
       `EnumeratedEfeSearch.warrant` kept their labels. Without `CERTIFIED`, every reference-filter number either borrows
       `PROVED`, which overclaims, or reads `CORROBORATED`, which throws away the bound
       GATE-D4 exists to buy.

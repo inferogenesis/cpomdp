@@ -171,7 +171,7 @@ move.
 Added 2026-10-15. `EnumeratedEfeSearch`'s `max_policies` defaults to `2^21 = 2,097,152`,
 an exact count, so eps never enters it either. It admits the largest front-loaded run in
 the repository, the `9^6 = 531,441` cross-path cell, and refuses `9^7`, which the warrant
-ledger records at 5.4 GiB front-loaded. ADR-071 gives the reasoning.
+ledger records at 5.4 GiB front-loaded. ADR-083 gives the reasoning.
 `tests/test_enumeration.py::TestPolicyBudget` asserts the default and the refusal.
 
 ### Negative-control fixtures

@@ -4636,7 +4636,7 @@ versions break before 1.0, as cpomdp's do.
 - A warrantlib 0.4 reaches cpomdp users only through a cpomdp release that lifts the
   cap.
 
-## ADR-071 — the exhaustive searches are one kind of thing, bounded and compiled once
+## ADR-083 — the exhaustive searches are one kind of thing, bounded and compiled once
 
 **Date:** 2026-10-15
 **Status:** Accepted
@@ -4727,18 +4727,18 @@ certificate is unchanged. It certifies coverage (ADR-030), and every policy was 
 - `ChunkedEfeSearch.policies_at` refuses an index outside the enumeration, -1 included,
   because a base-`|A|` decode wraps it to a real policy.
 
-## ADR-072 — one base names the exhaustive searches, and both trace
+## ADR-084 — one base names the exhaustive searches, and both trace
 
 **Date:** 2026-10-16
 **Status:** Accepted
-**Supersedes:** ADR-071's result shapes and its rule that the drivers take either of the
+**Supersedes:** ADR-083's result shapes and its rule that the drivers take either of the
 two named classes. ADR-035's decision that `SearchWarrant` stays as an alias of
 `Warrant`, so the type has one name.
 **Phase:** v0.5.0, the public API review before release
 
 ### The question
 
-ADR-071 made the two searches answer one `evaluate`. Their results still differed by
+ADR-083 made the two searches answer one `evaluate`. Their results still differed by
 position, so a tuple index could read `g` on one search and `best_g` on the other, and
 the drivers took a union of two classes that a third search would have had to join. The
 chunked search also ran eagerly only, so a compiled agent loop could drive the
@@ -4779,6 +4779,6 @@ floor.
   included, because a base-`|A|` decode wraps it to a real policy. Under `jit` or `vmap`
   it decodes such an index to a NaN policy.
 - A driver raises `ValueError` on a concrete run where no policy scored finitely. This
-  supersedes ADR-071's NaN action for the agent to refuse. Nothing downstream refused it,
+  supersedes ADR-083's NaN action for the agent to refuse. Nothing downstream refused it,
   so the NaN reached the plant and the belief. Under a trace the driver still returns
   the NaN policy, since it cannot raise there.

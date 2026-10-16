@@ -274,7 +274,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
   composes with `jit`, `vmap` and `lax.scan`, where a callback checks the loop's count
   when the program runs. The searches and their drivers have an API page.
 - `cpomdp.enumeration.ExhaustiveEfeSearch`, the base both exhaustive searches share
-  (ADR-071). It declares `evaluate`, `policies_at`, `n_policies`, `horizon`,
+  (ADR-083). It declares `evaluate`, `policies_at`, `n_policies`, `horizon`,
   `cost_per_plan` and `warrant`. The drivers take any `ExhaustiveEfeSearch`, so a third
   search or a wrapper drives them with no edit to either.
 - `Provenance` (warrantlib 0.2.0) — which ref registered a claim and which one measured
@@ -676,7 +676,7 @@ certainty equivalence is optimal, and no use of the readings beats it.
   memory-capped host down without raising. The error gives the count, the step
   evaluations of one plan and a floor on the memory, and names `ChunkedEfeSearch`,
   which both drivers take. `max_policies=None` lifts the budget. The set is now decoded
-  from its indices rather than built through `itertools.product` on the host (ADR-071).
+  from its indices rather than built through `itertools.product` on the host (ADR-083).
 - `PROVED` without evidence does not construct, enforced in `CheckReport`. Two kinds
   qualify, one per decisive prover: a completeness certificate for an exhaustive
   enumeration, a `SymbolicReduction` for a theorem or a symbolic identity (Provers 1 and
