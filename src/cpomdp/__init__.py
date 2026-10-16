@@ -75,8 +75,14 @@ from warrantlib import Warrant
 # Process-global by necessity; see ADR-004.
 _jax.config.update("jax_enable_x64", True)
 
-__version__ = _metadata.version("cpomdp")
-"""The installed version, read from the package metadata `pyproject.toml` sets."""
+try:
+    __version__ = _metadata.version("cpomdp")
+except _metadata.PackageNotFoundError:
+    __version__ = "0+unknown"
+"""The installed version, read from the package metadata `pyproject.toml` sets.
+
+A copy imported without being installed has no metadata and reads ``0+unknown``.
+"""
 
 __all__ = [
     "ActionSelector",

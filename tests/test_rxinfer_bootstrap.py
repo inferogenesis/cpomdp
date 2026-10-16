@@ -4,6 +4,7 @@ Julia is not needed here. A stand-in juliapkg records what it is asked to do, an
 stand-in juliacall records when it is imported. CI's `rxinfer` job runs the real path.
 """
 
+import importlib.machinery
 import sys
 import types
 
@@ -19,6 +20,7 @@ class _JuliaCall(types.ModuleType):
 
     def __init__(self, calls: list) -> None:
         super().__init__("juliacall")
+        self.__spec__ = importlib.machinery.ModuleSpec("juliacall", None)
         self._calls = calls
 
     def __getattr__(self, name: str):
@@ -99,3 +101,11 @@ def test_without_the_extra_the_error_names_it(monkeypatch):
     monkeypatch.setitem(sys.modules, "juliapkg", None)
     with pytest.raises(ImportError, match="rxinfer"):
         rxinfer._julia()
+
+
+def test_a_missing_juliacall_is_refused_before_anything_is_declared(monkeypatch):
+    calls = _stand_ins(monkeypatch, declared={})
+    monkeypatch.setitem(sys.modules, "juliacall", None)
+    with pytest.raises(ImportError, match="rxinfer"):
+        rxinfer._julia()
+    assert calls == []

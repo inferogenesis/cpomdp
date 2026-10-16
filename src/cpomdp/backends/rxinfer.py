@@ -12,6 +12,7 @@ RxInfer to juliapkg, so nothing in the wheel declares it to anyone who never ask
 this backend (ADR-071).
 """
 
+import importlib.util
 from functools import lru_cache
 from types import ModuleType
 from typing import Any
@@ -132,10 +133,13 @@ def _julia() -> _JuliaModule:
     """
     try:
         import juliapkg  # ty:ignore[unresolved-import]
+
+        if importlib.util.find_spec("juliacall") is None:
+            raise ImportError("juliacall")
     except ImportError as exc:
         raise ImportError(
-            "the RxInfer backend needs the optional Julia bridge, which isn't "
-            "installed. Add cpomdp's 'rxinfer' extra "
+            "the RxInfer backend needs juliapkg and juliacall, and at least one "
+            "isn't installed. Add cpomdp's 'rxinfer' extra "
             "(e.g. `pip install 'cpomdp[rxinfer]'`)."
         ) from exc
 
