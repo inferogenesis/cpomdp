@@ -4636,6 +4636,90 @@ versions break before 1.0, as cpomdp's do.
 - A warrantlib 0.4 reaches cpomdp users only through a cpomdp release that lifts the
   cap.
 
+## ADR-071 — the graph backend reads like the flat model
+
+**Date:** 2026-10-15
+**Status:** Accepted
+**Extends:** ADR-069, which left the graph-backend protocol without a promise under the
+name `EfeBackend`. ADR-064, whose rule for an omitted observation noise the graph backend's
+model now follows.
+**Supersedes:** ADR-016's names `partition_error` and `rollout` for the two surfaces of
+the severed-mass diagnostic, and `rollout`'s stacked `Belief`. The two surfaces stand.
+ADR-013's validation strategy, for where the flagship's check of `KalmanBackend` against
+`ChainBackend` runs. ADR-069's listing of `cpomdp.ffg.chain` among the implementation
+modules that stay importable: the module is now private, at `cpomdp.ffg._chain`.
+**Phase:** v0.5.0, the public API review before release
+
+### The question
+
+`CouplingGraphBackend` described one joint state twice. `n_total` was `model.n_states`,
+`dims` was `graph.dims` and `n_observations` was `model.n_observations`. Its
+`observation_model` returned `(C, R)` with R linearized at zero, beside a
+`model.observation_model` that is a sensor object, and every reader in the tree threw the
+R away. Under a state-dependent sensor the tuple handed out `R(0)` as the noise the EFE
+reads. `readout(belief)` was `marginal(readout_node, belief)`. Two protocols described
+the backend: `EfeBackend`, named for one consumer although `KalmanBackend` scores EFE too,
+and `ProbeBackend`, which restated part of it for `probe_model`. `rollout` filtered a
+sequence under a name the EFE code uses for a policy rollout, took its arguments in an
+order `infer_states` does not, and returned a `Belief` whose mean had a time axis. The
+severed mass had a second name, `partition_error`. A reading had to be stacked by hand in
+an order that lived in a private layout.
+
+### Decision
+
+Every quantity has one home, and it is the home it has on a flat backend.
+
+- The joint width is `model.n_states`, the stacked sensor C is
+  `model.observation_matrix` and R at a mean is `model.observation_noise_at(mean)`, on
+  this backend as on `KalmanBackend`. A backend `observation_matrix` property would be a
+  second way to read what `model` already gives, so there is none. The same rule takes
+  `observation_noise_at` off the backend and puts it on `LinearGaussianModel`. A model
+  with no sensor or a fixed one returns `observation_noise`. A state-dependent sensor is
+  linearized at the state. The node dimensions are `graph.dims`.
+- Under a state-dependent sensor the model's nominal `observation_noise` is R at the prior
+  mean, the rule every flat model follows, where it was R at zero.
+- One protocol, `GraphBackend`, describes a backend over a graph of nodes, and
+  `probe_model` reads it too. It declares `predicted_belief`, `block` and
+  `severed_efe_edges` beside `InferenceBackend`'s two members. It carries no promise, as
+  ADR-069 left `EfeBackend`.
+- `marginal(node, belief)` is the one way to read a node. `block` and `marginal` refuse a
+  node outside the graph.
+- A user writes readings keyed by node, the form `CouplingGraph.infer` takes, and
+  `stack_observations` builds the vector `infer_states` takes. The stacked vector stays
+  the backend's input. The `InferenceBackend` protocol, an `ObservationGoal`'s target,
+  C and R all live in that space, so a mapping on `infer_states` would break the
+  protocol for every generic caller and leave the goal in a second format.
+- `severed_mass` and `filter_sequence` replace `partition_error` and `rollout`.
+  `filter_sequence` takes `infer_states`' argument order, returns plain arrays and checks
+  the prior and the first step before it scans.
+- `ChainBackend` goes to `cpomdp.ffg._chain`. It returns `KalmanBackend`'s numbers at two
+  extra inversions per step, and no user needs it to filter. Its tests are what it is
+  for, so the flagship's agreement check moves beside them, on the flagship's model and
+  inputs.
+- The graph path keeps its positive-definite Q. Its transition factor builds the joint
+  over the current and next state in information form, and that joint contains Q's
+  inverse. Each refusal of a matrix that is not definite gives its caller's reason, and
+  the factor's says the information form inverts it. The one shared reason blamed a
+  sensor for every matrix.
+
+### Consequences
+
+- The backend's surface is `model`, `graph`, `transitions`, `infer_states`,
+  `predicted_belief`, `stack_observations`, `marginal`, `block`, `severed_efe_edges`,
+  `severed_mass`, `filter_sequence`, `to_flat_model` and `flat_observation`. `graph`
+  and `transitions` are read-only, as `model` was.
+- A fixed graph's `model.observation_noise_at` returns the R built at construction, so
+  no candidate rebuilds it. A state-dependent graph's model reads R through the joint
+  sensor it carries. Code that reads R at a mean reads it off `backend.model` on a flat
+  backend and on a graph one alike.
+- `CouplingGraph` still stores its observations in the order given.
+  `stack_observations` makes that order harmless. Sorting them would make iteration
+  match the stacking order, and it belongs with the graph.
+- Accepting a semi-definite Q on the graph path needs a moment-form predict in the
+  transition factor: add Q to the propagated covariance, then invert once. That is fewer
+  inversions per step than the information-form joint. It changes the factor, which
+  this decision does not touch.
+
 ## ADR-072 — a model field beside its noise object holds that object's value
 
 **Date:** 2026-10-16

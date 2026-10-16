@@ -15,9 +15,10 @@ Two independent oracles guard the claim:
   shares no code with either backend, so a transpose/gain/order bug that happened to
   afflict both matrix paths still gets caught.
 
-RED until ``cpomdp.ffg.chain.ChainBackend`` is implemented.
+``ChainBackend`` is private (ADR-069): it exists to be held to this gate.
 """
 
+import bacillus_uncertain_food
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -26,7 +27,7 @@ import pytest
 from cpomdp.backends.base import InferenceBackend
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.dynamics import CallableDynamicsNoise
-from cpomdp.ffg.chain import ChainBackend
+from cpomdp.ffg._chain import ChainBackend
 from cpomdp.observation import CallableSensor
 from cpomdp.types import Belief, LinearGaussianModel
 
@@ -384,6 +385,23 @@ def _cross_block_model(*, control_matrix=None):
 
 
 class TestChainCrossBlockSensorParity:
+    def test_matches_kalman_on_the_flagship_model(self):
+        # The README's flagship demo senses through this shape. Both backends get one
+        # scripted (observation, action) sequence rather than two closed loops, so a
+        # near-tied argmin cannot send them down different trajectories and be misread
+        # as a disagreement. The check lived in the demo until ChainBackend went
+        # private.
+        model = bacillus_uncertain_food.build_model()
+        kalman, chain = KalmanBackend(model), ChainBackend(model)
+        rng = np.random.default_rng(11)
+        k_belief = c_belief = model.prior
+        for _ in range(30):
+            observation, action = rng.standard_normal(4), rng.standard_normal(2)
+            k_belief = kalman.infer_states(observation, k_belief, action)
+            c_belief = chain.infer_states(observation, c_belief, action)
+            np.testing.assert_allclose(c_belief.mean, k_belief.mean, atol=1e-7)
+            np.testing.assert_allclose(c_belief.cov, k_belief.cov, atol=1e-7)
+
     def test_matches_kalman_sequence(self):
         model = _cross_block_model()
         kalman, chain = KalmanBackend(model), ChainBackend(model)

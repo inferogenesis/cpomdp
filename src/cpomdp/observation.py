@@ -14,7 +14,7 @@ import jax.numpy as jnp
 from jaxtyping import Array, Float64, PyTree
 from numpy.typing import ArrayLike
 
-from cpomdp._validation import validate_covariance
+from cpomdp._validation import NOISELESS_SENSOR, validate_covariance
 
 __all__ = ["CallableSensor", "FixedSensor", "ObservationModel"]
 
@@ -151,7 +151,10 @@ class FixedSensor:
                 f"got shape {self.observation_matrix.shape}"
             )
         validate_covariance(
-            self.observation_noise, "observation_noise", require_definite=True
+            self.observation_noise,
+            "observation_noise",
+            require_definite=True,
+            reason=NOISELESS_SENSOR,
         )
         m = self.observation_matrix.shape[0]
         if self.observation_noise.shape != (m, m):
@@ -257,4 +260,9 @@ class CallableSensor:
                 f"noise_fn(state, noise_params) must return an (m, m)=({m}, {m}) "
                 f"covariance, got shape {r0.shape}"
             )
-        validate_covariance(r0, "noise_fn(state, noise_params)", require_definite=True)
+        validate_covariance(
+            r0,
+            "noise_fn(state, noise_params)",
+            require_definite=True,
+            reason=NOISELESS_SENSOR,
+        )

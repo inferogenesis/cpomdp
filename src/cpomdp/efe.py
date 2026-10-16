@@ -110,7 +110,7 @@ if TYPE_CHECKING:
     # on a backend at runtime. Its one runtime import from the backends package is the
     # exception the graph rollouts raise, and `backends.base` imports nothing that
     # imports this module, so EFESelector / FfgEfeSelector import it without a cycle.
-    from cpomdp.backends.base import EfeBackend
+    from cpomdp.backends.base import GraphBackend
     from cpomdp.selection import Preference
 
 __all__ = [
@@ -359,7 +359,7 @@ def _rollout_body(
 
 
 def policy_efe_ffg(
-    backend: "EfeBackend",
+    backend: "GraphBackend",
     belief: Belief,
     policy: Float64[Array, "H p"],
     preference: "Preference",
@@ -383,10 +383,10 @@ def policy_efe_ffg(
     ``FfgEfeSelector`` already ``vmap``s its per-candidate score.
 
     Args:
-        backend: The FFG inference backend — supplies ``predicted_belief`` (μ⁺, Σ⁺),
-            ``observation_model`` (the constant sensor C), ``observation_noise_at``
-            (R at μ⁺), and ``block``.
-        belief: The starting joint belief ``(μ, Σ)`` over the ``n_total``-D joint state.
+        backend: The FFG inference backend. It supplies ``predicted_belief``
+            (μ⁺, Σ⁺), ``model.observation_matrix`` (the constant sensor C),
+            ``model.observation_noise_at`` (R at μ⁺) and ``block``.
+        belief: The starting joint belief ``(μ, Σ)`` over the backend's joint state.
         policy: The ``H`` actions to roll out, shape ``(H, p)``.
         preference: The OBSERVATION-space goal — ``goal`` (g) and ``precision`` (Λ).
         info_block: The joint-state indices whose info gain is the per-step epistemic
@@ -408,7 +408,7 @@ def policy_efe_ffg(
 
 
 def _policy_efe_ffg(
-    backend: "EfeBackend",
+    backend: "GraphBackend",
     belief: Belief,
     policy: Float64[Array, "H p"],
     preference: "Preference",
@@ -444,7 +444,7 @@ _FfgRolloutStep = Callable[
 
 
 def policy_efe_ffg_trace(
-    backend: "EfeBackend",
+    backend: "GraphBackend",
     belief: Belief,
     policy: Float64[Array, "H p"],
     preference: "Preference",
@@ -482,7 +482,7 @@ def policy_efe_ffg_trace(
 
 
 def _checked_info_block(
-    backend: "EfeBackend", info_block: Sequence[int]
+    backend: "GraphBackend", info_block: Sequence[int]
 ) -> tuple[int, ...]:
     """``info_block`` as a tuple, refused unless an FFG EFE can be aimed at it.
 
@@ -506,17 +506,18 @@ def _checked_info_block(
         raise ValueError("info_block is empty; name the joint-state indices to aim at")
     if len(set(block)) != len(block):
         raise ValueError(f"info_block {block} repeats an index")
-    out_of_range = [i for i in block if not 0 <= i < backend.n_total]
+    n_states = backend.model.n_states
+    out_of_range = [i for i in block if not 0 <= i < n_states]
     if out_of_range:
         raise ValueError(
             f"info_block {block} has indices {out_of_range} outside the "
-            f"{backend.n_total}-D joint state (0..{backend.n_total - 1})"
+            f"{n_states}-D joint state (0..{n_states - 1})"
         )
     return block
 
 
 def _ffg_rollout_body(
-    backend: "EfeBackend",
+    backend: "GraphBackend",
     goal: Float64[Array, "m"],
     precision: Float64[Array, "m m"],
     info_block: Sequence[int],
@@ -532,11 +533,12 @@ def _ffg_rollout_body(
     re-read per step (it may be state-dependent). The carried mean is ``μ⁺`` — zero
     expected innovation, so the observation moves only the covariance.
     """
-    observation_matrix, _ = backend.observation_model  # C (constant, front-loaded)
+    model = backend.model
+    observation_matrix = model.observation_matrix  # C (constant, front-loaded)
 
     def step(belief, action):
         predicted = backend.predicted_belief(belief, action)  # μ⁺, Σ⁺
-        observation_noise = backend.observation_noise_at(predicted.mean)  # R(μ⁺)
+        observation_noise = model.observation_noise_at(predicted.mean)  # R(μ⁺)
         g, parts = _ffg_efe_step(
             predicted.mean,
             predicted.cov,

@@ -59,7 +59,7 @@ def test_filtering_matches_flat_kalman():
 
     rng = np.random.default_rng(0)
     prior = Belief(mean=np.zeros(5), cov=np.eye(5))
-    obs_seq = [rng.standard_normal(backend.n_observations) for _ in range(6)]
+    obs_seq = [rng.standard_normal(backend.model.n_observations) for _ in range(6)]
 
     belief = flat_belief = prior
     for y in obs_seq:
@@ -83,7 +83,7 @@ def test_filtering_matches_rxinfer_on_flat_model():
 
     rng = np.random.default_rng(1)
     prior = Belief(mean=np.zeros(5), cov=np.eye(5))
-    obs_seq = [rng.standard_normal(backend.n_observations) for _ in range(4)]
+    obs_seq = [rng.standard_normal(backend.model.n_observations) for _ in range(4)]
 
     belief = oracle_belief = prior
     for y in obs_seq:
@@ -112,11 +112,11 @@ def test_methylation_is_the_cheapest_node_to_sever():
         backend = CouplingGraphBackend(
             graph, transitions, prior=unit_prior(graph), partition=partition
         )
-        return backend.partition_error(y, prior)
+        return backend.severed_mass(y, prior)
 
     exact = CouplingGraphBackend(
         graph, transitions, prior=unit_prior(graph)
-    ).partition_error(y, prior)
+    ).severed_mass(y, prior)
     assert exact == pytest.approx(0.0)  # the full carry drops nothing
 
     cheb = sever_one(CHEB)
@@ -133,9 +133,11 @@ def test_epistemic_can_target_the_hidden_hub():
     # info gain the flat observation-space EFE is limited to.
     graph, transitions = chemotaxis_ffg(dt=0.01)
     backend = CouplingGraphBackend(graph, transitions, prior=unit_prior(graph))
-    observation_matrix, observation_noise = backend.observation_model
+    observation_matrix = backend.model.observation_matrix
     prior = Belief(mean=np.zeros(5), cov=np.eye(5))
-    sigma_pred = backend.predicted_belief(prior).cov  # Σ⁺
+    predicted = backend.predicted_belief(prior)
+    sigma_pred = predicted.cov  # Σ⁺
+    observation_noise = backend.model.observation_noise_at(predicted.mean)  # R(μ⁺)
 
     def info_gain(info_block):
         return float(
