@@ -34,22 +34,22 @@ def _validate_cost(
 ) -> None:
     """Symmetry + (semi)definiteness check for a preference cost matrix.
 
-    ``goal_precision`` and ``effort_penalty`` are user input handed in once at
+    The state and action costs are user input handed in once at
     construction — the trust boundary — so unlike a per-step belief covariance
     they're checked in full here. (``types._validate_covariance`` skips
     definiteness on purpose because it runs on every filter step; this runs once,
     so it doesn't have to.) Both failure modes this catches are the
     silently-wrong-in-a-loop kind that are hardest to trace downstream: a
     non-symmetric matrix (an off-diagonal typo) quietly yields a non-symmetric
-    cost-to-go and a wrong gain, and a singular or indefinite ``effort_penalty``
+    cost-to-go and a wrong gain, and a singular or indefinite action cost
     — which the gain solve inverts against — blows up or returns garbage.
 
     Args:
         matrix: The already-shape-checked cost matrix.
         name: Field name for error messages.
-        require_definite: ``True`` for ``effort_penalty`` (must be positive-
-            *definite*, since it is inverted against); ``False`` for
-            ``goal_precision`` (positive-*semi*-definite is enough).
+        require_definite: ``True`` for the action cost (must be positive-
+            *definite*, since it is inverted against); ``False`` for the state
+            cost (positive-*semi*-definite is enough).
     """
     if not jnp.allclose(matrix, matrix.T):
         raise ValueError(f"{name} must be symmetric.")
@@ -87,8 +87,7 @@ def _validated_costs(
     Raises:
         ValueError: If the model has no ``control_matrix``, or a cost matrix does
             not match the state/action dimensions, is not symmetric, or fails its
-            definiteness requirement (``goal_precision`` PSD, ``effort_penalty``
-            PD).
+            definiteness requirement (the state cost PSD, the action cost PD).
     """
     if model.control_matrix is None:
         raise ValueError(
