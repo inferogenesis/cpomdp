@@ -431,14 +431,13 @@ class LinearGaussianModel:
         """Leaves for JAX: every matrix plus the ``prior`` belief; ``structure`` is aux.
 
         ``control_matrix``, ``observation_model`` and ``dynamics_noise_model`` are
-        included as (possibly
-        ``None``) children; an uncontrolled / fixed-sensor / fixed-Q model contributes
-        no leaf there and the ``None`` is restored on rebuild. A non-``None``
-        ``observation_model``/``dynamics_noise_model`` is itself a pytree and recurses
-        into its own
-        leaves. ``structure`` (declarative metadata, no array leaves) rides in the
-        static aux_data, so two models differing only in ``structure`` are different
-        pytrees and a jit keyed on the model re-specialises when it changes.
+        included as (possibly ``None``) children; an uncontrolled / fixed-sensor /
+        fixed-Q model contributes no leaf there and the ``None`` is restored on
+        rebuild. A non-``None`` ``observation_model``/``dynamics_noise_model`` is itself
+        a pytree and recurses into its own leaves. ``structure`` (declarative metadata,
+        no array leaves) rides in the static aux_data, so two models differing only in
+        ``structure`` are different pytrees and a jit keyed on the model re-specialises
+        when it changes.
         """
         children = (
             self.dynamics_matrix,
