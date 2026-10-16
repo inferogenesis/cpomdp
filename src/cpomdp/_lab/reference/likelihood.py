@@ -282,7 +282,7 @@ class StateDependentNoiseLikelihood:
             closure or a lambda hashes by identity and defeats ``jit`` caching.
         observation_noise_params: the values ``observation_noise_fn`` is a function
             of, carried as a pytree leaf so the density is differentiable in them.
-            The split follows ``cpomdp.dynamics.CallableProcessNoise``: a number lives
+            The split follows ``cpomdp.dynamics.CallableDynamicsNoise``: a number lives
             in the params if it would ever be swept, and in the function only if it is
             structural.
     """

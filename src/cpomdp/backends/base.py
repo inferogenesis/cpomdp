@@ -155,10 +155,10 @@ def _validate_step_inputs(
             f"(the observation dimension), got shape {observation.shape}"
         )
 
-    if prior.ndim != model.n_states:
+    if prior.n_states != model.n_states:
         raise ValueError(
             f"prior must be a belief over the {model.n_states}-D state, "
-            f"got a {prior.ndim}-D belief"
+            f"got a {prior.n_states}-D belief"
         )
 
     if model.control_matrix is None:

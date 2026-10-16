@@ -25,6 +25,8 @@ from numpy.typing import ArrayLike
 
 from cpomdp._validation import validate_covariance, validate_finite
 
+__all__ = ["CanonicalGaussian", "likelihood_message"]
+
 
 @jax.tree_util.register_pytree_node_class
 @dataclass(frozen=True, init=False)
@@ -39,10 +41,8 @@ class CanonicalGaussian:
       point something reads its moment form).
     - ``potential`` -- h = Σ⁻¹μ. A 1-D vector of length n.
 
-    Construct directly from canonical parameters. There is no
-    ``from_moment``/moment-form constructor in v0.4 (open question, parked in
-    the build plan) — moment form is purely a readout view via
-    ``to_moment``.
+    Built from canonical parameters only. Moment form is a readout view, reached
+    through ``to_moment``.
     """
 
     precision: Float64[Array, "n n"]
@@ -150,12 +150,10 @@ class CanonicalGaussian:
           name); the information-filter and message-passing literature call this
           exact vector the *information vector*. One quantity, two names.
 
-        A *view*, computed on demand — not the storage form. The precision must
-        be positive-**definite** here (something is actually reading a combined
-        belief); a singular Λ has no moment form and must raise ``ValueError``
-        rather than return inf/NaN — use ``validate_covariance(...,
-        require_definite=True)`` (its message says "positive-definite"). Prefer a
-        single linear solve over forming Λ⁻¹ explicitly, and stay jit/grad-clean.
+        A *view*, computed on demand. The storage form stays canonical. The
+        precision must be positive-**definite** here, since something is reading a
+        combined belief. A singular or indefinite Λ has no moment form, so it raises.
+        The mean is a linear solve against Λ and the covariance is its inverse.
 
         Returns:
             ``(mean, cov)``, matching the signature
@@ -253,3 +251,33 @@ class CanonicalGaussian:
         """Rebuild from leaves without validating — the leaves may be tracers."""
         precision, potential = children
         return cls._unchecked(precision, potential)
+
+
+def likelihood_message(
+    observation_matrix: Float64[Array, "m n"],
+    observation_noise: Float64[Array, "m m"],
+    reading: ArrayLike,
+) -> CanonicalGaussian:
+    """A reading's message into the state it observes: ``Λ = CᵀR⁻¹C``, ``h = CᵀR⁻¹y``.
+
+    The information form of the likelihood ``N(y; Cx, R)``. The measurement update is
+    then ``prior_message + this``. Solving against R avoids forming ``R⁻¹``. The result
+    is valid by construction, so it is built without validation.
+
+    Args:
+        observation_matrix: C, shape ``(m, n)``.
+        observation_noise: R, shape ``(m, m)``, positive-definite.
+        reading: y, shape ``(m,)``.
+
+    Returns:
+        A ``CanonicalGaussian`` over the n-D state.
+    """
+    reading = jnp.asarray(reading, dtype=float)  # y
+    noise_weighted_model = jnp.linalg.solve(
+        observation_noise, observation_matrix
+    )  # R⁻¹C
+    precision = observation_matrix.T @ noise_weighted_model  # CᵀR⁻¹C
+    potential = observation_matrix.T @ jnp.linalg.solve(
+        observation_noise, reading
+    )  # CᵀR⁻¹y
+    return CanonicalGaussian._unchecked(precision, potential)

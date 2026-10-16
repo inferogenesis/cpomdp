@@ -29,7 +29,7 @@ from cpomdp._lab.degraded import DiagonalCovarianceBackend, WrongFixedRBackend
 from cpomdp._validation import UNVERSIONED, validate_declared
 from cpomdp.backends.base import InferenceBackend
 from cpomdp.backends.kalman import KalmanBackend
-from cpomdp.dynamics import DynamicsNoise
+from cpomdp.dynamics import DynamicsNoiseModel
 from cpomdp.observation import ObservationModel
 from cpomdp.structure import ModelStructure
 from cpomdp.types import Belief, LinearGaussianModel
@@ -49,8 +49,8 @@ __all__ = [
 # The parameters a perturbation may scale. The prior is not among them: it is a
 # ``Belief`` rather than a matrix, and scaling a mean of zeros changes nothing while
 # scaling a covariance changes the filter's transient rather than its model.
-# What the filter reads in place of a declared matrix, when the spec carries the
-# state-dependent model beside it. Scaling the matrix then reaches nothing.
+# The object that supplies each declared matrix when the spec carries it. The model
+# refuses a matrix that differs from its object's, so a scaled one never builds.
 _SHADOWED = {
     "observation_matrix": "observation_model",
     "observation_noise": "observation_model",
@@ -120,13 +120,15 @@ class ModelSpec:
     unchanged. They are objects rather than arrays, no perturbation names them, and a
     model that carries one carries the same one every build.
 
-    Either noise may be left as ``None`` beside its object. The spec holds the
-    ``None`` and the model derives the value at each build (DECISIONS.md ADR-066).
+    ``observation_matrix`` and either noise may be left as ``None`` beside its object.
+    The spec holds the ``None`` and the model reads the value at each build
+    (DECISIONS.md ADR-066, ADR-071).
 
     Args:
         dynamics_matrix: State to next state — A, shape ``(n, n)``.
-        observation_matrix: State to reading — C, shape ``(m, n)``.
-        dynamics_noise: Process-noise covariance — Q, shape ``(n, n)``. ``None`` to
+        observation_matrix: State to reading — C, shape ``(m, n)``. ``None`` to leave
+            it to ``observation_model``.
+        dynamics_noise: Dynamics-noise covariance — Q, shape ``(n, n)``. ``None`` to
             leave it to ``dynamics_noise_model``.
         observation_noise: Reading-noise covariance — R, shape ``(m, m)``. ``None`` to
             leave it to ``observation_model``.
@@ -135,13 +137,13 @@ class ModelSpec:
         control_matrix: Action to state — B, shape ``(n, p)``. ``None`` for a model
             that takes no action.
         observation_model: A state-dependent sensor, passed through.
-        dynamics_noise_model: State-dependent process noise, passed through.
+        dynamics_noise_model: State-dependent dynamics noise, passed through.
         structure: A declared factor / blanket partition, passed through.
         version: A non-empty tag, so a parameter changed later shows up in the diff.
     """
 
     dynamics_matrix: np.ndarray
-    observation_matrix: np.ndarray
+    observation_matrix: np.ndarray | None
     dynamics_noise: np.ndarray | None
     observation_noise: np.ndarray | None
     prior_mean: np.ndarray
@@ -149,14 +151,14 @@ class ModelSpec:
     version: str
     control_matrix: np.ndarray | None = None
     observation_model: ObservationModel | None = None
-    dynamics_noise_model: DynamicsNoise | None = None
+    dynamics_noise_model: DynamicsNoiseModel | None = None
     structure: ModelStructure | None = None
 
     def __init__(
         self,
         *,
         dynamics_matrix: ArrayLike,
-        observation_matrix: ArrayLike,
+        observation_matrix: ArrayLike | None = None,
         dynamics_noise: ArrayLike | None = None,
         observation_noise: ArrayLike | None = None,
         prior_mean: ArrayLike,
@@ -164,17 +166,17 @@ class ModelSpec:
         version: str,
         control_matrix: ArrayLike | None = None,
         observation_model: ObservationModel | None = None,
-        dynamics_noise_model: DynamicsNoise | None = None,
+        dynamics_noise_model: DynamicsNoiseModel | None = None,
         structure: ModelStructure | None = None,
     ) -> None:
         for name, value in (
             ("dynamics_matrix", dynamics_matrix),
-            ("observation_matrix", observation_matrix),
             ("prior_mean", prior_mean),
             ("prior_cov", prior_cov),
         ):
             object.__setattr__(self, name, _frozen(value))
         for name, optional in (
+            ("observation_matrix", observation_matrix),
             ("dynamics_noise", dynamics_noise),
             ("observation_noise", observation_noise),
             ("control_matrix", control_matrix),
@@ -190,41 +192,21 @@ class ModelSpec:
             raise ValueError(UNVERSIONED.format(subject="spec"))
 
     def _reject_shadowed(self, perturbation: Perturbation) -> None:
-        """Refuse a scale the filter would not read, given what this spec carries.
+        """Refuse a scale of a matrix this spec's noise object supplies.
 
-        A state-dependent sensor supplies its own ``(C, R)`` and a state-dependent
-        process noise its own ``Q``, so the matrices they stand in for are never read.
-        Scaling one of those would build a model no different from ``CORRECT``, under a
-        name saying otherwise.
+        A sensor supplies ``C`` and ``R`` and a dynamics noise model supplies ``Q``. The
+        model refuses a declared matrix that differs from the one its object supplies,
+        so the scaled cell could never build. Refusing here names the situation instead
+        of failing inside ``LinearGaussianModel``.
         """
         shadow = _SHADOWED.get(perturbation.parameter or "")
-        if shadow is None:
+        if shadow is None or getattr(self, shadow) is None:
             return
-        carried = getattr(self, shadow)
-        if carried is None:
-            return
-        if carried.is_fixed:
-            raise ValueError(
-                f"{perturbation.name!r} scales {perturbation.parameter}, and this "
-                f"spec carries a fixed {shadow} restating it. The model refuses the "
-                f"two disagreeing, so the cell cannot build. Declare the spec without "
-                f"{shadow}, or perturb something it does not restate."
-            )
-        # The two noises and observation_matrix are shadowed differently. A
-        # state-dependent sensor's R is read in place of the field, so the cell would
-        # build what CORRECT builds. Its C is not: the model requires a linearized C to
-        # equal observation_matrix whether or not the sensor is fixed, so scaling the
-        # field makes the two disagree and nothing builds at all.
-        consequence = (
-            "the model refuses the two disagreeing, so the cell cannot build"
-            if perturbation.parameter == "observation_matrix"
-            else "the cell would build the model CORRECT builds"
-        )
         raise ValueError(
-            f"{perturbation.name!r} scales {perturbation.parameter}, which the filter "
-            f"does not read on this spec: {shadow} is state-dependent and is read "
-            f"instead, so {consequence}. Name a parameter the filter reads, or declare "
-            f"the spec without {shadow}."
+            f"{perturbation.name!r} scales {perturbation.parameter}, and this spec's "
+            f"{shadow} supplies it. The model refuses a {perturbation.parameter} that "
+            f"differs from its {shadow}'s, so the cell cannot build. Declare the spec "
+            f"without {shadow}, or perturb something it does not supply."
         )
 
     def build(self, perturbation: Perturbation = CORRECT) -> LinearGaussianModel:
@@ -244,11 +226,11 @@ class ModelSpec:
 
         Raises:
             ValueError: If the perturbation names a parameter this spec leaves as
-                ``None`` (``control_matrix``, or a noise left to its object), or if the
-                result fails the model's own validation, as a covariance scaled to zero
-                or below does.
-            TypeError: If the spec leaves a noise out with no object to read it from.
-                The model raises it, at the first build.
+                ``None`` (``control_matrix``, or a matrix left to its object), names
+                one a noise object supplies, or if the result fails the model's own
+                validation, as a covariance scaled to zero or below does.
+            TypeError: If the spec leaves a matrix out with no object to read it
+                from. The model raises it, at the first build.
         """
         parameter = perturbation.parameter
         if parameter is not None and getattr(self, parameter) is None:
@@ -267,7 +249,7 @@ class ModelSpec:
 
         return LinearGaussianModel(
             dynamics_matrix=jnp.array(value("dynamics_matrix")),
-            observation_matrix=jnp.array(value("observation_matrix")),
+            observation_matrix=_copied(value("observation_matrix")),
             dynamics_noise=_copied(value("dynamics_noise")),
             observation_noise=_copied(value("observation_noise")),
             prior=Belief(

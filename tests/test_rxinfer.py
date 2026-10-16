@@ -14,10 +14,9 @@ from numpy.typing import ArrayLike
 from cpomdp.backends.base import InferenceBackend
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.backends.rxinfer import RxInferBackend, _rxinfer_chemotaxis_tree_root
-from cpomdp.dynamics import CallableProcessNoise
-from cpomdp.ffg.factors.linear_gaussian import GaussianCoupling, GaussianObservation
+from cpomdp.dynamics import CallableDynamicsNoise
 from cpomdp.ffg.graph import Coupling, CouplingGraph
-from cpomdp.observation import CallableSensor
+from cpomdp.observation import CallableSensor, FixedSensor
 from cpomdp.types import Belief, LinearGaussianModel
 
 pytestmark = pytest.mark.rxinfer
@@ -129,20 +128,29 @@ def _rising_noise(x, params):
     ("slot", "noise_model"),
     [
         ("observation_model", CallableSensor([[1.0]], _rising_noise, ())),
-        ("dynamics_noise_model", CallableProcessNoise(_rising_noise, ())),
+        ("dynamics_noise_model", CallableDynamicsNoise(_rising_noise, ())),
     ],
 )
 def test_refuses_state_dependent_noise(slot, noise_model):
     # The Julia model takes one Q and one R. Built over R(x) or Q(x) it would filter
     # on the plain fields, a constant where the model varies.
-    model = LinearGaussianModel(
-        dynamics_matrix=[[0.9]],
-        observation_matrix=[[1.0]],
-        dynamics_noise=[[0.5]],
-        observation_noise=[[1.0]],
-        prior=Belief(mean=[0.0], cov=[[10.0]]),
-        **{slot: noise_model},
-    )
+    # The noise object supplies its own field, so only the other one is passed.
+    prior = Belief(mean=[0.0], cov=[[10.0]])
+    if slot == "observation_model":
+        model = LinearGaussianModel(
+            dynamics_matrix=[[0.9]],
+            dynamics_noise=[[0.5]],
+            prior=prior,
+            observation_model=noise_model,
+        )
+    else:
+        model = LinearGaussianModel(
+            dynamics_matrix=[[0.9]],
+            observation_matrix=[[1.0]],
+            observation_noise=[[1.0]],
+            prior=prior,
+            dynamics_noise_model=noise_model,
+        )
     with pytest.raises(ValueError, match=f"{slot} is state-dependent"):
         RxInferBackend(model)
 
@@ -150,7 +158,7 @@ def test_refuses_state_dependent_noise(slot, noise_model):
 def test_branching_tree_matches_coupling_graph():
     # The non-chain oracle box (Phase 2) closed on a real branch: the difference-demo
     # tree has a degree-3 node (chey -> two motors), which the chain model never hits.
-    # RxInfer's message passing and CouplingGraph.infer must collect the same CheA
+    # RxInfer's message passing and CouplingGraph.infer_root must collect the same CheA
     # marginal up the same tree, through entirely separate machinery.
     chea, chey, cheb, motor_a, motor_b = 0, 1, 2, 3, 4
     edges = [
@@ -161,19 +169,17 @@ def test_branching_tree_matches_coupling_graph():
     ]
     obs_r = 0.10
     graph = CouplingGraph(
-        root=chea,
         dims=(1, 1, 1, 1, 1),
         couplings=tuple(
-            Coupling(p, c, GaussianCoupling([[w]], coupling_noise=[[q]]), 1.0)
-            for p, c, w, q in edges
+            Coupling(p, c, [[w]], coupling_noise=[[q]]) for p, c, w, q in edges
         ),
-        observations={
-            n: GaussianObservation([[1.0]], observation_noise=[[obs_r]])
+        observation_models={
+            n: FixedSensor([[1.0]], observation_noise=[[obs_r]])
             for n in (cheb, motor_a, motor_b)
         },
     )
     readings: dict[int, ArrayLike] = {motor_a: [1.25], motor_b: [1.15], cheb: [0.95]}
-    native = graph.infer(Belief(mean=[0.0], cov=[[4.0]]), readings)
+    native = graph.infer_root(readings, Belief(mean=[0.0], cov=[[4.0]]))
 
     rx_mean, rx_var = _rxinfer_chemotaxis_tree_root(
         prior_mean=0.0,

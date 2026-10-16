@@ -24,7 +24,7 @@ import jax.numpy as jnp
 from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
-from cpomdp._validation import validate_covariance
+from cpomdp._validation import state_dependent, validate_covariance
 from cpomdp.backends.base import InferenceBackend
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.types import Belief, LinearGaussianModel
@@ -44,7 +44,7 @@ class World:
     """The process an agent is scored against: true state in, observations out.
 
     Holds a ``LinearGaussianModel`` privately and advances one true state under it.
-    Each ``step`` applies an action, draws the process noise, and returns a noisy
+    Each ``step`` applies an action, draws the dynamics noise, and returns a noisy
     observation of the state it arrived at. There is no ``model`` attribute and no
     accessor returning a parameter of it.
 
@@ -147,25 +147,25 @@ class World:
                 )
             mean_next = mean_next + model.control_matrix @ action
 
-        process = model.dynamics_noise_model
-        if process is None or process.is_fixed:
+        process = state_dependent(model.dynamics_noise_model)
+        if process is None:
             dynamics_noise = model.dynamics_noise
         else:
             dynamics_noise = process.noise_at(mean_next)
-            # A process noise is only probed at construction, at one state. The svd
+            # A dynamics noise is only probed at construction, at one state. The svd
             # draw below factors through the *singular* values, so a direction that
             # has gone negative by the state the walk reaches is drawn as |λ| rather
             # than as NaN: a finite, plausible state sampled from the wrong Q, with
             # nothing raised. Semi-definite stays legal here, indefinite does not.
-            validate_covariance(dynamics_noise, "dynamics_noise_model.noise_at(x)")
+            validate_covariance(dynamics_noise, "dynamics_noise_model.noise_at(state)")
         # svd rather than the cholesky default: dynamics_noise is only required
         # positive *semi*-definite, so a noiseless state dimension is legal here.
         self._state = jax.random.multivariate_normal(
             key_dynamics, mean_next, dynamics_noise, method="svd"
         )
 
-        sensor = model.observation_model
-        if sensor is None or sensor.is_fixed:
+        sensor = state_dependent(model.observation_model)
+        if sensor is None:
             observation_matrix = model.observation_matrix
             observation_noise = model.observation_noise
         else:
@@ -182,7 +182,7 @@ class World:
             # noiseless direction is legal there. This one is not legal anywhere.
             validate_covariance(
                 observation_noise,
-                "observation_model.linearize(x)[1]",
+                "observation_model.linearize(state)[1]",
                 require_definite=True,
                 reason="the reading is drawn through its Cholesky factor",
             )
@@ -334,8 +334,8 @@ class ExogenousActionSequence:
         return int(self.actions.shape[0])
 
     @property
-    def action_dim(self) -> int:
-        """The action dimension ``p``."""
+    def n_controls(self) -> int:
+        """The action dimension ``p``, named as the model names it."""
         return int(self.actions.shape[1])
 
 
@@ -398,9 +398,9 @@ def drive(
     Raises:
         ValueError: If the sequence's action dimension is not the world's.
     """
-    if sequence.action_dim != world.n_controls:
+    if sequence.n_controls != world.n_controls:
         raise ValueError(
-            f"the sequence drives p={sequence.action_dim} but the world takes "
+            f"the sequence drives p={sequence.n_controls} but the world takes "
             f"p={world.n_controls}; the declared actions must match the action "
             f"dimension."
         )

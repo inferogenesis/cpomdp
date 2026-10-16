@@ -15,6 +15,7 @@ __all__ = [
     "concrete",
     "equilibrium_drift",
     "require_fixed_noise",
+    "state_dependent",
     "validate_covariance",
     "validate_declared",
     "validate_finite",
@@ -31,6 +32,28 @@ INFORMATION_FORM_INVERTS = "the information form inverts it"
 """Why an FFG factor's noise must be definite: its message holds the inverse."""
 
 _NOISE_SLOTS = ("observation_model", "dynamics_noise_model")
+
+
+class _FlagsFixed(Protocol):
+    """A noise object: an observation model or a dynamics noise model."""
+
+    @property
+    def is_fixed(self) -> bool: ...
+
+
+_NoiseModel = TypeVar("_NoiseModel", bound=_FlagsFixed)
+
+
+def state_dependent(noise_model: _NoiseModel | None) -> _NoiseModel | None:
+    """``noise_model`` if it varies with the state, ``None`` if the noise is constant.
+
+    ``None`` comes back for a model carrying no object, which leaves the plain field as
+    the noise, and for an object flagged ``is_fixed``. Every consumer with a fixed-noise
+    path makes this test before taking it.
+    """
+    if noise_model is None or noise_model.is_fixed:
+        return None
+    return noise_model
 
 
 class _CarriesNoise(Protocol):
@@ -55,9 +78,9 @@ def require_fixed_noise(
     """Refuse a model carrying state-dependent noise in any of ``slots``.
 
     For a consumer whose arithmetic holds ``R`` and ``Q`` constant. Built over ``R(x)``
-    or ``Q(x)`` it would read the plain fields, which are then nominal values, and
-    compute against a constant where the model varies (DECISIONS.md ADR-064 for
-    ``R``, ADR-065 for ``Q``).
+    or ``Q(x)`` it would read the plain fields, which hold only the value at the prior
+    mean, and compute against a constant where the model varies (DECISIONS.md ADR-064
+    for ``R``, ADR-065 for ``Q``).
 
     Args:
         model: The model the consumer was handed.
@@ -69,8 +92,7 @@ def require_fixed_noise(
         ValueError: Naming the first slot that carries a state-dependent object.
     """
     for slot in slots:
-        carried = getattr(model, slot)
-        if carried is not None and not carried.is_fixed:
+        if state_dependent(getattr(model, slot)) is not None:
             raise ValueError(f"the model's {slot} is state-dependent; {reason}")
 
 

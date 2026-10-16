@@ -13,8 +13,9 @@ from cpomdp.backends import base
 from cpomdp.backends.base import GraphBackend, InferenceBackend
 from cpomdp.backends.coupling import CouplingGraphBackend
 from cpomdp.backends.kalman import KalmanBackend
-from cpomdp.ffg.factors.linear_gaussian import GaussianObservation, GaussianTransition
+from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
 from cpomdp.ffg.graph import CouplingGraph
+from cpomdp.observation import FixedSensor
 from cpomdp.types import Belief, LinearGaussianModel
 
 
@@ -55,10 +56,9 @@ def test_kalman_backend_satisfies_protocol():
 
 def _one_node_graph_backend():
     graph = CouplingGraph(
-        root=0,
         dims=(1,),
         couplings=(),
-        observations={0: GaussianObservation([[1.0]], observation_noise=[[0.5]])},
+        observation_models={0: FixedSensor([[1.0]], observation_noise=[[0.5]])},
     )
     transitions = (GaussianTransition([[0.9]], dynamics_noise=[[0.1]]),)
     return CouplingGraphBackend(graph, transitions, prior=unit_prior(graph))
