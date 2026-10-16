@@ -4642,6 +4642,8 @@ versions break before 1.0, as cpomdp's do.
 **Status:** Accepted
 **Extends:** ADR-005, ADR-009 and ADR-032, whose functions keep their arithmetic and
 change what they return. ADR-069, which made `cpomdp.efe` a documented module.
+**Supersedes:** ADR-009's scope that `policy_efe` stays internal. ADR-069's public-module
+rule had already overridden it without naming it, and `policy_efe` now has an API page.
 **Phase:** v0.5.0, the public API review before release
 
 ### The question
@@ -4667,7 +4669,7 @@ result was a schedule.
 - The trace's moments are `predicted_mean`, `predicted_cov`, `posterior_cov` and
   `predicted_observation_cov`, the words `Belief.cov` and `epistemic_value` already
   use. `RolloutConditioning` names each condition number after the field it measures.
-  S is the predicted observation covariance in every docstring.
+  S is the predicted observation covariance in every public docstring.
 - The functions take one type, a `Preference`, and refuse anything else by type.
   `ObservationGoal.preference` returns the goal's target and precision as one, built
   once. Passing a goal raises a `TypeError` that names its `.preference`. A `StateGoal`
