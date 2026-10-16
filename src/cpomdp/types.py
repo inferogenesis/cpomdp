@@ -388,6 +388,24 @@ class LinearGaussianModel:
         """Dimension of an action (p); 0 if the model has no control."""
         return 0 if self.control_matrix is None else self.control_matrix.shape[1]
 
+    def observation_noise_at(self, state: ArrayLike) -> Float64[Array, "m m"]:
+        """The observation noise R at ``state``, whatever sensor the model carries.
+
+        A model with no ``observation_model``, or a fixed one, returns
+        ``observation_noise`` itself and reads no state. A state-dependent sensor is
+        linearized at ``state``. A consumer that needs R where a belief sits reads it
+        here and does not branch on the sensor.
+
+        Args:
+            state: the state to read R at, shape ``(n,)``.
+
+        Returns:
+            R at ``state``, shape ``(m, m)``.
+        """
+        if self.observation_model is None or self.observation_model.is_fixed:
+            return self.observation_noise
+        return self.observation_model.linearize(state)[1]
+
     # --- control-theory letter aliases (for backend/maths internals) ---
     @property
     def A(self) -> Float64[Array, "n n"]:

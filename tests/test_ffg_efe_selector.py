@@ -273,7 +273,7 @@ def _score_components(backend, belief, preference, candidates, info_block):
 
     def comp(action):
         predicted = backend.predicted_belief(belief, action)  # μ⁺, Σ⁺
-        observation_noise = backend.observation_noise_at(predicted.mean)  # R(μ⁺)
+        observation_noise = backend.model.observation_noise_at(predicted.mean)  # R(μ⁺)
         _, parts = _ffg_efe_step(
             predicted.mean,
             predicted.cov,

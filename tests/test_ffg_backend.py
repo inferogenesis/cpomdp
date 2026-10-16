@@ -795,8 +795,16 @@ class TestObservationChannel:
             [(np.eye(2), np.eye(2) * 0.1)],
         )
         np.testing.assert_allclose(
-            np.asarray(backend.observation_noise_at([3.0, 3.0])), [[9.5]]
+            np.asarray(backend.model.observation_noise_at([3.0, 3.0])), [[9.5]]
         )
+
+    def test_r_at_a_mean_is_read_off_the_model_alone(self):
+        # A backend member returned what `model.observation_noise_at` gives, so C was
+        # read off the model and R off the backend.
+        backend = _build(
+            _CHEMOTAXIS_DIMS, _CHEMOTAXIS_EDGES, _CHEMOTAXIS_OBS, _CHEMOTAXIS_DYN
+        )
+        assert not hasattr(backend, "observation_noise_at")
 
     def test_no_tuple_freezes_r_at_zero(self):
         backend = _build_rx(

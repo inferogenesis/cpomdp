@@ -4668,17 +4668,19 @@ an order that lived in a private layout.
 
 Every quantity has one home, and it is the home it has on a flat backend.
 
-- The joint width is `model.n_states` and the stacked sensor C is
-  `model.observation_matrix`, on this backend as on `KalmanBackend`. R at a mean is
-  `observation_noise_at`. I added no `observation_matrix` property, which the review
-  proposed, because it would be a second way to read what `model` already gives. The
-  node dimensions are `graph.dims`.
+- The joint width is `model.n_states`, the stacked sensor C is
+  `model.observation_matrix` and R at a mean is `model.observation_noise_at(mean)`, on
+  this backend as on `KalmanBackend`. A backend `observation_matrix` property would be a
+  second way to read what `model` already gives, so there is none. The same rule takes
+  `observation_noise_at` off the backend and puts it on `LinearGaussianModel`. A model
+  with no sensor or a fixed one returns `observation_noise`. A state-dependent sensor is
+  linearized at the state. The node dimensions are `graph.dims`.
 - Under a state-dependent sensor the model's nominal `observation_noise` is R at the prior
   mean, the rule every flat model follows, where it was R at zero.
 - One protocol, `GraphBackend`, describes a backend over a graph of nodes, and
-  `probe_model` reads it too. It declares `predicted_belief`, `observation_noise_at`,
-  `block` and `severed_efe_edges` beside `InferenceBackend`'s two members. It carries no
-  promise, as ADR-069 left `EfeBackend`.
+  `probe_model` reads it too. It declares `predicted_belief`, `block` and
+  `severed_efe_edges` beside `InferenceBackend`'s two members. It carries no promise, as
+  ADR-069 left `EfeBackend`.
 - `marginal(node, belief)` is the one way to read a node. `block` and `marginal` refuse a
   node outside the graph.
 - A user writes readings keyed by node, the form `CouplingGraph.infer` takes, and
@@ -4700,12 +4702,13 @@ Every quantity has one home, and it is the home it has on a flat backend.
 ### Consequences
 
 - The backend's surface is `model`, `graph`, `transitions`, `infer_states`,
-  `predicted_belief`, `observation_noise_at`, `stack_observations`, `marginal`, `block`,
-  `severed_efe_edges`, `severed_mass`, `filter_sequence`, `to_flat_model` and
-  `flat_observation`. `graph` and `transitions` are read-only, as `model` was.
-- A fixed graph returns a front-loaded R from `observation_noise_at` and no longer builds
-  it per candidate. A state-dependent graph reads R through the joint sensor its model
-  carries, so the two accessors cannot drift.
+  `predicted_belief`, `stack_observations`, `marginal`, `block`, `severed_efe_edges`,
+  `severed_mass`, `filter_sequence`, `to_flat_model` and `flat_observation`. `graph`
+  and `transitions` are read-only, as `model` was.
+- A fixed graph's `model.observation_noise_at` returns the R built at construction, so
+  no candidate rebuilds it. A state-dependent graph's model reads R through the joint
+  sensor it carries. Code that reads R at a mean reads it off `backend.model` on a flat
+  backend and on a graph one alike.
 - `CouplingGraph` still stores its observations in the order given.
   `stack_observations` makes that order harmless. Sorting them would make iteration
   match the stacking order, and it belongs with the graph.

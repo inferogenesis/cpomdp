@@ -478,19 +478,6 @@ class CouplingGraphBackend:
             potential = potential.at[block].add(message.potential)
         return precision, potential
 
-    def observation_noise_at(self, mean: ArrayLike) -> Float64[jax.Array, "m m"]:
-        """The stacked observation noise R at a predicted mean.
-
-        Each observed node's R is linearized at ``mean[node_block]``, and the
-        block-diagonal stack is the action-dependent ``R(μ⁺)`` the EFE selector folds
-        per candidate (issue #27). A graph whose sensors are all fixed returns the
-        constant R it front-loaded and reads no mean.
-        """
-        joint_observation = self._model.observation_model
-        if joint_observation is None:  # every sensor fixed
-            return self._model.observation_noise
-        return joint_observation.linearize(mean)[1]
-
     def _build_partition_mask(self) -> jax.Array:
         """The carry mask: 1 on within-cluster precision blocks, 0 between clusters.
 
@@ -892,7 +879,10 @@ class CouplingGraphBackend:
         state as one linear-Gaussian model, with the sizes an [`Agent`][cpomdp.Agent]
         reads. The ``Agent`` takes its own ``model`` from this, so passing the backend
         is enough (issue #26). Read the stacked sensor C as
-        ``model.observation_matrix`` and R at a mean with ``observation_noise_at``.
+        ``model.observation_matrix`` and R at a mean as
+        ``model.observation_noise_at(mean)``. A fixed graph's model returns the R it
+        front-loaded. A state-dependent graph's model reads each node's R at that
+        node's block of the mean, the point the filter uses.
 
         It omits the structural couplings, so it is not a filter for the graph.
         ``to_flat_model()`` adds them as pseudo-observations for the oracle
