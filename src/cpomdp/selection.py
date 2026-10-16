@@ -98,8 +98,12 @@ def _candidate_grid(
     return jnp.linspace(lo, hi, _checked_n_candidates(n_candidates))[:, None]
 
 
-_TIE_TOLERANCE = 1e-9
-"""Scores within this of the best, relative to it, tie. The difference is roundoff."""
+_TIE_TOLERANCE = 1e-11
+"""Scores within this of the best, relative to it, tie. The difference is roundoff.
+
+Ten times the ``1e-12`` the graph backend leaves on a tie of size one, and far below
+any difference a candidate's action makes.
+"""
 
 
 def _grid_choice(
@@ -110,16 +114,23 @@ def _grid_choice(
     """The candidate with the lowest finite ``G``, or NaN when no score is finite.
 
     Among candidates whose scores tie, the one nearest zero wins. A tie means the action
-    reaches nothing the scores read, so the least action is the honest choice. The
+    reaches nothing the scores read, so the least action is the honest choice. Two
+    tied candidates equally near zero, such as ``±h`` on a grid without zero, give
+    the point between them. Either alone would push the same way every step. The
     graph backend's canonical form leaves roundoff of about ``1e-12`` on such a tie,
-    so scores within ``_TIE_TOLERANCE`` of the best count as tied. Jit-safe, and one
-    more pass over ``k`` scores than a plain argmin.
+    so scores within ``_TIE_TOLERANCE`` of the best count as tied. Jit-safe, and two
+    more passes over ``k`` scores than a plain argmin.
     """
     scores = jnp.where(jnp.isfinite(g), g, jnp.inf)  # NaN or inf never wins
     best = jnp.min(scores)
     tied = scores <= best + _TIE_TOLERANCE * jnp.maximum(1.0, jnp.abs(best))
-    index = jnp.argmin(jnp.where(tied, distance_from_zero, jnp.inf))
-    return jnp.where(jnp.isfinite(best), candidates[index], jnp.nan)
+    distance = jnp.where(tied, distance_from_zero, jnp.inf)
+    closest = jnp.min(distance)
+    nearest = distance <= closest + _TIE_TOLERANCE * jnp.maximum(1.0, closest)
+    choice = jnp.sum(jnp.where(nearest[:, None], candidates, 0.0), axis=0) / jnp.sum(
+        nearest
+    )
+    return jnp.where(jnp.isfinite(best), choice, jnp.nan)
 
 
 @jax.tree_util.register_pytree_node_class

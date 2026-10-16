@@ -75,11 +75,37 @@ class TestATieGoesToTheCandidateNearestZero:
             selector.select(model.prior, Preference([1.0])), [0.0], atol=1e-12
         )
 
-    def test_without_zero_on_the_grid_one_of_the_two_nearest_wins(self):
+    def test_without_zero_on_the_grid_the_two_nearest_meet_at_zero(self):
+        # -1/3 and +1/3 tie and sit equally near zero. Taking either pushes the same
+        # way every step, so the selector returns the point between them.
         model = _double_integrator()
         selector = EFESelector(model, action_bounds=(-1.0, 1.0), n_candidates=4)
-        chosen = float(selector.select(model.prior, Preference([1.0]))[0])
-        assert abs(chosen) == pytest.approx(1.0 / 3.0)
+        np.testing.assert_allclose(
+            selector.select(model.prior, Preference([1.0])), [0.0], atol=1e-12
+        )
+
+    def test_one_nearest_candidate_wins_alone(self):
+        model = _double_integrator()
+        selector = EFESelector(model, action_bounds=(0.5, 2.0), n_candidates=4)
+        np.testing.assert_allclose(
+            selector.select(model.prior, Preference([1.0])), [0.5]
+        )
+
+    def test_a_small_difference_on_a_large_score_is_not_a_tie(self):
+        # G is near 5e5 and moves by 2e-4 across the grid, far above roundoff at that
+        # size. The push toward the goal has to win.
+        model = LinearGaussianModel(
+            dynamics_matrix=[[1.0]],
+            observation_matrix=[[1.0]],
+            dynamics_noise=[[0.05]],
+            observation_noise=[[1.0]],
+            prior=Belief(mean=[0.0], cov=[[1.0]]),
+            control_matrix=[[1e-7]],
+        )
+        selector = EFESelector(model, action_bounds=(-1.0, 1.0))
+        np.testing.assert_array_equal(
+            selector.select(model.prior, Preference([1000.0])), [1.0]
+        )
 
     def test_the_graph_selector_rests_too(self):
         backend = _graph_double_integrator(

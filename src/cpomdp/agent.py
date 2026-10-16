@@ -6,7 +6,7 @@ import numpy as np
 from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
-from cpomdp._validation import equilibrium_drift
+from cpomdp._validation import concrete, equilibrium_drift
 from cpomdp.backends.base import EfeBackend, InferenceBackend
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.control import LQRController
@@ -69,7 +69,7 @@ def _preference_for_selector(
     if model.control_matrix is None:
         raise ValueError("selector= needs a model with a control matrix to act with.")
     selector_model = _selector_model(selector)
-    if selector_model is not None and selector_model is not model:
+    if selector_model is not None and not _same_model(selector_model, model):
         raise ValueError(
             f"this {type(selector).__name__} was built for another model. The Agent "
             "filters under its own model, so build the selector from the same one."
@@ -88,6 +88,28 @@ def _preference_for_selector(
     if isinstance(selector, _STATE_SPACE_SELECTORS):
         _require_held_target(model, objective.target, "the Preference's target")
     return objective
+
+
+def _same_model(first: LinearGaussianModel, second: LinearGaussianModel) -> bool:
+    """Whether two models are the same plant: one structure and equal arrays.
+
+    A model rebuilt from the same config is the same plant, so this compares values.
+    A sensor or noise function compares by identity, since two functions cannot be
+    compared by what they compute. A traced leaf cannot be read, so it counts as equal.
+    """
+    if first is second:
+        return True
+    first_leaves, first_structure = jax.tree_util.tree_flatten(first)
+    second_leaves, second_structure = jax.tree_util.tree_flatten(second)
+    if first_structure != second_structure:
+        return False
+    for first_leaf, second_leaf in zip(first_leaves, second_leaves, strict=True):
+        first_value, second_value = concrete(first_leaf), concrete(second_leaf)
+        if first_value is None or second_value is None:
+            continue
+        if not np.array_equal(first_value, second_value):
+            return False
+    return True
 
 
 def _selector_model(selector: ActionSelector) -> LinearGaussianModel | None:

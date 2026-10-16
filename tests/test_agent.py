@@ -285,7 +285,7 @@ _WELL_PARAMS = {
 }
 
 
-def _corridor_model(*, fixed, control_matrix=True):
+def _corridor_model(*, fixed, control_matrix=True, dynamics_noise=0.05):
     """1-D single integrator; fixed or precision-well sensor; optional control."""
     sensor = (
         None
@@ -297,7 +297,7 @@ def _corridor_model(*, fixed, control_matrix=True):
     return LinearGaussianModel(
         dynamics_matrix=[[1.0]],
         observation_matrix=[[1.0]],
-        dynamics_noise=[[0.05]],
+        dynamics_noise=[[dynamics_noise]],
         observation_noise=[[0.3]],
         prior=Belief(mean=[0.0], cov=[[0.5]]),
         control_matrix=[[1.0]] if control_matrix else None,
@@ -770,7 +770,15 @@ def test_a_selector_built_for_another_model_is_refused():
     # The Agent filters under its model, so a selector scoring another would plan for
     # a plant the agent is not filtering.
     agent_model = _corridor_model(fixed=False)
-    other_model = _corridor_model(fixed=False)
+    other_model = _corridor_model(fixed=False, dynamics_noise=0.5)
     selector = EFESelector(other_model, action_bounds=(-2.0, 2.0))
     with pytest.raises(ValueError, match="another model"):
         Agent(agent_model, _OBS_PREFERENCE, selector=selector)
+
+
+def test_a_selector_built_from_an_equal_copy_of_the_model_is_taken():
+    # A model rebuilt from the same config is the same plant.
+    agent_model = _corridor_model(fixed=False)
+    selector = EFESelector(_corridor_model(fixed=False), action_bounds=(-2.0, 2.0))
+    agent = Agent(agent_model, _OBS_PREFERENCE, selector=selector)
+    assert agent.selector is selector
