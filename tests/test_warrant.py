@@ -1054,7 +1054,7 @@ class TestExistingLabelsUnchanged:
         search = EnumeratedEfeSearch(_model(), _finite_set([-1.0, 1.0]), horizon=2)
         result = search.evaluate(
             Belief([0.0, 0.0], [[1.0, 0.0], [0.0, 1.0]]),
-            Preference(goal=[0.0], precision=[[1.0]]),
+            Preference(target=[0.0], precision=[[1.0]]),
         )
         assert result.g.shape == (4,)
         assert search.warrant is Warrant.PROVED

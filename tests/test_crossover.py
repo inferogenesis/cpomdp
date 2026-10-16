@@ -52,7 +52,7 @@ def _setup():
     backend = demo.build_backend(epistemic_alive=True, cue_x=demo.CUE_DETOUR_X)
     belief = demo.start_belief()
     pref = Preference(
-        goal=[0.0, 0.0],
+        target=[0.0, 0.0],
         precision=[[demo.GOAL_PRECISION, 0.0], [0.0, demo.INFO_PRECISION]],
     )
     info_block = tuple(backend.block(demo.CONTEXT))
@@ -184,7 +184,7 @@ class TestReachWalkDeclaredMembers:
                 predicted.cov,
                 observation_matrix,
                 noise,
-                pref.goal,
+                pref.target,
                 pref.precision,
                 info_block,
             )

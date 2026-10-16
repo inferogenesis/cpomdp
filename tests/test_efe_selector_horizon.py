@@ -63,7 +63,7 @@ def _belief():
 
 
 def _pref():
-    return Preference(goal=[0.0], precision=[[0.4]])
+    return Preference(target=[0.0], precision=[[0.4]])
 
 
 class TestHorizonConstruction:

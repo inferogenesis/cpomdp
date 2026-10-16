@@ -60,7 +60,7 @@ def _belief():
 
 
 def _obs_preference():
-    return Preference(goal=[1.0], precision=[[2.0]])
+    return Preference(target=[1.0], precision=[[2.0]])
 
 
 def _state_noise(x, params):
@@ -104,7 +104,7 @@ def _cases():
             "qx",
             _internal_q_model(),
             Belief(mean=[0.0], cov=[[0.2]]),
-            Preference(goal=[0.0], precision=[[1.0]]),
+            Preference(target=[0.0], precision=[[1.0]]),
         ),
     ]
 
@@ -193,7 +193,7 @@ class TestMatchesNumpyOracle:
         action = jnp.array([0.4])
         for name, model, belief, pref in _cases():
             g_ref, _ = _numpy_policy_efe(
-                model, belief, action[None, :], pref.goal, pref.precision
+                model, belief, action[None, :], pref.target, pref.precision
             )
             g_one = float(expected_free_energy(model, belief, action, pref)[0])
             np.testing.assert_allclose(g_ref, g_one, atol=1e-9, err_msg=name)
@@ -204,7 +204,7 @@ class TestMatchesNumpyOracle:
                 policy = _policy(values)
                 g = policy_efe(model, belief, policy, pref)[0]
                 g_ref, _ = _numpy_policy_efe(
-                    model, belief, policy, pref.goal, pref.precision
+                    model, belief, policy, pref.target, pref.precision
                 )
                 np.testing.assert_allclose(
                     g, g_ref, atol=1e-9, err_msg=f"{name} H{len(values)}"
@@ -249,7 +249,7 @@ class TestPropagationPSD:
     def test_oracle_propagated_covs_are_psd(self):
         for name, model, belief, pref in _cases():
             _, covs = _numpy_policy_efe(
-                model, belief, _policy([0.8, -0.5, 0.3]), pref.goal, pref.precision
+                model, belief, _policy([0.8, -0.5, 0.3]), pref.target, pref.precision
             )
             for t, cov in enumerate(covs):
                 eigs = np.linalg.eigvalsh(cov)

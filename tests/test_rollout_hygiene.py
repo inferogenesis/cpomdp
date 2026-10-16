@@ -65,7 +65,7 @@ def _belief():
 
 
 def _obs_preference():
-    return Preference(goal=[1.0], precision=[[2.0]])
+    return Preference(target=[1.0], precision=[[2.0]])
 
 
 def _state_noise(x, params):
@@ -109,7 +109,7 @@ def _cases():
             "qx",
             _internal_q_model(),
             Belief(mean=[0.0], cov=[[0.2]]),
-            Preference(goal=[0.0], precision=[[1.0]]),
+            Preference(target=[0.0], precision=[[1.0]]),
         ),
     ]
 

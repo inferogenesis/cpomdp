@@ -57,7 +57,7 @@ def _belief():
 
 
 def _obs_preference():
-    return Preference(goal=[1.0], precision=[[2.0]])
+    return Preference(target=[1.0], precision=[[2.0]])
 
 
 def _state_noise(x, params):
@@ -107,7 +107,7 @@ def _cases():
             "internal_qx",
             _internal_q_model(),
             Belief(mean=[0.0], cov=[[0.2]]),
-            Preference(goal=[0.0], precision=[[1.0]]),
+            Preference(target=[0.0], precision=[[1.0]]),
             jnp.array([0.7]),
         ),
     ]
@@ -169,7 +169,7 @@ def _frozen_efe(model, belief, action, preference):
             mu_pred, sigma_pred
         )
 
-    goal, precision = preference.goal, preference.precision
+    goal, precision = preference.target, preference.precision
     residual = o_pred - goal
     pragmatic_mean = 0.5 * residual @ precision @ residual
     pragmatic_var = 0.5 * jnp.trace(precision @ pred_obs_cov)
@@ -222,7 +222,7 @@ class TestEfeStepContract:
             belief.cov,
             model.control_matrix,
             action,
-            pref.goal,
+            pref.target,
             pref.precision,
         )
 
@@ -269,7 +269,7 @@ class TestEfeStepContract:
             belief.cov,
             model.control_matrix,
             action,
-            pref.goal,
+            pref.target,
             pref.precision,
         )
         g_ref = expected_free_energy(model, belief, action, pref).g

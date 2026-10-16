@@ -195,7 +195,7 @@ class TestFfgRolloutAtMultiDimAction:
             predicted.cov,
             observation_matrix,
             backend.model.observation_noise_at(predicted.mean),
-            pref.goal,
+            pref.target,
             pref.precision,
             info_block,
         )

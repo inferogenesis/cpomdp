@@ -74,13 +74,13 @@ def _preference_for_selector(
         space, length = "an observation", model.n_observations
     else:
         return objective  # a custom selector reads its preference in its own space
-    if objective.goal.shape != (length,):
+    if objective.target.shape != (length,):
         raise ValueError(
             f"{type(selector).__name__} reads the Preference's target as {space}, a "
-            f"vector of length {length}, got shape {objective.goal.shape}"
+            f"vector of length {length}, got shape {objective.target.shape}"
         )
     if isinstance(selector, _STATE_SPACE_SELECTORS):
-        _require_held_target(model, objective.goal, "the Preference's target")
+        _require_held_target(model, objective.target, "the Preference's target")
     return objective
 
 
@@ -103,9 +103,7 @@ def _lqr_path(
         )
     _require_held_target(model, target, "StateGoal target")
     effort = jnp.eye(p) if objective.effort is None else objective.effort
-    controller = LQRController(
-        model, goal_precision=objective.precision, effort_penalty=effort
-    )
+    controller = LQRController(model, precision=objective.precision, effort=effort)
     return Preference(target, objective.precision), LQRSelector(controller)
 
 
@@ -162,12 +160,12 @@ def _graph_efe_selector(
     """The EFE selector for an ObservationGoal on a branching backend (issue #26).
 
     ``info_node`` names the latent *node* whose marginal info gain is the
-    epistemic value; ``None`` aims at the whole joint state. Translate that node to
+    epistemic value. ``None`` aims at the whole joint state. Translate that node to
     its joint-state block and hand it to the ``FfgEfeSelector``.
     """
     if objective.horizon not in (None, 1):
         raise ValueError(
-            "H-step EFE on the FFG backend is deferred; ObservationGoal.horizon "
+            "H-step EFE on the FFG backend is deferred, so ObservationGoal.horizon "
             "must be 1 with a CouplingGraphBackend."
         )
     info_block = None  # the whole joint state
@@ -210,7 +208,7 @@ def _reaching_efe_selector(
             moved = Preference(target, preference.precision)
             return selector._scores(model.prior, moved)
 
-        sensitivity = np.asarray(jax.jacfwd(scores)(preference.goal))  # (k, m)
+        sensitivity = np.asarray(jax.jacfwd(scores)(preference.target))  # (k, m)
         finite = sensitivity[np.isfinite(sensitivity).all(axis=1)]
         if finite.shape[0] < 2:
             return True  # a NaN score is a different failure, reported elsewhere
@@ -308,7 +306,7 @@ class Agent:
     def __init__(
         self,
         model: LinearGaussianModel,
-        objective: _Objective = None,
+        objective: StateGoal | ObservationGoal | Preference | None = None,
         *,
         selector: ActionSelector | None = None,
     ) -> None:
@@ -335,8 +333,8 @@ class Agent:
             objective: What the agent pursues. A ``StateGoal`` (a state to reach,
                 carrying the LQR weights) or an ``ObservationGoal`` (an observation
                 to prefer, carrying the action search). A ``Preference`` only beside
-                ``selector=``. ``None`` builds a pure tracker that perceives but cannot
-                act.
+                ``selector=``. ``None`` builds a pure tracker, which perceives and
+                never acts.
             selector: An [`ActionSelector`][cpomdp.ActionSelector] of your own, for a
                 search no goal describes: EFE on a fixed sensor, a varying-sequence
                 search driver, or a custom rule. It needs a ``Preference`` as the
@@ -363,7 +361,7 @@ class Agent:
     def from_backend(
         cls,
         backend: InferenceBackend,
-        objective: _Objective = None,
+        objective: StateGoal | ObservationGoal | Preference | None = None,
         *,
         selector: ActionSelector | None = None,
     ) -> "Agent":
@@ -538,17 +536,17 @@ class Agent:
             The action, shape ``(p,)``.
 
         Raises:
-            ValueError: If this is a perceive-only agent (built without an
-                ``objective``) — there is nothing to act toward. Also raised when the
+            ValueError: If this is a perceive-only agent, built without an
+                ``objective``, with nothing to act toward. Also raised when the
                 selector returns NaN, which the grid selectors do when no candidate
                 scores a finite ``G``. The action is then not remembered. The check
                 is one host read of the ``p`` action entries per cycle.
         """
         if self._selector is None:
             raise ValueError(
-                "this Agent has no objective, so it can only perceive; pass a "
-                "StateGoal(...) or ObservationGoal(...) to Agent(...) to enable "
-                "sample_action()."
+                "this Agent has no objective, so it can only perceive. Pass a "
+                "StateGoal or an ObservationGoal to Agent(...), or a Preference with "
+                "selector=, to enable sample_action()."
             )
         assert self._preference is not None  # set with _selector; narrows the type
         action = self._selector.select(self.belief, self._preference)

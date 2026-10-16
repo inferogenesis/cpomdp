@@ -283,7 +283,7 @@ def _goal(precision: float = GOAL_PRECISION) -> Preference:
     Returns:
         The preference over observed surge margin.
     """
-    return Preference(goal=[GOAL_MARGIN], precision=[[precision]])
+    return Preference(target=[GOAL_MARGIN], precision=[[precision]])
 
 
 def _sweep(

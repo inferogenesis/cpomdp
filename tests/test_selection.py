@@ -36,42 +36,47 @@ def _point_mass_model():
 def _controller():
     return LQRController(
         _point_mass_model(),
-        goal_precision=GOAL_PRECISION,
-        effort_penalty=EFFORT_PENALTY,
+        precision=GOAL_PRECISION,
+        effort=EFFORT_PENALTY,
     )
 
 
 class TestPreference:
-    def test_stores_and_coerces_goal(self):
-        p = Preference(goal=[1.0, 2.0])
-        assert isinstance(p.goal, np.ndarray) or hasattr(p.goal, "shape")
-        np.testing.assert_array_equal(p.goal, [1.0, 2.0])
+    def test_stores_and_coerces_target(self):
+        p = Preference(target=[1.0, 2.0])
+        assert hasattr(p.target, "shape")
+        np.testing.assert_array_equal(p.target, [1.0, 2.0])
+
+    def test_calls_its_vector_target_as_the_goals_do(self):
+        # StateGoal, ObservationGoal and LQRController.action call it target too.
+        with pytest.raises(TypeError):
+            Preference(goal=[1.0])  # ty: ignore[missing-argument, unknown-argument]
 
     def test_precision_defaults_to_identity(self):
-        p = Preference(goal=[1.0, 2.0])
+        p = Preference(target=[1.0, 2.0])
         np.testing.assert_array_equal(p.precision, np.eye(2))
 
     def test_accepts_an_explicit_precision(self):
-        p = Preference(goal=[0.0, 0.0], precision=[[2.0, 0.0], [0.0, 3.0]])
+        p = Preference(target=[0.0, 0.0], precision=[[2.0, 0.0], [0.0, 3.0]])
         np.testing.assert_array_equal(p.precision, [[2.0, 0.0], [0.0, 3.0]])
 
     def test_rejects_non_1d_goal(self):
         with pytest.raises(ValueError, match="1-D"):
-            Preference(goal=[[1.0]])
+            Preference(target=[[1.0]])
 
     def test_rejects_asymmetric_precision(self):
         with pytest.raises(ValueError, match="symmetric"):
-            Preference(goal=[0.0, 0.0], precision=[[1.0, 0.2], [0.9, 1.0]])
+            Preference(target=[0.0, 0.0], precision=[[1.0, 0.2], [0.9, 1.0]])
 
     def test_rejects_negative_definite_precision(self):
         # A negative-definite "precision" makes the EFE pragmatic cost negative and
         # inverts the agent's behaviour — reject it as a covariance/precision.
         with pytest.raises(ValueError, match="positive-semi-definite"):
-            Preference(goal=[0.0], precision=[[-1.0]])
+            Preference(target=[0.0], precision=[[-1.0]])
 
     def test_rejects_precision_shape_mismatch(self):
         with pytest.raises(ValueError, match="match"):
-            Preference(goal=[0.0, 0.0], precision=[[1.0]])
+            Preference(target=[0.0, 0.0], precision=[[1.0]])
 
 
 class TestLQRSelector:
@@ -83,11 +88,11 @@ class TestLQRSelector:
         controller = _controller()
         selector = LQRSelector(controller)
         belief = Belief(mean=[0.3, -0.2], cov=[[1.0, 0.0], [0.0, 1.0]])
-        pref = Preference(goal=[1.0, 0.0])
+        pref = Preference(target=[1.0, 0.0])
 
         np.testing.assert_array_equal(
             selector.select(belief, pref),
-            controller.action(belief.mean, pref.goal),
+            controller.action(belief.mean, pref.target),
         )
 
 
@@ -116,6 +121,19 @@ class TestStateGoal:
         # p is unknown at construction, so effort stays None and the Agent fills
         # the identity when it builds the controller.
         assert StateGoal([0.0]).effort is None
+
+    @pytest.mark.parametrize(
+        ("effort", "match"),
+        [
+            ([1.0], "square"),
+            ([[1.0, 0.2], [0.9, 1.0]], "symmetric"),
+            ([[0.0]], "positive-definite"),
+        ],
+    )
+    def test_rejects_an_effort_the_controller_cannot_invert(self, effort, match):
+        # It used to construct, and the Agent raised later naming effort_penalty.
+        with pytest.raises(ValueError, match=match):
+            StateGoal([0.0], effort=effort)
 
     def test_rejects_non_1d_target(self):
         with pytest.raises(ValueError, match="1-D"):

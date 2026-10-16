@@ -143,7 +143,7 @@ def test_selector_still_selects_on_admissible_partition():
     backend = _backend(_hub_graph(), partition=[[0, 1], [2]])
     sel = _selector(backend)
     belief = Belief(mean=np.zeros(3), cov=np.eye(3))
-    action = sel.select(belief, Preference(goal=[0.5, 0.5], precision=np.eye(2)))
+    action = sel.select(belief, Preference(target=[0.5, 0.5], precision=np.eye(2)))
     assert np.asarray(action).shape == (1,)
 
 

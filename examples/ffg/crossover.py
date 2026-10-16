@@ -111,7 +111,7 @@ def _setup():
     backend = demo.build_backend(epistemic_alive=True, cue_x=demo.CUE_DETOUR_X)
     belief = demo.start_belief()
     preference = Preference(
-        goal=[0.0, 0.0],
+        target=[0.0, 0.0],
         precision=[[demo.GOAL_PRECISION, 0.0], [0.0, demo.INFO_PRECISION]],
     )
     info_block = tuple(backend.block(demo.CONTEXT))
@@ -494,7 +494,7 @@ def _numpy_score(policy) -> float:
     backend, belief, preference, info_block = _setup()
     observation_matrix = np.asarray(backend.model.observation_matrix)  # C
     precision = np.asarray(preference.precision)  # Lambda
-    goal = np.asarray(preference.goal)
+    goal = np.asarray(preference.target)
     idx = np.array(info_block)
 
     carry = belief

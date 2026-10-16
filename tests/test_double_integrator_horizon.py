@@ -35,7 +35,7 @@ def _double_integrator():
 
 
 _BELIEF = Belief(mean=[0.0, 0.0], cov=[[0.3, 0.0], [0.0, 0.3]])
-_GOAL = Preference(goal=[1.0], precision=[[1.0]])  # prefer to observe position = 1
+_GOAL = Preference(target=[1.0], precision=[[1.0]])  # prefer to observe position = 1
 
 
 class TestDoubleIntegratorHorizon:

@@ -57,7 +57,7 @@ def _belief():
 
 
 def _obs_preference():
-    return Preference(goal=[1.0], precision=[[2.0]])
+    return Preference(target=[1.0], precision=[[2.0]])
 
 
 def _state_noise(x, params):
@@ -141,7 +141,7 @@ class TestStateDependentNoiseSigmaSeparates:
     def test_qx_sigma_pred_separates(self):
         model = _internal_q_model()
         belief = Belief(mean=[0.0], cov=[[0.2]])
-        pref = Preference(goal=[0.0], precision=[[1.0]])
+        pref = Preference(target=[0.0], precision=[[1.0]])
         a = policy_efe_trace(model, belief, _POLICY_A, pref)
         b = policy_efe_trace(model, belief, _POLICY_B, pref)
         # Q(x) makes the predicted covariance itself policy-dependent.

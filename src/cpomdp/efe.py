@@ -586,7 +586,7 @@ def _goal_and_precision(
 
     if not isinstance(preference, Preference):
         raise TypeError(_not_a_preference(preference))
-    return preference.goal, preference.precision
+    return preference.target, preference.precision
 
 
 _SCORED_AGAINST = "Expected free energy is scored against a Preference."

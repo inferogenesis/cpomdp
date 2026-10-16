@@ -59,7 +59,7 @@ def _belief():
 
 
 def _obs_preference():
-    return Preference(goal=[1.0], precision=[[2.0]])
+    return Preference(target=[1.0], precision=[[2.0]])
 
 
 def _state_noise(x, params):
@@ -103,7 +103,7 @@ def _cases():
             "qx",
             _internal_q_model(),
             Belief(mean=[0.0], cov=[[0.2]]),
-            Preference(goal=[0.0], precision=[[1.0]]),
+            Preference(target=[0.0], precision=[[1.0]]),
         ),
     ]
 
@@ -213,7 +213,7 @@ class TestTraceMatchesNumpyOracle:
                 policy = _policy(values)
                 trace = policy_efe_trace(model, belief, policy, pref)
                 ref = _numpy_policy_efe_trace(
-                    model, belief, policy, pref.goal, pref.precision
+                    model, belief, policy, pref.target, pref.precision
                 )
                 for field in ref:
                     np.testing.assert_allclose(
@@ -261,7 +261,7 @@ class TestTraceH1MatchesEfeStep:
                 belief.cov,
                 model.control_matrix,
                 action,
-                pref.goal,
+                pref.target,
                 pref.precision,
             )
             np.testing.assert_array_equal(
@@ -287,7 +287,7 @@ class TestTraceH1MatchesEfeStep:
             belief.cov,
             model.control_matrix,
             action,
-            pref.goal,
+            pref.target,
             pref.precision,
         )
         c = np.asarray(model.observation_matrix)

@@ -54,7 +54,7 @@ def _search(horizon=2):
 
 
 def _pref():
-    return Preference(goal=[1.0], precision=[[2.0]])
+    return Preference(target=[1.0], precision=[[2.0]])
 
 
 def _b0():

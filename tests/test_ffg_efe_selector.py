@@ -77,7 +77,7 @@ def test_ffg_selector_reduces_to_efe_selector_single_node():
     )
 
     belief = Belief(mean=[0.3, -0.2], cov=[[0.7, 0.1], [0.1, 0.4]])
-    preference = Preference(goal=[1.0], precision=[[2.0]])
+    preference = Preference(target=[1.0], precision=[[2.0]])
     bounds, k = (-2.0, 2.0), 21
 
     ffg = FfgEfeSelector(
@@ -322,7 +322,7 @@ def _score_components(backend, belief, preference, candidates, info_block):
             predicted.cov,
             observation_matrix,
             observation_noise,
-            preference.goal,
+            preference.target,
             preference.precision,
             info_block,
         )
@@ -360,7 +360,7 @@ class TestStateDependentSelection:
         params = {"R0": np.array([[0.5]]), "gain": 2.0}
         rx, A, Q, C, B = _single_node_rx_backend(params)
         belief = Belief(mean=[0.5, -0.2], cov=[[0.7, 0.1], [0.1, 0.4]])
-        pref = Preference(goal=[1.0], precision=[[2.0]])
+        pref = Preference(target=[1.0], precision=[[2.0]])
         cands = jnp.linspace(-2.0, 2.0, 9)[:, None]
         _, epi = _score_components(rx, belief, pref, cands, range(2))
         assert float(jnp.max(epi) - jnp.min(epi)) > 1e-6  # varies with action
@@ -393,7 +393,7 @@ class TestStateDependentSelection:
             observation_model=CallableSensor(C, _rx_noise, params),
         )
         belief = Belief(mean=[0.3, -0.2], cov=[[0.7, 0.1], [0.1, 0.4]])
-        pref = Preference(goal=[1.0], precision=[[2.0]])
+        pref = Preference(target=[1.0], precision=[[2.0]])
         bounds, k = (-2.0, 2.0), 21
         ffg = FfgEfeSelector(
             rx, info_block=range(2), n_candidates=k, action_bounds=bounds
@@ -429,7 +429,7 @@ class TestStateDependentSelection:
         )
         belief = Belief(mean=[0.0], cov=[[1.0]])
         # goal 3.0 on the fixed channel, ~0 weight on the info channel (decoupling).
-        pref = Preference(goal=[3.0, 0.0], precision=[[0.15, 0.0], [0.0, 1e-4]])
+        pref = Preference(target=[3.0, 0.0], precision=[[0.15, 0.0], [0.0, 1e-4]])
         bounds, k = (-4.0, 4.0), 41
         cands = jnp.linspace(-4.0, 4.0, k)[:, None]
         prag, epi = _score_components(rx, belief, pref, cands, range(1))

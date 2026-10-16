@@ -329,7 +329,7 @@ class LQRController:
     Where the Kalman filter front-loads perception (solve the estimation Riccati
     once for the steady-state gain ``K∞``, then ``mean += K∞·prediction_error``),
     this front-loads action: solve the dual *control* Riccati once for ``L∞``,
-    then ``action = -L∞·(mean − goal)``. Both gains are data-independent, both are
+    then ``action = -L∞·(mean − target)``. Both gains are data-independent, both are
     computed at construction, and together they are LQG.
 
     The load-bearing claim (ADR-003) is that LQR *is* active inference here, not a
@@ -342,21 +342,21 @@ class LQRController:
     (ADR-006).
 
     The two cost matrices are named for the preference they encode, not by LQR's
-    traditional ``Q``/``R`` — those letters already mean the noise covariances on
-    the model (``dynamics_noise``/``observation_noise``), the exact collision ADR-003
-    warns about. The names are the same across the whole library: an ``Agent``
-    hands these straight through to its controller.
+    traditional letters, which already mean the noise covariances on the model. That
+    is the collision ADR-003 warns about. The names are the ones a
+    [`StateGoal`][cpomdp.StateGoal] carries, ``precision`` and ``effort``, and an
+    ``Agent`` hands a goal's two straight through.
 
     Args:
         model: The linear-Gaussian model to act in. Must carry a ``control_matrix``
             matrix — there is nothing to act with otherwise.
-        goal_precision: How sharply the agent prefers the goal, an ``(n, n)``
-            matrix. It is exactly the precision of the Gaussian preference centred
-            at the goal — ``exp(−½(state−goal)ᵀ·goal_precision·(state−goal))`` —
-            so heavier ``goal_precision`` buys a more aggressive controller.
-            (LQR's ``Q``.)
-        effort_penalty: How much action costs, a ``(p, p)`` matrix. Heavier
-            ``effort_penalty`` buys a gentler controller. (LQR's ``R``.)
+        precision: How sharply the agent prefers the target, an ``(n, n)`` matrix,
+            the state-cost weight. It is exactly the precision of the Gaussian
+            preference centred at the target,
+            ``exp(−½(state−target)ᵀ·precision·(state−target))``, so a heavier
+            ``precision`` buys a more aggressive controller.
+        effort: How much action costs, a ``(p, p)`` matrix, the action-cost weight.
+            A heavier ``effort`` buys a gentler controller.
         tol: Absolute tolerance on successive cost-to-go iterates; convergence is
             declared when they stop moving by more than this.
         max_iter: Iteration cap before the Riccati recursion is declared to have
@@ -365,8 +365,7 @@ class LQRController:
     Raises:
         ValueError: If the model has no ``control_matrix``, or a cost matrix does
             not match the state/action dimensions, is not symmetric, or fails its
-            definiteness requirement (``goal_precision`` PSD, ``effort_penalty``
-            PD).
+            definiteness requirement (``precision`` PSD, ``effort`` PD).
         RuntimeError: If the control Riccati does not converge within ``max_iter``
             — typically because ``(dynamics, control)`` is not stabilisable.
     """
@@ -375,17 +374,14 @@ class LQRController:
         self,
         model: LinearGaussianModel,
         *,
-        goal_precision: ArrayLike,
-        effort_penalty: ArrayLike,
+        precision: ArrayLike,
+        effort: ArrayLike,
         tol: float = 1e-12,
         max_iter: int = 1000,
     ) -> None:
         self._model = model
-        self._goal_precision, self._effort_penalty = _validated_costs(
-            model,
-            goal_precision,
-            effort_penalty,
-            names=("goal_precision", "effort_penalty"),
+        self._precision, self._effort = _validated_costs(
+            model, precision, effort, names=("precision", "effort")
         )
         self._gain = self._converge_to_steady_state(tol, max_iter)
 
@@ -399,18 +395,18 @@ class LQRController:
         """The steady-state feedback gain L∞, shape (p, n)."""
         return self._gain
 
-    def action(self, mean: ArrayLike, goal: ArrayLike) -> Float64[Array, "p"]:
-        """The action that drives the estimated state toward ``goal``.
+    def action(self, mean: ArrayLike, target: ArrayLike) -> Float64[Array, "p"]:
+        """The action that drives the estimated state toward ``target``.
 
-        One matrix-vector product, ``-L∞·(mean − goal)`` — all the work was
+        One matrix-vector product, ``-L∞·(mean − target)`` — all the work was
         front-loaded into ``L∞`` at construction, so there is no optimisation in
-        the loop. The ``mean − goal`` shift turns the regulator (which drives its
-        state to zero) into a controller that drives the state to ``goal``.
+        the loop. The ``mean − target`` shift turns the regulator (which drives its
+        state to zero) into a controller that drives the state to ``target``.
 
         Args:
             mean: The current belief mean — the best estimate of the state,
                 shape ``(n,)``.
-            goal: The state to steer toward, shape ``(n,)``. It must be an
+            target: The state to steer toward, shape ``(n,)``. It must be an
                 equilibrium the dynamics can hold at zero action; aim at a
                 non-equilibrium and a steady-state offset is left behind.
 
@@ -418,17 +414,17 @@ class LQRController:
             The action, shape ``(p,)``.
 
         Raises:
-            ValueError: If ``goal`` is not a 1-D vector of length ``n``.
+            ValueError: If ``target`` is not a 1-D vector of length ``n``.
         """
-        # self._gain : (p, n) L∞;  mean, goal : (n,);  returns (p,)
+        # self._gain : (p, n) L∞;  mean, target : (n,);  returns (p,)
         mean = jnp.asarray(mean, dtype=float)
-        goal = jnp.asarray(goal, dtype=float)
-        if goal.shape != (self.model.n_states,):
+        target = jnp.asarray(target, dtype=float)
+        if target.shape != (self.model.n_states,):
             raise ValueError(
-                f"goal must be a 1-D vector of length {self.model.n_states} "
-                f"(the state dimension), got shape {goal.shape}"
+                f"target must be a 1-D vector of length {self.model.n_states} "
+                f"(the state dimension), got shape {target.shape}"
             )
-        return -self._gain @ (mean - goal)
+        return -self._gain @ (mean - target)
 
     def __repr__(self) -> str:
         """The steady-state gain, the one number the Riccati solve leaves behind."""
@@ -444,9 +440,9 @@ class LQRController:
         iterates a *covariance* forward until it stops moving; this iterates a
         *cost-to-go* — the matrix ``P`` of the quadratic value function
         ``V(state) = stateᵀ·P·state`` — until it stops moving. Starting from
-        ``goal_precision``, each step applies Bellman's equation::
+        ``precision``, each step applies Bellman's equation::
 
-            P ← goal_precision + Aᵀ P A − (Aᵀ P B)(effort_penalty + Bᵀ P B)⁻¹(Bᵀ P A)
+            P ← precision + Aᵀ P A − (Aᵀ P B)(effort + Bᵀ P B)⁻¹(Bᵀ P A)
 
         "the cost from here = what I pay now + the cost from wherever the dynamics
         carry me, minus what acting optimally buys back." For a stabilisable
@@ -454,9 +450,9 @@ class LQRController:
         of the discrete algebraic Riccati equation), from which the steady-state
         gain follows::
 
-            L∞ = (effort_penalty + Bᵀ P∞ B)⁻¹ (Bᵀ P∞ A)
+            L∞ = (effort + Bᵀ P∞ B)⁻¹ (Bᵀ P∞ A)
 
-        (A=dynamics, B=control.) The ``(effort_penalty + Bᵀ P B)`` term is solved
+        (A=dynamics, B=control.) The ``(effort + Bᵀ P B)`` term is solved
         against with ``jnp.linalg.solve`` rather than inverted explicitly, for the
         same numerical reason the filter solves against its predicted observation
         covariance.
@@ -471,14 +467,14 @@ class LQRController:
         assert self.model.control_matrix is not None  # refused by _validated_costs
         control_matrix = self.model.control_matrix  # B  (n×p)
         # P, starting at the running state cost (n×n)
-        cost_to_go = self._goal_precision
+        cost_to_go = self._precision
 
         for _ in range(max_iter):
             # pay now, plus what the dynamics carry forward net of what acting buys back
             carried, _ = _riccati_step(
-                cost_to_go, dynamics_matrix, control_matrix, self._effort_penalty
+                cost_to_go, dynamics_matrix, control_matrix, self._effort
             )
-            next_cost_to_go = self._goal_precision + carried
+            next_cost_to_go = self._precision + carried
 
             if jnp.allclose(cost_to_go, next_cost_to_go, atol=tol, rtol=0.0):
                 cost_to_go = next_cost_to_go
@@ -492,6 +488,6 @@ class LQRController:
             )
 
         _, gain = _riccati_step(
-            cost_to_go, dynamics_matrix, control_matrix, self._effort_penalty
+            cost_to_go, dynamics_matrix, control_matrix, self._effort
         )
         return gain  # L∞  (p×n)

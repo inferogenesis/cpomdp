@@ -24,7 +24,7 @@ from cpomdp.types import Belief, LinearGaussianModel
 
 # Inside this module the terse letters a/b/qc/rc are local scalars for the
 # Riccati/gain hand-math below, NOT the role-named public API
-# (dynamics/control/goal_precision/effort_penalty). The library deliberately spells
+# (dynamics/control and the named cost weights). The library deliberately spells
 # those out to avoid the Q/R collision (ADR-003); here, where we're transcribing
 # the textbook DARE formula to check it line-for-line, the letters keep the
 # matrix algebra readable and carry no API meaning.
@@ -52,8 +52,8 @@ class TestLQRGain:
         # scipy's independent Schur solve. Disagreement = the bug is ours.
         controller = LQRController(
             point_mass_model(),
-            goal_precision=GOAL_PRECISION,
-            effort_penalty=EFFORT_PENALTY,
+            precision=GOAL_PRECISION,
+            effort=EFFORT_PENALTY,
         )
         expected = _scipy_gain(DYNAMICS, CONTROL, GOAL_PRECISION, EFFORT_PENALTY)
         np.testing.assert_allclose(controller.gain, expected, atol=1e-8)
@@ -61,8 +61,8 @@ class TestLQRGain:
     def test_gain_has_shape_p_by_n(self):
         controller = LQRController(
             point_mass_model(),
-            goal_precision=GOAL_PRECISION,
-            effort_penalty=EFFORT_PENALTY,
+            precision=GOAL_PRECISION,
+            effort=EFFORT_PENALTY,
         )
         # one action, two states
         assert controller.gain.shape == (1, 2)
@@ -74,8 +74,8 @@ class TestLQRGain:
         # eigenvalues out and this would fail loudly.
         controller = LQRController(
             point_mass_model(),
-            goal_precision=GOAL_PRECISION,
-            effort_penalty=EFFORT_PENALTY,
+            precision=GOAL_PRECISION,
+            effort=EFFORT_PENALTY,
         )
         a = np.asarray(DYNAMICS)
         b = np.asarray(CONTROL)
@@ -90,30 +90,36 @@ class TestLQRAction:
         # positive (accelerate toward the goal). A dropped minus sign flips this.
         controller = LQRController(
             point_mass_model(),
-            goal_precision=GOAL_PRECISION,
-            effort_penalty=EFFORT_PENALTY,
+            precision=GOAL_PRECISION,
+            effort=EFFORT_PENALTY,
         )
-        action = controller.action(mean=np.array([0.0, 0.0]), goal=np.array([1.0, 0.0]))
+        action = controller.action(
+            mean=np.array([0.0, 0.0]), target=np.array([1.0, 0.0])
+        )
         assert action[0] > 0
 
     def test_zero_error_gives_zero_action(self):
         # Sitting exactly on an equilibrium goal, the controller asks for nothing.
         controller = LQRController(
             point_mass_model(),
-            goal_precision=GOAL_PRECISION,
-            effort_penalty=EFFORT_PENALTY,
+            precision=GOAL_PRECISION,
+            effort=EFFORT_PENALTY,
         )
-        action = controller.action(mean=np.array([1.0, 0.0]), goal=np.array([1.0, 0.0]))
+        action = controller.action(
+            mean=np.array([1.0, 0.0]), target=np.array([1.0, 0.0])
+        )
         np.testing.assert_allclose(action, [0.0], atol=1e-12)
 
-    def test_rejects_wrong_shape_goal(self):
+    def test_rejects_wrong_shape_target(self):
         controller = LQRController(
             point_mass_model(),
-            goal_precision=GOAL_PRECISION,
-            effort_penalty=EFFORT_PENALTY,
+            precision=GOAL_PRECISION,
+            effort=EFFORT_PENALTY,
         )
-        with pytest.raises(ValueError, match="goal"):
-            controller.action(mean=np.array([0.0, 0.0]), goal=np.array([1.0, 0.0, 0.0]))
+        with pytest.raises(ValueError, match="target"):
+            controller.action(
+                mean=np.array([0.0, 0.0]), target=np.array([1.0, 0.0, 0.0])
+            )
 
 
 class TestLQRValidation:
@@ -126,53 +132,51 @@ class TestLQRValidation:
             prior=Belief(mean=[0.0, 0.0], cov=[[1.0, 0.0], [0.0, 1.0]]),
         )  # no control matrix
         with pytest.raises(ValueError, match="control matrix"):
-            LQRController(
-                model, goal_precision=GOAL_PRECISION, effort_penalty=EFFORT_PENALTY
-            )
+            LQRController(model, precision=GOAL_PRECISION, effort=EFFORT_PENALTY)
 
-    def test_rejects_wrong_goal_precision_shape(self):
-        with pytest.raises(ValueError, match="goal_precision"):
+    def test_rejects_wrong_precision_shape(self):
+        with pytest.raises(ValueError, match="precision must be 2x2"):
             LQRController(
                 point_mass_model(),
-                goal_precision=[[1.0]],
-                effort_penalty=EFFORT_PENALTY,
+                precision=[[1.0]],
+                effort=EFFORT_PENALTY,
             )
 
-    def test_rejects_wrong_effort_penalty_shape(self):
-        with pytest.raises(ValueError, match="effort_penalty"):
+    def test_rejects_wrong_effort_shape(self):
+        with pytest.raises(ValueError, match="effort must be 1x1"):
             LQRController(
                 point_mass_model(),
-                goal_precision=GOAL_PRECISION,
-                effort_penalty=[[1.0, 0.0], [0.0, 1.0]],
+                precision=GOAL_PRECISION,
+                effort=[[1.0, 0.0], [0.0, 1.0]],
             )
 
-    def test_rejects_asymmetric_goal_precision(self):
+    def test_rejects_asymmetric_precision(self):
         # An off-diagonal typo: symmetric on shape, asymmetric in value. Without
         # the check this silently yields a non-symmetric cost-to-go and a wrong
         # gain — the hardest failure to trace in a control loop.
         with pytest.raises(ValueError, match="symmetric"):
             LQRController(
                 point_mass_model(),
-                goal_precision=[[1.0, 0.5], [-0.5, 1.0]],
-                effort_penalty=EFFORT_PENALTY,
+                precision=[[1.0, 0.5], [-0.5, 1.0]],
+                effort=EFFORT_PENALTY,
             )
 
-    def test_rejects_indefinite_effort_penalty(self):
-        # effort_penalty is inverted against in the gain solve; a zero (singular)
+    def test_rejects_indefinite_effort(self):
+        # effort is inverted against in the gain solve; a zero (singular)
         # cost must fail loudly, not blow up mid-recursion.
         with pytest.raises(ValueError, match="positive-definite"):
             LQRController(
                 point_mass_model(),
-                goal_precision=GOAL_PRECISION,
-                effort_penalty=[[0.0]],
+                precision=GOAL_PRECISION,
+                effort=[[0.0]],
             )
 
-    def test_rejects_negative_semidefinite_goal_precision(self):
+    def test_rejects_negative_semidefinite_precision(self):
         with pytest.raises(ValueError, match="positive-semi-definite"):
             LQRController(
                 point_mass_model(),
-                goal_precision=[[-1.0, 0.0], [0.0, 1.0]],
-                effort_penalty=EFFORT_PENALTY,
+                precision=[[-1.0, 0.0], [0.0, 1.0]],
+                effort=EFFORT_PENALTY,
             )
 
     def test_raises_when_not_converged(self):
@@ -181,8 +185,8 @@ class TestLQRValidation:
         with pytest.raises(RuntimeError, match="converge"):
             LQRController(
                 point_mass_model(),
-                goal_precision=GOAL_PRECISION,
-                effort_penalty=EFFORT_PENALTY,
+                precision=GOAL_PRECISION,
+                effort=EFFORT_PENALTY,
                 max_iter=1,
             )
 
@@ -236,8 +240,8 @@ class TestLQRSchedule:
     def test_the_first_gain_converges_to_the_steady_state_gain_and_is_not_it(self):
         steady = LQRController(
             point_mass_model(),
-            goal_precision=GOAL_PRECISION,
-            effort_penalty=EFFORT_PENALTY,
+            precision=GOAL_PRECISION,
+            effort=EFFORT_PENALTY,
         ).gain
         mismatch = [
             float(np.abs(point_mass_schedule(h).first_gain - steady).max())
@@ -377,3 +381,33 @@ class TestTheDualPair:
         assert isinstance(plan, LQRSchedule)
         assert isinstance(estimate, KalmanSchedule)
         assert plan.horizon == estimate.horizon == 4
+
+
+class TestLQRNames:
+    """The controller takes its weights and its target by the names StateGoal uses."""
+
+    def test_weights_are_precision_and_effort(self):
+        named = LQRController(
+            point_mass_model(), precision=GOAL_PRECISION, effort=EFFORT_PENALTY
+        )
+        expected = _scipy_gain(DYNAMICS, CONTROL, GOAL_PRECISION, EFFORT_PENALTY)
+        np.testing.assert_allclose(named.gain, expected, atol=1e-8)
+        with pytest.raises(TypeError):
+            LQRController(  # ty: ignore[missing-argument]
+                point_mass_model(),
+                goal_precision=GOAL_PRECISION,  # ty: ignore[unknown-argument]
+                effort_penalty=EFFORT_PENALTY,  # ty: ignore[unknown-argument]
+            )
+
+    def test_the_action_takes_a_target(self):
+        controller = LQRController(
+            point_mass_model(), precision=GOAL_PRECISION, effort=EFFORT_PENALTY
+        )
+        action = controller.action(mean=np.zeros(2), target=np.array([1.0, 0.0]))
+        np.testing.assert_allclose(action, controller.gain @ np.array([1.0, 0.0]))
+
+    def test_a_refusal_names_the_weight_as_the_caller_typed_it(self):
+        with pytest.raises(ValueError, match="effort must be 1x1"):
+            LQRController(
+                point_mass_model(), precision=GOAL_PRECISION, effort=np.eye(2)
+            )

@@ -62,7 +62,7 @@ OBSERVATION_MATRIX = [[1.0]]
 DYNAMICS_NOISE = [[0.01]]
 OBSERVATION_NOISE = [[0.3]]
 BELIEF = Belief(mean=[0.0], cov=[[2.0]])
-GOAL = Preference(goal=[0.0], precision=[[0.4]])  # prefer to observe position 0
+GOAL = Preference(target=[0.0], precision=[[0.4]])  # prefer to observe position 0
 ACTIONS = jnp.linspace(-2.0, 4.0, 400)
 BEACON = 1.5  # the sensor is sharpest here — away from the goal at 0
 # The R(x) well the figure plots and --check asserts on — one source, so the gate and

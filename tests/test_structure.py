@@ -194,7 +194,7 @@ class TestStructureIsInertArithmetic:
     def test_expected_free_energy_is_byte_identical(self):
         plain = _model(control_matrix=[[1.0], [0.0]])
         structured = _model(control_matrix=[[1.0], [0.0]], structure=self._STRUCT)
-        pref = Preference(goal=[0.5], precision=[[2.0]])
+        pref = Preference(target=[0.5], precision=[[2.0]])
         action = jnp.array([0.3])
         efe0 = expected_free_energy(plain, plain.prior, action, pref)
         efe1 = expected_free_energy(structured, structured.prior, action, pref)

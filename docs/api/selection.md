@@ -1,6 +1,6 @@
 # Action selection & goals
 
-What the agent wants, and how it picks an action. `StateGoal` and `ObservationGoal` are the goals you hand the `Agent` (the continuous-state answer to pymdp's `C`); `Preference` and `EFESelector` are the machinery underneath expected-free-energy selection.
+What the agent wants, and how it picks an action. `StateGoal` and `ObservationGoal` are the goals you hand the `Agent`, the continuous-state answer to pymdp's `C`. Each one also describes the selector the `Agent` builds from it. A `Preference` is the target and precision alone, the part every selector reads. Hand the `Agent` a `Preference` together with a selector of your own when no goal describes the search you want. `EFESelector` is the grid search the `Agent` builds for an `ObservationGoal`.
 
 ::: cpomdp.StateGoal
 

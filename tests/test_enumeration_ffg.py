@@ -90,7 +90,7 @@ def _single_belief():
 
 
 def _pref():
-    return Preference(goal=[1.0], precision=[[2.0]])
+    return Preference(target=[1.0], precision=[[2.0]])
 
 
 # --- oracle: no couplings + whole-state info block reduces to the flat search ------
@@ -143,7 +143,7 @@ class TestOverBackendOnCoupledTree:
     def test_runs_and_enumerates_varying_sequences(self):
         backend = _coupled_backend()
         belief = Belief(mean=[0.2, -0.1], cov=[[0.7, 0.1], [0.1, 0.4]])
-        pref = Preference(goal=[0.5], precision=[[2.0]])
+        pref = Preference(target=[0.5], precision=[[2.0]])
         info_block = tuple(backend.block(0))
         ffg = EnumeratedEfeSearch.over_backend(
             backend, _action_set(), info_block=info_block, horizon=2
