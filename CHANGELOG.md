@@ -126,7 +126,10 @@ certainty equivalence is optimal, and no use of the readings beats it.
   down before a reading exists, since under fixed noise they never see one. The two are
   the dual pair and are called alike: `lqr_schedule(model, horizon=...)` and
   `kalman_schedule(model, horizon=...)`, each returning a schedule that reports its
-  `horizon`. The Control page of the API reference opens the schedule in plain terms.
+  `horizon`. They are read alike too. `gains[k]`, `costs_to_go[k]` and `covariances[k]`
+  all belong to step `k` of the plan, so `costs_to_go[0]` prices the whole plan and
+  `covariances[0]` is the prior's. The Control page of the API reference opens the
+  schedule in plain terms.
 - `cpomdp._lab.bracket` — the control bracket, private until its leg under
   state-dependent noise lands. `full_information_cost` is `J_lower`, the plan priced
   with the state observed. `CertaintyEquivalentController` acts on the estimate as if it

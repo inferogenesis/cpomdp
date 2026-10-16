@@ -6,6 +6,7 @@ recursion a declared number of steps and keeps every gain it produces, which is 
 schedule an ``H``-step plan applies and the gain a receding-horizon planner at horizon
 ``H`` applies at every step. The two agree in the limit and at no finite ``H``.
 ``kalman_schedule`` is the filter's side of the pair, called and read the same way.
+Every stack in either schedule is indexed by step of the plan.
 """
 
 from dataclasses import dataclass
@@ -156,16 +157,18 @@ class LQRSchedule:
         gains: ``gains[k]`` is the gain applied at step ``k`` of the plan, with
             ``H − k`` steps remaining, shape ``(H, p, n)``. The action is
             ``−gains[k] · state``.
-        cost_to_go: ``cost_to_go[j]`` is ``P_j``, the matrix of the optimal cost
-            ``stateᵀ · P_j · state`` with ``j`` steps remaining, before acting, shape
-            ``(H + 1, n, n)``. ``cost_to_go[0]`` is zero.
+        costs_to_go: ``costs_to_go[k]`` is the matrix of the optimal cost
+            ``stateᵀ · costs_to_go[k] · state`` still to pay before acting at step
+            ``k``, shape ``(H + 1, n, n)``. It is ``P_{H−k}`` in the recursion's
+            count of steps remaining. ``costs_to_go[0]`` prices the whole plan, and
+            ``costs_to_go[H]`` is zero.
     """
 
     model: LinearGaussianModel
     goal_precision: Float64[Array, "n n"]
     effort_penalty: Float64[Array, "p p"]
     gains: Float64[Array, "H p n"]
-    cost_to_go: Float64[Array, "H+1 n n"]
+    costs_to_go: Float64[Array, "H+1 n n"]
 
     @property
     def horizon(self) -> int:
@@ -208,7 +211,7 @@ def lqr_schedule(
 
     Returns:
         The schedule, with ``gains[k]`` the gain at step ``k`` of the plan and
-        ``cost_to_go[j]`` the cost matrix with ``j`` steps remaining.
+        ``costs_to_go[k]`` the cost still to pay before it, ``P_{H−k}``.
 
     Raises:
         ValueError: If ``horizon`` is below one, or on any of the cost and model
@@ -231,14 +234,13 @@ def lqr_schedule(
         )
         costs.append(cost_to_go)
         gains.append(gain)
-    # Built with the fewest steps remaining first; the plan applies them the other
-    # way round.
+    # Built with the fewest steps remaining first. The plan reads both the other way.
     return LQRSchedule(
         model=model,
         goal_precision=goal_precision,
         effort_penalty=effort_penalty,
         gains=jnp.stack(gains[::-1]),
-        cost_to_go=jnp.stack(costs),
+        costs_to_go=jnp.stack(costs[::-1]),
     )
 
 

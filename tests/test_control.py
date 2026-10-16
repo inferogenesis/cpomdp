@@ -191,13 +191,13 @@ class TestLQRValidation:
 
 
 class TestLQRSchedule:
-    def test_one_gain_per_step_and_one_cost_per_remaining_horizon(self):
+    def test_one_gain_per_step_and_one_cost_before_each_step_and_after_the_last(self):
         schedule = point_mass_schedule(6)
         assert schedule.horizon == 6
         assert schedule.gains.shape == (6, 1, 2)
-        assert schedule.cost_to_go.shape == (7, 2, 2)
+        assert schedule.costs_to_go.shape == (7, 2, 2)
         # Nothing is charged after the last action: the terminal cost is zero.
-        np.testing.assert_array_equal(schedule.cost_to_go[0], np.zeros((2, 2)))
+        np.testing.assert_array_equal(schedule.costs_to_go[6], np.zeros((2, 2)))
         np.testing.assert_array_equal(schedule.first_gain, schedule.gains[0])
 
     def test_the_one_step_gain_is_the_static_regulator(self):
@@ -219,16 +219,18 @@ class TestLQRSchedule:
             -schedule.first_gain @ x0, expected_action, rtol=1e-11, atol=1e-13
         )
         np.testing.assert_allclose(
-            x0 @ schedule.cost_to_go[horizon] @ x0, expected_cost, rtol=1e-11
+            x0 @ schedule.costs_to_go[0] @ x0, expected_cost, rtol=1e-11
         )
 
-    def test_later_gains_are_the_shorter_schedules_first_gains(self):
-        # The gain applied with j steps remaining depends on j alone, so the tail of
-        # a long schedule is a shorter schedule. gains[k] has H − k steps remaining.
+    def test_later_steps_are_the_shorter_schedules_first_steps(self):
+        # What step k applies and still owes depends on the H − k steps remaining
+        # alone, so the tail of a long schedule is a shorter schedule.
         long = point_mass_schedule(8)
         for horizon in (1, 3, 8):
+            short = point_mass_schedule(horizon)
+            np.testing.assert_array_equal(long.gains[8 - horizon], short.first_gain)
             np.testing.assert_array_equal(
-                long.gains[8 - horizon], point_mass_schedule(horizon).first_gain
+                long.costs_to_go[8 - horizon], short.costs_to_go[0]
             )
 
     def test_the_first_gain_converges_to_the_steady_state_gain_and_is_not_it(self):
@@ -333,6 +335,25 @@ class TestTheDualPair:
                 goal_precision=GOAL_PRECISION,
                 effort_penalty=EFFORT_PENALTY,
             )
+
+    def test_one_index_is_one_step_of_the_plan_in_every_stack(self):
+        # Step 0 acts from the prior with the whole plan still to pay, and the last
+        # index is after the last step, with nothing left to pay.
+        horizon = 3
+        model = point_mass_model()
+        plan = point_mass_schedule(horizon)
+        estimate = kalman_schedule(model, horizon=horizon)
+        start_state = np.array([0.8, -0.3])
+        _, whole_plan_cost = brute_force_plan(
+            DYNAMICS, CONTROL, GOAL_PRECISION, EFFORT_PENALTY, horizon, start_state
+        )
+        assert len(plan.costs_to_go) == len(estimate.covariances) == horizon + 1
+        np.testing.assert_allclose(
+            start_state @ plan.costs_to_go[0] @ start_state, whole_plan_cost, rtol=1e-11
+        )
+        np.testing.assert_array_equal(estimate.covariances[0], model.prior.cov)
+        np.testing.assert_array_equal(plan.gains[0], plan.first_gain)
+        np.testing.assert_array_equal(plan.costs_to_go[horizon], np.zeros((2, 2)))
 
     def test_both_are_schedules_that_report_their_horizon(self):
         model = point_mass_model()
