@@ -71,7 +71,7 @@ class LinearGaussianKernel:
 
     Attributes:
         dynamics_matrix: the state-transition matrix ``A`` (shape ``n x n``).
-        dynamics_noise: the process-noise covariance ``Q`` (shape ``n x n``),
+        dynamics_noise: the dynamics-noise covariance ``Q`` (shape ``n x n``),
             positive-definite because the density inverts it. A deterministic
             transition has no density against Lebesgue measure and is refused here
             rather than approximated by a small ``Q`` chosen for the caller.
@@ -99,7 +99,7 @@ class LinearGaussianKernel:
 
         Args:
             dynamics_matrix: the state-transition matrix ``A``.
-            dynamics_noise: the process-noise covariance ``Q``. Keyword-only, so a
+            dynamics_noise: the dynamics-noise covariance ``Q``. Keyword-only, so a
                 transposed pair cannot construct in silence.
             control_matrix: the input matrix ``B``, or ``None``.
 
@@ -137,7 +137,10 @@ class LinearGaussianKernel:
                 f"{self.dynamics_matrix.shape}"
             )
         validate_covariance(
-            self.dynamics_noise, "dynamics_noise", require_definite=True
+            self.dynamics_noise,
+            "dynamics_noise",
+            require_definite=True,
+            reason="the density is evaluated through its Cholesky factor",
         )
         n = self.dynamics_matrix.shape[0]
         if self.dynamics_noise.shape != (n, n):

@@ -9,10 +9,13 @@ from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
 __all__ = [
+    "INFORMATION_FORM_INVERTS",
+    "NOISELESS_SENSOR",
     "UNVERSIONED",
     "concrete",
     "equilibrium_drift",
     "require_fixed_noise",
+    "state_dependent",
     "validate_covariance",
     "validate_declared",
     "validate_finite",
@@ -22,7 +25,35 @@ UNVERSIONED = (
     "version must be a non-empty string — the {subject} is declared and versioned"
 )
 
+NOISELESS_SENSOR = "a noiseless sensor sends the information gain to infinity"
+"""Why a sensor's R must be definite: the epistemic term reads its log-determinant."""
+
+INFORMATION_FORM_INVERTS = "the information form inverts it"
+"""Why an FFG factor's noise must be definite: its message holds the inverse."""
+
 _NOISE_SLOTS = ("observation_model", "dynamics_noise_model")
+
+
+class _FlagsFixed(Protocol):
+    """A noise object: an observation model or a dynamics noise model."""
+
+    @property
+    def is_fixed(self) -> bool: ...
+
+
+_NoiseModel = TypeVar("_NoiseModel", bound=_FlagsFixed)
+
+
+def state_dependent(noise_model: _NoiseModel | None) -> _NoiseModel | None:
+    """``noise_model`` if it varies with the state, ``None`` if the noise is constant.
+
+    ``None`` comes back for a model carrying no object, which leaves the plain field as
+    the noise, and for an object flagged ``is_fixed``. Every consumer with a fixed-noise
+    path makes this test before taking it.
+    """
+    if noise_model is None or noise_model.is_fixed:
+        return None
+    return noise_model
 
 
 class _CarriesNoise(Protocol):
@@ -47,9 +78,9 @@ def require_fixed_noise(
     """Refuse a model carrying state-dependent noise in any of ``slots``.
 
     For a consumer whose arithmetic holds ``R`` and ``Q`` constant. Built over ``R(x)``
-    or ``Q(x)`` it would read the plain fields, which are then nominal values, and
-    compute against a constant where the model varies (DECISIONS.md ADR-064 for
-    ``R``, ADR-065 for ``Q``).
+    or ``Q(x)`` it would read the plain fields, which hold only the value at the prior
+    mean, and compute against a constant where the model varies (DECISIONS.md ADR-064
+    for ``R``, ADR-065 for ``Q``).
 
     Args:
         model: The model the consumer was handed.
@@ -61,24 +92,31 @@ def require_fixed_noise(
         ValueError: Naming the first slot that carries a state-dependent object.
     """
     for slot in slots:
-        carried = getattr(model, slot)
-        if carried is not None and not carried.is_fixed:
+        if state_dependent(getattr(model, slot)) is not None:
             raise ValueError(f"the model's {slot} is state-dependent; {reason}")
 
 
 def validate_covariance(
-    cov: Float64[Array, "n n"], name: str, *, require_definite: bool = False
+    cov: Float64[Array, "n n"],
+    name: str,
+    *,
+    require_definite: bool = False,
+    reason: str | None = None,
 ) -> None:
     """Square, symmetric and positive-(semi-)definite, checked once at construction.
 
     ``require_definite=True`` demands positive-*definite* to a floor of ``1e-8``,
     relative to the largest eigenvalue and never below that in absolute terms, for a
-    matrix something inverts. The default accepts a zero-variance direction, which
-    is a sharp belief or a deterministic noise rather than an error. An indefinite
-    matrix is refused either way: accepted, it yields a silent negative-variance
-    belief downstream. Skipped under a trace, where the values are abstract. The
-    pytree ``tree_unflatten`` path never calls it, so ``jit``, ``vmap`` and ``grad``
-    are unaffected.
+    matrix something inverts or factors. The default accepts a zero-variance
+    direction, which is a sharp belief or a deterministic noise rather than an error.
+    An indefinite matrix is refused either way: accepted, it yields a silent
+    negative-variance belief downstream. Skipped under a trace, where the values are
+    abstract. The pytree ``tree_unflatten`` path never calls it, so ``jit``, ``vmap``
+    and ``grad`` are unaffected.
+
+    ``reason`` says why the caller needs a definite matrix, and the refusal gives it
+    after "because". Callers differ, so there is no default and none is printed when
+    it is omitted.
     """
     if cov.ndim != 2 or cov.shape[0] != cov.shape[1]:
         raise ValueError(f"{name} must be a square 2-D matrix, got shape {cov.shape}")
@@ -91,10 +129,10 @@ def validate_covariance(
     tol = 1e-8 * max(1.0, float(np.abs(eig).max()))
     if require_definite:
         if float(eig.min()) <= tol:
+            because = "" if reason is None else f" because {reason}"
             raise ValueError(
-                f"{name} must be positive-definite, but its smallest eigenvalue is "
-                f"{float(eig.min()):.3g} (a noiseless or degenerate sensor sends the "
-                f"information gain to infinity)."
+                f"{name} must be positive-definite{because}. Its smallest eigenvalue "
+                f"is {float(eig.min()):.3g}."
             )
     elif float(eig.min()) < -tol:
         raise ValueError(

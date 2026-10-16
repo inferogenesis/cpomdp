@@ -1,5 +1,7 @@
 """The sensor conditions, probed over a sampled reachable set."""
 
+import dataclasses
+
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -7,15 +9,14 @@ import pytest
 from _support import unit_prior
 from cpomdp import (
     Belief,
-    CallableGaussianObservation,
     CallableSensor,
     Coupling,
     CouplingGraph,
     CouplingGraphBackend,
-    GaussianCoupling,
-    GaussianObservation,
+    FixedSensor,
     GaussianTransition,
     LinearGaussianModel,
+    ProbeReport,
     probe_model,
 )
 from cpomdp.diagnostics import (
@@ -24,7 +25,7 @@ from cpomdp.diagnostics import (
     is_positive_definite,
     loewner_order,
 )
-from cpomdp.dynamics import CallableProcessNoise
+from cpomdp.dynamics import CallableDynamicsNoise
 
 ACTIONS = [np.array([u]) for u in np.linspace(-3.0, 3.0, 13)]
 
@@ -47,9 +48,7 @@ def ignores_the_state(x, params):
 def chain(noise_fn, *, control_matrix=1.0):
     model = LinearGaussianModel(
         dynamics_matrix=[[1.0]],
-        observation_matrix=[[1.0]],
         dynamics_noise=[[1.0]],
-        observation_noise=[[1.0]],
         prior=Belief([0.0], [[1.0]]),
         control_matrix=[[control_matrix]],
         observation_model=CallableSensor([[1.0]], noise_fn, None),
@@ -125,15 +124,41 @@ class TestLoewnerOrder:
         assert loewner_order(a, b) == expected
 
 
+def test_the_report_names_each_field_for_what_it_describes():
+    # One prefix per object. A bare spread or rank leaves the reader asking which.
+    assert [field.name for field in dataclasses.fields(ProbeReport)] == [
+        "n_samples",
+        "n_observations",
+        "observation_matrix_rank",
+        "observation_matrix_full_row_rank",
+        "observation_noise_definite",
+        "observation_noise_indefinite_at",
+        "observation_noise_varies",
+        "observation_noise_spread",
+        "observation_noise_loewner_ordered",
+        "dynamics_noise_varies",
+        "dynamics_noise_spread",
+        "epistemic_varies",
+        "epistemic_range",
+    ]
+
+
+def test_probe_model_returns_a_probe_report():
+    model, belief = chain(range_noise)
+    assert isinstance(probe_model(model, belief, ACTIONS), ProbeReport)
+
+
 class TestProbeFlatModel:
     def test_state_dependent_sensor_passes_every_condition(self):
         model, belief = chain(range_noise)
         report = probe_model(model, belief, ACTIONS)
-        assert report.full_row_rank
-        assert report.definite
-        assert report.non_constant
+        assert report.observation_matrix_full_row_rank
+        assert report.observation_noise_definite
+        assert report.observation_noise_varies
         assert report.epistemic_varies
-        assert report.loewner_comparable  # scalar noises are always ordered
+        assert (
+            report.observation_noise_loewner_ordered
+        )  # scalar noises are always ordered
         assert not report.flattens
 
     def test_fixed_sensor_flattens(self):
@@ -147,9 +172,9 @@ class TestProbeFlatModel:
         )
         report = probe_model(model, Belief([0.0], [[1.0]]), ACTIONS)
         assert report.flattens
-        assert not report.non_constant
-        assert not report.process_non_constant
-        assert report.process_noise_spread == 0.0
+        assert not report.observation_noise_varies
+        assert not report.dynamics_noise_varies
+        assert report.dynamics_noise_spread == 0.0
         assert not report.epistemic_varies
         assert report.epistemic_range[0] == pytest.approx(report.epistemic_range[1])
 
@@ -163,7 +188,7 @@ class TestProbeFlatModel:
             observation_noise=[[1.0]],
             prior=Belief([0.0], [[1.0]]),
             control_matrix=[[1.0]],
-            dynamics_noise_model=CallableProcessNoise(range_noise, None),
+            dynamics_noise_model=CallableDynamicsNoise(range_noise, None),
         )
         report = probe_model(model, Belief([0.0], [[1.0]]), ACTIONS)
         # Σ⁻ = AΣAᵀ + Q(μ⁻) with μ⁻ = u, so 1 + (1 + u²).
@@ -173,8 +198,8 @@ class TestProbeFlatModel:
         assert report.epistemic_varies
         assert report.epistemic_range == pytest.approx((min(expected), max(expected)))
         # R never moved and Q did, so the recursion consults the action: not flat.
-        assert not report.non_constant
-        assert report.process_non_constant
+        assert not report.observation_noise_varies
+        assert report.dynamics_noise_varies
         assert not report.flattens
 
     def test_a_process_noise_that_stops_being_a_covariance_is_refused(self):
@@ -187,7 +212,7 @@ class TestProbeFlatModel:
             observation_noise=[[1.0]],
             prior=Belief([0.0], [[0.01]]),
             control_matrix=[[1.0]],
-            dynamics_noise_model=CallableProcessNoise(goes_indefinite, None),
+            dynamics_noise_model=CallableDynamicsNoise(goes_indefinite, None),
         )
         with pytest.raises(ValueError, match=r"dynamics_noise_model\.noise_at"):
             probe_model(model, Belief([0.0], [[0.01]]), ACTIONS)
@@ -197,7 +222,7 @@ class TestProbeFlatModel:
         model, belief = chain(range_noise, control_matrix=0.0)
         report = probe_model(model, belief, ACTIONS)
         assert report.flattens
-        assert report.noise_spread == pytest.approx(0.0)
+        assert report.observation_noise_spread == pytest.approx(0.0)
 
     def test_noise_that_ignores_the_state_flattens(self):
         model, belief = chain(ignores_the_state)
@@ -206,10 +231,10 @@ class TestProbeFlatModel:
     def test_reports_where_the_noise_stops_being_a_covariance(self):
         model, belief = chain(goes_indefinite)
         report = probe_model(model, belief, ACTIONS)
-        assert not report.definite
-        assert report.indefinite_at
+        assert not report.observation_noise_definite
+        assert report.observation_noise_indefinite_at
         # every flagged mean is genuinely outside the band where 1 − x² stays positive
-        assert all(abs(mu[0]) >= 1.0 for mu in report.indefinite_at)
+        assert all(abs(mu[0]) >= 1.0 for mu in report.observation_noise_indefinite_at)
 
     def test_needs_an_action_to_predict_under(self):
         model, belief = chain(range_noise)
@@ -222,8 +247,8 @@ class TestProbeFlatModel:
         for line in (
             "full row rank",
             "positive def",
-            "R non-constant",
-            "Q non-constant",
+            "R varies",
+            "Q varies",
             "epistemic varies",
         ):
             assert line in text
@@ -233,25 +258,21 @@ class TestProbeGraphBackend:
     @staticmethod
     def build(*, alive):
         cue = (
-            CallableGaussianObservation([[-1.0, 1.0]], range_noise, None)
+            CallableSensor([[-1.0, 1.0]], range_noise, None)
             if alive
-            else GaussianObservation([[-1.0, 1.0]], observation_noise=[[2.0]])
+            else FixedSensor([[-1.0, 1.0]], observation_noise=[[2.0]])
         )
         graph = CouplingGraph(
-            root=0,
             dims=(1, 2),
             couplings=(
                 Coupling(
                     parent=0,
                     child=1,
-                    factor=GaussianCoupling(
-                        coupling_matrix=[[0.0], [1.0]],
-                        coupling_noise=[[0.5, 0.0], [0.0, 0.5]],
-                    ),
-                    tau=1.0,
+                    coupling_matrix=[[0.0], [1.0]],
+                    coupling_noise=[[0.5, 0.0], [0.0, 0.5]],
                 ),
             ),
-            observations={1: cue},
+            observation_models={1: cue},
         )
         transitions = (
             GaussianTransition([[1.0]], dynamics_noise=[[0.1]]),
@@ -273,7 +294,7 @@ class TestProbeGraphBackend:
     def test_separates_a_live_sensor_from_a_frozen_one(self):
         live = probe_model(self.build(alive=True), self.belief(), ACTIONS)
         frozen = probe_model(self.build(alive=False), self.belief(), ACTIONS)
-        assert live.non_constant
+        assert live.observation_noise_varies
         assert live.epistemic_varies
         assert frozen.flattens
         assert not frozen.epistemic_varies
@@ -281,11 +302,10 @@ class TestProbeGraphBackend:
     def test_reports_a_redundant_channel(self):
         """Two channels reading the same row leave C short of full row rank."""
         graph = CouplingGraph(
-            root=0,
             dims=(2,),
             couplings=(),
-            observations={
-                0: GaussianObservation(
+            observation_models={
+                0: FixedSensor(
                     [[-1.0, 1.0], [-1.0, 1.0]],
                     observation_noise=[[2.0, 0.0], [0.0, 2.0]],
                 )
@@ -302,8 +322,8 @@ class TestProbeGraphBackend:
             control_matrix=[[1.0], [0.0]],
         )
         report = probe_model(backend, Belief(jnp.zeros(2), jnp.eye(2)), ACTIONS)
-        assert not report.full_row_rank
-        assert (report.rank, report.n_observations) == (1, 2)
+        assert not report.observation_matrix_full_row_rank
+        assert (report.observation_matrix_rank, report.n_observations) == (1, 2)
 
 
 def test_condition_numbers_reads_a_stack_and_refuses_anything_else():

@@ -34,7 +34,8 @@ from pathlib import Path
 
 import cpomdp
 import warrantlib
-from cpomdp.enumeration import CompletenessCertificate, SearchWarrant
+from cpomdp import enumeration
+from cpomdp.enumeration import CompletenessCertificate
 from warrantlib import _serialise, _vocabulary
 
 _NO_CPOMDP = """
@@ -77,9 +78,11 @@ def test_the_top_level_warrant_is_the_warrantlib_object():
     assert cpomdp.Warrant is warrantlib.Warrant
 
 
-def test_enumeration_re_exports_the_certificate_and_the_alias():
+def test_enumeration_re_exports_the_certificate_and_no_second_warrant_name():
+    # `SearchWarrant` was an alias of `Warrant`. One enum gets one name.
     assert CompletenessCertificate is warrantlib.CompletenessCertificate
-    assert SearchWarrant is warrantlib.Warrant
+    assert not hasattr(enumeration, "SearchWarrant")
+    assert "SearchWarrant" not in enumeration.__all__
 
 
 def _defined_public_names() -> set[str]:

@@ -12,9 +12,9 @@ fixes them.
 
 ---
 
-## Where this stands — v0.5.0, released 2026-10-15
+## Where this stands — v0.5.0, prepared 2026-10-15, tag pending
 
-**Shipped in v0.5.0.** PR-1, PR-1b, PR-2, PR-3, PR-4, PR-7a and PR-7, cut from `main`
+**In v0.5.0, which is untagged.** PR-1, PR-1b, PR-2, PR-3, PR-4, PR-7a and PR-7, cut from `main`
 ahead of the gate so the November workshop installs the optional noises (ADR-067). Their
 sections below stay until the reset after the gate. The open PRs build on them.
 
@@ -285,9 +285,9 @@ Do this first. Everything downstream self-labels off it, and a registered number
 on the audit half.
 
 - [x] Promote `SearchWarrant` to a shared `Warrant` enum (now in `warrantlib`) and add
-      **`CERTIFIED`** for Prover 3 · validated. Keep `SearchWarrant` as an alias so
-      `EFESelector.warrant` and `EnumeratedEfeSearch.warrant` keep their labels
-      unchanged. Without `CERTIFIED`, every reference-filter number either borrows
+      **`CERTIFIED`** for Prover 3 · validated. `SearchWarrant` stayed as an alias
+      until v0.5.0 removed it (ADR-083), so `EFESelector.warrant` and
+      `EnumeratedEfeSearch.warrant` kept their labels. Without `CERTIFIED`, every reference-filter number either borrows
       `PROVED`, which overclaims, or reads `CORROBORATED`, which throws away the bound
       GATE-D4 exists to buy.
 - [x] Carry `(warrant, outcome, tier)` on **checks**, not only on selectors.
@@ -1334,7 +1334,7 @@ silence, per standing rule 5.
 
 The `μ`/`Σ` predict/update superscript convention is inconsistent across the codebase.
 Three variants coexist. `efe.py` and its neighbours use `μ⁺`/`Σ⁺` for the predicted
-moment with `Σ_post` after observation. `kalman.py`, `ffg/chain.py` and `diagnostics.py`
+moment with `Σ_post` after observation. `kalman.py`, `ffg/_chain.py` and `diagnostics.py`
 use standard Kalman `μ⁻`/`Σ⁻` with `post`. `coupling.py` uses both symbols for
 pre-coupling against coupling-resolved *predicted* means (ADR-019), a distinction
 orthogonal to predict/update.

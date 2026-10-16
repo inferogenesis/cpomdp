@@ -14,15 +14,14 @@ from _support import unit_prior
 from cpomdp import (
     Agent,
     Belief,
-    CallableProcessNoise,
+    CallableDynamicsNoise,
     CallableSensor,
     Coupling,
     CouplingGraph,
     CouplingGraphBackend,
     EFESelector,
     FfgEfeSelector,
-    GaussianCoupling,
-    GaussianObservation,
+    FixedSensor,
     GaussianTransition,
     KalmanBackend,
     LinearGaussianModel,
@@ -80,7 +79,7 @@ def _qx_model():
         [[1.0, 0.1], [0.0, 1.0]],
         control_matrix=[[0.0], [0.1]],
         observation_matrix=[[1.0, 0.0]],
-        dynamics_noise_model=CallableProcessNoise(_diffuses_away_from_zero, ()),
+        dynamics_noise_model=CallableDynamicsNoise(_diffuses_away_from_zero, ()),
         observation_noise=[[1e-2]],
         prior=Belief(mean=[0.5, 0.0], cov=jnp.eye(2)),
     )
@@ -88,12 +87,9 @@ def _qx_model():
 
 def _graph_backend():
     graph = CouplingGraph(
-        root=0,
         dims=(1, 1),
-        couplings=(
-            Coupling(0, 1, GaussianCoupling([[0.8]], coupling_noise=[[0.05]]), 1.0),
-        ),
-        observations={1: GaussianObservation([[1.0]], observation_noise=[[0.1]])},
+        couplings=(Coupling(0, 1, [[0.8]], coupling_noise=[[0.05]]),),
+        observation_models={1: FixedSensor([[1.0]], observation_noise=[[0.1]])},
     )
     transitions = (
         GaussianTransition([[0.7]], dynamics_noise=[[0.1]]),
@@ -169,9 +165,7 @@ def _selectors():
         model, FiniteActionSet([[-1.0], [0.0], [1.0]], version="v1"), horizon=2
     )
     graph = _graph_backend()
-    controller = LQRController(
-        _fixed_model(), goal_precision=jnp.eye(2), effort_penalty=jnp.eye(1)
-    )
+    controller = LQRController(_fixed_model(), precision=jnp.eye(2), effort=jnp.eye(1))
     return [
         pytest.param(
             EFESelector(model, n_candidates=7, action_bounds=(-2.0, 2.0), horizon=2),
@@ -232,12 +226,12 @@ def test_model_belief_and_preference_pass_as_arguments():
     @jax.jit
     def posterior_mean(model, belief, preference):
         posterior = KalmanBackend(model).infer_states(OBSERVATIONS[0], belief, ACTION)
-        return posterior.mean - preference.goal
+        return posterior.mean - preference.target
 
     preference = Preference([1.0, 0.0])
     expected = (
         KalmanBackend(model).infer_states(OBSERVATIONS[0], model.prior, ACTION).mean
-        - preference.goal
+        - preference.target
     )
     np.testing.assert_allclose(posterior_mean(model, model.prior, preference), expected)
 
@@ -285,8 +279,8 @@ def test_a_jitted_open_loop_selector_leaks_its_plan():
         pytest.param(
             lambda scale: LQRController(
                 _fixed_model(),
-                goal_precision=jnp.eye(2) * scale,
-                effort_penalty=jnp.eye(1),
+                precision=jnp.eye(2) * scale,
+                effort=jnp.eye(1),
             ),
             id="LQRController",
         ),
