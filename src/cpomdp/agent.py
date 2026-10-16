@@ -360,8 +360,9 @@ class Agent:
 
     The ``Agent`` is eager. It keeps the belief and the last action on itself, so
     ``jax.jit``, ``vmap`` and ``grad`` do not apply to its methods. A jitted
-    ``infer_states`` bakes in the belief it was traced with and returns the same
-    posterior on every call. To compile a loop, call a backend's ``infer_states``
+    ``infer_states`` filters every observation against the belief it was traced with,
+    so the belief never advances, and the next eager call raises
+    ``UnexpectedTracerError``. To compile a loop, call a backend's ``infer_states``
     and a selector's ``select`` inside ``jax.lax.scan``, as the API page shows.
     """
 

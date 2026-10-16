@@ -121,7 +121,7 @@ class TestChainMatchesKalman:
 
     @pytest.mark.parametrize(("n", "m"), [(2, 1), (3, 2)])
     def test_sequence_matches_kalman_with_control(self, n, m):
-        # The control shift b = control @ action must thread through predict.
+        # The control shift b = control_matrix @ action must thread through predict.
         rng = np.random.default_rng(500 + n * 10 + m)
         model = _random_chain_model(rng, n, m, with_control=True)
         kalman, chain = KalmanBackend(model), ChainBackend(model)

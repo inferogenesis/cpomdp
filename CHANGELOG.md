@@ -390,20 +390,41 @@ certainty equivalence is optimal, and no use of the readings beats it.
 ### Fixed
 
 - The README called inference JIT-compilable end to end. The backends and selectors are.
-  The `Agent` is not. It holds its belief, so a jitted `agent.infer_states` returned the
-  belief it was traced with on every call, and the next eager call raised
-  `UnexpectedTracerError`. The `Agent` docstring, its API page and the README now say
-  it is eager, and the page shows a backend driven under `jax.lax.scan`.
+  The `Agent` is not. It holds its belief, so a jitted `agent.infer_states` filtered
+  every observation against the belief it was traced with, and the next eager call
+  raised `UnexpectedTracerError`. The `Agent` docstring, its API page and the README
+  now say it is eager, and the page shows a backend driven under `jax.lax.scan`.
 - No page said which public names survive `jit`, `vmap` and `grad`, and
   `KalmanBackend.infer_states` called itself an eager orchestrator while it traces. The
   backends page now carries one row per public name, and
-  `tests/test_transform_table.py` runs every row. The README and `InferenceBackend`
-  point at it.
+  `tests/test_transform_table.py` runs every row but RxInfer's. A row that traces runs
+  under `jit`, `vmap` and `grad`, and a row that does not is shown failing under `jit`.
+  The README and `InferenceBackend` point at it.
 - `KalmanBackend`, its API page and the README called the filter exact for any
   linear-Gaussian model, and said `RxInferBackend` re-derives the same answers. Under a
   state-dependent `R(x)` or `Q(x)` the filter reads the noise at the predicted mean, a
   first-order plug-in, and `RxInferBackend` refuses such a model. Each now says the
   filter is exact under fixed noise, and the oracle agrees only there.
+- The `LQRController` docstring and the backends page said the Agent's filter is solved
+  once at construction, as ADR-002 and ADR-003 planned. Every release has filtered per
+  step. Both now say so, and ADR-086 records the per-step filter as the default and the
+  steady-state one as the opt-in. The README points at ADR-086 beside ADR-003. It said
+  all inference runs as message passing over a factor graph, and now says that of
+  branching models, which is where `CouplingGraphBackend` does it.
+- Public docstrings cited build-plan labels a pip user cannot look up, "Phase 1A",
+  "item E" and "standing rule 6" among them. They are gone, and
+  `tests/test_docstring_labels.py` fails on one in any docstring outside `cpomdp._lab`.
+  The ADR numbers stay, and the docs home links DECISIONS.md, which is append-only, so
+  an ADR a release cites reads the same there later. `Coupling` and `GaussianCoupling`
+  illustrated themselves with chemotaxis proteins, which ADR-015 keeps out of the core.
+  Their examples are generic now.
+- Pre-rename names survived in the model's formula, in two error messages and in the
+  guide: `dynamics @ state + control @ action`, "dynamics must be a square matrix",
+  "(dynamics, control) may not be stabilisable" and `dynamics=dynamics`. Each now names
+  `dynamics_matrix` and `control_matrix`. The EFE module's definition reads the sensor
+  from `observation_model`, where it said `observation`. `Belief`'s docstring said its
+  covariance is checked for positive semi-definiteness elsewhere. Its constructor
+  checks it.
 - `EFESelector` described varying-sequence search as a deferred v0.4 `GradientEFESelector`
   seam, in its rendered class docstring and in the `ValueError` a `p > 1` caller hits. That
   search shipped in v0.4.4 as `EnumeratedEfeSearch`, whose own docstring says it supports

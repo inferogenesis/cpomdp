@@ -135,7 +135,7 @@ Notice that the uncertainty here in `cov` (1) is much larger than our `dynamics_
 
 ### The whole model
 
-Five pieces, one object. `LinearGaussianModel` takes each by name — and since you built every piece as a named variable, the assembly reads almost like a list of what you've made: dynamics=dynamics, observation_matrix=observation_matrix, and so on. This is the moment the world (how it moves, what's seen, how fuzzy it all is) and the agent's starting belief (the prior) fuse into a single thing you can hand to an agent and run. One piece is deliberately missing — a way to **act** — but a thing that only perceives doesn't need it yet; we'll add it the moment we start steering.
+Five pieces, one object. `LinearGaussianModel` takes each by name. Since you built every piece as a named variable, the assembly reads almost like a list of what you've made: `dynamics_matrix=dynamics_matrix`, `observation_matrix=observation_matrix`, and so on. This is the moment the world (how it moves, what's seen, how fuzzy it all is) and the agent's starting belief (the prior) fuse into a single thing you can hand to an agent and run. One piece is deliberately missing, a way to **act**. A thing that only perceives doesn't need it yet. We'll add it the moment we start steering.
 
 The full code picture so far should look like this:
 

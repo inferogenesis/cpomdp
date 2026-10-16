@@ -26,7 +26,7 @@ and an OBSERVATION-space preference ``(o*, Λ)`` (preferred observation ``o*``,
 precision ``Λ``):
 
     predict:    μ⁺ = A·μ + B·a            Σ⁺ = A·Σ·Aᵀ + Q
-    sense:      (C, R) = observation.linearize(μ⁺)
+    sense:      (C, R) = observation_model.linearize(μ⁺)
                 o⁺ = C·μ⁺                  S = C·Σ⁺·Cᵀ + R  # predicted observation cov
     pragmatic:  ½·(o⁺ − o*)ᵀ·Λ·(o⁺ − o*)  +  ½·tr(Λ·S)
     epistemic:  ½·(ln det S − ln det R)            # = I(state; obs) ≥ 0, info gain
@@ -873,8 +873,8 @@ def _efe_step(
     # which is its own linearization everywhere; for a state-dependent R(x) this point
     # is what the action reaches, and so what the epistemic term ends up measuring.
     if model.observation_model is None:
-        # FAST PATH — a bare matvec/matmul, byte-identical to Phase 1A. Kept inline
-        # (no method dispatch) so the fixed-sensor hot path stays lean.
+        # FAST PATH — a bare matvec/matmul. Kept inline (no method dispatch) so the
+        # fixed-sensor hot path stays lean.
         observation_matrix, observation_noise = (
             model.observation_matrix,
             model.observation_noise,

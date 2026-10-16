@@ -1,1 +1,1 @@
-"""Inference backends: the native Kalman fast path and the RxInfer oracle."""
+"""Inference backends: the Kalman filter, the coupling graph and the RxInfer oracle."""

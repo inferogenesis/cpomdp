@@ -3,8 +3,8 @@
 The dynamics-side twin of ``observation``. ``DynamicsNoiseModel`` is the seam the EFE
 predict step asks for the dynamics-noise covariance at a state, as ``ObservationModel``
 is for the sensor. ``CallableDynamicsNoise`` is the state-dependent case. Per RFC-001
-chapter 8 this is where the *binding* precision constraint lives for the chemotaxis
-fidelity (internal processing, not the sensor). The kernel evaluates it at ``μ⁺``, the
+chapter 8 this is where a *binding* precision constraint lives when it comes from
+internal processing rather than the sensor. The kernel evaluates it at ``μ⁺``, the
 diffusion of the arrived-at state.
 """
 

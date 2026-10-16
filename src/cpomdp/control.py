@@ -326,11 +326,12 @@ def kalman_schedule(
 class LQRController:
     """Steady-state LQR action selection — the action-side dual of the filter.
 
-    Where the Kalman filter front-loads perception (solve the estimation Riccati
-    once for the steady-state gain ``K∞``, then ``mean += K∞·prediction_error``),
-    this front-loads action: solve the dual *control* Riccati once for ``L∞``,
-    then ``action = -L∞·(mean − target)``. Both gains are data-independent, both are
-    computed at construction, and together they are LQG.
+    It front-loads action: solve the *control* Riccati once for ``L∞``, then
+    ``action = -L∞·(mean − target)`` on every step. The estimation Riccati is its dual.
+    A steady-state [`KalmanBackend`][cpomdp.KalmanBackend] solves that one once for
+    ``K∞``, and the pair is steady-state LQG. The [`Agent`][cpomdp.Agent] does not
+    freeze its filter. It recomputes the Kalman gain every step, so its loop is this
+    controller on a per-step filter.
 
     The load-bearing claim (ADR-003) is that LQR *is* active inference here, not a
     substitute for it. For a fixed linear-Gaussian sensor and fixed dynamics noise the
@@ -366,8 +367,9 @@ class LQRController:
         ValueError: If the model has no ``control_matrix``, or a cost matrix does
             not match the state/action dimensions, is not symmetric, or fails its
             definiteness requirement (``precision`` PSD, ``effort`` PD).
-        RuntimeError: If the control Riccati does not converge within ``max_iter``
-            — typically because ``(dynamics, control)`` is not stabilisable.
+        RuntimeError: If the control Riccati does not converge within ``max_iter``,
+            usually because ``(dynamics_matrix, control_matrix)`` is not
+            stabilisable.
     """
 
     def __init__(
@@ -483,8 +485,8 @@ class LQRController:
         else:
             raise RuntimeError(
                 f"control Riccati did not converge in {max_iter} iterations; "
-                "(dynamics, control) may not be stabilisable, so no steady-state "
-                "gain exists."
+                "(dynamics_matrix, control_matrix) may not be stabilisable, so no "
+                "steady-state gain exists."
             )
 
         _, gain = _riccati_step(

@@ -673,7 +673,7 @@ class EnumeratedEfeSearch(ExhaustiveEfeSearch):
 # higher peak. Peak resident memory is flat at 0.42-0.43 GiB from 64 to 8192, so within
 # the plateau the block size buys nothing back in residency and the choice is about
 # rate alone. 4096 rather than the slightly faster 2048 because its spread across
-# repeats is 2% against 20%, and PR-2 declares compute budgets off this rate.
+# repeats is 2% against 20%, and the compute budgets are declared off this rate.
 _DEFAULT_CHUNK = 1 << 12
 
 

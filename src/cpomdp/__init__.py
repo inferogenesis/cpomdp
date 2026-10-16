@@ -1,6 +1,6 @@
 """cpomdp — continuous active inference for Python.
 
-The continuous-state sibling of pymdp. The public API is the stateful
+The continuous-state sibling of pymdp. The entry point is the stateful
 ``Agent`` façade over a ``LinearGaussianModel``, driven in the same
 perceive → act loop pymdp users know::
 
@@ -10,11 +10,10 @@ perceive → act loop pymdp users know::
     belief = agent.infer_states(observation)   # perceive
     action = agent.sample_action()             # act
 
-Swap the inference engine with ``Agent.from_backend``; ``KalmanBackend``
-is the default and ``InferenceBackend`` is the protocol custom backends
-implement. The optional RxInfer oracle lives behind the ``rxinfer`` extra —
-import it explicitly from ``cpomdp.backends.rxinfer`` so the core stays
-Julia-free.
+``KalmanBackend`` is the default inference engine, and ``Agent.from_backend`` swaps in
+another. ``InferenceBackend`` is the protocol a custom backend implements. The optional
+RxInfer oracle needs the ``rxinfer`` extra. Import it from ``cpomdp.backends.rxinfer``,
+which keeps the core free of Julia.
 
 For a *branching* model, declare a ``CouplingGraph`` whose nodes carry the
 same sensors a flat model takes (``FixedSensor``, ``CallableSensor``) and whose

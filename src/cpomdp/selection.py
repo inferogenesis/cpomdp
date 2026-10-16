@@ -149,7 +149,8 @@ class Preference:
     ``Preference`` plugs in here.
 
     ``precision`` is unused by [`LQRSelector`][cpomdp.LQRSelector], whose controller
-    solved for its own weights at construction. The EFE pragmatic term reads it.
+    bakes its own precision into the Riccati solve at construction. The EFE selectors
+    read it in the pragmatic term.
     """
 
     target: Float64[Array, "n"]
@@ -375,7 +376,7 @@ class EFESelector:
 
         The counterpart to ``EnumeratedEfeSearch.warrant`` (``PROVED``): the two search
         families print in different vocabulary so a sampled result is never read as a
-        decided one (standing rule 6; ADR-031).
+        decided one (ADR-031).
         """
         return Warrant.CORROBORATED
 

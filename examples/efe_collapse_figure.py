@@ -224,7 +224,7 @@ def main():
     """Render the two-panel collapse/detour figure to docs/assets/."""
     import matplotlib.pyplot as plt
 
-    prag_f, epi_f, g_f = _sweep(_model())  # fixed sensor (observation=None)
+    prag_f, epi_f, g_f = _sweep(_model())  # fixed sensor (observation_model=None)
     prag_s, epi_s, g_s = _sweep(_model(observation_model=_well()))
 
     fig, (ax_l, ax_r) = plt.subplots(1, 2, figsize=(12.5, 5.2), sharex=True)

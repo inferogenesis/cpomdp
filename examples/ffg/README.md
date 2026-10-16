@@ -90,7 +90,7 @@ motors), exact to a flattened Kalman.
 It's the shape, not the biophysics: no CheB → receptor feedback (that's a loop, and a
 `CouplingGraph` is a tree), no swimming, no efficiency. A faithful E. coli model is a
 build-on-top, not a v0.4 feature (RFC-002, ADR-020). Reuses `chemotaxis_model.py`, the builder
-the Phase-3 tests pin.
+the tests pin.
 
 ![The E. coli chemotaxis network as a branching factor graph; the hidden CheA kinase hub inferred through its downstream readouts](../../docs/assets/chemotaxis.png)
 
