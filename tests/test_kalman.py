@@ -8,7 +8,7 @@ from cpomdp.backends.kalman import (
     _gain_and_posterior_cov,
     _posterior_mean,
 )
-from cpomdp.dynamics import CallableProcessNoise
+from cpomdp.dynamics import CallableDynamicsNoise
 from cpomdp.observation import CallableSensor
 from cpomdp.types import Belief, LinearGaussianModel
 
@@ -446,7 +446,7 @@ class TestKalmanCallableSensor:
 
 
 # --- state-dependent process noise Q(x) in the filter (the R(x) dual) --------
-# CallableProcessNoise carries Q(x); the filter's covariance predict must evaluate
+# CallableDynamicsNoise carries Q(x); the filter's covariance predict must evaluate
 # it at the predicted mean μ⁻ (the same point the EFE kernel uses), gated so the
 # fixed path stays byte-identical.
 
@@ -464,7 +464,9 @@ def _quad_process(x, params):
 _QPROC = {"base": jnp.array([[0.05]]), "scale": jnp.array(0.4)}
 
 
-def _numpy_qx_filter(model, observations, q_fn, q_params, actions=None, q_point="pred"):
+def _numpy_qx_filter(
+    model, observations, noise_fn, noise_params, actions=None, q_point="pred"
+):
     """Independent NumPy Q(x)-plug-in Kalman filter (fixed R); shares no backend code.
 
     Q is evaluated at the predicted mean μ⁻ (``q_point="pred"``) — the point the
@@ -485,7 +487,7 @@ def _numpy_qx_filter(model, observations, q_fn, q_params, actions=None, q_point=
             assert actions is not None  # a model with control must be given actions
             mean_pred = a_mat @ mean + b_mat @ np.asarray(actions[t], dtype=float)
         q_at = mean_pred if q_point == "pred" else mean
-        q_mat = np.asarray(q_fn(jnp.asarray(q_at), q_params), dtype=float)
+        q_mat = np.asarray(noise_fn(jnp.asarray(q_at), noise_params), dtype=float)
         cov_pred = a_mat @ cov @ a_mat.T + q_mat
         s = c_mat @ cov_pred @ c_mat.T + r_mat
         gain = cov_pred @ c_mat.T @ np.linalg.inv(s)
@@ -495,20 +497,20 @@ def _numpy_qx_filter(model, observations, q_fn, q_params, actions=None, q_point=
     return out
 
 
-def _callable_q_scalar_model(q_fn, q_params, *, control_matrix=None):
+def _callable_q_scalar_model(noise_fn, noise_params, *, control_matrix=None):
     return LinearGaussianModel(
         dynamics_matrix=[[0.9]],
         observation_matrix=[[1.0]],
         observation_noise=[[1.0]],
         prior=Belief(mean=[0.0], cov=[[10.0]]),
         control_matrix=control_matrix,
-        dynamics_noise_model=CallableProcessNoise(q_fn, q_params),
+        dynamics_noise_model=CallableDynamicsNoise(noise_fn, noise_params),
     )
 
 
 class TestKalmanCallableProcessNoise:
     def test_constant_callable_process_reduces_to_fixed_filter(self):
-        # Safety net — green BEFORE and AFTER. A CallableProcessNoise whose Q ignores
+        # Safety net — green BEFORE and AFTER. A CallableDynamicsNoise whose Q ignores
         # x and equals the model's fixed dynamics_noise must filter exactly like the
         # fixed model. Guards the gating and the fixed hot path.
         q0 = [[0.5]]
@@ -551,7 +553,7 @@ class TestKalmanCallableProcessNoise:
             observation_matrix=[[1.0, 0.0]],
             observation_noise=[[1.0]],
             prior=Belief(mean=[0.0, 0.0], cov=[[1.0, 0.0], [0.0, 1.0]]),
-            dynamics_noise_model=CallableProcessNoise(_quad_process, q2d),
+            dynamics_noise_model=CallableDynamicsNoise(_quad_process, q2d),
         )
         kf = KalmanBackend(model)
         belief = model.prior

@@ -42,7 +42,7 @@ from cpomdp.backends.coupling import (
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.control import LQRController
 from cpomdp.diagnostics import SensorReport, probe_model
-from cpomdp.dynamics import CallableProcessNoise, DynamicsNoise
+from cpomdp.dynamics import CallableDynamicsNoise, DynamicsNoiseModel
 from cpomdp.efe import expected_free_energy
 from cpomdp.ffg.factors.linear_gaussian import (
     CallableGaussianObservation,
@@ -75,13 +75,13 @@ __all__ = [
     "ActionSelector",
     "Agent",
     "Belief",
+    "CallableDynamicsNoise",
     "CallableGaussianObservation",
-    "CallableProcessNoise",
     "CallableSensor",
     "Coupling",
     "CouplingGraph",
     "CouplingGraphBackend",
-    "DynamicsNoise",
+    "DynamicsNoiseModel",
     "EFESelector",
     "FfgEfeSelector",
     "FixedSensor",

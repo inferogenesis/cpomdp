@@ -27,7 +27,7 @@ The locks:
 import jax.numpy as jnp
 import numpy as np
 
-from cpomdp.dynamics import CallableProcessNoise
+from cpomdp.dynamics import CallableDynamicsNoise
 from cpomdp.efe import policy_efe_trace
 from cpomdp.observation import CallableSensor
 from cpomdp.selection import Preference
@@ -78,8 +78,9 @@ def _q_well(x, params):
 
 
 def _internal_q_model():
-    pn = CallableProcessNoise(
-        q_fn=_q_well, q_params={"base": jnp.array(0.05), "slope": jnp.array(0.4)}
+    dynamics_noise_model = CallableDynamicsNoise(
+        noise_fn=_q_well,
+        noise_params={"base": jnp.array(0.05), "slope": jnp.array(0.4)},
     )
     return LinearGaussianModel(
         dynamics_matrix=[[1.0]],
@@ -87,7 +88,7 @@ def _internal_q_model():
         observation_noise=[[0.3]],
         prior=Belief(mean=[0.0], cov=[[0.2]]),
         control_matrix=[[1.0]],
-        dynamics_noise_model=pn,
+        dynamics_noise_model=dynamics_noise_model,
     )
 
 

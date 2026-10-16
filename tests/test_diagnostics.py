@@ -24,7 +24,7 @@ from cpomdp.diagnostics import (
     is_positive_definite,
     loewner_order,
 )
-from cpomdp.dynamics import CallableProcessNoise
+from cpomdp.dynamics import CallableDynamicsNoise
 
 ACTIONS = [np.array([u]) for u in np.linspace(-3.0, 3.0, 13)]
 
@@ -161,7 +161,7 @@ class TestProbeFlatModel:
             observation_noise=[[1.0]],
             prior=Belief([0.0], [[1.0]]),
             control_matrix=[[1.0]],
-            dynamics_noise_model=CallableProcessNoise(range_noise, None),
+            dynamics_noise_model=CallableDynamicsNoise(range_noise, None),
         )
         report = probe_model(model, Belief([0.0], [[1.0]]), ACTIONS)
         # Σ⁻ = AΣAᵀ + Q(μ⁻) with μ⁻ = u, so 1 + (1 + u²).
@@ -185,7 +185,7 @@ class TestProbeFlatModel:
             observation_noise=[[1.0]],
             prior=Belief([0.0], [[0.01]]),
             control_matrix=[[1.0]],
-            dynamics_noise_model=CallableProcessNoise(goes_indefinite, None),
+            dynamics_noise_model=CallableDynamicsNoise(goes_indefinite, None),
         )
         with pytest.raises(ValueError, match=r"dynamics_noise_model\.noise_at"):
             probe_model(model, Belief([0.0], [[0.01]]), ACTIONS)

@@ -29,7 +29,7 @@ from cpomdp._lab.degraded import DiagonalCovarianceBackend, WrongFixedRBackend
 from cpomdp._validation import UNVERSIONED, validate_declared
 from cpomdp.backends.base import InferenceBackend
 from cpomdp.backends.kalman import KalmanBackend
-from cpomdp.dynamics import DynamicsNoise
+from cpomdp.dynamics import DynamicsNoiseModel
 from cpomdp.observation import ObservationModel
 from cpomdp.structure import ModelStructure
 from cpomdp.types import Belief, LinearGaussianModel
@@ -151,7 +151,7 @@ class ModelSpec:
     version: str
     control_matrix: np.ndarray | None = None
     observation_model: ObservationModel | None = None
-    dynamics_noise_model: DynamicsNoise | None = None
+    dynamics_noise_model: DynamicsNoiseModel | None = None
     structure: ModelStructure | None = None
 
     def __init__(
@@ -166,7 +166,7 @@ class ModelSpec:
         version: str,
         control_matrix: ArrayLike | None = None,
         observation_model: ObservationModel | None = None,
-        dynamics_noise_model: DynamicsNoise | None = None,
+        dynamics_noise_model: DynamicsNoiseModel | None = None,
         structure: ModelStructure | None = None,
     ) -> None:
         for name, value in (
