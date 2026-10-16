@@ -629,7 +629,7 @@ class TestCouplingGraphValidation:
     def test_takes_no_root_argument(self):
         # A stated root could only repeat the couplings or contradict them.
         with pytest.raises(TypeError, match="root"):
-            CouplingGraph(  # ty: ignore[missing-argument]
+            CouplingGraph(
                 root=0,  # ty: ignore[unknown-argument]
                 dims=(1,),
                 couplings=(),
