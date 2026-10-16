@@ -434,8 +434,8 @@ class ObservationGoal:
     epistemic term at a single latent *node* (info gain about that node's marginal, the
     factored-EFE regime on a branching backend, issue #26); ``None`` = whole-state info
     gain (the default, unchanged behaviour). The Agent dispatches an ObservationGoal to
-    an EFESelector. Not a pytree - construction-time only; the Agent extracts a
-    Preference.
+    an EFESelector. Not a pytree, and read at construction only. The Agent and the
+    EFE functions read its ``preference``.
     """
 
     target: Float64[Array, "m"]
