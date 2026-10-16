@@ -410,8 +410,8 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `infer_root`, and a prior over the wrong dimension raised
   `cannot add messages of shape (2, 2) and (1, 1)`.
   `GaussianTransition.from_ou(0.0, ...)` raised `ZeroDivisionError`, and a negative
-  `tau` or `dt` blamed `dynamics_noise`, an argument the caller never passed. A `root`
-  or a dimension of 1.5 was truncated to 1. A `CouplingGraphBackend` over a graph with
+  `tau` or `dt` blamed `dynamics_noise`, an argument the caller never passed. A
+  dimension of 1.5 was truncated to 1. A `CouplingGraphBackend` over a graph with
   no sensor failed in a zero-size reduction and now refuses at construction.
 - The graph EFE rollouts and searches skipped the checks `FfgEfeSelector` makes on its
   target. `policy_efe_ffg`, `policy_efe_ffg_trace`, the crossover statistic and both

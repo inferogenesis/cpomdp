@@ -326,7 +326,7 @@ def _draw_code(ax) -> None:
     ax.text(
         0.5,
         0.07,
-        "three edges, one infer call — the same code runs any tree",
+        "three edges, one infer_root call — the same code runs any tree",
         transform=ax.transAxes,
         ha="center",
         va="top",
