@@ -228,6 +228,26 @@ def test_an_empty_node_list_is_refused_when_the_goal_is_built():
         ObservationGoal([0.0, 0.0], action_bounds=(-1.0, 1.0), info_node=[])
 
 
+@pytest.mark.parametrize("info_node", [b"\x01\x02", bytearray(b"\x01"), "1", {1}])
+def test_info_node_refuses_a_container_that_is_not_a_node_list(info_node):
+    # bytes iterate as ints and would aim at nodes the caller never wrote.
+    with pytest.raises(TypeError, match="info_node"):
+        ObservationGoal([0.0, 0.0], action_bounds=(-1.0, 1.0), info_node=info_node)
+    with pytest.raises(TypeError, match="info_node"):
+        _selector(_backend(_hub_graph()), info_node)
+
+
+def test_a_bad_info_node_is_refused_before_the_partition_is_checked():
+    severed = _backend(_hub_graph(), partition=[[0, 2], [1]])
+    with pytest.raises(TypeError, match="info_node"):
+        _selector(severed, b"\x01")
+
+
+def test_info_node_takes_a_range():
+    goal = ObservationGoal([0.0, 0.0], action_bounds=(-1.0, 1.0), info_node=range(2))
+    assert goal.info_node == (0, 1)
+
+
 def test_info_node_refuses_a_bool():
     # True is an int to Python and would aim at node 1 without a word.
     with pytest.raises(TypeError, match="info_node"):
