@@ -80,7 +80,7 @@ THE DATA FLOW  (top → bottom: what goes in → what comes out)
       ▼    PREDICT    μ⁺ = A·μ + control·a     (action enters HERE only)
       │               Σ⁺ = A·Σ·Aᵀ + Q          (this step's Σ⁺ does not see the action)
       │
-      ▼    SENSE      (C, R) = linearize(μ⁺)   or fixed (model.C, model.R)
+      ▼    SENSE      (C, R) = linearize(μ⁺)   or the model's fixed (C, R)
       │               o⁺ = C·μ⁺
       │               S  = C·Σ⁺·Cᵀ + R         (predicted-obs cov; computed ONCE)
       │
@@ -338,7 +338,7 @@ def _rollout_body(
         # predict-only propagation: rollout fetches its OWN C (the one eval the
         # one-step wrapper never pays), reusing the (Σ⁺, S) r already returned.
         c = (
-            model.C
+            model.observation_matrix
             if model.observation_model is None
             else model.observation_model.linearize(r.mu_pred)[0]
         )
@@ -716,14 +716,16 @@ def _efe_step(
     # posterior this step hands the next one, depend on where the action put the mean.
     # Over a horizon the covariance does move with the policy; only the one-step
     # predicted covariance is blind to it.
-    mu_pred = model.A @ mu + control_matrix @ action
-    process_q = (
-        model.Q
+    mu_pred = model.dynamics_matrix @ mu + control_matrix @ action
+    dynamics_noise = (
+        model.dynamics_noise
         if model.dynamics_noise_model is None
         else model.dynamics_noise_model.noise_at(mu_pred)
     )
 
-    sigma_pred = model.A @ sigma @ model.A.T + process_q  # Σ⁺ = AΣAᵀ + process_q
+    sigma_pred = (
+        model.dynamics_matrix @ sigma @ model.dynamics_matrix.T + dynamics_noise
+    )  # Σ⁺ = AΣAᵀ + dynamics_noise
 
     # --- sense: predicted-observation moments (o⁺, S) + conditional noise R at μ⁺ ---
     # The sensor owns its moment-matching (D1): the kernel never reconstructs o⁺/S.
@@ -733,7 +735,10 @@ def _efe_step(
     if model.observation_model is None:
         # FAST PATH — a bare matvec/matmul, byte-identical to Phase 1A. Kept inline
         # (no method dispatch) so the fixed-sensor hot path stays lean.
-        observation_matrix, observation_noise = model.C, model.R
+        observation_matrix, observation_noise = (
+            model.observation_matrix,
+            model.observation_noise,
+        )
         o_pred = observation_matrix @ mu_pred
         pred_obs_cov = (
             observation_matrix @ sigma_pred @ observation_matrix.T + observation_noise

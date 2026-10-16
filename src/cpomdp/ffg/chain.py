@@ -40,7 +40,7 @@ the protocol bridge, flagged here rather than hidden.
 import jax.numpy as jnp
 from numpy.typing import ArrayLike
 
-from cpomdp._validation import validate_covariance
+from cpomdp._validation import state_dependent, validate_covariance
 from cpomdp.backends.base import _validate_step_inputs
 from cpomdp.ffg._message import CanonicalGaussian, likelihood_message
 from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
@@ -75,14 +75,9 @@ class ChainBackend:
 
         Build the ``GaussianTransition`` (from A, Q) *once* here when it is
         data-independent, and read the fixed (C, R) off the model. Building them per
-        step would burn compute the fixed regime doesn't need (RFC-001). Test
-        fixedness with the ``is_fixed`` flag, not ``is None`` (an
-        ``observation_model`` can be present but fixed, e.g. a ``FixedSensor``),
-        mirroring ``KalmanBackend``::
-
-            fixed = model.observation_model is None or model.observation_model.is_fixed
-            process_fixed = (model.dynamics_noise_model is None
-                             or model.dynamics_noise_model.is_fixed)
+        step would burn compute the fixed regime doesn't need (RFC-001). A side
+        is fixed when its noise object is absent or flagged ``is_fixed``, the test
+        ``KalmanBackend`` makes too. A ``FixedSensor`` is present and fixed.
 
         When a side is *not* fixed, the corresponding factor is left ``None`` here
         and built per step in ``infer_states`` from
@@ -90,20 +85,16 @@ class ChainBackend:
         ``dynamics_noise_model.noise_at(μ⁻)`` instead (ADR-012 amendment
         2026-06-26). This is not just laziness: ``GaussianTransition`` requires Q
         positive-*definite* (it inverts it). Beside a state-dependent
-        ``dynamics_noise_model``, ``model.dynamics_noise`` is a nominal ``Q`` this
-        backend never reads, required only to be positive-*semi*-definite. Front-loading
-        unconditionally would reject a legitimate one.
+        ``dynamics_noise_model``, ``model.dynamics_noise`` is its ``Q`` at the prior
+        mean. This backend never reads it, and it need only be positive-*semi*-definite.
+        Front-loading unconditionally would reject a legitimate one.
 
         Args:
             model: see the class docstring.
         """
         self._model = model
-        self._sensor_fixed = (
-            model.observation_model is None or model.observation_model.is_fixed
-        )
-        self._process_fixed = (
-            model.dynamics_noise_model is None or model.dynamics_noise_model.is_fixed
-        )
+        self._sensor_fixed = state_dependent(model.observation_model) is None
+        self._process_fixed = state_dependent(model.dynamics_noise_model) is None
         self._transition: GaussianTransition | None = (
             GaussianTransition(
                 model.dynamics_matrix, dynamics_noise=model.dynamics_noise

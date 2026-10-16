@@ -676,7 +676,7 @@ class TestCouplingGraphValidation:
         copied = round_trip(graph)
         assert sorted(copied.observations) == [1]
         with pytest.raises(TypeError):
-            copied.observations[7] = sensor  # ty: ignore[invalid-assignment]
+            copied.observations[7] = sensor
 
     def test_rejects_an_observation_that_is_not_a_sensor(self):
         # A bare matrix used to construct and fail at the first filter step.
