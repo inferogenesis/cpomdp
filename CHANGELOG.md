@@ -742,8 +742,8 @@ certainty equivalence is optimal, and no use of the readings beats it.
   again, and now call it. `ModelStructure.validate` skipped its `Q` check beside any
   `dynamics_noise_model`, and now skips it only beside a state-dependent one.
 - `LinearGaussianModel`'s `dynamics_noise` is optional when a `dynamics_noise_model` is
-  given, on the rule `observation_noise` follows. Omitted, it is the process noise's `Q`
-  at `prior.mean` (ADR-065). With no process-noise object the field is still required.
+  given, on the rule `observation_noise` follows. Omitted, it is the dynamics noise's `Q`
+  at `prior.mean` (ADR-065). With no dynamics-noise object the field is still required.
 - `ModelSpec` takes `observation_noise` and `dynamics_noise` as `None` beside the
   matching noise object and passes the `None` to the model, which derives the value
   (ADR-066). A perturbation naming a noise the spec leaves out is refused, as one naming

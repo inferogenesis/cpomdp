@@ -7,6 +7,7 @@ refuses it and names the route that keeps the couplings.
 """
 
 import dataclasses
+from typing import cast
 
 import jax
 import jax.numpy as jnp
@@ -224,3 +225,54 @@ def test_a_custom_selector_is_not_checked_whatever_it_calls_model():
             return jnp.zeros(1)
 
     Agent(true_model, Preference(jnp.zeros(2)), selector=NominalPlanner())
+
+
+def _coupled_backend_with_leaf_noise(leaf_noise):
+    graph = CouplingGraph(
+        dims=(1, 1),
+        couplings=(Coupling(0, 1, [[0.8]], coupling_noise=[[0.05]]),),
+        observation_models={
+            0: CallableSensor([[1.0]], _sharp_near_zero, ()),
+            1: FixedSensor([[1.0]], observation_noise=[[leaf_noise]]),
+        },
+    )
+    transitions = (
+        GaussianTransition([[0.9]], dynamics_noise=[[0.1]]),
+        GaussianTransition([[0.9]], dynamics_noise=[[0.1]]),
+    )
+    return CouplingGraphBackend(
+        graph, transitions, prior=unit_prior(graph), control_matrix=[[1.0], [0.0]]
+    )
+
+
+def test_a_driver_over_a_graph_with_another_leaf_sensor_is_refused():
+    # The interface model stacks every node's sensor, so a leaf's noise is compared.
+    agent_graph = _coupled_backend_with_leaf_noise(0.1)
+    other_graph = _coupled_backend_with_leaf_noise(0.5)
+    with pytest.raises(ValueError, match="another"):
+        Agent.from_backend(
+            agent_graph, Preference(jnp.zeros(2)), selector=_driver_over(other_graph)
+        )
+
+
+class _OpaqueGraph:
+    """A graph backend the Agent cannot see the couplings of."""
+
+    def __init__(self, inner):
+        self._inner = inner
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
+def test_an_opaque_graph_backend_is_matched_by_identity():
+    # Its couplings cannot be read, so only the same backend object passes.
+    first = cast("CouplingGraphBackend", _OpaqueGraph(_coupled_backend(0.05)))
+    second = cast("CouplingGraphBackend", _OpaqueGraph(_coupled_backend(0.05)))
+    selector = _driver_over(first)
+    assert (
+        Agent.from_backend(first, Preference(jnp.zeros(2)), selector=selector).selector
+        is selector
+    )
+    with pytest.raises(ValueError, match="same graph backend"):
+        Agent.from_backend(second, Preference(jnp.zeros(2)), selector=selector)

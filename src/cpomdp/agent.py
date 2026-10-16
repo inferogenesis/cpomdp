@@ -82,7 +82,8 @@ def _preference_for_selector(
     if _scores_another_plant(selector, backend):
         raise ValueError(
             f"this {type(selector).__name__} was built for another model or graph. The "
-            "Agent filters under its own, so build the selector from the same one."
+            "Agent filters under its own, so build the selector from the same model, "
+            "or over the same graph backend."
         )
     if isinstance(selector, _STATE_SPACE_SELECTORS):
         space, length = "a state", model.n_states
@@ -126,13 +127,21 @@ _BUILT_IN_SELECTORS = (*_STATE_SPACE_SELECTORS, *_OBSERVATION_SPACE_SELECTORS)
 _GRAPH_SCORED_SELECTORS = (FFGEFESelector, RecedingHorizonSelector, OpenLoopSelector)
 
 
+def _equal_unless_traced(first: ArrayLike, second: ArrayLike) -> bool:
+    """Whether two arrays are equal. A traced one cannot be read, so counts as equal."""
+    first_value, second_value = concrete(first), concrete(second)
+    if first_value is None or second_value is None:
+        return True
+    return bool(np.array_equal(first_value, second_value))
+
+
 def _same_couplings(first: CouplingGraphBackend, second: CouplingGraphBackend) -> bool:
     """Whether two graph backends' edges join the same nodes with equal factors."""
     first_edges, second_edges = first.graph.couplings, second.graph.couplings
     return len(first_edges) == len(second_edges) and all(
         (a.parent, a.child) == (b.parent, b.child)
-        and np.array_equal(a.coupling_matrix, b.coupling_matrix)
-        and np.array_equal(a.coupling_noise, b.coupling_noise)
+        and _equal_unless_traced(a.coupling_matrix, b.coupling_matrix)
+        and _equal_unless_traced(a.coupling_noise, b.coupling_noise)
         for a, b in zip(first_edges, second_edges, strict=True)
     )
 
@@ -141,8 +150,10 @@ def _scores_another_plant(selector: ActionSelector, backend: InferenceBackend) -
     """Whether a built-in selector scores a different plant from ``backend``'s.
 
     A custom selector is not checked (ADR-080). A graph-scored selector compares the
-    backend it scores on, its interface model and its couplings, since the couplings
-    are part of the plant and the interface model leaves them out.
+    backend it scores on: the same object passes, and a ``CouplingGraphBackend`` with an
+    equal interface model and equal couplings passes too, since the couplings are part
+    of the plant and the interface model leaves them out. Any other graph backend's
+    couplings cannot be read, so it passes only as the same object.
     """
     if not isinstance(selector, _BUILT_IN_SELECTORS):
         return False
