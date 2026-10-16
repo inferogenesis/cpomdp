@@ -397,3 +397,16 @@ class TestStateDependentSelection:
         np.testing.assert_allclose(
             np.asarray(sel.select(belief, pref)), np.asarray(full_action), atol=1e-7
         )
+
+
+def test_the_graph_selector_refuses_a_goal_in_place_of_a_preference():
+    # The same check the EFE functions make, so a goal cannot reach the scorer.
+    from types import SimpleNamespace
+
+    backend = _two_node_backend()
+    selector = FfgEfeSelector(
+        backend, info_block=range(2), n_candidates=5, action_bounds=(-2.0, 2.0)
+    )
+    stand_in = SimpleNamespace(goal=jnp.array([0.5]), precision=jnp.eye(1))
+    with pytest.raises(TypeError, match="Preference"):
+        selector.select(backend.model.prior, stand_in)  # ty: ignore[invalid-argument-type]

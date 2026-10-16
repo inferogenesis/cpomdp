@@ -136,7 +136,7 @@ class EfeResult(NamedTuple):
     A ``NamedTuple`` is a JAX pytree with no registration, so a ``vmap`` over
     candidate actions returns one record with every field batched. Rank the batch by
     its ``g``, as ``jnp.argmin(batch.g)``. NumPy's ``argmin`` on the record itself
-    flattens all three fields together and returns an index past the candidates.
+    flattens all three fields together and can return an index past the candidates.
 
     Differentiate ``g`` too. Three fields are not the ``(value, aux)`` pair that
     ``jax.value_and_grad(..., has_aux=True)`` expects, so a function differentiated

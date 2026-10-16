@@ -16,6 +16,7 @@ from cpomdp.control import LQRController
 from cpomdp.efe import (
     _checked_info_block,
     _ffg_efe_step,
+    _goal_and_precision,
     expected_free_energy,
     policy_efe,
 )
@@ -326,6 +327,7 @@ class FfgEfeSelector:
         ``μ⁺`` per candidate — constant under a fixed sensor, action-dependent under
         ``R(x)`` (the dual effect). This is the RFC-001 hot path; keep it lean.
         """
+        goal, precision = _goal_and_precision(preference)
 
         def g_of(action: Float64[Array, "p"]) -> Float64[Array, ""]:
             predicted = self._backend.predicted_belief(belief, action)  # μ⁺, Σ⁺
@@ -337,8 +339,8 @@ class FfgEfeSelector:
                 predicted.cov,
                 self._observation_matrix,
                 observation_noise,
-                preference.goal,
-                preference.precision,
+                goal,
+                precision,
                 self._target,
             ).g
 
