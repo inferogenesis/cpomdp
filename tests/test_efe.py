@@ -11,6 +11,8 @@ pragmatic form is correct — that is rfcs/004's job; the fixed-sensor collapse 
 is satisfied by all three candidate forms.
 """
 
+from types import SimpleNamespace
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -176,17 +178,48 @@ class TestTheGoalAUserHolds:
     )
     def test_a_whole_goal_is_refused_naming_its_preference(self, score, action):
         goal = ObservationGoal([1.0], action_bounds=(-1.0, 1.0))
-        with pytest.raises(TypeError, match=r"goal\.preference"):
+        with pytest.raises(TypeError, match=r"Pass its \.preference") as refusal:
             score(_model(), _belief(), action, goal)
+        # The selectors and searches reach the same check, so it names no caller.
+        assert score.__name__ not in str(refusal.value)
 
-    def test_a_state_goal_is_refused_as_the_wrong_space(self):
-        with pytest.raises(TypeError, match="state"):
-            expected_free_energy(
-                _model(),
-                _belief(),
-                jnp.array([0.4]),
-                StateGoal([1.0, 0.0]),  # ty: ignore[invalid-argument-type]
-            )
+
+class TestWhatIsNotAPreference:
+    """Anything but a ``Preference`` is refused with how to build one."""
+
+    def _score(self, preference):
+        return expected_free_energy(_model(), _belief(), jnp.array([0.4]), preference)
+
+    def test_a_state_goal_is_refused_with_a_preference_over_readings(self):
+        with pytest.raises(TypeError, match=r"Preference\(C @ target\)") as refusal:
+            self._score(StateGoal([1.0, 0.0]))
+        assert "target is a state" in str(refusal.value)
+        assert ".preference" not in str(refusal.value)  # a StateGoal has none
+
+    @pytest.mark.parametrize(
+        "bare",
+        [jnp.array([1.0]), np.array([1.0]), [1.0], ([1.0], [[2.0]])],
+        ids=["jax-array", "numpy-array", "list", "goal-precision-pair"],
+    )
+    def test_a_bare_goal_vector_is_refused_with_how_to_wrap_it(self, bare):
+        with pytest.raises(
+            TypeError, match=r"Preference\(reading, precision\)"
+        ) as refusal:
+            self._score(bare)
+        assert "ArrayImpl" not in str(refusal.value)
+
+    def test_anything_else_is_refused_by_its_type(self):
+        with pytest.raises(TypeError, match="a value of type NoneType"):
+            self._score(None)
+        look_alike = SimpleNamespace(goal=jnp.array([1.0]), precision=jnp.eye(1))
+        with pytest.raises(TypeError, match="a value of type SimpleNamespace"):
+            self._score(look_alike)
+
+    def test_a_fault_inside_a_preference_surfaces_as_itself(self):
+        missing_its_goal = object.__new__(Preference)
+        object.__setattr__(missing_its_goal, "precision", jnp.eye(1))
+        with pytest.raises(AttributeError):
+            self._score(missing_its_goal)
 
 
 class TestCollapseUnderFixedSensor:

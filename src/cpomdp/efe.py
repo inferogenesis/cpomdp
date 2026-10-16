@@ -105,11 +105,11 @@ from cpomdp.backends.base import InadmissiblePartitionError
 from cpomdp.types import Belief, LinearGaussianModel
 
 if TYPE_CHECKING:
-    # Type-only imports: the kernel reads preference.goal/.precision and the backend's
-    # predict/observation methods by duck-typing, so it does NOT depend on selection or
-    # on a backend at runtime. Its one runtime import from the backends package is the
-    # exception the graph rollouts raise, and `backends.base` imports nothing that
-    # imports this module, so EFESelector / FfgEfeSelector import it without a cycle.
+    # Type-only imports. The kernel reads the backend's predict/observation methods by
+    # duck-typing, so it does not depend on a backend at runtime. Its one runtime import
+    # from the backends package is the exception the graph rollouts raise, and
+    # `backends.base` imports nothing that imports this module. selection imports this
+    # module, so `_goal_and_precision` reads `Preference` at call time.
     from cpomdp.backends.base import EfeBackend
     from cpomdp.selection import Preference
 
@@ -241,7 +241,7 @@ def expected_free_energy(
 
     Raises:
         ValueError: If the model has no control matrix.
-        TypeError: If ``preference`` is a goal rather than its ``Preference``.
+        TypeError: If ``preference`` is not a [`Preference`][cpomdp.Preference].
     """
     if model.control_matrix is None:
         raise ValueError(
@@ -249,7 +249,7 @@ def expected_free_energy(
             "has no effect on a control-free (pure-tracking) model."
         )
     control_matrix = model.control_matrix  # narrowed to Array by the guard above
-    goal, precision = _goal_and_precision(preference, "expected_free_energy")
+    goal, precision = _goal_and_precision(preference)
     action = jnp.asarray(action, dtype=float)
     step = _efe_step(
         model,
@@ -293,7 +293,7 @@ def policy_efe(
 
     Raises:
         ValueError: If the model has no control matrix.
-        TypeError: If ``preference`` is a goal rather than its ``Preference``.
+        TypeError: If ``preference`` is not a [`Preference`][cpomdp.Preference].
     """
     if model.control_matrix is None:
         raise ValueError(
@@ -301,7 +301,7 @@ def policy_efe(
             "effect on a control-free (pure-tracking) model."
         )
     control_matrix = model.control_matrix
-    goal, precision = _goal_and_precision(preference, "policy_efe")
+    goal, precision = _goal_and_precision(preference)
     policy = jnp.asarray(policy, dtype=float)
     body = _rollout_body(model, control_matrix, goal, precision)
 
@@ -356,7 +356,7 @@ def policy_efe_trace(
 
     Raises:
         ValueError: If the model has no control matrix.
-        TypeError: If ``preference`` is a goal rather than its ``Preference``.
+        TypeError: If ``preference`` is not a [`Preference`][cpomdp.Preference].
     """
     if model.control_matrix is None:
         raise ValueError(
@@ -364,7 +364,7 @@ def policy_efe_trace(
             "effect on a control-free (pure-tracking) model."
         )
     control_matrix = model.control_matrix
-    goal, precision = _goal_and_precision(preference, "policy_efe_trace")
+    goal, precision = _goal_and_precision(preference)
     policy = jnp.asarray(policy, dtype=float)
     body = _rollout_body(model, control_matrix, goal, precision)
 
@@ -459,7 +459,7 @@ def policy_efe_ffg(
             EFE-load-bearing edge.
         ValueError: If ``info_block`` is empty, repeats an index, or names an index
             outside the joint state.
-        TypeError: If ``preference`` is a goal rather than its ``Preference``.
+        TypeError: If ``preference`` is not a [`Preference`][cpomdp.Preference].
     """
     return _policy_efe_ffg(
         backend, belief, policy, preference, _checked_info_block(backend, info_block)
@@ -478,7 +478,7 @@ def _policy_efe_ffg(
     A search checks its target once at construction and then scores every policy in
     the set, so the per-policy call skips the host-side check.
     """
-    goal, precision = _goal_and_precision(preference, "policy_efe_ffg")
+    goal, precision = _goal_and_precision(preference)
     policy = jnp.asarray(policy, dtype=float)
     body = _ffg_rollout_body(backend, goal, precision, info_block)
 
@@ -530,9 +530,9 @@ def policy_efe_ffg_trace(
             EFE-load-bearing edge.
         ValueError: If ``info_block`` is empty, repeats an index, or names an index
             outside the joint state.
-        TypeError: If ``preference`` is a goal rather than its ``Preference``.
+        TypeError: If ``preference`` is not a [`Preference`][cpomdp.Preference].
     """
-    goal, precision = _goal_and_precision(preference, "policy_efe_ffg_trace")
+    goal, precision = _goal_and_precision(preference)
     policy = jnp.asarray(policy, dtype=float)
     checked = _checked_info_block(backend, info_block)
     body = _ffg_rollout_body(backend, goal, precision, checked)
@@ -542,39 +542,50 @@ def policy_efe_ffg_trace(
 
 
 def _goal_and_precision(
-    preference: "Preference", caller: str
+    preference: "Preference",
 ) -> tuple[Float64[Array, "m"], Float64[Array, "m m"]]:
     """The two fields a score reads off ``preference``, or a refusal naming the fix.
 
-    Read by attribute, so any preference with a ``goal`` and a ``precision`` scores,
-    and the read adds nothing to a call that succeeds. A goal object has neither. An
-    ``ObservationGoal`` carries search settings a score never reads, and a
-    ``StateGoal`` aims at a state, so each is refused with what to pass instead.
+    Anything but a ``Preference`` is refused, and a field missing from one surfaces as
+    its own error. Under ``jit`` and ``vmap`` the check runs once, at trace time.
     """
-    try:
-        return preference.goal, preference.precision
-    except AttributeError:
-        raise TypeError(_not_a_preference(preference, caller)) from None
+    # selection imports this module, so the type is read at call time.
+    from cpomdp.selection import Preference
+
+    if not isinstance(preference, Preference):
+        raise TypeError(_not_a_preference(preference))
+    return preference.goal, preference.precision
 
 
-def _not_a_preference(given: object, caller: str) -> str:
-    """The refusal for ``given``, naming the ``Preference`` to pass in its place."""
-    # selection imports this module, so its goal types are read only on the way out.
+_SCORED_AGAINST = "Expected free energy is scored against a Preference."
+
+
+def _not_a_preference(given: object) -> str:
+    """The refusal for ``given``, naming the ``Preference`` to pass in its place.
+
+    The selectors and searches reach the same check, so it names no caller.
+    """
     from cpomdp.selection import ObservationGoal, StateGoal
 
     if isinstance(given, ObservationGoal):
         return (
-            f"{caller} scores against a Preference and was given an ObservationGoal. "
-            "Pass goal.preference, which carries its target and precision and leaves "
-            "its search settings behind."
+            f"{_SCORED_AGAINST} This is an ObservationGoal. Pass its .preference, "
+            "which keeps the target and precision and leaves the search settings "
+            "behind."
         )
     if isinstance(given, StateGoal):
         return (
-            f"{caller} scores a predicted observation, and a StateGoal's target is a "
-            "state. Pass an ObservationGoal's goal.preference, whose target is a "
-            "reading."
+            "Expected free energy is scored against a Preference over readings. This "
+            "is a StateGoal, whose target is a state. Pass a Preference over the "
+            "reading you want, such as Preference(C @ target) for a fixed sensor with "
+            "observation matrix C."
         )
-    return f"{caller} scores against a Preference, not a {type(given).__name__}."
+    if isinstance(given, (list, tuple, int, float)) or hasattr(given, "__array__"):
+        return (
+            f"{_SCORED_AGAINST} This is a bare array or sequence. Wrap the preferred "
+            "reading as Preference(reading, precision)."
+        )
+    return f"{_SCORED_AGAINST} This is a value of type {type(given).__name__}."
 
 
 def _checked_info_block(
