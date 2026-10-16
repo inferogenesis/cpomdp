@@ -190,12 +190,12 @@ class TestFfgRolloutAtMultiDimAction:
         g, parts = policy_efe_ffg(backend, belief, policy, pref, info_block=info_block)
 
         predicted = backend.predicted_belief(belief, policy[0])
-        observation_matrix, _ = backend.observation_model
+        observation_matrix = backend.model.observation_matrix
         g_ref, parts_ref = _ffg_efe_step(
             predicted.mean,
             predicted.cov,
             observation_matrix,
-            backend.observation_noise_at(predicted.mean),
+            backend.model.observation_noise_at(predicted.mean),
             pref.goal,
             pref.precision,
             info_block,
@@ -470,7 +470,7 @@ class TestEnumerationCostPricesTheRealJoint:
         action_set = cue_maze.axis_action_set(n_dims)
         backend = cue_maze.build_maze(n_dims, context_dim=context_dim)
         priced = _priced_joint_width(action_set, 2, n_dims, context_dim)
-        assert priced == backend.n_total
+        assert priced == backend.model.n_states
 
     def test_a_wider_context_is_charged_for(self):
         # The regression itself: a hardcoded `1 + 2·n_dims` returns the same estimate at

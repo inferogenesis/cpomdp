@@ -195,7 +195,10 @@ class FixedNoiseLikelihood:
     def _validate(self) -> None:
         _validate_observation_matrix(self.observation_matrix)
         validate_covariance(
-            self.observation_noise, "observation_noise", require_definite=True
+            self.observation_noise,
+            "observation_noise",
+            require_definite=True,
+            reason="the density is evaluated through its Cholesky factor",
         )
         m = self.observation_matrix.shape[0]
         if self.observation_noise.shape != (m, m):

@@ -7,7 +7,7 @@ from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
 from cpomdp._validation import equilibrium_drift, state_dependent
-from cpomdp.backends.base import EfeBackend, InferenceBackend
+from cpomdp.backends.base import GraphBackend, InferenceBackend
 from cpomdp.backends.kalman import KalmanBackend
 from cpomdp.control import LQRController
 from cpomdp.enumeration import OpenLoopSelector, RecedingHorizonSelector
@@ -313,7 +313,7 @@ class Agent:
                     "and an ObservationGoal's target is an observation. Pass a "
                     "StateGoal for the LQR path, or an EFE selector."
                 )
-            is_ffg = isinstance(self._backend, EfeBackend)
+            is_ffg = isinstance(self._backend, GraphBackend)
             if sensor_is_fixed and selector is None and not is_ffg:
                 raise ValueError(
                     "an ObservationGoal on a fixed sensor is output regulation "
@@ -359,22 +359,16 @@ class Agent:
         its joint-state block and hand it to the ``FfgEfeSelector``.
         """
         backend = self._backend
-        assert isinstance(backend, EfeBackend)  # only built for the FFG path
+        assert isinstance(backend, GraphBackend)  # only built for the FFG path
         if objective.horizon not in (None, 1):
             raise ValueError(
                 "H-step EFE on the FFG backend is deferred; ObservationGoal.horizon "
                 "must be 1 with a CouplingGraphBackend."
             )
         if objective.info_node is None:
-            info_block: range = range(backend.n_total)  # whole-state info gain
+            info_block = range(backend.model.n_states)  # whole-state info gain
         else:
-            n_nodes = len(backend.dims)
-            if not 0 <= objective.info_node < n_nodes:
-                raise ValueError(
-                    f"info_node {objective.info_node} is not a node index "
-                    f"(0..{n_nodes - 1})."
-                )
-            info_block = backend.block(objective.info_node)
+            info_block = backend.block(objective.info_node)  # refuses a stray node
         return FfgEfeSelector(
             backend,
             info_block=info_block,

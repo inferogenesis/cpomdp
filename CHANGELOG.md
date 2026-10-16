@@ -56,6 +56,15 @@ certainty equivalence is optimal, and no use of the readings beats it.
 - `LQRController` and `InadmissiblePartitionError` are exported at the top level, and
   each has an API page. `LQRSelector` cannot be built without the first, and the graph
   EFE selector raises the second (ADR-069).
+- `CouplingGraphBackend.stack_observations` takes one step's readings keyed by node, the
+  form `CouplingGraph.infer` takes, and returns the vector `infer_states` takes. It
+  refuses a missing node, a node with no sensor and a reading of the wrong width. The
+  vector's ascending node order lived in a private layout, so readings of one width
+  stacked in a dict's insertion order filtered each node against another's reading.
+- `LinearGaussianModel.observation_noise_at(state)` reads R at a state on any model. A
+  model with no sensor or a fixed one returns `observation_noise`. A state-dependent
+  sensor is linearized at `state`. The graph EFE paths and `probe_model` read R through
+  it (ADR-071).
 - `cpomdp._lab.harness` — a world and an agent held apart, so what an agent's model gets
   wrong about the process is a measurable quantity rather than zero by construction.
   `World` runs the process and hands out observations, exposing no accessor that returns
@@ -405,6 +414,25 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `C` on a two-dimensional node used to construct, and `CouplingGraphBackend` broadcast
   it across the node's block, so the sensor read the sum of the node's components and
   the filter returned a plausible posterior from the wrong model.
+- `CouplingGraphBackend.block` and `marginal` refuse a node outside the graph and name
+  the valid range. `block(-1)` returned an empty range, so an epistemic term aimed at it
+  scored zero. `marginal(-1, belief)` failed inside a reduction, and `block(5)` on five
+  nodes raised a bare `IndexError`.
+- `CouplingGraphBackend` cuts a prior by its partition before it filters from it, on
+  every surface. Under an all-singleton partition `infer_states` kept only each node's
+  own block of a correlated prior. `rollout`, `partition_error` and `predicted_belief`
+  used all of it. So the run profile measured a filter `infer_states` never ran, and the
+  EFE predicted from correlation the filter dropped. The full-joint partition is
+  unchanged (ADR-071).
+- Every refusal of a covariance that is not positive-definite gave one reason, "a
+  noiseless or degenerate sensor sends the information gain to infinity". A
+  semi-definite `dynamics_noise` on a `GaussianTransition` or `coupling_noise` on a
+  `GaussianCoupling` was blamed on a sensor the caller never passed. Each refusal now
+  gives its own caller's reason. An FFG factor's says its information form inverts the
+  matrix. A sensor's R keeps the information-gain reason, and the harness says it draws
+  the reading through a Cholesky factor. The graph path still needs a definite Q where
+  the flat model accepts a semi-definite one, because its transition factor inverts Q,
+  and `CouplingGraphBackend` says so.
 - The graph EFE rollouts and searches skipped the checks `FfgEfeSelector` makes on its
   target. `policy_efe_ffg`, `policy_efe_ffg_trace`, the crossover statistic and both
   searches' `over_backend` scored on a carry partition that severs an EFE-load-bearing
@@ -469,6 +497,12 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `cpomdp.backends.base` and `cpomdp.backends.rxinfer`. The first is the shape check the
   built-in backends share and the second is the RxInfer test oracle, and a cpomdp user
   calls neither (ADR-069). `import cpomdp` no longer leaves `cpomdp.jax` behind.
+- **Breaking:** `ChainBackend` is private, at `cpomdp.ffg._chain`. v0.4.4 published it at
+  `cpomdp.ffg.chain`. It returns `KalmanBackend`'s numbers at two extra inversions per
+  step and exists to show that the message algebra is the Kalman filter on a chain,
+  which `tests/test_ffg_chain.py` holds it to. Filter with `KalmanBackend`. The
+  flagship example's agreement check between the two moves into that test file, on the
+  same model and the same scripted inputs (ADR-069).
 - **Breaking:** a *fixed* `observation_model` or `dynamics_noise_model` must now restate
   the model's `observation_noise` / `dynamics_noise` exactly, and a sensor's linearized
   observation matrix must equal `observation_matrix`. `LinearGaussianModel` previously
@@ -556,9 +590,8 @@ certainty equivalence is optimal, and no use of the readings beats it.
   scheme is a question the caller has to answer each time. `GaussianTransition.dynamics`
   and the `CouplingGraphBackend(control=...)` argument move with it, as do the demo
   constants (`SENSOR` is `OBSERVATION_MATRIX`, `PROCESS_NOISE` is `DYNAMICS_NOISE`).
-  `LinearGaussianModel.observation_model` and `InferenceBackend.observation_model()` now
-  share a name on two classes: the field holds the declaration, the method returns the
-  `(C, R)` it resolves to. The `.A`/`.B`/`.C`/`.Q`/`.R` aliases are unchanged, and no
+  `LinearGaussianModel.observation_model` holds the declaration, and no backend carries a
+  member of the same name. The `.A`/`.B`/`.C`/`.Q`/`.R` aliases are unchanged, and no
   numerical behaviour moved.
 - **Breaking:** the epistemic term's aim is named `info_node` and `info_block`, not
   `target`. `target` carried two unrelated types on exported API: a desired value
@@ -603,6 +636,44 @@ certainty equivalence is optimal, and no use of the readings beats it.
   an `Agent` built on the backend planned and filtered from a belief the caller never
   chose, and `to_flat_model()` carried the same placeholder. The flagship example
   overwrote `agent.belief` to work around it. Pass the starting belief at construction.
+- **Breaking:** `CouplingGraphBackend` has one name for each size it knows. `n_total` is
+  `backend.model.n_states`, `dims` is `backend.graph.dims` and `n_observations` is
+  `backend.model.n_observations`. Each was the same number under a second name, and
+  `n_total` was the only place the joint width was not called `n_states`. The `Agent`
+  leaves an `info_node` range check to `backend.block`, which names the valid nodes.
+- **Breaking:** `CouplingGraphBackend.observation_model` is removed. It returned `(C, R)`
+  with R linearized at zero, so under a state-dependent sensor it handed out `R(0)` as the
+  noise the EFE reads. On the same object `backend.model.observation_model` was a sensor.
+  Read C as `backend.model.observation_matrix`, as on every backend, and R at a mean as
+  `backend.model.observation_noise_at(mean)`. Under a state-dependent sensor
+  `backend.model.observation_noise` is now R at the prior mean, the rule every flat model
+  follows (ADR-064). It was R at zero.
+- **Breaking:** `CouplingGraphBackend.observation_noise_at(mean)` is
+  `backend.model.observation_noise_at(mean)`, an accessor every `LinearGaussianModel`
+  now has. C was read off the model and R off the backend, so code reading R at a mean
+  over a flat and a graph backend branched on which it held. A fixed graph's model
+  returns the R built at construction, so nothing is rebuilt per call (ADR-071).
+- **Breaking:** one protocol describes a graph backend, `GraphBackend` in
+  `cpomdp.backends.base`. It was `EfeBackend`, a name that suggested `KalmanBackend`
+  cannot score EFE, and `cpomdp.diagnostics.ProbeBackend` restated part of it for
+  `probe_model`. `ProbeBackend` is removed, and `probe_model` takes a
+  `CouplingGraphBackend` as before. `GraphBackend` declares no `dims`, `n_total` or
+  `observation_model`, which the entries above retire. Like `EfeBackend` before it, it
+  carries no promise (ADR-069).
+- **Breaking:** `CouplingGraphBackend.partition_error` is `severed_mass`, the name its
+  docstring and its second output already used. `rollout` is `filter_sequence`. Elsewhere
+  a rollout is the H-step policy rollout the EFE scores, and this one filters. It takes
+  `(observations, prior, actions)`, the order `infer_states` takes, where it put the
+  prior first. It returns `(means, covs, severed_mass)` as arrays. The `Belief` it
+  returned had a time axis on its mean, which broke `Belief`'s invariant, and the
+  backend's own `marginal` refused it. It now checks the prior and the width of each
+  stack before it scans.
+- **Breaking:** `CouplingGraphBackend.readout` and its `readout_node` argument are
+  removed. `readout(belief)` was `marginal(readout_node, belief)`, and the argument did
+  nothing else. Read any node, the root included, with `marginal(node, belief)`.
+- **Breaking:** `CouplingGraphBackend.graph` and `transitions` are read-only, as `model`
+  already was. The model and the factors are built from them at construction, so an
+  assignment left both describing the old graph. Build a new backend instead.
 - **Breaking:** every `LinearGaussianModel` argument after `dynamics` is keyword-only.
   The four matrices are two maps and two covariances of the same rank, and only the
   covariances are content-checked, so a transposed pair constructed in silence whenever
@@ -617,9 +688,8 @@ certainty equivalence is optimal, and no use of the readings beats it.
   `_JointObservation` and `epistemic_value`. C is the *observation matrix* in the same
   literature that gives R its name, so the two halves of the measurement equation now
   read from one vocabulary. C is not `observation_model`: that name means the whole
-  `(C, R)` channel, both on `InferenceBackend.observation_model()` and on the model field
-  the entry above renames. The 2026-06-13 sketch wanted plain `observation` for C, which the state-
-  dependent sensor field later claimed. The `.C` alias is unchanged, and no numerical
+  channel, the model field the entry above renames. The 2026-06-13 sketch wanted plain
+  `observation` for C, which the state-dependent sensor field later claimed. The `.C` alias is unchanged, and no numerical
   behaviour moved.
 - **Breaking:** `sensor_noise` is now `observation_noise`, on `LinearGaussianModel`,
   `FixedSensor`, `CallableSensor`, the FFG observation factors and `epistemic_value`.

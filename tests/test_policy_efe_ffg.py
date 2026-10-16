@@ -156,8 +156,8 @@ class TestFfgH1ReducesToFfgEfeStep:
         g, parts = policy_efe_ffg(backend, belief, policy, pref, info_block=info_block)
 
         predicted = backend.predicted_belief(belief, policy[0])
-        observation_noise = backend.observation_noise_at(predicted.mean)
-        observation_matrix, _ = backend.observation_model
+        observation_noise = backend.model.observation_noise_at(predicted.mean)
+        observation_matrix = backend.model.observation_matrix
         g_ref, parts_ref = _ffg_efe_step(
             predicted.mean,
             predicted.cov,
@@ -224,7 +224,7 @@ class TestFfgTraceShape:
         assert trace.g.shape == (3,)
         assert trace.pragmatic.shape == (3,)
         assert trace.epistemic.shape == (3,)
-        assert trace.mu_pred.shape == (3, 2)  # n_total = 2
+        assert trace.mu_pred.shape == (3, 2)  # n = 2
         assert trace.sigma_pred.shape == (3, 2, 2)
         assert trace.sigma_post.shape == (3, 2, 2)
         assert trace.s.shape == (3, 1, 1)  # m = 1 (one observed channel)

@@ -45,11 +45,9 @@ reachable state". A negative is evidence, not proof.
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, cast
 
-import jax
 import numpy as np
-from jaxtyping import Float64
 from numpy.typing import ArrayLike
 
 from cpomdp._validation import validate_covariance
@@ -58,37 +56,12 @@ if TYPE_CHECKING:
     # Annotation-only: every diagnostic here reads its argument's fields by duck typing,
     # so diagnostics depends on none of these at runtime (they already depend on nothing
     # here). Keeps the dependency one-way.
+    from cpomdp.backends.base import GraphBackend
     from cpomdp.efe import PolicyEfeTrace
     from cpomdp.types import Belief, LinearGaussianModel
 
 
-class ProbeBackend(Protocol):
-    """The three members [`probe_model`][cpomdp.probe_model] reads off a graph backend.
-
-    Structural rather than a name, because three members is what the function requires.
-    Any backend growing them works, and the diagnostic keeps its one-way dependency on
-    the backends package. [`CouplingGraphBackend`][cpomdp.CouplingGraphBackend]
-    satisfies it.
-    """
-
-    @property
-    def observation_model(self) -> tuple[jax.Array, jax.Array]:
-        """``(C, R)`` over the joint state."""
-        ...
-
-    def predicted_belief(
-        self, prior: "Belief", action: ArrayLike | None = None
-    ) -> "Belief":
-        """The belief one prediction step ahead under ``action``."""
-        ...
-
-    def observation_noise_at(self, mean: ArrayLike) -> Float64[jax.Array, "m m"]:
-        """The stacked ``R`` linearized at a predicted mean."""
-        ...
-
-
 __all__ = [
-    "ProbeBackend",
     "RolloutConditioning",
     "SensorReport",
     "epistemic_value",
@@ -258,15 +231,6 @@ class SensorReport:
         return self.summary()
 
 
-def _linearizations(
-    observation, observation_matrix: np.ndarray, means: np.ndarray
-) -> list[np.ndarray]:
-    """Each mean's noise covariance, read through whatever the caller supplied."""
-    if observation is None:  # a fixed sensor carries no per-state noise
-        return []
-    return [np.asarray(observation.linearize(mu)[1], dtype=float) for mu in means]
-
-
 def _process_noises(
     process, dynamics_noise: ArrayLike, means: np.ndarray
 ) -> list[np.ndarray]:
@@ -302,7 +266,7 @@ def _spread(matrices: list[np.ndarray]) -> float:
 
 
 def probe_model(
-    model: "LinearGaussianModel | ProbeBackend",
+    model: "LinearGaussianModel | GraphBackend",
     belief: "Belief",
     actions: Sequence[ArrayLike],
     *,
@@ -318,9 +282,8 @@ def probe_model(
 
     Args:
         model: a [`LinearGaussianModel`][cpomdp.LinearGaussianModel], or a backend
-            exposing ``predicted_belief`` / ``observation_noise_at`` /
-            ``observation_model`` ([`CouplingGraphBackend`][cpomdp.CouplingGraphBackend]
-            does).
+            exposing ``model`` and ``predicted_belief``
+            ([`CouplingGraphBackend`][cpomdp.CouplingGraphBackend] does).
         belief: the belief to predict from — the shared prior every action starts at.
         actions: the candidate actions to sample.
         tol: below this, two noise covariances or two epistemic values count as equal.
@@ -336,17 +299,14 @@ def probe_model(
         raise ValueError("probe_model needs at least one action to predict under.")
 
     if hasattr(model, "predicted_belief"):  # a graph backend
-        backend = cast("ProbeBackend", model)
-        observation_matrix = np.asarray(backend.observation_model[0], dtype=float)
+        backend = cast("GraphBackend", model)
+        sensor_model = backend.model
         predicted = [backend.predicted_belief(belief, np.asarray(a)) for a in actions]
         means = np.asarray([np.asarray(p.mean, dtype=float) for p in predicted])
         covs = [np.asarray(p.cov, dtype=float) for p in predicted]
-        noises = [
-            np.asarray(backend.observation_noise_at(mu), dtype=float) for mu in means
-        ]
         process_spread = 0.0  # the graph's transitions carry a fixed Q
     else:  # a flat LinearGaussianModel
-        observation_matrix = np.asarray(model.observation_matrix, dtype=float)
+        sensor_model = model
         dynamics_matrix = np.asarray(model.dynamics_matrix, dtype=float)
         prior_mean = np.asarray(belief.mean, dtype=float)
         prior_cov = np.asarray(belief.cov, dtype=float)
@@ -369,10 +329,10 @@ def probe_model(
         )
         covs = [propagated + q for q in process_noises]
         process_spread = _spread(process_noises)
-        fixed = np.asarray(model.observation_noise, dtype=float)
-        noises = _linearizations(
-            model.observation_model, observation_matrix, means
-        ) or [fixed] * len(actions)
+    observation_matrix = np.asarray(sensor_model.observation_matrix, dtype=float)
+    noises = [
+        np.asarray(sensor_model.observation_noise_at(mu), dtype=float) for mu in means
+    ]
 
     rank = int(np.linalg.matrix_rank(observation_matrix))
     n_obs = int(observation_matrix.shape[0])

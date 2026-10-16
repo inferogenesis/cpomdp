@@ -181,6 +181,15 @@ def test_agent_ffg_whole_state_when_info_target_none():
     assert tuple(agent.selector._target) == (0, 1)  # whole joint state
 
 
+def test_an_info_node_outside_the_graph_is_refused_by_the_backend():
+    # The Agent leaves the range check to `backend.block`, the one place that knows it.
+    with pytest.raises(ValueError, match=r"node 2 .* 0\.\.1"):
+        Agent.from_backend(
+            _two_node_backend(),
+            ObservationGoal([0.5], action_bounds=(-2.0, 2.0), info_node=2),
+        )
+
+
 def test_info_target_on_flat_backend_raises():
     # info_node aims at an FFG node; it is meaningless without a branching backend.
     model = LinearGaussianModel(
@@ -260,11 +269,11 @@ def _score_components(backend, belief, preference, candidates, info_block):
     ``_ffg_efe_step``) but returns the two ``G`` components, so a test can compare the
     full-``G`` argmin against a pragmatic-only one at the *same* ``R(μ⁺)``.
     """
-    observation_matrix, _ = backend.observation_model  # C (constant)
+    observation_matrix = backend.model.observation_matrix  # C (constant)
 
     def comp(action):
         predicted = backend.predicted_belief(belief, action)  # μ⁺, Σ⁺
-        observation_noise = backend.observation_noise_at(predicted.mean)  # R(μ⁺)
+        observation_noise = backend.model.observation_noise_at(predicted.mean)  # R(μ⁺)
         _, parts = _ffg_efe_step(
             predicted.mean,
             predicted.cov,

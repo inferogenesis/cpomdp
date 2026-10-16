@@ -9,6 +9,8 @@ from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
 __all__ = [
+    "INFORMATION_FORM_INVERTS",
+    "NOISELESS_SENSOR",
     "UNVERSIONED",
     "concrete",
     "equilibrium_drift",
@@ -22,6 +24,12 @@ __all__ = [
 UNVERSIONED = (
     "version must be a non-empty string — the {subject} is declared and versioned"
 )
+
+NOISELESS_SENSOR = "a noiseless sensor sends the information gain to infinity"
+"""Why a sensor's R must be definite: the epistemic term reads its log-determinant."""
+
+INFORMATION_FORM_INVERTS = "the information form inverts it"
+"""Why an FFG factor's noise must be definite: its message holds the inverse."""
 
 _NOISE_SLOTS = ("observation_model", "dynamics_noise_model")
 
@@ -89,18 +97,26 @@ def require_fixed_noise(
 
 
 def validate_covariance(
-    cov: Float64[Array, "n n"], name: str, *, require_definite: bool = False
+    cov: Float64[Array, "n n"],
+    name: str,
+    *,
+    require_definite: bool = False,
+    reason: str | None = None,
 ) -> None:
     """Square, symmetric and positive-(semi-)definite, checked once at construction.
 
     ``require_definite=True`` demands positive-*definite* to a floor of ``1e-8``,
     relative to the largest eigenvalue and never below that in absolute terms, for a
-    matrix something inverts. The default accepts a zero-variance direction, which
-    is a sharp belief or a deterministic noise rather than an error. An indefinite
-    matrix is refused either way: accepted, it yields a silent negative-variance
-    belief downstream. Skipped under a trace, where the values are abstract. The
-    pytree ``tree_unflatten`` path never calls it, so ``jit``, ``vmap`` and ``grad``
-    are unaffected.
+    matrix something inverts or factors. The default accepts a zero-variance
+    direction, which is a sharp belief or a deterministic noise rather than an error.
+    An indefinite matrix is refused either way: accepted, it yields a silent
+    negative-variance belief downstream. Skipped under a trace, where the values are
+    abstract. The pytree ``tree_unflatten`` path never calls it, so ``jit``, ``vmap``
+    and ``grad`` are unaffected.
+
+    ``reason`` says why the caller needs a definite matrix, and the refusal gives it
+    after "because". Callers differ, so there is no default and none is printed when
+    it is omitted.
     """
     if cov.ndim != 2 or cov.shape[0] != cov.shape[1]:
         raise ValueError(f"{name} must be a square 2-D matrix, got shape {cov.shape}")
@@ -113,10 +129,10 @@ def validate_covariance(
     tol = 1e-8 * max(1.0, float(np.abs(eig).max()))
     if require_definite:
         if float(eig.min()) <= tol:
+            because = "" if reason is None else f" because {reason}"
             raise ValueError(
-                f"{name} must be positive-definite, but its smallest eigenvalue is "
-                f"{float(eig.min()):.3g} (a noiseless or degenerate sensor sends the "
-                f"information gain to infinity)."
+                f"{name} must be positive-definite{because}. Its smallest eigenvalue "
+                f"is {float(eig.min()):.3g}."
             )
     elif float(eig.min()) < -tol:
         raise ValueError(

@@ -184,6 +184,7 @@ class World:
                 observation_noise,
                 "observation_model.linearize(x)[1]",
                 require_definite=True,
+                reason="the reading is drawn through its Cholesky factor",
             )
         return jax.random.multivariate_normal(
             key_observation,
