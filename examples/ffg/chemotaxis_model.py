@@ -67,7 +67,6 @@ def chemotaxis_ffg(dt):
         for node in _OBSERVED
     }
     graph = CouplingGraph(
-        root=CHEA,
         dims=(1,) * _NODES,  # every node is scalar (1-D)
         couplings=couplings,
         observation_models=observation_models,

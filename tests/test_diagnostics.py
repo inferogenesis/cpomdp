@@ -236,7 +236,6 @@ class TestProbeGraphBackend:
             else FixedSensor([[-1.0, 1.0]], observation_noise=[[2.0]])
         )
         graph = CouplingGraph(
-            root=0,
             dims=(1, 2),
             couplings=(
                 Coupling(
@@ -276,7 +275,6 @@ class TestProbeGraphBackend:
     def test_reports_a_redundant_channel(self):
         """Two channels reading the same row leave C short of full row rank."""
         graph = CouplingGraph(
-            root=0,
             dims=(2,),
             couplings=(),
             observation_models={

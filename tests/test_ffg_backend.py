@@ -194,7 +194,7 @@ def _build(
         n: FixedSensor(c, observation_noise=r) for n, (c, r) in obs_specs.items()
     }
     graph = CouplingGraph(
-        root=0, dims=dims, couplings=couplings, observation_models=observation_models
+        dims=dims, couplings=couplings, observation_models=observation_models
     )
     transitions = tuple(GaussianTransition(a, dynamics_noise=q) for a, q in dyn)
     kwargs = {"control_matrix": control_matrix, "readout_node": readout_node}
@@ -564,7 +564,6 @@ class TestProtocolAndReadout:
 
     def _one_node_backend(self, prior, control_matrix=None):
         graph = CouplingGraph(
-            root=0,
             dims=(2,),
             couplings=(),
             observation_models={
@@ -601,7 +600,6 @@ class TestProtocolAndReadout:
     def test_a_graph_with_no_sensor_is_refused_by_name(self):
         # It used to fail with a zero-size reduction inside the model's noise check.
         graph = CouplingGraph(
-            root=0,
             dims=(1, 1),
             couplings=(Coupling(0, 1, [[1.0]], coupling_noise=[[0.5]]),),
             observation_models={},
@@ -874,7 +872,7 @@ def _build_rx(dims, edges, rx_obs, dyn, *, control_matrix=None, partition=None):
         node: CallableSensor(c, fn, prm) for node, (c, fn, prm) in rx_obs.items()
     }
     graph = CouplingGraph(
-        root=0, dims=dims, couplings=couplings, observation_models=observation_models
+        dims=dims, couplings=couplings, observation_models=observation_models
     )
     transitions = tuple(GaussianTransition(a, dynamics_noise=q) for a, q in dyn)
     kwargs = {"control_matrix": control_matrix}
@@ -1202,9 +1200,7 @@ class _UnstoredSensor:
 
 def _one_node_graph_backend(sensor):
     """A single scalar node with a control, observed by ``sensor``."""
-    graph = CouplingGraph(
-        root=0, dims=(1,), couplings=(), observation_models={0: sensor}
-    )
+    graph = CouplingGraph(dims=(1,), couplings=(), observation_models={0: sensor})
     return CouplingGraphBackend(
         graph,
         (GaussianTransition([[0.9]], dynamics_noise=[[0.2]]),),

@@ -80,7 +80,7 @@ def build_graph() -> tuple[CouplingGraph, Belief, dict[int, np.ndarray]]:
         node: FixedSensor([[1.0]], observation_noise=[[OBS_R]]) for node in OBS_NODES
     }
     graph = CouplingGraph(
-        root=ROOT, dims=DIMS, couplings=couplings, observation_models=observation_models
+        dims=DIMS, couplings=couplings, observation_models=observation_models
     )
     prior = Belief(mean=[PRIOR_MEAN], cov=[[PRIOR_VAR]])
     readings = {node: np.array([READINGS[node]]) for node in OBS_NODES}
@@ -200,8 +200,8 @@ couplings = (
     Coupling(h, a, [[1.0]], coupling_noise=[[0.03]]),
     Coupling(h, b, [[1.0]], coupling_noise=[[0.03]]),
 )
-graph  = CouplingGraph(root=r, dims=dims,
-                       couplings=couplings, observation_models=obs)
+graph  = CouplingGraph(dims=dims, couplings=couplings,
+                       observation_models=obs)
 belief = graph.infer_root({a: y_a, b: y_b}, prior)"""
 
 
