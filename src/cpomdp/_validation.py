@@ -14,9 +14,6 @@ __all__ = [
     "UNVERSIONED",
     "concrete",
     "equilibrium_drift",
-    "is_graph_interface",
-    "mark_graph_interface",
-    "refuse_graph_interface",
     "require_fixed_noise",
     "state_dependent",
     "validate_covariance",
@@ -35,41 +32,6 @@ INFORMATION_FORM_INVERTS = "the information form inverts it"
 """Why an FFG factor's noise must be definite: its message holds the inverse."""
 
 _NOISE_SLOTS = ("observation_model", "dynamics_noise_model")
-
-_GRAPH_INTERFACE = "_leaves_out_couplings"
-
-
-def mark_graph_interface(model: object) -> None:
-    """Mark a coupled graph backend's model as its interface rather than its plant.
-
-    The mark is the model's ``_leaves_out_couplings`` field. ``dataclasses.replace``
-    passes it on, and the pytree carries it as static aux data, so neither a replaced
-    nor a rebuilt model loses it.
-    """
-    object.__setattr__(model, _GRAPH_INTERFACE, True)
-
-
-def is_graph_interface(model: object) -> bool:
-    """Whether ``model`` is a coupled graph backend's interface model."""
-    return bool(getattr(model, _GRAPH_INTERFACE, False))
-
-
-def refuse_graph_interface(model: object, consumer: str) -> None:
-    """Refuse a coupled graph backend's model, which leaves out the couplings.
-
-    Raises:
-        TypeError: If ``model`` is a coupled ``CouplingGraphBackend``'s ``model``.
-    """
-    if is_graph_interface(model):
-        remedy = (
-            "Pass the backend where one is taken, or backend.to_flat_model() for a "
-            "flat model that keeps them."
-        )
-        raise TypeError(
-            f"{consumer} was given a CouplingGraphBackend's model, which leaves out "
-            "the graph's couplings, so it would compute on a plant without them. "
-            f"{remedy}"
-        )
 
 
 class _FlagsFixed(Protocol):

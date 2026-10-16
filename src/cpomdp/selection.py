@@ -13,7 +13,7 @@ import numpy as np
 from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
-from cpomdp._validation import refuse_graph_interface, validate_covariance
+from cpomdp._validation import validate_covariance
 from cpomdp.backends.base import GraphBackend
 from cpomdp.control import LQRController, _validate_cost
 from cpomdp.efe import (
@@ -24,7 +24,7 @@ from cpomdp.efe import (
     expected_free_energy,
     policy_efe,
 )
-from cpomdp.types import Belief, LinearGaussianModel
+from cpomdp.types import Belief, LinearGaussianModel, refuse_graph_interface
 from warrantlib import Warrant
 
 __all__ = [

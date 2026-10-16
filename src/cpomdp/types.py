@@ -1,6 +1,6 @@
 """Core data types: the Gaussian ``Belief`` and its ``LinearGaussianModel``."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import jax
 import jax.numpy as jnp
@@ -227,11 +227,6 @@ class LinearGaussianModel:
     observation_model: ObservationModel | None
     dynamics_noise_model: DynamicsNoiseModel | None
     structure: ModelStructure | None
-    _leaves_out_couplings: bool = field(default=False, repr=False, compare=False)
-    """Set by a coupled ``CouplingGraphBackend`` on its interface model (ADR-090).
-
-    A field, so ``dataclasses.replace`` and a pytree rebuild carry it. Leave it unset.
-    """
 
     def __init__(
         self,
@@ -245,7 +240,6 @@ class LinearGaussianModel:
         observation_model: ObservationModel | None = None,
         dynamics_noise_model: DynamicsNoiseModel | None = None,
         structure: ModelStructure | None = None,
-        _leaves_out_couplings: bool = False,
     ) -> None:
         for field_name, value in (
             ("dynamics_matrix", dynamics_matrix),
@@ -269,7 +263,6 @@ class LinearGaussianModel:
         object.__setattr__(self, "observation_model", observation_model)
         object.__setattr__(self, "dynamics_noise_model", dynamics_noise_model)
         object.__setattr__(self, "structure", structure)
-        object.__setattr__(self, "_leaves_out_couplings", bool(_leaves_out_couplings))
         self._validate_noise_sources()
         sensor_matrix, sensor_noise = self._sensor_at_prior()
         object.__setattr__(
@@ -463,9 +456,7 @@ class LinearGaussianModel:
             return self.observation_noise
         return sensor.linearize(state)[1]
 
-    def tree_flatten(
-        self,
-    ) -> tuple[tuple[_ModelLeaf, ...], tuple[ModelStructure | None, bool]]:
+    def tree_flatten(self) -> tuple[tuple[_ModelLeaf, ...], ModelStructure | None]:
         """Leaves for JAX: every matrix plus the ``prior`` belief; ``structure`` is aux.
 
         ``control_matrix``, ``observation_model`` and ``dynamics_noise_model`` are
@@ -475,8 +466,7 @@ class LinearGaussianModel:
         a pytree and recurses into its own leaves. ``structure`` (declarative metadata,
         no array leaves) rides in the static aux_data, so two models differing only in
         ``structure`` are different pytrees and a jit keyed on the model re-specialises
-        when it changes. The mark a coupled graph backend puts on its model rides there
-        too, so a rebuilt model is still refused where a plant is taken (ADR-090).
+        when it changes.
         """
         children = (
             self.dynamics_matrix,
@@ -488,18 +478,17 @@ class LinearGaussianModel:
             self.observation_model,
             self.dynamics_noise_model,
         )
-        return children, (self.structure, self._leaves_out_couplings)
+        return children, self.structure
 
     @classmethod
     def tree_unflatten(
         cls,
-        aux_data: tuple[ModelStructure | None, bool],
+        aux_data: ModelStructure | None,
         children: tuple[_ModelLeaf, ...],
     ) -> "LinearGaussianModel":
         """Rebuild from leaves without validating — the leaves may be tracers.
 
-        ``aux_data`` is the static ``structure`` (or ``None``) and the graph-interface
-        mark, both restored as-is.
+        ``aux_data`` is the static ``structure`` (or ``None``), restored as-is.
         """
         obj = object.__new__(cls)
         fields = (
@@ -514,7 +503,37 @@ class LinearGaussianModel:
         )
         for name, value in zip(fields, children, strict=True):
             object.__setattr__(obj, name, value)
-        structure, leaves_out_couplings = aux_data
-        object.__setattr__(obj, "structure", structure)
-        object.__setattr__(obj, "_leaves_out_couplings", leaves_out_couplings)
+        object.__setattr__(obj, "structure", aux_data)
         return obj
+
+
+@jax.tree_util.register_pytree_node_class
+@dataclass(frozen=True, init=False)
+class _GraphInterfaceModel(LinearGaussianModel):
+    """A coupled ``CouplingGraphBackend``'s model: its interface, not its plant.
+
+    The sizes, prior, sensors and control the backend reads, with the couplings left
+    out (ADR-090). The type is the mark. ``dataclasses.replace`` builds through
+    ``obj.__class__`` and a pytree rebuild through ``tree_unflatten``'s ``cls``, so
+    neither loses it, and a flat consumer refuses it with ``refuse_graph_interface``.
+    """
+
+
+def is_graph_interface(model: object) -> bool:
+    """Whether ``model`` is a coupled graph backend's interface model."""
+    return isinstance(model, _GraphInterfaceModel)
+
+
+def refuse_graph_interface(model: object, consumer: str) -> None:
+    """Refuse a coupled graph backend's model, which leaves out the couplings.
+
+    Raises:
+        TypeError: If ``model`` is a coupled ``CouplingGraphBackend``'s ``model``.
+    """
+    if is_graph_interface(model):
+        raise TypeError(
+            f"{consumer} was given a CouplingGraphBackend's model, which leaves out "
+            "the graph's couplings, so it would compute on a plant without them. "
+            "Pass the backend where one is taken, or backend.to_flat_model() for a "
+            "flat model that keeps them."
+        )

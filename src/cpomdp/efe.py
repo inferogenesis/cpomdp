@@ -104,9 +104,8 @@ import numpy as np
 from jax import lax
 from jaxtyping import Array, Float64
 
-from cpomdp._validation import refuse_graph_interface
 from cpomdp.backends.base import InadmissiblePartitionError
-from cpomdp.types import Belief, LinearGaussianModel
+from cpomdp.types import Belief, LinearGaussianModel, refuse_graph_interface
 
 if TYPE_CHECKING:
     # Type-only imports. The kernel reads the backend's predict/observation methods by

@@ -6,12 +6,11 @@ from jaxtyping import Array, Float64
 from numpy.typing import ArrayLike
 
 from cpomdp._validation import (
-    refuse_graph_interface,
     require_fixed_noise,
     state_dependent,
 )
 from cpomdp.backends.base import _validate_step_inputs
-from cpomdp.types import Belief, LinearGaussianModel
+from cpomdp.types import Belief, LinearGaussianModel, refuse_graph_interface
 
 __all__ = ["KalmanBackend"]
 

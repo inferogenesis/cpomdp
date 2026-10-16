@@ -5675,10 +5675,11 @@ mark.
 
 ### Consequences
 
-- The mark is a model field, `_leaves_out_couplings`, kept out of the printed form and
-  out of equality. It is static aux data in the pytree, not a leaf, so a copy made with
-  `dataclasses.replace` or rebuilt through `jax.tree.map`, `device_put` or a `jit`
-  boundary keeps it, and the jit cache keys on it.
+- The mark is a private subclass of `LinearGaussianModel`, registered as its own
+  pytree, so `LinearGaussianModel`'s fields and constructor are unchanged. A copy made
+  with `dataclasses.replace` builds through the object's class, and a rebuild through
+  `jax.tree.map`, `device_put` or a `jit` boundary through `tree_unflatten`'s class, so
+  neither loses it. The jit cache keys on the type.
 - The constructors check once. The EFE functions check one attribute per eager call
   and once per trace under `jit`, which leaves the fixed-noise hot path a matrix
   product.

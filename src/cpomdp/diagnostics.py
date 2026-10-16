@@ -50,7 +50,7 @@ from typing import TYPE_CHECKING, cast
 import numpy as np
 from numpy.typing import ArrayLike
 
-from cpomdp._validation import refuse_graph_interface, validate_covariance
+from cpomdp._validation import validate_covariance
 
 if TYPE_CHECKING:
     # Annotation-only: every diagnostic here reads its argument's fields by duck typing,
@@ -315,6 +315,8 @@ def probe_model(
         covs = [np.asarray(p.cov, dtype=float) for p in predicted]
         dynamics_spread = 0.0  # the graph's transitions carry a fixed Q
     else:  # a flat LinearGaussianModel
+        from cpomdp.types import refuse_graph_interface  # one-way: types never imports
+
         refuse_graph_interface(model, "probe_model")
         sensor_model = model
         dynamics_matrix = np.asarray(model.dynamics_matrix, dtype=float)

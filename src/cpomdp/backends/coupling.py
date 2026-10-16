@@ -23,13 +23,12 @@ import numpy as np
 from jaxtyping import Float64
 from numpy.typing import ArrayLike
 
-from cpomdp._validation import mark_graph_interface
 from cpomdp.backends.base import _validate_step_inputs
 from cpomdp.ffg._message import CanonicalGaussian
 from cpomdp.ffg.factors.linear_gaussian import GaussianTransition
 from cpomdp.ffg.graph import Coupling, CouplingGraph
 from cpomdp.observation import ObservationModel
-from cpomdp.types import Belief, LinearGaussianModel
+from cpomdp.types import Belief, LinearGaussianModel, _GraphInterfaceModel
 
 __all__ = ["CouplingGraphBackend", "IncompatibleLinearizationError"]
 
@@ -192,8 +191,6 @@ class CouplingGraphBackend:
             o.is_fixed for o in self._graph.observation_models.values()
         )
         self._model = self._build_model()
-        if self._graph.couplings:
-            mark_graph_interface(self._model)
         self._partition_mask = self._build_partition_mask()
         # node -> its partition cluster index (ADR-018 admissibility diagnostic).
         self._cluster_of = {
@@ -407,7 +404,11 @@ class CouplingGraphBackend:
                 if noise_blocks
                 else jnp.zeros((0, 0))
             )
-        return LinearGaussianModel(
+        # With couplings the model is the interface, not the plant (ADR-090).
+        model_type = (
+            _GraphInterfaceModel if self._graph.couplings else LinearGaussianModel
+        )
+        return model_type(
             dynamics_matrix=self._transition.dynamics_matrix,
             observation_matrix=observation_matrix,
             dynamics_noise=self._transition.dynamics_noise,

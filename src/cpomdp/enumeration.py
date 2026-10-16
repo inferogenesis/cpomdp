@@ -33,9 +33,9 @@ from jax.errors import ConcretizationTypeError, TracerArrayConversionError
 from jaxtyping import Array, Float64, Int
 from numpy.typing import ArrayLike
 
-from cpomdp._validation import concrete, refuse_graph_interface
+from cpomdp._validation import concrete
 from cpomdp.efe import _info_block_of, _policy_efe_ffg, policy_efe
-from cpomdp.types import Belief, LinearGaussianModel
+from cpomdp.types import Belief, LinearGaussianModel, refuse_graph_interface
 
 # `CompletenessCertificate` is an evidence kind of the warrant vocabulary, so it is
 # defined in `warrantlib` beside `SymbolicReduction`. It is re-exported below, because
