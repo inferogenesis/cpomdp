@@ -526,15 +526,6 @@ class Agent:
         self._belief = belief
 
     @property
-    def qs(self) -> Belief:
-        """Alias for ``belief`` (read-only) — pymdp muscle-memory ``agent.qs``.
-
-        The name is pymdp's, carried over for familiarity; the object is a Gaussian
-        [`Belief`][cpomdp.Belief], not a categorical posterior. Prefer ``belief``.
-        """
-        return self.belief
-
-    @property
     def selector(self) -> ActionSelector | None:
         """The selector that chooses the agent's actions, read-only.
 
