@@ -29,7 +29,8 @@ def wheel_names(tmp_path_factory) -> list[str]:
         text=True,
     )
     if build.returncode != 0:
-        pytest.skip(f"the wheel did not build here: {build.stderr.strip()}")
+        # A build that breaks is what this guard exists to catch, so it fails.
+        pytest.fail(f"the wheel did not build: {build.stderr.strip()}")
     (wheel,) = out_dir.glob("cpomdp-*.whl")
     with zipfile.ZipFile(wheel) as archive:
         return archive.namelist()

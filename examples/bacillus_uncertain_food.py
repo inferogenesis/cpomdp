@@ -168,7 +168,7 @@ REGIMES = [
 def _beacon_params() -> dict[str, float]:
     """The beacon falloff's tunables — shared by ``build_model`` and ``simulate``.
 
-    Single source of truth so the model's filtering noise and the simulator's dynamics
+    Single source of truth so the model's filtering noise and the simulator's sensor
     noise can never drift apart (``model.observation_model`` is typed as the
     ``ObservationModel`` Protocol).
     """
