@@ -206,6 +206,7 @@
     "Sayma",
     "Schur",
     "scipy",
+    "sdist",
     "serialiser",
     "setflags",
     "seval",

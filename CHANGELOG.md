@@ -4,6 +4,13 @@ Everything worth noting lands here. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+### Fixed
+
+- The sdist leaves out CI's JAX compilation cache. `.gitignore` named `.jax_cache/` and
+  CI writes `.jax-cache/`, so the publish job built its sdist after the test step had
+  filled the cache. PyPI refused the 0.5.0 sdist at its 100 MB limit, and only the wheel
+  was published.
+
 ## [0.5.0] — 2026-10-16
 
 Warrant plumbing and the `slogdet` oracle audit. The two-level `SearchWarrant` becomes a
