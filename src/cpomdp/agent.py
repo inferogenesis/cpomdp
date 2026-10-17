@@ -478,7 +478,8 @@ class Agent:
                 of the wrong length for the space it is read in, a target the
                 dynamics do not hold at zero action on the LQR path, an
                 ``ObservationGoal`` horizon too short for its target to move the
-                scores, and ``selector=`` with a control-free model.
+                scores, ``selector=`` with a control-free model, and a built-in
+                ``selector=`` built for another model or graph.
             TypeError: If ``objective`` is not a ``StateGoal``, ``ObservationGoal``
                 or ``Preference``, if a goal comes with ``selector=``, or if a
                 ``Preference`` or ``selector=`` comes without the other. Also raised
@@ -516,8 +517,9 @@ class Agent:
             The agent.
 
         Raises:
-            ValueError: If the objective and the backend's model are incompatible, as
-                for the constructor.
+            ValueError: If the objective and the backend's model are incompatible, or
+                a built-in ``selector=`` was built for another model or graph, as for
+                the constructor.
             TypeError: On an objective and ``selector=`` that do not pair, as for the
                 constructor, or on a ``StateGoal`` with a coupled graph backend, whose
                 model leaves out the couplings LQR would need.

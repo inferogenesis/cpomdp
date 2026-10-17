@@ -218,7 +218,8 @@ def test_agent_ffg_whole_state_when_info_node_is_none():
         ObservationGoal([0.5], action_bounds=(-2.0, 2.0)),  # no info_node
     )
     assert isinstance(agent.selector, FFGEFESelector)
-    assert repr(agent.selector).endswith("info_node=None)")  # whole joint state
+    assert repr(agent.selector).endswith("info_node=None)")
+    assert tuple(agent.selector._info_block) == (0, 1)  # whole joint state
 
 
 def test_an_info_node_outside_the_graph_is_refused_by_the_backend():
