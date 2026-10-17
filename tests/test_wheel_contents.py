@@ -6,21 +6,34 @@ put one there would declare its Julia packages to every juliacall user in the
 environment (ADR-085).
 """
 
+import os
 import shutil
 import subprocess
 import zipfile
 from pathlib import Path
+from typing import NoReturn
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _cannot_build(reason: str) -> NoReturn:
+    """Fail under CI, which can always build, and skip anywhere else.
+
+    Off CI a build can fail for want of the index, offline or from an sdist, and that
+    says nothing about the wheel.
+    """
+    if os.environ.get("CI"):
+        pytest.fail(reason)
+    pytest.skip(reason)
+
+
 @pytest.fixture(scope="module")
 def wheel_names(tmp_path_factory) -> list[str]:
     uv = shutil.which("uv")
     if uv is None:
-        pytest.skip("building the wheel needs uv on PATH")
+        _cannot_build("building the wheel needs uv on PATH")
     out_dir = tmp_path_factory.mktemp("wheel")
     build = subprocess.run(
         [uv, "build", "--wheel", "--package", "cpomdp", "--out-dir", str(out_dir)],
@@ -29,8 +42,7 @@ def wheel_names(tmp_path_factory) -> list[str]:
         text=True,
     )
     if build.returncode != 0:
-        # A build that breaks is what this guard exists to catch, so it fails.
-        pytest.fail(f"the wheel did not build: {build.stderr.strip()}")
+        _cannot_build(f"the wheel did not build: {build.stderr.strip()}")
     (wheel,) = out_dir.glob("cpomdp-*.whl")
     with zipfile.ZipFile(wheel) as archive:
         return archive.namelist()
