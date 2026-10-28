@@ -49,15 +49,17 @@ class ObservationModel(Protocol):
 
     Both methods take their arguments by position, so an implementation may name
     them as it likes.
-
-    Attributes:
-        is_fixed: ``True`` when ``(C, R)`` are constant in the state — the
-            fixed-sensor fast path. With fixed dynamics noise as well, EFE's
-            epistemic term is constant there and EFE collapses to LQR. ``False``
-            for a state-dependent sensor.
     """
 
-    is_fixed: bool
+    @property
+    def is_fixed(self) -> bool:
+        """``True`` when ``(C, R)`` are constant in the state.
+
+        This is the fixed-sensor fast path. With fixed dynamics noise as well, EFE's
+        epistemic term is constant there and EFE collapses to LQR. ``False`` for a
+        state-dependent sensor.
+        """
+        ...
 
     # "linearize" keeps the z (literature spelling) despite the British prose elsewhere.
     def linearize(

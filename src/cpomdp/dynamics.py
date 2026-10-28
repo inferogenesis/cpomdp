@@ -29,14 +29,16 @@ class DynamicsNoiseModel(Protocol):
     It goes in ``dynamics_noise``, and a plain matrix does not satisfy this protocol. A
     state-dependent ``Q(x)`` brings epistemic value back through the *internal* route
     (RFC-001 chapter 8).
-
-    Attributes:
-        is_fixed: ``True`` when ``Q`` does not vary with the state. The filter then
-            keeps its fixed path and reads the model's ``dynamics_noise``, which equals
-            this object's ``Q``.
     """
 
-    is_fixed: bool
+    @property
+    def is_fixed(self) -> bool:
+        """``True`` when ``Q`` does not vary with the state.
+
+        The filter then keeps its fixed path and reads the model's ``dynamics_noise``,
+        which equals this object's ``Q``.
+        """
+        ...
 
     def noise_at(self, state: ArrayLike, /) -> Float64[Array, "n n"]:
         """The dynamics-noise covariance ``Q`` at ``state``."""

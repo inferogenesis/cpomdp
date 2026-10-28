@@ -10,6 +10,12 @@ Everything worth noting lands here. The format follows [Keep a Changelog](https:
   CI writes `.jax-cache/`, so the publish job built its sdist after the test step had
   filled the cache. PyPI refused the 0.5.0 sdist at its 100 MB limit, and only the wheel
   was published.
+- A type checker accepts `CallableSensor` and `FixedSensor` as an `ObservationModel`, and
+  `CallableDynamicsNoise` as a `DynamicsNoiseModel`. Both protocols declared `is_fixed`
+  as a writable attribute, which a frozen dataclass cannot satisfy, so `ty` 0.0.91
+  refused every sensor passed as `observation_model`. `is_fixed` is a read-only property
+  on both now (#206). The lock moves `ty` from 0.0.46 to 0.0.91, so CI's type gate
+  checks this. The older version never checked whether a protocol member is writable.
 
 ## [0.5.0] — 2026-10-16
 

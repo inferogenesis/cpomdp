@@ -312,8 +312,11 @@ class _PolicyScorer(Protocol):
     sensor and control the score reads, a graph's interface model on that path.
     """
 
-    n_controls: int
-    n_states: int
+    @property
+    def n_controls(self) -> int: ...
+
+    @property
+    def n_states(self) -> int: ...
 
     @property
     def model(self) -> LinearGaussianModel: ...
