@@ -238,7 +238,9 @@ class TestMoments:
         grid = QuadratureGrid(lower=[-1.5], upper=[1.5], counts=[1201])
         clipped = gaussian_on(grid, 0.0, 1.0)
         squares = np.asarray(grid.nodes)[:, 0] ** 2
-        by_hand = float(grid.integrate(np.exp(clipped.log_density) * squares))
+        by_hand = float(
+            grid.integrate(jnp.asarray(np.exp(clipped.log_density) * squares))
+        )
         np.testing.assert_allclose(
             float(clipped.expectation(jnp.asarray(squares))),
             by_hand / float(jnp.exp(clipped.log_mass)),

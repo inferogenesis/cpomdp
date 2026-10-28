@@ -64,7 +64,7 @@ if TYPE_CHECKING:
 #: somewhere inside a hook, which reads as a bug in the suite being run.
 _MINIMUM_PYTEST = (8, 0)
 
-if pytest.version_tuple[:2] < _MINIMUM_PYTEST:
+if tuple(int(part) for part in pytest.version_tuple[:2]) < _MINIMUM_PYTEST:
     wanted = ".".join(str(part) for part in _MINIMUM_PYTEST)
     raise RuntimeError(
         f"warrantlib's pytest plugin needs pytest {wanted} or newer, and this is "
