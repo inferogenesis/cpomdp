@@ -185,7 +185,8 @@ def concrete(arr: ArrayLike) -> np.ndarray | None:
 class _Named(Protocol):
     """Anything a declared set holds: it has a name, and that name identifies it."""
 
-    name: str
+    @property
+    def name(self) -> str: ...
 
 
 _Member = TypeVar("_Member", bound=_Named)

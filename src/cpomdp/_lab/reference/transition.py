@@ -39,13 +39,15 @@ class TransitionKernel(Protocol):
     The result is indexed ``[destination, origin]``, which is the orientation the
     prediction contracts over: summing across the origin axis is the integral
     ``∫ p(x' | x) p(x) dx``.
-
-    Attributes:
-        is_fixed: ``True`` when the noise does not vary with the state. Nothing
-            branches on it. It records which regime a result came from.
     """
 
-    is_fixed: bool
+    @property
+    def is_fixed(self) -> bool:
+        """``True`` when the noise does not vary with the state.
+
+        Nothing branches on it. It records which regime a result came from.
+        """
+        ...
 
     def log_transition(
         self,

@@ -45,15 +45,17 @@ class ObservationLikelihood(Protocol):
     Implementations receive every node at once rather than one state at a time. The
     filter conditions on a whole grid, and a per-state call would put a Python loop
     over hundreds of thousands of nodes in the middle of it.
-
-    Attributes:
-        is_fixed: ``True`` when the noise does not vary with the state. The filter
-            does not branch on this. It is here so a caller can report which regime a
-            result came from, the fixed one being where a Gaussian filter is already
-            exact and the gap being measured is zero.
     """
 
-    is_fixed: bool
+    @property
+    def is_fixed(self) -> bool:
+        """``True`` when the noise does not vary with the state.
+
+        The filter does not branch on this. It is here so a caller can report which
+        regime a result came from, the fixed one being where a Gaussian filter is
+        already exact and the gap being measured is zero.
+        """
+        ...
 
     def log_likelihood(
         self, observation: ArrayLike, states: ArrayLike
@@ -70,12 +72,12 @@ class GaussianChannel(ObservationLikelihood, Protocol):
     Gaussian rungs build a Kalman-shaped update, and that needs the observation
     matrix and the noise at a state rather than a density. This is the seam that
     asks for them, kept apart so the exact rung is not asked.
-
-    Attributes:
-        observation_matrix: the observation matrix ``C`` (shape ``m x n``).
     """
 
-    observation_matrix: Float64[Array, "m n"]
+    @property
+    def observation_matrix(self) -> Float64[Array, "m n"]:
+        """The observation matrix ``C`` (shape ``m x n``)."""
+        ...
 
     def observation_noise_at(self, states: ArrayLike) -> Float64[Array, "N m m"]:
         """``R(x)`` at each row of ``states``, one ``m x m`` covariance per state."""
