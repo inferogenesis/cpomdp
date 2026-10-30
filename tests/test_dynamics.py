@@ -6,6 +6,7 @@ and ``noise_fn`` is static aux. Unlike CallableSensor it cannot probe its own
 when it knows ``n``. See test_types.py for the model-level shape rejection.
 """
 
+import dataclasses
 import inspect
 
 import jax
@@ -89,3 +90,23 @@ def test_the_protocol_takes_the_state_by_position():
     # An implementer may name the argument anything, so no caller passes it by name.
     _, state = inspect.signature(DynamicsNoiseModel.noise_at).parameters.values()
     assert state.kind is inspect.Parameter.POSITIONAL_ONLY
+
+
+# 0.5.0 declared `is_fixed` a plain attribute, so a subclass could set it per instance.
+# A type checker now refuses that assignment, and treats a subclass that leaves the
+# protocol's methods unimplemented as abstract, so ty's errors here are expected. Both
+# classes still run.
+def test_a_subclass_may_set_is_fixed_on_the_instance():
+    class FlagOnInstance(DynamicsNoiseModel):
+        def __init__(self, is_fixed):
+            self.is_fixed = is_fixed  # ty: ignore[invalid-assignment]
+
+    assert FlagOnInstance(True).is_fixed is True  # ty: ignore[call-non-callable]
+
+
+def test_a_frozen_dataclass_subclass_may_take_is_fixed_as_a_field():
+    @dataclasses.dataclass(frozen=True)
+    class FlagAsField(DynamicsNoiseModel):
+        is_fixed: bool
+
+    assert FlagAsField(is_fixed=False).is_fixed is False  # ty: ignore[call-non-callable]

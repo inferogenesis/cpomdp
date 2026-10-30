@@ -10,7 +10,7 @@ diffusion of the arrived-at state.
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 import jax
 import jax.numpy as jnp
@@ -31,14 +31,21 @@ class DynamicsNoiseModel(Protocol):
     (RFC-001 chapter 8).
     """
 
-    @property
-    def is_fixed(self) -> bool:
-        """``True`` when ``Q`` does not vary with the state.
+    # Read-only for a type checker, so a frozen implementer satisfies it. At runtime it
+    # stays the plain attribute 0.5.0 declared, so a subclass may still set it.
+    if TYPE_CHECKING:
 
-        The filter then keeps its fixed path and reads the model's ``dynamics_noise``,
-        which equals this object's ``Q``.
-        """
-        ...
+        @property
+        def is_fixed(self) -> bool:
+            """``True`` when ``Q`` does not vary with the state.
+
+            The filter then keeps its fixed path and reads the model's
+            ``dynamics_noise``, which equals this object's ``Q``.
+            """
+            ...
+
+    else:
+        is_fixed: bool
 
     def noise_at(self, state: ArrayLike, /) -> Float64[Array, "n n"]:
         """The dynamics-noise covariance ``Q`` at ``state``."""

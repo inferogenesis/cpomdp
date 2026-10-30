@@ -1,5 +1,6 @@
 """FixedSensor: the constant-(C, R) observation model."""
 
+import dataclasses
 import inspect
 
 import jax
@@ -190,3 +191,23 @@ def test_the_sensors_name_the_state_as_the_protocol_does(sensor):
             parameter.kind is inspect.Parameter.POSITIONAL_ONLY
             for parameter in parameters
         )
+
+
+# 0.5.0 declared `is_fixed` a plain attribute, so a subclass could set it per instance.
+# A type checker now refuses that assignment, and treats a subclass that leaves the
+# protocol's methods unimplemented as abstract, so ty's errors here are expected. Both
+# classes still run.
+def test_a_subclass_may_set_is_fixed_on_the_instance():
+    class FlagOnInstance(ObservationModel):
+        def __init__(self, is_fixed):
+            self.is_fixed = is_fixed  # ty: ignore[invalid-assignment]
+
+    assert FlagOnInstance(True).is_fixed is True  # ty: ignore[call-non-callable]
+
+
+def test_a_frozen_dataclass_subclass_may_take_is_fixed_as_a_field():
+    @dataclasses.dataclass(frozen=True)
+    class FlagAsField(ObservationModel):
+        is_fixed: bool
+
+    assert FlagAsField(is_fixed=False).is_fixed is False  # ty: ignore[call-non-callable]

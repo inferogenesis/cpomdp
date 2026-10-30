@@ -7,7 +7,7 @@ linear-Gaussian ``(C, R)`` about a state. ``FixedSensor`` is the constant case;
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 import jax
 import jax.numpy as jnp
@@ -51,15 +51,22 @@ class ObservationModel(Protocol):
     them as it likes.
     """
 
-    @property
-    def is_fixed(self) -> bool:
-        """``True`` when ``(C, R)`` are constant in the state.
+    # Read-only for a type checker, so a frozen implementer satisfies it. At runtime it
+    # stays the plain attribute 0.5.0 declared, so a subclass may still set it.
+    if TYPE_CHECKING:
 
-        This is the fixed-sensor fast path. With fixed dynamics noise as well, EFE's
-        epistemic term is constant there and EFE collapses to LQR. ``False`` for a
-        state-dependent sensor.
-        """
-        ...
+        @property
+        def is_fixed(self) -> bool:
+            """``True`` when ``(C, R)`` are constant in the state.
+
+            This is the fixed-sensor fast path. With fixed dynamics noise as well,
+            EFE's epistemic term is constant there and EFE collapses to LQR. ``False``
+            for a state-dependent sensor.
+            """
+            ...
+
+    else:
+        is_fixed: bool
 
     # "linearize" keeps the z (literature spelling) despite the British prose elsewhere.
     def linearize(
