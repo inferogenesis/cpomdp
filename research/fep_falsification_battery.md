@@ -138,7 +138,7 @@ collapses all three to the floor.
 
 Off-diagonal cells carry the claim. The calibration zero validates nothing on its own.
 
-**C1 · calibration zero** · calibration · R1 · toolbox B, F · tier `EXACT` · **PR-5 · v0.5.1**
+**C1 · calibration zero** · calibration · R1 · toolbox B, F · tier `EXACT` · **PR-5 · v0.5.2**
 
 - Predict: p = p\*, exact filter → misspecification and inference gap both below `1e-12`.
 - Falsify: a nonzero floor top-left. Textbook zero (Kalman is the exact Bayesian filter
@@ -146,7 +146,7 @@ Off-diagonal cells carry the claim. The calibration zero validates nothing on it
   status; the contribution is the cross.
 - Does not buy: necessary calibration, not a result.
 
-**C2 · misspecification isolation** · FALSIFY · R2 · toolbox B constructors · tier `EXACT`/`BOUNDED` · **PR-5 · v0.5.1**
+**C2 · misspecification isolation** · FALSIFY · R2 · toolbox B constructors · tier `EXACT`/`BOUNDED` · **PR-5 · v0.5.2**
 
 - Predict: parameter-perturb the model, keep inference exact → `D_KL[p* ‖ p]` positive
   and stable across a **declared** seed set, inference gap below `1e-12`.
@@ -154,7 +154,7 @@ Off-diagonal cells carry the claim. The calibration zero validates nothing on it
   falsifies separability, the core metrological claim.
 - Does not buy: this cell, not C1, is what makes the instrument an instrument.
 
-**C3 · inference-gap isolation** · FALSIFY · R3 · toolbox B degraded variants · tier `EXACT`/`BOUNDED` · **PR-5 · v0.5.1**
+**C3 · inference-gap isolation** · FALSIFY · R3 · toolbox B degraded variants · tier `EXACT`/`BOUNDED` · **PR-5 · v0.5.2**
 
 - Predict: p = p\*, degrade inference (frozen gain / wrong fixed R / diagonal-only
   covariance) → inference gap positive, misspecification below `1e-12`.
@@ -162,7 +162,7 @@ Off-diagonal cells carry the claim. The calibration zero validates nothing on it
 - Does not buy: with C2, the two-term separability the one-term accounting cannot
   represent.
 
-**C4 · additivity** · FALSIFY · R4 · toolbox F · tier `EXACT` · **PR-5 · v0.5.1**
+**C4 · additivity** · FALSIFY · R4 · toolbox F · tier `EXACT` · **PR-5 · v0.5.2**
 
 - Predict: `H(p*) + misspecification + inference gap` reconstruct measured `E[F]` within
   the four-term bound.
@@ -170,7 +170,7 @@ Off-diagonal cells carry the claim. The calibration zero validates nothing on it
   exists, or a term is mis-estimated. Each is a real result about the accounting.
 - Does not buy: closure of *this* decomposition on *this* model class.
 
-**C5 · incompleteness demonstration** · DEMARCATE · R2 + R3 at a matched total · tier `EXACT`/`BOUNDED` · **PR-5 · v0.5.1**
+**C5 · incompleteness demonstration** · DEMARCATE · R2 + R3 at a matched total · tier `EXACT`/`BOUNDED` · **PR-5 · v0.5.2**
 
 - Predict: two agents the collapsed accounting scores *identically* at the same total
   surprise, one misspecified-but-exact and one correct-but-approximate, matched to equal
@@ -472,7 +472,7 @@ stand.
   exponent contaminated by higher-order terms at large spread.
 - Does not buy: bears on the surrogate-vs-exact geometry only, not on the FEP's core.
 
-**D3 · crossover horizon H\*** · SEVERE · R10 · toolbox A, E · tier `BOUNDED` · **v0.4.4 ✓ measured, PR-2 + PR-5 · v0.5.1 complete**
+**D3 · crossover horizon H\*** · SEVERE · R10 · toolbox A, E · tier `BOUNDED` · **v0.4.4 ✓ measured, PR-2 + PR-5 · v0.5.2 complete**
 
 - Predict: sweep H; there exists H\* at which the accumulated epistemic pull overtakes
   the pragmatic gradient, so reach becomes walk. Sign flip asserted at H\* **and**
@@ -699,7 +699,7 @@ now, at two spacings, subdividing offered the optimum nothing it took.
 **Both axes now report.** Extension `PASS` at `H* = 6`, refinement `PASS` at `H* = 7` on
 both cells. The fourth D3 falsifier is discharged and PR-2's merge gate is met.
 
-**D4 · certified discretisation bound · GATE-D4** · SEVERE · R9 · toolbox C · tier `BOUNDED` · **PR-8 · v0.5.1, hard gate**
+**D4 · certified discretisation bound · GATE-D4** · SEVERE · R9 · toolbox C · tier `BOUNDED` · **PR-8 · v0.5.2, hard gate**
 
 - Predict: the reference filter's error is stated as a number, small relative to R6's
   signal by a **pre-agreed factor**. The factor is written down *before* the bound is
@@ -710,7 +710,7 @@ both cells. The fourth D3 falsifier is discharged and PR-2's merge gate is met.
   from an enumeration.
 - Falsify: the bound is not statable at the pre-agreed factor. `BOUNDED` collapses to
   `COMPUTED`, Part 2's numbers become uncertified, and the response is a different paper.
-- Gate mechanics: v0.5.1 is cut at PR-8's merge whatever the outcome, so a re-scoped
+- Gate mechanics: v0.5.2 is cut at PR-8's merge whatever the outcome, so a re-scoped
   paper cites a release rather than a commit. C6, D1 and D2 do not merge against an
   uncertified reference.
 - Does not buy: certification of the instrument, not a claim about agents. Existential
@@ -720,7 +720,7 @@ both cells. The fourth D3 falsifier is discharged and PR-2's merge gate is met.
 
 ## E — Is the FEP doing independent work?
 
-**E1 · vs dual control** · DEMARCATE · R5 · toolbox E · tier `EXACT` signature / `BOUNDED` leg · **PR-5 · v0.5.1 (signature), v0.6 (R(x) leg)**
+**E1 · vs dual control** · DEMARCATE · R5 · toolbox E · tier `EXACT` signature / `BOUNDED` leg · **PR-5 · v0.5.2 (signature), v0.6 (R(x) leg)**
 
 - Two regimes, kept apart. (a) Fixed-R control signature, where certainty equivalence
   *holds*: certify `J_CE = J*` exactly by separation, bracket width `= J_LQG − J_LQR` in
@@ -834,6 +834,7 @@ both cells. The fourth D3 falsifier is discharged and PR-2's merge gate is met.
 | **v0.4.3 ✓** | `cpomdp.diagnostics`, per-claim theorem suite, FFG PD fixes. **Not** the scoring harness | — |
 | **v0.4.4 ✓** | multi-step EFE, exhaustive enumerator + completeness certificate | D3's measurement |
 | **v0.5.0 ✓** | PR-1 warrant vocabulary · PR-2 R10 hardening · PR-3 World/Agent seam · PR-4 scoring harness · PR-7 reference filter + rule family | E3 |
-| **v0.5.1** | PR-5 control bracket + Part 1 results · PR-8 **GATE-D4** | C1–C5, E1 signature, D3 completion, D4 |
+| **v0.5.1 ✓** | sdist fix · read-only protocol members (ADR-092) | — |
+| **v0.5.2** | PR-5 control bracket + Part 1 results · PR-8 **GATE-D4** | C1–C5, E1 signature, D3 completion, D4 |
 | **v0.6** | PR-9 window harness + Part 2 results · PR-10 Paper 3 Part 2 · PR-11 release | C6, D1, D2, E1 R(x) leg. R1–R10 all print and assert |
 | **further** | rival harness, parameter estimation, point-process and rate-distortion modules | E2, F2, F3 |

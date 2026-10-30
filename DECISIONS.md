@@ -5717,3 +5717,57 @@ mark.
   one before they rebuild it.
 - The `InferenceBackend.model` docstring now promises the sizes, prior, sensor and
   control a backend reads, not a model it filters exactly.
+
+## ADR-092 — v0.5.1 is a bug-fix release, and GATE-D4 moves to v0.5.2
+
+**Date:** 2026-10-30
+**Status:** Accepted
+**Supersedes:** ADR-067's sentence "The tag that carries GATE-D4 becomes v0.5.1, still
+cut at PR-8's merge whatever the outcome", and its consequence that the battery and the
+warrant ledger read v0.5.1 for GATE-D4 and the work before it
+**Phase:** v0.5.1 (release)
+
+### Decision
+
+v0.5.1 is cut from `main` now as a bug-fix release. It carries what has merged since
+v0.5.0:
+
+- the sdist leaves out CI's JAX compilation cache, which pushed the 0.5.0 sdist over
+  PyPI's 100 MB limit (#190)
+- `ObservationModel.is_fixed` and `DynamicsNoiseModel.is_fixed` are read-only to a type
+  checker, so it accepts the shipped sensors and noise models where those protocols are
+  expected (#207). At runtime they stay the plain attribute 0.5.0 declared (#211)
+- docstring corrections and tighter tests from the v0.5.0 release audit (#191)
+
+The tag that carries GATE-D4 becomes v0.5.2, still cut at PR-8's merge whatever the
+outcome. The tag Papers 2 and 3 pin stays v0.6.
+
+The November workshop pins a release from PyPI. Under 0.5.0 the workshop's package casts
+each sensor to `ObservationModel` before a type checker accepts it, and an attendee who
+builds their own model in VS Code meets the same refusal with no cast to hand. The gate
+still waits on the hand derivation, so holding the fix for the gate would keep the
+workshop on 0.5.0 until after it has run. This is ADR-067's reasoning applied a second
+time.
+
+It is a patch release because no number changes and no call behaves differently. #207
+alone would have broken a class that subclasses either protocol and sets `is_fixed` on
+the instance, since the property it inherited had no setter. #211 keeps the property for
+type checkers only, so at runtime both protocols declare `is_fixed` as 0.5.0 did. A type
+checker now flags that assignment, which is the change #207 was for.
+
+### Consequences
+
+- v0.5.1 certifies nothing, like v0.5.0. Every number routed through the exact reference
+  filter stays gated on GATE-D4.
+- `GATE-D4` keeps its name. ADR-067 records that it was named apart from any tag for a
+  move like this one, and this is the second move since it was named.
+- ADR-067 keeps its wording. Its v0.5.1 lines name the tag as planned on 2026-10-14, the
+  way earlier ADRs kept their `Phase: v0.4.5` lines.
+- The battery and the warrant ledger read v0.5.2 for GATE-D4 and the work before it. The
+  battery's tag table gains a v0.5.1 row. `warrant_numbers.md` names no gate tag and is
+  unchanged.
+- warrantlib stays 0.3.0. Its one change since, in #207, passes the pytest version parts
+  through `int()` so the minimum-version comparison type-checks. That has no runtime
+  effect, so its version stays and `publish.yml` uploads cpomdp alone.
+- A breaking change before the gate makes the gate's tag v0.6.0 and the papers' tag
+  v0.7, as ADR-067 already says.
