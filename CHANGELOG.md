@@ -4,20 +4,27 @@ Everything worth noting lands here. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+## [0.5.1] — unreleased, tag pending
+
+A bug-fix release for the November workshop. No number changes. GATE-D4 moves from
+v0.5.1 to v0.5.2 (ADR-092).
+
 ### Fixed
 
 - The sdist leaves out CI's JAX compilation cache. `.gitignore` named `.jax_cache/` and
   CI writes `.jax-cache/`, so the publish job built its sdist after the test step had
-  filled the cache. PyPI refused the 0.5.0 sdist at its 100 MB limit, and only the wheel
-  was published.
+  filled the cache. PyPI refused CI's 0.5.0 sdist at its 100 MB limit, so the wheel went
+  out alone and a clean sdist was uploaded by hand the next day.
 - A type checker accepts `CallableSensor` and `FixedSensor` as an `ObservationModel`, and
   `CallableDynamicsNoise` as a `DynamicsNoiseModel`. Both protocols declared `is_fixed`
   as a writable attribute, which a frozen dataclass cannot satisfy, so `ty` 0.0.91
-  refused every sensor passed as `observation_model`. `is_fixed` is a read-only property
-  on both now (#206). The lock moves `ty` from 0.0.46 to 0.0.91, so CI's type gate
+  refused every sensor passed as `observation_model`. `is_fixed` is read-only to a type
+  checker on both now (#206). The lock moves `ty` from 0.0.46 to 0.0.91, so CI's type gate
   checks this. The older version never checked whether a protocol member is writable.
   At runtime `is_fixed` stays the plain attribute 0.5.0 declared, so a subclass that
-  sets it on the instance still runs.
+  sets it on the instance still runs (#211).
+- The `Raises` sections of `Agent` and `Agent.from_backend` name the `ValueError` for a
+  built-in `selector=` built for another model or graph (#191).
 
 ## [0.5.0] — 2026-10-16
 
