@@ -4,7 +4,7 @@ Everything worth noting lands here. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
-## [0.5.1] — unreleased, tag pending
+## [0.5.1] — 2026-10-30
 
 A bug-fix release for the November workshop. No number changes. GATE-D4 moves from
 v0.5.1 to v0.5.2 (ADR-092).
