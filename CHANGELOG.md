@@ -16,6 +16,8 @@ Everything worth noting lands here. The format follows [Keep a Changelog](https:
   refused every sensor passed as `observation_model`. `is_fixed` is a read-only property
   on both now (#206). The lock moves `ty` from 0.0.46 to 0.0.91, so CI's type gate
   checks this. The older version never checked whether a protocol member is writable.
+  At runtime `is_fixed` stays the plain attribute 0.5.0 declared, so a subclass that
+  sets it on the instance still runs.
 
 ## [0.5.0] — 2026-10-16
 
