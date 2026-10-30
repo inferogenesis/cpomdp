@@ -1,0 +1,161 @@
+{
+  "_comment": "Synced by .github/workflows/labels.yml on merge. The sync creates and updates and never deletes. `claude: true` marks the labels the weekly upkeep run may add.",
+  "labels": [
+    {
+      "name": "bug",
+      "color": "d73a4a",
+      "description": "Something isn't working",
+      "claude": true
+    },
+    {
+      "name": "enhancement",
+      "color": "a2eeef",
+      "description": "New feature or request",
+      "claude": true
+    },
+    {
+      "name": "documentation",
+      "color": "0075ca",
+      "description": "Improvements or additions to documentation",
+      "claude": true
+    },
+    {
+      "name": "question",
+      "color": "d876e3",
+      "description": "Further information is requested",
+      "claude": true
+    },
+    {
+      "name": "duplicate",
+      "color": "cfd3d7",
+      "description": "This issue or pull request already exists",
+      "claude": true
+    },
+    {
+      "name": "good first issue",
+      "color": "7057ff",
+      "description": "Good for newcomers: small, settled, checkable",
+      "claude": true
+    },
+    {
+      "name": "help wanted",
+      "color": "008672",
+      "description": "Design settled, open to an outside contributor",
+      "claude": true
+    },
+    {
+      "name": "invalid",
+      "color": "e4e669",
+      "description": "This doesn't seem right",
+      "claude": false
+    },
+    {
+      "name": "wontfix",
+      "color": "ffffff",
+      "description": "This will not be worked on",
+      "claude": false
+    },
+    {
+      "name": "difficulty:easy",
+      "color": "c2e0c6",
+      "description": "One or two files, no background needed",
+      "claude": true
+    },
+    {
+      "name": "difficulty:medium",
+      "color": "fbca04",
+      "description": "Read a module end to end first",
+      "claude": true
+    },
+    {
+      "name": "difficulty:hard",
+      "color": "d93f0b",
+      "description": "Crosses modules or needs the theory",
+      "claude": true
+    },
+    {
+      "name": "triaged",
+      "color": "ededed",
+      "description": "Labelled by a maintainer or the weekly upkeep run",
+      "claude": false
+    },
+    {
+      "name": "claude-proposed",
+      "color": "bfd4f2",
+      "description": "Filed by the weekly upkeep run. Scope not yet confirmed",
+      "claude": false
+    },
+    {
+      "name": "upkeep-log",
+      "color": "5319e7",
+      "description": "The weekly upkeep run's log issue",
+      "claude": false
+    },
+    {
+      "name": "dependencies",
+      "color": "0366d6",
+      "description": "Pull requests that update a dependency file",
+      "claude": false
+    },
+    {
+      "name": "research",
+      "color": "435343",
+      "description": "Part of the maintainer's research programme",
+      "claude": true
+    },
+    {
+      "name": "demo",
+      "color": "46e73a",
+      "description": "A demonstration or figure",
+      "claude": true
+    },
+    {
+      "name": "area:models",
+      "color": "1d76db",
+      "description": "Model types and structure: dynamics, observation, structure, types, agent",
+      "claude": true
+    },
+    {
+      "name": "area:inference",
+      "color": "1d76db",
+      "description": "Filtering backends: kalman, coupling, rxinfer",
+      "claude": true
+    },
+    {
+      "name": "area:ffg",
+      "color": "1d76db",
+      "description": "Forney factor graphs and message passing",
+      "claude": true
+    },
+    {
+      "name": "area:planning",
+      "color": "1d76db",
+      "description": "EFE, selection, enumeration, control and crossover",
+      "claude": true
+    },
+    {
+      "name": "area:warrantlib",
+      "color": "1d76db",
+      "description": "The warrantlib package under packages/warrantlib",
+      "claude": true
+    },
+    {
+      "name": "area:docs",
+      "color": "1d76db",
+      "description": "The docs site, README and docstrings",
+      "claude": true
+    },
+    {
+      "name": "area:examples",
+      "color": "1d76db",
+      "description": "Scripts and figures under examples/",
+      "claude": true
+    },
+    {
+      "name": "area:ci",
+      "color": "1d76db",
+      "description": "Workflows, hooks and tooling",
+      "claude": true
+    }
+  ]
+}

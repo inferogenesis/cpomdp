@@ -1,0 +1,115 @@
+name: claude upkeep
+
+# The weekly upkeep run. Claude labels new issues, opens at most one small fix, docs or
+# test pull request, files contributor-ready issues for small features where the
+# repository takes contributions, and posts a log to the `upkeep-log` issue. The brief
+# is `.github/claude/upkeep.md`.
+#
+# Every write goes through `.github/claude/gh_ops.py`, staged in a read-only directory
+# outside the checkout before Claude starts. The caps come from the action step's
+# environment. Claude's file tools are denied the staged copy, its state and `.git`. Its
+# only shell command is the staged tool, so it runs no code of its own.
+#
+# Controls, all under Settings > Secrets and variables > Actions:
+# - variable `CLAUDE_PAUSED` set to `true` skips the run without spending anything
+# - variable `CLAUDE_UPKEEP_MODEL` overrides the model
+# - secret `CLAUDE_CODE_OAUTH_TOKEN` bills the run to the Claude subscription
+#   (from `claude setup-token`)
+
+on:
+  schedule:
+    # Saturday 02:07 UTC. Overnight in the UK, after Dependabot's Friday run, and off
+    # the top of the hour, where scheduled runs queue.
+    - cron: "7 2 * * 6"
+  workflow_dispatch:
+    inputs:
+      triage_cap:
+        description: Most issues to label in this run
+        type: number
+        default: 15
+
+concurrency:
+  group: claude-upkeep
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  upkeep:
+    # A dispatch from another branch would brief Claude from that branch's files.
+    if: vars.CLAUDE_PAUSED != 'true' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      # The action trades this for the Claude GitHub App's token. Claude's writes use
+      # that token, so the PRs it opens trigger CI, and the app cannot edit workflows.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: stage the guarded tool outside the checkout
+        run: |
+          ops="$RUNNER_TEMP/claude-ops"
+          mkdir -p "$ops" "$RUNNER_TEMP/claude-ops-state"
+          cp .github/claude/gh_ops.py .github/labels.json "$ops/"
+          chmod 0444 "$ops"/*
+          # A read-only directory, so no tool can replace a file in it by renaming.
+          chmod 0555 "$ops"
+
+      - uses: anthropics/claude-code-action@v1
+        env:
+          CLAUDE_BASE_BRANCH: main
+          # The caps and the state path reach the tool through this environment. Claude
+          # can't set environment variables, and its file tools are denied the state
+          # directory below.
+          CLAUDE_OPS_STATE: ${{ runner.temp }}/claude-ops-state/state.json
+          CLAUDE_TRIAGE_CAP: ${{ inputs.triage_cap || 15 }}
+          # Contributor-ready issues per run. Zero turns step 4 of the brief off.
+          CLAUDE_PROPOSE_CAP: "2"
+          # Paths an upkeep pull request may not touch, as prefixes.
+          CLAUDE_FORBIDDEN_PATHS: >-
+            .github/ DECISIONS.md BUILD_PLAN.md CHANGELOG.md CITATION.cff pyproject.toml uv.lock packages/warrantlib/pyproject.toml protected_files.py research/ warrant_numbers.md
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          additional_permissions: |
+            actions: read
+          # Claude's file tools can otherwise reach paths outside the checkout. These
+          # deny the staged tool and its state, the dotfiles in the runner's home (git
+          # config, Python user site) and `.git`, whose config holds the token.
+          settings: |
+            {
+              "permissions": {
+                "deny": [
+                  "Edit(/${{ runner.temp }}/**)",
+                  "Write(/${{ runner.temp }}/**)",
+                  "Read(/${{ runner.temp }}/claude-ops-state/**)",
+                  "Edit(~/.*)",
+                  "Write(~/.*)",
+                  "Edit(~/.*/**)",
+                  "Write(~/.*/**)",
+                  "Edit(./.git/**)",
+                  "Write(./.git/**)",
+                  "Read(./.git/**)"
+                ]
+              }
+            }
+          prompt: |
+            Repository: ${{ github.repository }}. Default branch: main.
+
+            The guarded tool is `python3 -I ${{ runner.temp }}/claude-ops/gh_ops.py`.
+            It is your only command. It reads git and GitHub and makes every write.
+
+            Read `.github/claude/upkeep.md` and follow it.
+          # The guarded tool is the only Bash, run with `-I` so Python ignores user
+          # site-packages and its environment variables. Plain git subcommands are left
+          # out on purpose. `git log --output` writes files anywhere, and an allow rule
+          # outranks Claude Code's own check for that flag.
+          claude_args: >-
+            --model ${{ vars.CLAUDE_UPKEEP_MODEL || 'claude-sonnet-5-5' }}
+            --max-turns 80
+            --allowedTools "Read,Write,Edit,Glob,Grep,Bash(python3 -I
+            ${{ runner.temp }}/claude-ops/gh_ops.py:*)"

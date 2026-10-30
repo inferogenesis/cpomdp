@@ -1,0 +1,26 @@
+name: labels
+
+# Creates or updates every label in `.github/labels.json`. Deletes nothing, so a label
+# made by hand survives until someone removes it by hand.
+
+on:
+  push:
+    branches: [main]
+    paths: [.github/labels.json]
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - run: python3 .github/claude/gh_ops.py sync-labels
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

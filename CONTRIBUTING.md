@@ -20,6 +20,32 @@ However, I appreciate not everyone is a software engineer and I am more than
 happy to help anyone who wishes to contribute but is unsure on how to meet
 any of the above.
 
+## Finding something to work on
+
+Start from the [`good first issue`](https://github.com/inferogenesis/cpomdp/labels/good%20first%20issue)
+label. Each one fits a single small pull request, has no design question left open and
+can be checked with the commands further down this page. [`help wanted`](https://github.com/inferogenesis/cpomdp/labels/help%20wanted)
+issues are bigger. Their design is settled and they are open to anyone.
+
+Every triaged issue also carries:
+
+- an `area:*` label naming the part of the codebase it touches. `area:warrantlib` is
+  the separate package under `packages/warrantlib`.
+- a `difficulty:*` label. `easy` needs no active inference theory. `medium` means
+  reading a module end to end, or writing a test against an oracle. `hard` crosses
+  modules or needs the derivations.
+
+Comment on an issue before you start, so two people don't build the same thing. For
+anything without an issue, open one or a Discussion first.
+
+Issues labelled `claude-proposed` were filed by a weekly automated upkeep run. Its scope
+is a first draft. Ask in the issue and I'll confirm it or narrow it before you start.
+The same run labels new issues and opens small fix, docs and test pull requests. It
+never merges anything, and every pull request it opens gets the same review as yours.
+
+Issues labelled `research` belong to my own research programme. They aren't open for
+outside work. Questions on them are welcome.
+
 ## Setup
 
 The project uses [uv](https://docs.astral.sh/uv/). Once you've cloned it:

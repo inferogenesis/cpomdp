@@ -13,10 +13,12 @@ concurrency:
 jobs:
   review:
     name: claude review
-    # Forks don't get the secret, so the action would fail auth validation.
+    # Forks don't get the secret, so the action would fail auth validation. Dependabot
+    # runs see only Dependabot secrets, so they fail it the same way.
     if: >-
       github.event_name == 'workflow_dispatch'
-      || github.event.pull_request.head.repo.fork == false
+      || (github.event.pull_request.head.repo.fork == false
+      && github.actor != 'dependabot[bot]')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -58,6 +60,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # The weekly upkeep run opens its PRs as the Claude app. The action turns bot
+          # actors away unless listed, so without this those PRs get no review.
+          allowed_bots: "claude[bot]"
           # Logs each tool call and denial, so a review that posts nothing shows why.
           show_full_output: true
           prompt: |
