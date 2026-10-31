@@ -1,0 +1,39 @@
+name: audit
+
+# Checks the locked dependencies against the OSV vulnerability database (ADR-093). It
+# runs when the lock changes, and weekly, because an advisory against a package already
+# in the lock arrives with no change here to start a run.
+on:
+  # `uv.lock` alone covers a dependency edit. One that does not reach the lock fails
+  # `uv sync --locked` in CI before anything else runs, the same reasoning as the
+  # `scope` filter in `ci.yml` (ADR-055).
+  pull_request:
+    paths: [uv.lock, .github/workflows/audit.yml]
+  push:
+    branches: [main]
+    paths: [uv.lock, .github/workflows/audit.yml]
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v8.2.0
+      # `uv audit` is experimental, and `--preview-features audit` acknowledges it. A
+      # change to its interface shows here as a red run.
+      #
+      # Two steps, so a failure says whom it reaches. The first covers what an install
+      # of cpomdp with both extras needs, at the versions CI tests against. The second
+      # adds the dev tools and the docs build, which reach only this repository.
+      - name: what an install of cpomdp needs
+        run: uv audit --locked --preview-features audit --no-dev --no-group docs
+      - name: the whole lock
+        if: ${{ !cancelled() }}
+        run: uv audit --locked --preview-features audit
