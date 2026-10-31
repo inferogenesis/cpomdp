@@ -4,6 +4,17 @@ Everything worth noting lands here. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+### Security
+
+- CI audits `uv.lock` against the OSV vulnerability database whenever it changes and
+  every Monday. Dependabot proposes monthly updates to the packages cpomdp names
+  directly, the pre-commit hooks and the workflow actions. A version reaches the lock
+  only once it is seven days old (ADR-093). None of this changes what an install of
+  cpomdp resolves to.
+- The lock moves past every advisory the audit found when it was added, in eight
+  packages. pillow, which `examples` installs, moves to 13.0.0. filelock, which `rxinfer`
+  brings in through juliapkg, moves to 4.2.4.
+
 ## [0.5.1] — 2026-10-30
 
 A bug-fix release for the November workshop. No number changes. GATE-D4 moves from

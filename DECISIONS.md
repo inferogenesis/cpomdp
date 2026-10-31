@@ -5771,3 +5771,107 @@ checker now flags that assignment, which is the change #207 was for.
   effect, so its version stays and `publish.yml` uploads cpomdp alone.
 - A breaking change before the gate makes the gate's tag v0.6.0 and the papers' tag
   v0.7, as ADR-067 already says.
+
+## ADR-093 — dependency updates wait seven days, and CI audits the lock
+
+**Date:** 2026-10-30
+**Status:** Accepted
+**Phase:** v0.5.2 (tooling)
+
+### Decision
+
+Dependabot proposes version updates once a month for three ecosystems. The `uv` entry
+covers the packages a `pyproject.toml` names, `pre-commit` covers the hook revisions
+and `github-actions` covers the workflows. A new workflow, `audit.yml`, checks `uv.lock`
+against the OSV vulnerability database with `uv audit`. It runs on a pull request or a
+push that changes the lock, and every Monday, because an advisory published against a
+package already in the lock comes with no change to start a run.
+
+No version reaches the lock until it has been on the index for seven days.
+`[tool.uv] exclude-newer = "7 days"` holds every `uv lock` to that, whether it is run by
+hand or by Dependabot, and Dependabot's seven-day `cooldown` matches it so that it doesn't
+propose a version uv would refuse. The cooldown also covers the hook and action updates,
+which uv never sees. The wait gives a compromised or broken release time to be found and
+yanked before it reaches the lock.
+
+The `uv` entry is `lockfile-only`. For a library, Dependabot's default strategy widens the
+version ranges in `pyproject.toml`, and those ranges are the `Requires-Dist` a release
+publishes. A widened range changes what a user's install can resolve to, so it is a
+release decision.
+
+The ruff pre-commit hook now runs the locked ruff through `uv run`, as the `ty` hook
+already did. The remote hook carried its own revision, and the config asked for it to be
+kept level with the lock by hand. Dependabot treats the two files as separate ecosystems
+and would have moved them in separate pull requests. With one pin there is nothing to
+keep level.
+
+Minor and patch updates are grouped into one pull request per ecosystem, and a major
+update arrives on its own. That matters most for actions. `publish.yml` runs only on a
+release and `docs.yml` deploys only from `main`, so no pull request runs the actions they
+use, and a broken major in `publish.yml` would first show on the release it breaks.
+
+The audit runs in two steps, so a red run says whom it reaches. The first covers the
+runtime dependencies of every workspace member with all their extras, at the versions CI
+tests against. `uv audit` has no per-package flag, so that is cpomdp with `examples` and
+`rxinfer`, warrantlib with `pytest`, and the research package. The second covers the whole
+lock, which adds the dev tools and the docs build. `uv audit` reads the lock as a whole,
+so the runner's platform and Python version don't change the result. Linux, macOS and
+Windows each report the same 85 packages, and so do Python 3.11 and 3.14.
+
+Claude reviews Dependabot's pull requests in a job of their own, `dependency-review`, on
+Opus every time. It reads each changed package's release notes and reports what reaches
+this repository. A version change in jax, jaxlib, ml-dtypes, numpy, opt-einsum, scipy,
+sympy or mpmath is a blocker until the slow gates and the symbolic suites have run on the
+branch, because the research results are claimed to 1e-12 and can move with those
+packages. A run Dependabot starts reads Dependabot secrets and not Actions secrets, so
+`CLAUDE_CODE_OAUTH_TOKEN` is stored in both. The release notes are text from outside the
+repository, and the job can do no more with them than post a comment. It approves and
+merges nothing.
+
+### The first audit
+
+The first audit of `main` at `abf405f` reported advisories in eight packages. The core
+install of cpomdp, 8 packages, had none. Each extra brought one, pillow through
+`examples` and filelock through juliapkg in `rxinfer`. The other six reach only this
+repository. virtualenv comes in through pre-commit, and mkdocs-material,
+pymdown-extensions, urllib3, certifi and setuptools through the docs build. filelock comes
+in through pre-commit as well.
+
+The lock moves past all eight in the same change, each to a version at least seven days
+old. pymdown-extensions 12 changed a constructor that mkdocstrings 1.0.4 calls, and the
+strict docs build failed on it, so mkdocstrings moves to 1.0.8 alongside.
+
+filelock moved last. Its fixes are in 4.x, and juliapkg capped it below 4 until 0.1.28,
+which was uploaded on 2026-10-24 and so stayed outside the window until 2026-10-31. Once
+it was in, `uv lock --upgrade-package juliapkg --upgrade-package filelock` moved filelock
+from 3.32.7 to 4.2.4, and both audit steps report no advisories.
+
+### Consequences
+
+- RxInfer stays a hand edit. CI pins it in `ci.yml` and the backend declares its range in
+  `src/cpomdp/juliapkg.json`, and Dependabot reads neither file. ADR-085's reason holds,
+  since the oracle's numbers move only when that pin does.
+- Dependabot's `uv` entry leaves a transitive package alone, one that only another
+  package requires. Six of the eight packages the first audit flagged were transitive,
+  so this change moved them by hand. A transitive advisory turns the Monday audit red,
+  and `uv lock --upgrade-package` fixes it. A scheduled `uv lock --upgrade` that opens its
+  own pull request would close the gap. It needs an app token or a personal access token,
+  because a pull request opened with `GITHUB_TOKEN` starts no workflow, so it is left to
+  a later change.
+- A Dependabot pull request that changes `uv.lock` runs the symbolic suites, because the
+  lock is in ADR-055's filter. A sympy update can change a derivation, so that run is
+  wanted.
+- A security fix younger than seven days can't reach the lock either. Dependabot's
+  security updates skip its cooldown, and I expect `exclude-newer` to refuse the version
+  when they relock. That is unobserved so far. Such a fix goes in by hand through
+  `exclude-newer-package` for that one package, which names the exception in the diff.
+  A dry run confirmed that a juliapkg exception admits 0.1.28 and lets filelock move to
+  4.2.4.
+- `uv audit` is experimental and asks for `--preview-features audit`. A change to its
+  interface shows as a red audit run, and the fix is in `audit.yml` alone.
+- An advisory against a package already in the lock turns the Monday run red with no pull
+  request attached. GitHub sends a failed scheduled run's notice to whoever created the
+  workflow or last changed its `cron` line.
+- A relative `exclude-newer` needs a uv that parses a duration, so `required-version` asks
+  for 0.11.14 or newer. That is the oldest version checked here, and CI installs the
+  latest.
