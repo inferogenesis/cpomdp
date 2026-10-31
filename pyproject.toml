@@ -78,6 +78,8 @@ build-backend = "hatchling.build"
 packages = ["src/cpomdp"]
 
 [tool.uv]
+# The oldest uv checked against the relative `exclude-newer` below (ADR-093).
+required-version = ">=0.11.14"
 # A version reaches the lock once it has been on the index for seven days, whether by
 # hand or through Dependabot, whose cooldown matches (ADR-093).
 exclude-newer = "7 days"
