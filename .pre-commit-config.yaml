@@ -3,8 +3,8 @@
 # The ruff and ty hooks mirror the CI `lint` job, so a clean commit here is a green CI.
 repos:
   # The locked ruff, so the version judging the code is the one in `uv.lock` and there is
-  # no second pin to keep level with it (ADR-093). `--extra examples` matches the ty hook
-  # below, so neither hook re-syncs the environment the other just synced.
+  # no second pin to keep level with it (ADR-093). `--extra examples` asks for the same
+  # environment as the ty hook below, so whichever hook runs first syncs it once.
   - repo: local
     hooks:
       - id: ruff-check
