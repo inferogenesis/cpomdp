@@ -29,10 +29,13 @@ jobs:
       # `uv audit` is experimental, and `--preview-features audit` acknowledges it. A
       # change to its interface shows here as a red run.
       #
-      # Two steps, so a failure says whom it reaches. The first covers what an install
-      # of cpomdp with both extras needs, at the versions CI tests against. The second
-      # adds the dev tools and the docs build, which reach only this repository.
-      - name: what an install of cpomdp needs
+      # Two steps, so a failure says whom it reaches. The first covers the runtime
+      # dependencies of every workspace member with all their extras, at the versions CI
+      # tests against. `uv audit` has no per-package flag, so that is cpomdp with
+      # `examples` and `rxinfer`, warrantlib with `pytest`, and the research package.
+      # The second adds the dev tools and the docs build, which reach only this
+      # repository.
+      - name: runtime dependencies, every extra
         run: uv audit --locked --preview-features audit --no-dev --no-group docs
       - name: the whole lock
         if: ${{ !cancelled() }}
