@@ -479,11 +479,11 @@ wheels = [
 
 [[package]]
 name = "filelock"
-version = "3.32.7"
+version = "4.2.4"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/0f/59/e19834834cb01a32febfbb0f8a23a9088088f5d45991824ff2bc3b5e8acb/filelock-3.32.7.tar.gz", hash = "sha256:37b8a3d9811b0f9aef7e5ec5c71bb320de52df51e6ca9bcd6f5ad81187660da7", size = 225154, upload-time = "2026-09-16T00:24:20.907Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d8/28/3893324bcadf8f89b1616637468d766af3f625008c0735bf704fdfa86617/filelock-4.2.4.tar.gz", hash = "sha256:c6d8663535e1650ee430507b4ffbac7b464dd64b7647ea0112a9f406499d163d", size = 652444, upload-time = "2026-10-19T01:57:51.001Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/15/df/31098c5aeb4d966b553641472bd55fcf5fdfac953549894b8a765ba44e91/filelock-3.32.7-py3-none-any.whl", hash = "sha256:65ff0d0190ea42038b32bda4b77834fb05be2cad4c5b9b01aa4dfb3614536e52", size = 100157, upload-time = "2026-09-16T00:24:19.543Z" },
+    { url = "https://files.pythonhosted.org/packages/e0/1b/5e74289a1878e666bb4b65fe5805a04cafcac2aa5f519ef1ead67ef91c56/filelock-4.2.4-py3-none-any.whl", hash = "sha256:301241438c57936ef93f4243a94f2559022268bfcf9b375a9a72eb0f8db8358e", size = 162475, upload-time = "2026-10-19T01:57:49.419Z" },
 ]
 
 [[package]]
@@ -698,7 +698,7 @@ wheels = [
 
 [[package]]
 name = "juliapkg"
-version = "0.1.27"
+version = "0.1.28"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "filelock" },
@@ -706,9 +706,9 @@ dependencies = [
     { name = "tomli" },
     { name = "tomlkit" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/10/cb/e1bdfe4e8ad365532f560a39c87a70a9ef40464d82226bbc022654d54243/juliapkg-0.1.27.tar.gz", hash = "sha256:89cbdc56030f3de82c26bc84e2c0e99740675b6c14a746585522b84f52c47e08", size = 26018, upload-time = "2026-09-19T13:03:33.308Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ce/b1/965f7b066df488d7328fb448cf09b5647d2958266742e8e124239135c9fb/juliapkg-0.1.28.tar.gz", hash = "sha256:24f3ca545263e090f57521f47900bbb94ee7ebc9d91c55c82e4148aaf1b58e36", size = 27403, upload-time = "2026-10-24T21:24:35.341Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/3e/fc/019ecccb5ed710aa38ae4173facf0bb411d855d2d137ad29ec31c16342da/juliapkg-0.1.27-py3-none-any.whl", hash = "sha256:c2f6c53a65a4f4a1c124db8400ad48c9f142b2def67b2db86703f0cedc42c150", size = 23087, upload-time = "2026-09-19T13:03:31.648Z" },
+    { url = "https://files.pythonhosted.org/packages/b8/18/5b8ebec81b05ce0bf355118992cdb94a97cdfe19e60662f99e2059e61b73/juliapkg-0.1.28-py3-none-any.whl", hash = "sha256:e09640eb5d3465eda0ea40fda912048cc06f34e1a3880eb9e46f4e2c836d8d48", size = 23609, upload-time = "2026-10-24T21:24:34.26Z" },
 ]
 
 [[package]]
