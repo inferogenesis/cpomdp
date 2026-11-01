@@ -108,11 +108,13 @@ jobs:
           # Opus on the first review, which does the heavy lifting over the whole
           # diff; Sonnet on each later push. A manual re-run of the job replays
           # the original event, so a re-run of the opening review is an Opus one.
+          # `opus` and `sonnet` are Claude Code's aliases for the newest of each
+          # (ADR-093).
           # 40 turns was not enough: with denials cut from 18 to 7 the reviews
           # still ran out mid-diff and posted nothing.
           claude_args: >-
             --model ${{ (github.event.action == 'opened' || github.event_name ==
-            'workflow_dispatch') && 'claude-opus-5-5' || 'claude-sonnet-5-5' }}
+            'workflow_dispatch') && 'opus' || 'sonnet' }}
             --max-turns 120 --allowed-tools
             "Read,Write,Grep,Glob,Bash(git
             diff:*),Bash(git log:*),Bash(git show:*),Bash(ls:*),Bash(cat:*),Bash(grep:*),Bash(gh
@@ -208,7 +210,7 @@ jobs:
           # same update. WebFetch reaches the hosts that carry release notes and
           # nothing else.
           claude_args: >-
-            --model claude-opus-5-5 --max-turns 120 --allowed-tools
+            --model opus --max-turns 120 --allowed-tools
             "Read,Write,Grep,Glob,WebFetch(domain:github.com),WebFetch(domain:raw.githubusercontent.com),WebFetch(domain:pypi.org),Bash(git
             diff:*),Bash(git log:*),Bash(git show:*),Bash(gh pr diff:*),Bash(gh
             pr view:*)"

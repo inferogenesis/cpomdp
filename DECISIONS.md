@@ -5828,6 +5828,11 @@ packages. A run Dependabot starts reads Dependabot secrets and not Actions secre
 repository, and the job can do no more with them than post a comment. It approves and
 merges nothing.
 
+Both Claude jobs in `claude-review.yml` name their model by Claude Code's alias, `opus` or
+`sonnet`. An alias resolves to the newest model in its line, so a new release reaches the
+reviews without an edit. A model change then shows in no diff. The reviews feed no
+recorded number, so I accept that.
+
 ### The first audit
 
 The first audit of `main` at `abf405f` reported advisories in eight packages. The core
