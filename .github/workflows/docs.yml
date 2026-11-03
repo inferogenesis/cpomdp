@@ -48,7 +48,7 @@ jobs:
           uvx --from "genbadge[coverage]" genbadge coverage \
             -i coverage.xml -o docs/assets/coverage.svg
       - run: uv run --no-sync mkdocs build --strict
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: site
 
