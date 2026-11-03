@@ -5880,3 +5880,58 @@ from 3.32.7 to 4.2.4, and both audit steps report no advisories.
 - A relative `exclude-newer` needs a uv that parses a duration, so `required-version` asks
   for 0.11.14 or newer. That is the oldest version checked here, and CI installs the
   latest.
+
+## ADR-094 — Dependabot opens one pull request per ecosystem, majors included
+
+**Date:** 2026-11-03
+**Status:** Accepted
+**Supersedes:** ADR-093's sentence "Minor and patch updates are grouped into one pull
+request per ecosystem, and a major update arrives on its own."
+**Phase:** v0.5.2 (tooling)
+
+### Decision
+
+No Dependabot group names `update-types`, so each one takes every update in its
+ecosystem, majors included. A monthly run opens at most three version-update pull
+requests, one each for the lock, the hooks and the actions. The rest of ADR-093 stands.
+
+### What the first run did
+
+Dependabot's first run, on 2026-11-03 after #212 merged, opened ten pull requests. The
+`lock` group took all eight `uv` updates into #222. The six action updates were all
+majors, so each arrived alone as ADR-093 intended. Two of the three hook updates arrived
+alone as well, although they are minors: cspell-cli 10.0.1 to 10.4.0 and
+markdownlint-cli2 0.22.1 to 0.24.0. The third, pre-commit-hooks 5.0.0 to 6.0.0, is a
+major and arrived alone as intended.
+
+The run's log has the `hooks` group finding all three updates, reporting "Nothing to
+update for Dependency Group: 'hooks'", and then opening each one separately. In
+dependabot-core, `SemverGroupingRules.allow_grouping?` admits a dependency to a group
+that names `update-types` only when the ecosystem's version class parses both the
+current and the latest version. It returns false otherwise. A group without
+`update-types` returns true before that check. I haven't established which hook version
+failed to parse. The revisions carry a `v` prefix, which is a likely cause and unchecked.
+With no `update-types` the parse never runs, so the answer doesn't change this decision.
+
+### Why a major can share a pull request
+
+ADR-093 kept majors apart because no pull request runs the actions in `publish.yml` and
+`docs.yml`, so a broken major there first shows on the release it breaks. A pull request
+of its own doesn't change that, because CI runs the same jobs on it. The dependency
+review is what reads a major before it merges, and it reports on each package in a
+group separately. On #222 it covered eight packages and raised a blocker against jax
+alone.
+
+### Consequences
+
+- One bad update holds up its group. Commenting `@dependabot ignore <name> major version`
+  on the group's pull request should keep that major out of the group. I haven't used it
+  here yet.
+- The dependency review skips a pull request that changes `claude-review.yml`, because
+  the action runs only a workflow file identical to `main`'s. An actions group that moves
+  `actions/checkout` or `anthropics/claude-code-action` changes that file, so the whole
+  group goes unreviewed. Under ADR-093 only that action's own pull request did, as #217
+  did on the first run. Such a group needs a review by hand. A separate group for those
+  two actions, listed before `actions`, would confine the skip to them at the cost of a
+  second actions pull request in a month that moves them. I chose one group, because
+  fewer pull requests was the point of this change.
