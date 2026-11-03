@@ -50,7 +50,7 @@ repos:
   # local run (`markdownlint-cli2`) and this hook judge the docs identically.
   # pre-commit provisions its own Node, so no global install is needed.
   - repo: https://github.com/DavidAnson/markdownlint-cli2
-    rev: v0.22.1
+    rev: v0.24.0
     hooks:
       - id: markdownlint-cli2
         # Pinned so pre-commit fetches its own Node rather than using whatever the
