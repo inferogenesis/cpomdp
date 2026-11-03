@@ -48,7 +48,7 @@ jobs:
           python-version: "3.12"
       - run: uv sync --locked
       - name: jax compilation cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: .jax-cache
           restore-keys: jax-cache-${{ runner.os }}-py3.12-

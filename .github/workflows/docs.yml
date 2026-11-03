@@ -33,7 +33,7 @@ jobs:
       # Same key family as ci.yml's py3.12 test job, so this run starts from the
       # PR runs' compilations and its slow-test compiles feed back into them.
       - name: jax compilation cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: .jax-cache
           key: jax-cache-${{ runner.os }}-py3.12-${{ github.run_id }}
