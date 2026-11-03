@@ -68,7 +68,7 @@ repos:
   # Python (cspell splits snake_case into real words, so it mostly catches
   # docstring/comment typos — code identifiers are allow-listed in cspell.json).
   - repo: https://github.com/streetsidesoftware/cspell-cli
-    rev: v10.0.1
+    rev: v10.4.0
     hooks:
       - id: cspell
         # cspell-cli v10 needs Node >= 22.18. Same reasoning as markdownlint above.
