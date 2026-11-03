@@ -5893,7 +5893,9 @@ request per ecosystem, and a major update arrives on its own."
 
 No Dependabot group names `update-types`, so each one takes every update in its
 ecosystem, majors included. A monthly run opens at most three version-update pull
-requests, one each for the lock, the hooks and the actions. The rest of ADR-093 stands.
+requests, one each for the lock, the hooks and the actions. The dependency review's
+workflow check now fails on a Dependabot pull request that changes `claude-review.yml`,
+where it used to pass. The rest of ADR-093 stands.
 
 ### What the first run did
 
@@ -5910,8 +5912,9 @@ dependabot-core, `SemverGroupingRules.allow_grouping?` admits a dependency to a 
 that names `update-types` only when the ecosystem's version class parses both the
 current and the latest version. It returns false otherwise. A group without
 `update-types` returns true before that check. I haven't established which hook version
-failed to parse. The revisions carry a `v` prefix, which is a likely cause and unchecked.
-With no `update-types` the parse never runs, so the answer doesn't change this decision.
+failed to parse. The revisions carry a `v` prefix, which is a likely cause and
+unchecked. With no `update-types` the parse never runs, so the answer doesn't change
+this decision.
 
 ### Why a major can share a pull request
 
@@ -5924,14 +5927,16 @@ alone.
 
 ### Consequences
 
-- One bad update holds up its group. Commenting `@dependabot ignore <name> major version`
-  on the group's pull request should keep that major out of the group. I haven't used it
-  here yet.
-- The dependency review skips a pull request that changes `claude-review.yml`, because
-  the action runs only a workflow file identical to `main`'s. An actions group that moves
-  `actions/checkout` or `anthropics/claude-code-action` changes that file, so the whole
-  group goes unreviewed. Under ADR-093 only that action's own pull request did, as #217
-  did on the first run. Such a group needs a review by hand. A separate group for those
+- One bad update holds up its group. Commenting
+  `@dependabot ignore <name> major version` on the group's pull request should keep that
+  major out of the group. I haven't used it here yet.
+- The dependency review can't run on a pull request that changes `claude-review.yml`,
+  because the action runs only a workflow file identical to `main`'s. An actions group
+  that moves `actions/checkout` or `anthropics/claude-code-action` changes that file, so
+  the review reads no action in the group. Under ADR-093 that held for the one action's
+  own pull request, and on #217 the check passed in eight seconds with nothing read. The
+  check now fails with an error that asks for a review by hand, so a group nobody has
+  read doesn't show green. A separate group for those
   two actions, listed before `actions`, would confine the skip to them at the cost of a
   second actions pull request in a month that moves them. I chose one group, because
   fewer pull requests was the point of this change.

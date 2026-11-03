@@ -43,8 +43,8 @@ updates:
       prefix: chore
 
   # `publish.yml` runs only on a release and `docs.yml` deploys only from main, so no pull
-  # request runs the actions they use, and only the dependency review reads a change to
-  # them before it merges.
+  # request runs the actions they use. The dependency review reads a change to them before
+  # it merges, and fails for a review by hand when the change moves `claude-review.yml`.
   - package-ecosystem: github-actions
     directory: /
     schedule:
