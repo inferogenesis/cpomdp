@@ -24,7 +24,7 @@ jobs:
       JAX_COMPILATION_CACHE_DIR: ${{ github.workspace }}/.jax-cache
       JAX_PERSISTENT_CACHE_MIN_COMPILE_TIME_SECS: "0"
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v8.2.0
         with:
           enable-cache: true
