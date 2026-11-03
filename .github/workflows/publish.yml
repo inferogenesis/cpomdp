@@ -42,7 +42,7 @@ jobs:
           echo "::error::dispatched from ${{ github.ref }}. warrantlib publishes from main or a release only, because PyPI never lets a version be reclaimed."
           exit 1
       - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v8.2.0
+      - uses: astral-sh/setup-uv@v10.3.2
         with:
           enable-cache: true
           python-version: "3.12"
