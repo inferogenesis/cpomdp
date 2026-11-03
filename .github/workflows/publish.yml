@@ -89,12 +89,12 @@ jobs:
       - if: steps.warrantlib.outputs.is-new == 'true'
         run: uv build --package warrantlib -o dist/warrantlib
       - if: github.event_name == 'release'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dist-cpomdp
           path: dist/cpomdp/
       - if: steps.warrantlib.outputs.is-new == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dist-warrantlib
           path: dist/warrantlib/
