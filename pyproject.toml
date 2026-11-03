@@ -77,6 +77,13 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/cpomdp"]
 
+[tool.uv]
+# The oldest uv checked against the relative `exclude-newer` below (ADR-093).
+required-version = ">=0.11.14"
+# A version reaches the lock once it has been on the index for seven days, whether by
+# hand or through Dependabot, whose cooldown matches (ADR-093).
+exclude-newer = "7 days"
+
 # cpomdp is the workspace root as well as a member. `warrantlib` publishes alongside it;
 # `cpomdp-research` never publishes. One `uv.lock` and one `.venv`, both here.
 [tool.uv.workspace]

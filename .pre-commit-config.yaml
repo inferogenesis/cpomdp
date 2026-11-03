@@ -2,14 +2,23 @@
 #   uv run pre-commit install --hook-type pre-commit --hook-type commit-msg
 # The ruff and ty hooks mirror the CI `lint` job, so a clean commit here is a green CI.
 repos:
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    # Keep this in sync with the `ruff` pin in pyproject's dev group, so local
-    # and CI agree on exactly which ruff is judging the code.
-    rev: v0.15.16
+  # The locked ruff, so the version judging the code is the one in `uv.lock` and there is
+  # no second pin to keep level with it (ADR-093). `--extra examples` asks for the same
+  # environment as the ty hook below, so whichever hook runs first syncs it once.
+  - repo: local
     hooks:
       - id: ruff-check
-        args: [--fix]
+        name: ruff check
+        entry: uv run --extra examples ruff check --force-exclude --fix
+        language: system
+        types_or: [python, pyi, jupyter]
+        require_serial: true
       - id: ruff-format
+        name: ruff format
+        entry: uv run --extra examples ruff format --force-exclude
+        language: system
+        types_or: [python, pyi, jupyter]
+        require_serial: true
 
   # Strict type-checking, mirroring the CI `ty (strict types)` step exactly.
   # A local hook running the same `uv run ty check` keeps local and CI in lockstep

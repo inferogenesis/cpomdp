@@ -1,0 +1,56 @@
+# Version updates for the lock, the pre-commit hooks and the workflow actions (ADR-093).
+# Security updates are a repository setting, and they open as advisories are published
+# rather than on this schedule.
+#
+# RxInfer is out of reach here. CI pins it in `ci.yml` and the backend declares its range
+# in `src/cpomdp/juliapkg.json`. Both move by hand, because the oracle's numbers move only
+# when the pin does (ADR-085).
+version: 2
+
+updates:
+  # `lockfile-only`, because for a library Dependabot's default widens the ranges in
+  # `pyproject.toml`. Those ranges are the published `Requires-Dist`, so moving one is a
+  # release decision.
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: monthly
+    versioning-strategy: lockfile-only
+    cooldown:
+      default-days: 7
+    groups:
+      lock:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    commit-message:
+      prefix: chore
+      include: scope
+
+  # ruff has no entry here. Its hook runs the locked ruff, so the `uv` entry moves it.
+  - package-ecosystem: pre-commit
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    groups:
+      hooks:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    commit-message:
+      prefix: chore
+
+  # A major bump arrives on its own. `publish.yml` runs only on a release and `docs.yml`
+  # deploys only from main, so no pull request runs the actions they use.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    commit-message:
+      prefix: ci
