@@ -41,14 +41,14 @@ jobs:
         run: |
           echo "::error::dispatched from ${{ github.ref }}. warrantlib publishes from main or a release only, because PyPI never lets a version be reclaimed."
           exit 1
-      - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v8.2.0
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3
         with:
           enable-cache: true
           python-version: "3.12"
       - run: uv sync --locked
       - name: jax compilation cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: .jax-cache
           restore-keys: jax-cache-${{ runner.os }}-py3.12-
@@ -89,12 +89,12 @@ jobs:
       - if: steps.warrantlib.outputs.is-new == 'true'
         run: uv build --package warrantlib -o dist/warrantlib
       - if: github.event_name == 'release'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dist-cpomdp
           path: dist/cpomdp/
       - if: steps.warrantlib.outputs.is-new == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dist-warrantlib
           path: dist/warrantlib/
@@ -111,7 +111,7 @@ jobs:
     permissions:
       id-token: write # the OIDC token Trusted Publishing exchanges for an upload
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: dist-cpomdp
           path: dist/
@@ -135,7 +135,7 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: dist-warrantlib
           path: dist/
