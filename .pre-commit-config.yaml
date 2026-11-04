@@ -35,7 +35,7 @@ repos:
         pass_filenames: false
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
@@ -50,7 +50,7 @@ repos:
   # local run (`markdownlint-cli2`) and this hook judge the docs identically.
   # pre-commit provisions its own Node, so no global install is needed.
   - repo: https://github.com/DavidAnson/markdownlint-cli2
-    rev: v0.22.1
+    rev: v0.24.0
     hooks:
       - id: markdownlint-cli2
         # Pinned so pre-commit fetches its own Node rather than using whatever the
@@ -68,7 +68,7 @@ repos:
   # Python (cspell splits snake_case into real words, so it mostly catches
   # docstring/comment typos — code identifiers are allow-listed in cspell.json).
   - repo: https://github.com/streetsidesoftware/cspell-cli
-    rev: v10.0.1
+    rev: v10.4.0
     hooks:
       - id: cspell
         # cspell-cli v10 needs Node >= 22.18. Same reasoning as markdownlint above.
