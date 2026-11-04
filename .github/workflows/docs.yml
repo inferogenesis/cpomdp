@@ -24,8 +24,8 @@ jobs:
       JAX_COMPILATION_CACHE_DIR: ${{ github.workspace }}/.jax-cache
       JAX_PERSISTENT_CACHE_MIN_COMPILE_TIME_SECS: "0"
     steps:
-      - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v8.2.0
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3
         with:
           enable-cache: true
           python-version: "3.12"
@@ -33,7 +33,7 @@ jobs:
       # Same key family as ci.yml's py3.12 test job, so this run starts from the
       # PR runs' compilations and its slow-test compiles feed back into them.
       - name: jax compilation cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: .jax-cache
           key: jax-cache-${{ runner.os }}-py3.12-${{ github.run_id }}
@@ -48,7 +48,7 @@ jobs:
           uvx --from "genbadge[coverage]" genbadge coverage \
             -i coverage.xml -o docs/assets/coverage.svg
       - run: uv run --no-sync mkdocs build --strict
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: site
 
@@ -63,7 +63,7 @@ jobs:
       - name: Deploy to GitHub Pages (attempt 1)
         id: deploy1
         continue-on-error: true
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
 
       - name: Settle before retry
         if: steps.deploy1.outcome == 'failure'
@@ -73,7 +73,7 @@ jobs:
         id: deploy2
         if: steps.deploy1.outcome == 'failure'
         continue-on-error: true
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
 
       - name: Settle before final attempt
         if: steps.deploy1.outcome == 'failure' && steps.deploy2.outcome == 'failure'
@@ -82,4 +82,4 @@ jobs:
       - name: Deploy to GitHub Pages (attempt 3)
         id: deploy3
         if: steps.deploy1.outcome == 'failure' && steps.deploy2.outcome == 'failure'
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

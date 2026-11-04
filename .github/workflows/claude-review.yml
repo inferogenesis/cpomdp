@@ -27,7 +27,7 @@ jobs:
       pull-requests: write
       id-token: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           # Full history: the review reads `git log` and diffs against its base,
           # and on a stacked PR that base is another branch a shallow clone has
@@ -147,7 +147,7 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       # A Dependabot update to an action this file uses changes this file, and the
