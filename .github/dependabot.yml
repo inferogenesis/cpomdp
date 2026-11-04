@@ -1,4 +1,8 @@
 # Version updates for the lock, the pre-commit hooks and the workflow actions (ADR-093).
+# Each group takes every update in its ecosystem, majors included, so a run opens at most
+# one pull request per ecosystem (ADR-094). A group that names `update-types` admits only
+# versions the ecosystem's version class parses, and that left the hook updates out of
+# `hooks`.
 # Security updates are a repository setting, and they open as advisories are published
 # rather than on this schedule.
 #
@@ -21,7 +25,6 @@ updates:
     groups:
       lock:
         patterns: ["*"]
-        update-types: [minor, patch]
     commit-message:
       prefix: chore
       include: scope
@@ -36,12 +39,12 @@ updates:
     groups:
       hooks:
         patterns: ["*"]
-        update-types: [minor, patch]
     commit-message:
       prefix: chore
 
-  # A major bump arrives on its own. `publish.yml` runs only on a release and `docs.yml`
-  # deploys only from main, so no pull request runs the actions they use.
+  # `publish.yml` runs only on a release and `docs.yml` deploys only from main, so no pull
+  # request runs the actions they use. The dependency review reads a change to them before
+  # it merges, and fails for a review by hand when the change moves `claude-review.yml`.
   - package-ecosystem: github-actions
     directory: /
     schedule:
@@ -51,6 +54,5 @@ updates:
     groups:
       actions:
         patterns: ["*"]
-        update-types: [minor, patch]
     commit-message:
       prefix: ci

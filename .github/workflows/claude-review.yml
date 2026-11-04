@@ -151,7 +151,9 @@ jobs:
         with:
           fetch-depth: 0
       # A Dependabot update to an action this file uses changes this file, and the
-      # action skips such a run, as in `review` above.
+      # action can't run such a workflow, as in `review` above. The check fails rather
+      # than passing unread, because the actions group carries every action that month
+      # and needs a review by hand (ADR-094).
       - name: check the workflow file
         id: pr
         env:
@@ -160,8 +162,9 @@ jobs:
           if git diff --quiet "origin/$DEFAULT_BRANCH" HEAD -- .github/workflows/claude-review.yml; then
             echo "reviewable=true" >> "$GITHUB_OUTPUT"
           else
-            echo "::notice::this run's review workflow differs from $DEFAULT_BRANCH's, so the action skips it"
+            echo "::error::this pull request changes claude-review.yml, so the action can't review it. Review it by hand."
             echo "reviewable=false" >> "$GITHUB_OUTPUT"
+            exit 1
           fi
       - uses: anthropics/claude-code-action@v1
         if: ${{ steps.pr.outputs.reviewable == 'true' }}
